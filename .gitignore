@@ -31,3 +31,18 @@ playwright-report/
 # OS
 .DS_Store
 Thumbs.db
+
+# 3D Portal — runtime artifacts
+*.db
+*.db-journal
+htpasswd-*
+.env.production.local
+.env.dev.local
+
+# Visual regression
+apps/web/tests/visual/test-results/
+apps/web/tests/visual/__snapshots__/**/*.actual.png
+apps/web/tests/visual/__snapshots__/**/*.diff.png
+
+# Render artifacts (local fixtures only — production renders live on .190 volume)
+workers/render/.local-renders/
