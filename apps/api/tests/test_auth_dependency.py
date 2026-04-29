@@ -26,8 +26,10 @@ def test_no_token_returns_401(app_with_protected_route):
 def test_valid_admin_token_returns_subject(app_with_protected_route):
     settings = get_settings()
     token = encode_token(
-        subject="7", role="admin",
-        secret=settings.jwt_secret, ttl_minutes=settings.jwt_ttl_minutes,
+        subject="7",
+        role="admin",
+        secret=settings.jwt_secret,
+        ttl_minutes=settings.jwt_ttl_minutes,
     )
     client = TestClient(app_with_protected_route)
     r = client.get("/protected", headers={"Authorization": f"Bearer {token}"})
@@ -38,8 +40,10 @@ def test_valid_admin_token_returns_subject(app_with_protected_route):
 def test_member_role_returns_403(app_with_protected_route):
     settings = get_settings()
     token = encode_token(
-        subject="7", role="member",
-        secret=settings.jwt_secret, ttl_minutes=settings.jwt_ttl_minutes,
+        subject="7",
+        role="member",
+        secret=settings.jwt_secret,
+        ttl_minutes=settings.jwt_ttl_minutes,
     )
     client = TestClient(app_with_protected_route)
     r = client.get("/protected", headers={"Authorization": f"Bearer {token}"})

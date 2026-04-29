@@ -4,8 +4,8 @@ from sqlmodel import Session, select
 
 from app.core.audit import record_event
 from app.core.db.models import AuditEvent
-from app.core.db.session import create_engine_for_url, init_schema
 from app.core.db.seed import seed_admin
+from app.core.db.session import create_engine_for_url, init_schema
 
 
 def test_record_event_persists_with_payload(tmp_path):
