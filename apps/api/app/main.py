@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.core.config import get_settings
 from app.core.db.seed import seed_admin
 from app.core.db.session import get_engine, init_schema
+from app.modules.catalog.service import CatalogService
 from app.router import api_router
 
 
@@ -22,6 +23,10 @@ async def lifespan(app: FastAPI):
         email=settings.admin_email,
         password=settings.admin_password,
         display_name="Admin",
+    )
+    app.state.catalog_service = CatalogService(
+        catalog_dir=settings.catalog_data_dir,
+        index_path=settings.catalog_data_dir / "_index" / "index.json",
     )
     yield
 
