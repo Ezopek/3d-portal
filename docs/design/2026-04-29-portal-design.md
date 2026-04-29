@@ -482,7 +482,7 @@ upstream portal_backend { server 192.168.2.190:8080; }
 
 server {
     listen 443 ssl http2;
-    server_name 3d.ezop.dev;          # exact domain TBD with Michał at deploy time
+    server_name 3d.ezop.ddns.net;
 
     auth_basic            "3D Portal — household login";
     auth_basic_user_file  /etc/nginx/htpasswd-3d-portal;
@@ -530,7 +530,7 @@ rsync -avz --delete \
   "$SOURCE" "$DEST"
 
 curl -fsS -u "${PORTAL_AUTH}" \
-  -X POST "https://3d.ezop.dev/api/admin/refresh-catalog" || true
+  -X POST "https://3d.ezop.ddns.net/api/admin/refresh-catalog" || true
 ```
 
 Triggered:
@@ -646,7 +646,7 @@ implementation in v1:
 
 A v1 release is acceptable when:
 
-1. Family member can open `https://3d.ezop.dev` on a phone, enter the
+1. Family member can open `https://3d.ezop.ddns.net` on a phone, enter the
    household password once, and browse the catalog in Polish with a
    responsive 2-column grid.
 2. Filters (category, status) and sort (recently added) work entirely on
@@ -676,7 +676,6 @@ A v1 release is acceptable when:
 These items were noted during brainstorming but are not blocking for the
 spec; they get resolved during implementation:
 
-- Final domain name (placeholder `3d.ezop.dev`).
 - Whether `orca-slicer://` URL handler exists on Michał's Windows install
   (if yes, the "Open in Orca" button uses it; if no, it stays hidden).
 - Retroactive `date_added` recovery from `_katalog/katalog.json` git
