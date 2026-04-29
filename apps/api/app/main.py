@@ -11,7 +11,11 @@ from app.core.db.session import get_engine, init_schema
 async def lifespan(app: FastAPI):
     settings = get_settings()
     engine = get_engine()
-    init_schema(engine)
+    # Production schema is owned by alembic (deploy script runs `alembic upgrade head`
+    # before the container starts). In dev/test we let SQLModel create the schema
+    # so contributors and the pytest suite can run without invoking alembic.
+    if settings.environment != "production":
+        init_schema(engine)
     seed_admin(
         engine,
         email=settings.admin_email,

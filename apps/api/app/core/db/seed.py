@@ -1,4 +1,5 @@
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.core.auth.password import hash_password
@@ -17,4 +18,9 @@ def seed_admin(engine: Engine, *, email: str, password: str, display_name: str) 
             password_hash=hash_password(password),
         )
         session.add(user)
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            # Concurrent startup race: another worker inserted the same admin row.
+            # Treat as success — the goal (admin user exists) is achieved.
+            session.rollback()
