@@ -1,5 +1,7 @@
 from contextlib import asynccontextmanager
 
+from arq import create_pool
+from arq.connections import RedisSettings
 from fastapi import FastAPI
 
 from app.core.config import get_settings
@@ -30,7 +32,9 @@ async def lifespan(app: FastAPI):
         index_path=settings.catalog_data_dir / "_index" / "index.json",
     )
     app.state.redis = RedisFactory(url=settings.redis_url)
+    app.state.arq = await create_pool(RedisSettings.from_dsn(settings.redis_url))
     yield
+    await app.state.arq.aclose()
     await app.state.redis.aclose()
 
 

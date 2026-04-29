@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlmodel import Session, func, select
 
 from app.core.audit import record_event
@@ -23,6 +23,38 @@ def refresh_catalog(request: Request, user_id: int = current_admin) -> dict[str,
         payload={"total": response.total},
     )
     return {"total": response.total}
+
+
+@router.post("/render/{model_id}", status_code=202)
+async def trigger_render(
+    model_id: str,
+    request: Request,
+    user_id: int = current_admin,
+) -> dict[str, str]:
+    catalog = request.app.state.catalog_service
+    if catalog.get_model(model_id) is None:
+        raise HTTPException(404, f"Model {model_id} not found")
+    job = await request.app.state.arq.enqueue_job("render_model", model_id)
+    record_event(
+        get_engine(),
+        kind="render.triggered",
+        actor_user_id=user_id,
+        payload={"model_id": model_id, "job_id": job.job_id},
+    )
+    return {"job_id": job.job_id, "model_id": model_id}
+
+
+@router.get("/jobs/{model_id}")
+async def render_status(
+    model_id: str,
+    request: Request,
+    _user_id: int = current_admin,
+) -> dict[str, str]:
+    redis = request.app.state.redis.get()
+    raw = await redis.get(f"render:status:{model_id}")
+    if raw is None:
+        return {"model_id": model_id, "status": "unknown"}
+    return {"model_id": model_id, "status": raw.decode()}
 
 
 @router.get("/audit")

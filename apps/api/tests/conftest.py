@@ -2,11 +2,30 @@ import os
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+
+
+@pytest.fixture(autouse=True)
+def _patch_arq_pool():
+    """Prevent arq create_pool from connecting to a real Redis in tests."""
+    fake_pool = MagicMock()
+    fake_pool.enqueue_job = AsyncMock(return_value=MagicMock(job_id="mock-job"))
+
+    async def _aclose():
+        return None
+
+    fake_pool.aclose = _aclose
+
+    async def _fake_create_pool(*args, **kwargs):
+        return fake_pool
+
+    with patch("app.main.create_pool", side_effect=_fake_create_pool):
+        yield fake_pool
 
 
 @pytest.fixture(autouse=True, scope="session")
