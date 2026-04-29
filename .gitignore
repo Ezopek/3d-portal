@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+.pnpm-store/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Local env
+.env
+.env.local
+.env.production
+
+# Editor
+.vscode/
+.idea/
+
+# Worktrees
+.worktrees/
+
+# Test
+coverage/
+.pytest_cache/
+test-results/
+playwright-report/
+
+# OS
+.DS_Store
+Thumbs.db
