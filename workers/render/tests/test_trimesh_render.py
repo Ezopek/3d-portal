@@ -11,7 +11,7 @@ def test_renders_four_named_views(cube_stl, tmp_path):
 
 def test_each_view_is_png_with_expected_size(cube_stl, tmp_path):
     out = render_views(stl_path=cube_stl, output_dir=tmp_path, size=128)
-    for view, path in out.items():
+    for _view, path in out.items():
         assert path.exists()
         assert path.suffix == ".png"
         with Image.open(path) as img:
