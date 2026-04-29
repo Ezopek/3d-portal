@@ -45,7 +45,9 @@ async def create_share(
 
 
 @router.get("", response_model=dict)
-async def list_share(request: Request, _user_id: int = current_admin) -> dict[str, list[ShareToken]]:
+async def list_share(
+    request: Request, _user_id: int = current_admin
+) -> dict[str, list[ShareToken]]:
     tokens = await _service(request).list_active()
     return {"tokens": tokens}
 

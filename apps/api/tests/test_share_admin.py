@@ -52,7 +52,9 @@ def test_create_share_requires_admin(client):
 def test_create_share_returns_token_and_url(client):
     c, token = client
     headers = {"Authorization": f"Bearer {token}"}
-    r = c.post("/api/admin/share", json={"model_id": "001", "expires_in_hours": 24}, headers=headers)
+    r = c.post(
+        "/api/admin/share", json={"model_id": "001", "expires_in_hours": 24}, headers=headers
+    )
     assert r.status_code == 201
     body = r.json()
     assert body["url"].startswith("/share/")
@@ -72,7 +74,9 @@ def test_list_share_returns_active_tokens(client):
 def test_revoke_share_removes_it(client):
     c, token = client
     headers = {"Authorization": f"Bearer {token}"}
-    created = c.post("/api/admin/share", json={"model_id": "001", "expires_in_hours": 1}, headers=headers).json()
+    created = c.post(
+        "/api/admin/share", json={"model_id": "001", "expires_in_hours": 1}, headers=headers
+    ).json()
     r = c.delete(f"/api/admin/share/{created['token']}", headers=headers)
     assert r.status_code == 204
     after = c.get("/api/admin/share", headers=headers).json()

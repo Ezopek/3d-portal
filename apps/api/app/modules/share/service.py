@@ -1,5 +1,5 @@
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from redis.asyncio import Redis
 
@@ -17,7 +17,7 @@ class ShareService:
         if expires_in_hours < 1:
             raise ValueError("expires_in_hours must be >= 1")
         token = secrets.token_urlsafe(24)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expires_at = now + timedelta(hours=expires_in_hours)
         record = ShareToken(
             token=token,

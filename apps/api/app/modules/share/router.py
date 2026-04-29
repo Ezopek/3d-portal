@@ -19,17 +19,17 @@ async def resolve_share(token: str, request: Request) -> ShareModelView:
         raise HTTPException(404, "Model no longer exists")
 
     images = []
-    images_dir = catalog._catalog_dir / model.path / "images"  # noqa: SLF001
+    images_dir = catalog._catalog_dir / model.path / "images"
     if images_dir.is_dir():
         for child in sorted(images_dir.iterdir()):
             if child.is_file() and child.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
                 images.append(f"/api/files/{model.id}/images/{child.name}")
 
-    has_3d = catalog._has_3d(model)  # noqa: SLF001
-    thumbnail = catalog._resolve_thumbnail(model)  # noqa: SLF001
+    has_3d = catalog._has_3d(model)
+    thumbnail = catalog._resolve_thumbnail(model)
 
     # Find first STL for the share view's download button
-    catalog_root = catalog._catalog_dir / model.path  # noqa: SLF001
+    catalog_root = catalog._catalog_dir / model.path
     stl_url = None
     if catalog_root.is_dir():
         for stl in sorted(catalog_root.rglob("*.stl")):
