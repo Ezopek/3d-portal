@@ -1,6 +1,9 @@
 from datetime import datetime
 
+from sqlmodel import Session, select
+
 from app.core.db.models import AuditEvent, User, UserRole
+from app.core.db.session import create_engine_for_url, init_schema
 
 
 def test_user_role_enum_values():
@@ -18,11 +21,6 @@ def test_user_table_metadata():
 def test_audit_event_defaults_now():
     event = AuditEvent(kind="test", payload="{}")
     assert isinstance(event.at, datetime)
-
-
-from sqlmodel import Session, select
-
-from app.core.db.session import create_engine_for_url, init_schema
 
 
 def test_engine_can_create_schema(tmp_path):

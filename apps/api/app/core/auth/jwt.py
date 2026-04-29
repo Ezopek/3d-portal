@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+import datetime
 
 import jwt as _jwt
 
@@ -8,12 +8,12 @@ class TokenError(Exception):
 
 
 def encode_token(*, subject: str, role: str, secret: str, ttl_minutes: int) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     payload = {
         "sub": subject,
         "role": role,
         "iat": int(now.timestamp()),
-        "exp": int((now + timedelta(minutes=ttl_minutes)).timestamp()),
+        "exp": int((now + datetime.timedelta(minutes=ttl_minutes)).timestamp()),
     }
     return _jwt.encode(payload, secret, algorithm="HS256")
 
