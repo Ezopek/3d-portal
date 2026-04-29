@@ -1,4 +1,5 @@
 import datetime
+from typing import Any
 
 import jwt as _jwt
 
@@ -18,7 +19,7 @@ def encode_token(*, subject: str, role: str, secret: str, ttl_minutes: int) -> s
     return _jwt.encode(payload, secret, algorithm="HS256")
 
 
-def decode_token(token: str, *, secret: str) -> dict:
+def decode_token(token: str, *, secret: str) -> dict[str, Any]:
     try:
         return _jwt.decode(token, secret, algorithms=["HS256"])
     except _jwt.PyJWTError as exc:
