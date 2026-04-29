@@ -9,6 +9,12 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+*.tsbuildinfo
+# tsc composite / declaration emit artifacts (Vite handles actual bundling)
+apps/web/vite.config.js
+apps/web/vite.config.d.ts
+apps/web/src/**/*.js
+apps/web/tests/**/*.js
 
 # Local env
 .env
