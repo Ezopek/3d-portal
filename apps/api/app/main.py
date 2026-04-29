@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.core.config import get_settings
 from app.core.db.seed import seed_admin
 from app.core.db.session import get_engine, init_schema
+from app.router import api_router
 
 
 @asynccontextmanager
@@ -38,8 +39,6 @@ def create_app() -> FastAPI:
     @app.get("/api/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "version": settings.app_version}
-
-    from app.router import api_router
 
     app.include_router(api_router)
 

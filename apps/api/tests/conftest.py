@@ -14,7 +14,7 @@ def _isolated_db():
     tmp_dir = Path(tempfile.mkdtemp(prefix="portal-test-"))
     db_path = tmp_dir / "portal.db"
     os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
-    os.environ["ADMIN_EMAIL"] = "admin@local"
+    os.environ["ADMIN_EMAIL"] = "admin@localhost.localdomain"
     os.environ["ADMIN_PASSWORD"] = "test-admin-pw"
     os.environ["JWT_SECRET"] = "test-secret-not-real"
     # Clear any cached settings or engine that read env at import time
