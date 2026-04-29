@@ -1,0 +1,37 @@
+[
+  {
+    "id": "001", "name_en": "Dragon", "name_pl": "Smok",
+    "path": "decorum/dragon",
+    "category": "decorations", "subcategory": "articulated_figures",
+    "tags": ["dragon", "smok", "print-in-place"],
+    "source": "printables", "printables_id": "12345",
+    "thangs_id": null, "makerworld_id": null,
+    "source_url": "https://printables.com/m/12345",
+    "rating": 5, "status": "printed", "notes": "",
+    "thumbnail": null, "date_added": "2026-04-12", "prints": []
+  },
+  {
+    "id": "002", "name_en": "Vase", "name_pl": "Wazon",
+    "path": "decorum/vase",
+    "category": "decorations", "subcategory": "",
+    "tags": ["vase", "wazon"], "source": "unknown",
+    "printables_id": null, "thangs_id": null, "makerworld_id": null,
+    "source_url": null, "rating": null,
+    "status": "not_printed", "notes": "",
+    "thumbnail": null, "date_added": "2026-04-29",
+    "prints": [
+      {"path": "decorum/vase/prints/2026-04-29-front.jpg", "date": "2026-04-29",
+       "notes_en": "First", "notes_pl": "Pierwszy"}
+    ]
+  },
+  {
+    "id": "003", "name_en": "Holder", "name_pl": "Uchwyt",
+    "path": "praktyczne/holder",
+    "category": "practical", "subcategory": "",
+    "tags": [], "source": "thangs",
+    "printables_id": null, "thangs_id": "777", "makerworld_id": null,
+    "source_url": "https://thangs.com/m/777", "rating": null,
+    "status": "not_printed", "notes": "",
+    "thumbnail": null, "date_added": "2026-04-20", "prints": []
+  }
+]
