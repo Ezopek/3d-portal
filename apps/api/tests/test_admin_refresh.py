@@ -24,6 +24,7 @@ def setup(tmp_path, monkeypatch):
     monkeypatch.setenv("JWT_SECRET", "test")
     from app.core.config import get_settings
     from app.core.db.session import get_engine
+
     get_settings.cache_clear()
     get_engine.cache_clear()
     app = create_app()
