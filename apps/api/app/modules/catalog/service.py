@@ -44,9 +44,7 @@ class CatalogService:
         if not root.is_dir():
             return []
         return sorted(
-            str(p.relative_to(root)).replace("\\", "/")
-            for p in root.rglob("*")
-            if p.is_file()
+            str(p.relative_to(root)).replace("\\", "/") for p in root.rglob("*") if p.is_file()
         )
 
     # --- helpers -----------------------------------------------------------
@@ -55,10 +53,16 @@ class CatalogService:
         thumbnail_url = self._resolve_thumbnail(m)
         has_3d = self._has_3d(m)
         return ModelListItem(
-            id=m.id, name_en=m.name_en, name_pl=m.name_pl,
-            category=m.category, tags=m.tags, source=m.source,
-            status=m.status, rating=m.rating,
-            thumbnail_url=thumbnail_url, has_3d=has_3d,
+            id=m.id,
+            name_en=m.name_en,
+            name_pl=m.name_pl,
+            category=m.category,
+            tags=m.tags,
+            source=m.source,
+            status=m.status,
+            rating=m.rating,
+            thumbnail_url=thumbnail_url,
+            has_3d=has_3d,
             date_added=m.date_added,
         )
 
@@ -74,7 +78,4 @@ class CatalogService:
         root = self._catalog_dir / m.path
         if not root.is_dir():
             return False
-        for ext in (".stl", ".3mf", ".step"):
-            if any(root.rglob(f"*{ext}")):
-                return True
-        return False
+        return any(any(root.rglob(f"*{ext}")) for ext in (".stl", ".3mf", ".step"))

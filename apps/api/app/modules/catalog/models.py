@@ -1,9 +1,9 @@
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class Category(str, Enum):
+class Category(StrEnum):
     decorations = "decorations"
     printer_3d = "printer_3d"
     gridfinity = "gridfinity"
@@ -15,14 +15,14 @@ class Category(str, Enum):
     other = "other"
 
 
-class Status(str, Enum):
+class Status(StrEnum):
     not_printed = "not_printed"
     in_progress = "in_progress"
     printed = "printed"
     needs_revision = "needs_revision"
 
 
-class Source(str, Enum):
+class Source(StrEnum):
     printables = "printables"
     thangs = "thangs"
     thingiverse = "thingiverse"
