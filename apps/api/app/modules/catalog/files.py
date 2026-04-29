@@ -14,7 +14,7 @@ def serve_file(model_id: str, relative: str, request: Request) -> Response:
     if model is None:
         raise HTTPException(404, f"Model {model_id} not found")
 
-    catalog_dir = service._catalog_dir  # noqa: SLF001
+    catalog_dir = service._catalog_dir  # intentional internal use
     renders_dir = get_settings().renders_dir
 
     candidates = []
