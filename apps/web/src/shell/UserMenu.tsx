@@ -14,15 +14,15 @@ export function UserMenu() {
   const token = readToken();
   if (token === null) {
     return (
-      <Button variant="outline" size="sm" asChild>
-        <a href="/login">{t("auth.login")}</a>
+      <Button variant="outline" size="sm" render={<a href="/login" />}>
+        {t("auth.login")}
       </Button>
     );
   }
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm">Admin</Button>
+      <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+        Admin
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem
