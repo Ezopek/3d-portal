@@ -46,3 +46,6 @@ apps/web/tests/visual/__snapshots__/**/*.diff.png
 
 # Render artifacts (local fixtures only — production renders live on .190 volume)
 workers/render/.local-renders/
+
+# Implementation plans — kept local-only on purpose (may reference internal hosts/paths)
+docs/plans/
