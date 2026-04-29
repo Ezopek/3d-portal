@@ -1,7 +1,28 @@
+import { QueryClientProvider } from "@tanstack/react-query";
+import { RouterProvider, createRouter } from "@tanstack/react-router";
+
+import { queryClient } from "@/lib/queryClient";
+import { LangProvider } from "@/shell/LangProvider";
+import { ThemeProvider } from "@/shell/ThemeProvider";
+
+import { routeTree } from "./routeTree.gen";
+
+const router = createRouter({ routeTree });
+
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: typeof router;
+  }
+}
+
 export function App() {
   return (
-    <main className="grid min-h-screen place-items-center">
-      <h1 className="text-2xl font-semibold">3D Portal — bootstrapping</h1>
-    </main>
+    <QueryClientProvider client={queryClient}>
+      <LangProvider>
+        <ThemeProvider>
+          <RouterProvider router={router} />
+        </ThemeProvider>
+      </LangProvider>
+    </QueryClientProvider>
   );
 }
