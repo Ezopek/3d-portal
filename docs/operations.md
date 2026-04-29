@@ -21,7 +21,7 @@ bash infra/scripts/sync-data.sh
 This uses rsync over SSH to copy new/modified models from Windows to `.190`, then triggers the API to refresh its in-memory caches. For a safety net, add this to your WSL crontab to run every 15 minutes:
 
 ```
-*/15 * * * * /mnt/c/Users/ezope/code/sync-data.sh
+*/15 * * * * bash ~/repos/3d-portal/infra/scripts/sync-data.sh
 ```
 
 ## First-time setup
@@ -71,7 +71,7 @@ Backups are stored in `/mnt/raid/3d-portal-state/backups/` with 30-day retention
 
 | Symptom | Check | Fix |
 |---|---|---|
-| `5xx on /api/catalog/models` | Check OpenSearch `service.name=3d-portal-api` for trace | Likely `index.json` parse failure or volume not mounted; check docker-compose logs and volume mounts |
+| `5xx on /api/catalog/models` | Check OpenSearch (OTel logs) `service.name=3d-portal-api` for trace | Likely `index.json` parse failure or volume not mounted; check docker-compose logs and volume mounts |
 | Share link returns `401` | Confirm `/share/*` and `/api/share/*` bypass blocks present in `~/repos/configs/nginx/3d-portal.conf` | Re-deploy nginx config via `bash sync.sh` in configs repo |
 | Render stuck on "running" | Inspect arq worker logs with `docker compose logs worker` | Restart worker; status TTL is 1h so it self-clears |
 

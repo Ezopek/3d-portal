@@ -16,7 +16,7 @@ Authoritative spec: `docs/design/2026-04-29-portal-design.md`. Current implement
 ├── CLAUDE.md                  # thin pointer (Polish conversation hint)
 ├── README.md                  # quickstart
 ├── docs/
-│   ├── design/                # specs (this file lives here)
+│   ├── design/                # specs and design docs
 │   ├── plans/                 # implementation plans
 │   ├── architecture.md        # high-level system overview
 │   └── operations.md          # deploy, sync, runbook
