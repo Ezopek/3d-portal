@@ -57,6 +57,8 @@ def test_refresh_invalidates_cache(service, tmp_path):
     service2 = CatalogService(catalog_dir=FIXTURES / "catalog", index_path=new_index)
     service2.list_models()  # warm
     # Replace contents.
-    new_index.write_text('[{"id":"001","name_en":"X","name_pl":"X","path":"x","category":"decorations","subcategory":"","tags":[],"source":"unknown","printables_id":null,"thangs_id":null,"makerworld_id":null,"source_url":null,"rating":null,"status":"not_printed","notes":"","thumbnail":null,"date_added":"2026-04-29"}]')
+    new_index.write_text(
+        '[{"id":"001","name_en":"X","name_pl":"X","path":"x","category":"decorations","subcategory":"","tags":[],"source":"unknown","printables_id":null,"thangs_id":null,"makerworld_id":null,"source_url":null,"rating":null,"status":"not_printed","notes":"","thumbnail":null,"date_added":"2026-04-29"}]'
+    )
     service2.refresh()
     assert service2.list_models().total == 1
