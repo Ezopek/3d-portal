@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
+    "arq>=0.26",
     "pydantic>=2.9",
     "email-validator>=2.2",
     "pydantic-settings>=2.6",
