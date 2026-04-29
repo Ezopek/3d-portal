@@ -1,0 +1,34 @@
+from typing import Annotated
+
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from app.core.auth.jwt import TokenError, decode_token
+from app.core.config import Settings, get_settings
+
+_bearer = HTTPBearer(auto_error=False)
+
+
+def _resolve_admin(
+    creds: HTTPAuthorizationCredentials | None,
+    settings: Settings,
+) -> int:
+    if creds is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing bearer token")
+    try:
+        claims = decode_token(creds.credentials, secret=settings.jwt_secret)
+    except TokenError as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token") from exc
+    if claims.get("role") != "admin":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin role required")
+    return int(claims["sub"])
+
+
+def _current_admin_dep(
+    creds: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> int:
+    return _resolve_admin(creds, settings)
+
+
+current_admin = Depends(_current_admin_dep)
