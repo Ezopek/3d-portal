@@ -1,0 +1,12 @@
+@import "./theme.css";
+
+html, body, #root {
+  min-height: 100%;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}

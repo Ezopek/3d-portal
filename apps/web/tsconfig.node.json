@@ -5,7 +5,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "skipLibCheck": true,
-    "noEmit": true,
+    "composite": true,
     "allowSyntheticDefaultImports": true
   },
   "include": ["vite.config.ts", "tests/visual/playwright.config.ts"]
