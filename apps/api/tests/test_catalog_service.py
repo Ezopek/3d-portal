@@ -1,0 +1,62 @@
+from pathlib import Path
+
+import pytest
+
+from app.modules.catalog.service import CatalogService
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+@pytest.fixture
+def service() -> CatalogService:
+    return CatalogService(catalog_dir=FIXTURES / "catalog", index_path=FIXTURES / "index.json")
+
+
+def test_list_returns_all_models(service):
+    response = service.list_models()
+    assert response.total == 3
+    assert {m.id for m in response.models} == {"001", "002", "003"}
+
+
+def test_list_resolves_thumbnail_url_from_images_dir(service):
+    response = service.list_models()
+    by_id = {m.id: m for m in response.models}
+    assert by_id["001"].thumbnail_url == "/api/files/001/images/Dragon.png"
+    # Vase has no images/ dir → null thumbnail (worker will compute later).
+    assert by_id["002"].thumbnail_url is None
+
+
+def test_list_has_3d_true_when_stl_present(service):
+    response = service.list_models()
+    by_id = {m.id: m for m in response.models}
+    assert by_id["001"].has_3d is True
+    assert by_id["003"].has_3d is True
+
+
+def test_get_model_returns_full_payload(service):
+    m = service.get_model("002")
+    assert m is not None
+    assert m.name_pl == "Wazon"
+    assert len(m.prints) == 1
+
+
+def test_get_model_returns_none_for_missing_id(service):
+    assert service.get_model("999") is None
+
+
+def test_list_files_returns_relative_paths(service):
+    files = service.list_files("001")
+    assert "Dragon.stl" in files
+    assert "images/Dragon.png" in files
+
+
+def test_refresh_invalidates_cache(service, tmp_path):
+    # Build a separate service whose index can be mutated.
+    new_index = tmp_path / "index.json"
+    new_index.write_text("[]")
+    service2 = CatalogService(catalog_dir=FIXTURES / "catalog", index_path=new_index)
+    service2.list_models()  # warm
+    # Replace contents.
+    new_index.write_text('[{"id":"001","name_en":"X","name_pl":"X","path":"x","category":"decorations","subcategory":"","tags":[],"source":"unknown","printables_id":null,"thangs_id":null,"makerworld_id":null,"source_url":null,"rating":null,"status":"not_printed","notes":"","thumbnail":null,"date_added":"2026-04-29"}]')
+    service2.refresh()
+    assert service2.list_models().total == 1
