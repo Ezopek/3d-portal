@@ -3,11 +3,21 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.core.config import get_settings
+from app.core.db.seed import seed_admin
+from app.core.db.session import get_engine, init_schema
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup hooks (db, redis, otel) wired in later phases.
+    settings = get_settings()
+    engine = get_engine()
+    init_schema(engine)
+    seed_admin(
+        engine,
+        email=settings.admin_email,
+        password=settings.admin_password,
+        display_name="Admin",
+    )
     yield
 
 
