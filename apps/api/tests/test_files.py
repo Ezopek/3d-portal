@@ -50,3 +50,21 @@ def test_path_traversal_rejected(client):
 def test_unknown_model_returns_404(client):
     r = client.get("/api/files/999/anything")
     assert r.status_code == 404
+
+
+def test_serve_falls_back_to_renders_volume(client, tmp_path, monkeypatch):
+    # The conftest autouse fixture and per-test fixture set CATALOG_DATA_DIR.
+    # We need RENDERS_DIR to point at a tmp dir we control.
+    renders_root = tmp_path / "renders"
+    (renders_root / "001").mkdir(parents=True)
+    # Create a fake render PNG.
+    (renders_root / "001" / "iso.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    monkeypatch.setenv("RENDERS_DIR", str(renders_root))
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+
+    r = client.get("/api/files/001/iso.png")
+    assert r.status_code == 200
+    # Expect ETag header
+    assert "ETag" in r.headers
