@@ -76,4 +76,4 @@ def test_resolve_returns_stl_url_when_stl_present(client):
         headers=headers,
     ).json()
     body = c.get(f"/api/share/{created['token']}").json()
-    assert body["stl_url"] == "/api/files/001/Dragon.stl"
+    assert body["stl_url"] == "/api/files/001/Dragon.stl?download=1"

@@ -97,7 +97,7 @@ export async function stubCatalog(page: Page) {
         images: [],
         notes_en: "",
         notes_pl: "",
-        stl_url: "/api/files/001/Dragon.stl",
+        stl_url: "/api/files/001/Dragon.stl?download=1",
       }),
     }),
   );

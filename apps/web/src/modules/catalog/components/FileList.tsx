@@ -13,7 +13,7 @@ export function FileList({ modelId }: { modelId: string }) {
       {data.files.map((f) => (
         <li key={f} className="flex items-center justify-between px-4 py-2 text-sm">
           <span className="truncate">{f}</span>
-          <a href={`/api/files/${modelId}/${f}`} className="flex items-center gap-1 text-primary">
+          <a href={`/api/files/${modelId}/${f}?download=1`} className="flex items-center gap-1 text-primary">
             <Download className="size-4" /> {t("catalog.actions.download")}
           </a>
         </li>

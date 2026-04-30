@@ -71,6 +71,7 @@ export function CatalogDetail() {
 
   const firstStl = fileList.find((f) => f.toLowerCase().endsWith(".stl"));
   const stlHref = firstStl !== undefined ? `/api/files/${id}/${firstStl}` : null;
+  const stlDownloadHref = stlHref !== null ? `${stlHref}?download=1` : null;
 
   return (
     <div className="grid gap-4 p-4 md:grid-cols-[1fr_1fr]">
@@ -115,7 +116,7 @@ export function CatalogDetail() {
         </div>
         <div className="mt-4">
           <StickyActionBar
-            stlHref={stlHref}
+            stlHref={stlDownloadHref}
             on3DOpen={() => setView3d((v) => !v)}
             onShareOpen={() => setShareOpen(true)}
           />

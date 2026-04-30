@@ -35,6 +35,20 @@ def test_download_stl(client):
     assert "ETag" in r.headers
 
 
+def test_serve_inline_by_default(client):
+    r = client.get("/api/files/001/Dragon.stl")
+    assert r.status_code == 200
+    assert "content-disposition" not in {k.lower() for k in r.headers}
+
+
+def test_download_query_sets_attachment(client):
+    r = client.get("/api/files/001/Dragon.stl?download=1")
+    assert r.status_code == 200
+    cd = r.headers.get("content-disposition", "")
+    assert "attachment" in cd
+    assert 'filename="Dragon.stl"' in cd
+
+
 def test_etag_round_trip_returns_304(client):
     r1 = client.get("/api/files/001/Dragon.stl")
     etag = r1.headers["ETag"]

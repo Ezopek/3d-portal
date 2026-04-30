@@ -8,7 +8,7 @@ router = APIRouter(prefix="/api/files", tags=["files"])
 
 
 @router.get("/{model_id}/{relative:path}")
-def serve_file(model_id: str, relative: str, request: Request) -> Response:
+def serve_file(model_id: str, relative: str, request: Request, download: bool = False) -> Response:
     service = request.app.state.catalog_service
     model = service.get_model(model_id)
     if model is None:
@@ -42,6 +42,7 @@ def serve_file(model_id: str, relative: str, request: Request) -> Response:
                 return Response(status_code=304, headers={"ETag": etag})
             return FileResponse(
                 candidate,
+                filename=candidate.name if download else None,
                 headers={"ETag": etag, "Cache-Control": "private, max-age=300"},
             )
     raise HTTPException(404, "File not found")
