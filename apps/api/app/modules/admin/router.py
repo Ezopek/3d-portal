@@ -1,6 +1,8 @@
+import re
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
 from sqlmodel import Session, func, select
 
 from app.core.audit import record_event
@@ -87,3 +89,55 @@ def list_audit(
             for e in rows
         ],
     }
+
+
+_THUMBNAIL_PATH_RE = re.compile(
+    r"^(images|prints)/[^/]+\.(png|jpg|jpeg|webp)$|^(front|iso|side|top)\.png$"
+)
+
+
+class _ThumbnailPayload(BaseModel):
+    path: str
+
+
+@router.put("/models/{model_id}/thumbnail", status_code=204)
+def set_thumbnail(
+    model_id: str,
+    payload: _ThumbnailPayload,
+    request: Request,
+    user_id: int = current_admin,
+) -> None:
+    service = request.app.state.catalog_service
+    if service.get_model(model_id) is None:
+        raise HTTPException(404, f"Model {model_id} not found")
+    if not _THUMBNAIL_PATH_RE.match(payload.path):
+        raise HTTPException(400, "invalid_thumbnail_path")
+    if not service.thumbnail_target_exists(model_id, payload.path):
+        raise HTTPException(404, "thumbnail_file_not_found")
+    request.app.state.thumbnail_overrides.set(
+        model_id=model_id,
+        relative_path=payload.path,
+        user_id=user_id,
+    )
+    record_event(
+        get_engine(),
+        kind="thumbnail.set",
+        actor_user_id=user_id,
+        payload={"model_id": model_id, "relative_path": payload.path},
+    )
+
+
+@router.delete("/models/{model_id}/thumbnail", status_code=204)
+def clear_thumbnail(
+    model_id: str,
+    request: Request,
+    user_id: int = current_admin,
+) -> None:
+    removed = request.app.state.thumbnail_overrides.clear(model_id)
+    if removed:
+        record_event(
+            get_engine(),
+            kind="thumbnail.cleared",
+            actor_user_id=user_id,
+            payload={"model_id": model_id},
+        )
