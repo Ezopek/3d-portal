@@ -1,6 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { Toaster } from "sonner";
 
 import { queryClient } from "@/lib/queryClient";
 import { LangProvider } from "@/shell/LangProvider";
@@ -22,6 +23,7 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <LangProvider>
         <ThemeProvider>
+          <Toaster position="bottom-right" richColors />
           <Sentry.ErrorBoundary fallback={<ErrorFallback />}>
             <RouterProvider router={router} />
           </Sentry.ErrorBoundary>
