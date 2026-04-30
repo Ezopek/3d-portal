@@ -60,8 +60,16 @@ export async function stubCatalog(page: Page) {
         status: "printed",
         notes: "",
         thumbnail: null,
+        thumbnail_url: "/api/files/001/images/Dragon.png",
         date_added: "2026-04-12",
-        prints: [],
+        prints: [
+          {
+            path: "decorum/dragon/prints/2026-04-30-dragon.jpg",
+            date: "2026-04-30",
+            notes_en: "",
+            notes_pl: "",
+          },
+        ],
       }),
     }),
   );
