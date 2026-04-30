@@ -62,7 +62,7 @@ export function CatalogDetail() {
 
   // figure out which path the API has resolved as the current default
   const currentDefaultPath: string | null = (() => {
-    if (model.thumbnail_url === null) return null;
+    if (!model.thumbnail_url) return null;
     const prefix = `/api/files/${id}/`;
     return model.thumbnail_url.startsWith(prefix)
       ? model.thumbnail_url.slice(prefix.length)
