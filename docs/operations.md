@@ -105,3 +105,14 @@ curl -X POST https://3d.ezop.ddns.net/api/admin/refresh-catalog \
 ```
 
 This is also called automatically by `infra/scripts/sync-data.sh` after an rsync completes.
+
+**Bulk-enqueue renders for the whole catalog**
+
+When deploying to a fresh data volume (no pre-rendered PNGs), enqueue render jobs for every model in one shot:
+
+```bash
+# Get a fresh JWT (admin login via /api/auth/login). Then:
+bash infra/scripts/render-all.sh "<bearer-jwt>"
+```
+
+The script lists `/api/catalog/models`, then `POST /api/admin/render/{id}` for each. arq processes jobs serially in the worker container; wall time depends on STL complexity (~5–30 s per model on .190). Watch progress with `docker compose logs -f worker` on the host.
