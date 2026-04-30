@@ -5,6 +5,7 @@ from typing import Any, ClassVar
 from arq.connections import RedisSettings
 
 from render.config import get_settings
+from render.observability import init_observability
 from render.trimesh_render import render_views
 
 _STATUS_KEY = "render:status:"
@@ -42,6 +43,12 @@ async def render_model(ctx: dict[str, Any], model_id: str) -> dict[str, str]:
 
 async def startup(ctx: dict[str, Any]) -> None:
     settings = get_settings()
+    init_observability(
+        service_name=settings.service_name,
+        service_version="0.1.0",
+        environment="production",
+        otlp_endpoint=settings.otel_exporter_otlp_endpoint,
+    )
     ctx["catalog_dir"] = settings.catalog_data_dir
     ctx["renders_dir"] = settings.renders_dir
     ctx["image_size"] = settings.image_size
