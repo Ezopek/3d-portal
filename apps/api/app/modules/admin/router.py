@@ -57,6 +57,12 @@ async def render_status(
     return {"model_id": model_id, "status": raw.decode()}
 
 
+@router.post("/sentry-test", status_code=204)
+def sentry_test(_user_id: int = current_admin) -> None:
+    """Deliberately raise to verify GlitchTip plumbing. Admin-only."""
+    raise RuntimeError("sentry-test: deliberate test event")
+
+
 @router.get("/audit")
 def list_audit(
     session: Annotated[Session, Depends(get_session)],

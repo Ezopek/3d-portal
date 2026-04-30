@@ -1,0 +1,63 @@
+"""Tests for the /api/admin/sentry-test endpoint that deliberately raises."""
+
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.config_for_tests import override_catalog_paths
+from app.core.auth.jwt import encode_token
+from app.main import create_app
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/a.db")
+    monkeypatch.setenv("CATALOG_DATA_DIR", str(FIXTURES / "catalog"))
+    monkeypatch.setenv("ADMIN_EMAIL", "admin@localhost.localdomain")
+    monkeypatch.setenv("ADMIN_PASSWORD", "pw")
+    monkeypatch.setenv("JWT_SECRET", "test")
+    from app.core.config import get_settings
+    from app.core.db.session import get_engine as ge
+
+    get_settings.cache_clear()
+    ge.cache_clear()
+    app = create_app()
+    # raise_server_exceptions=False so the deliberate RuntimeError surfaces
+    # as an HTTP 500 (matching prod behaviour) instead of bubbling up into
+    # the test runner.
+    with TestClient(app, raise_server_exceptions=False) as c:
+        override_catalog_paths(app, index_path=FIXTURES / "index.json")
+        token = encode_token(subject="1", role="admin", secret="test", ttl_minutes=30)
+        yield c, token
+    get_settings.cache_clear()
+    from app.core.db.session import get_engine as ge2
+
+    ge2.cache_clear()
+
+
+def test_sentry_test_requires_admin_jwt(client) -> None:
+    c, _ = client
+    r = c.post("/api/admin/sentry-test")
+    assert r.status_code == 401
+
+
+def test_sentry_test_rejects_non_admin_jwt(client) -> None:
+    c, _ = client
+    user_token = encode_token(subject="42", role="user", secret="test", ttl_minutes=30)
+    r = c.post(
+        "/api/admin/sentry-test",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    assert r.status_code == 403
+
+
+def test_sentry_test_returns_500_for_admin(client) -> None:
+    c, token = client
+    r = c.post(
+        "/api/admin/sentry-test",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 500
