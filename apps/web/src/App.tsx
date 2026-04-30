@@ -1,5 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 
 import { queryClient } from "@/lib/queryClient";
 import { LangProvider } from "@/shell/LangProvider";
@@ -18,14 +19,32 @@ declare module "@tanstack/react-router" {
 
 export function App() {
   return (
-    <Sentry.ErrorBoundary fallback={<div className="p-4 text-destructive">Something went wrong</div>}>
-      <QueryClientProvider client={queryClient}>
-        <LangProvider>
-          <ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <LangProvider>
+        <ThemeProvider>
+          <Sentry.ErrorBoundary fallback={<ErrorFallback />}>
             <RouterProvider router={router} />
-          </ThemeProvider>
-        </LangProvider>
-      </QueryClientProvider>
-    </Sentry.ErrorBoundary>
+          </Sentry.ErrorBoundary>
+        </ThemeProvider>
+      </LangProvider>
+    </QueryClientProvider>
+  );
+}
+
+function ErrorFallback() {
+  const { t } = useTranslation();
+  return (
+    <div className="grid min-h-screen place-items-center bg-background p-6 text-foreground">
+      <div className="space-y-4 text-center">
+        <h1 className="text-xl font-semibold">{t("errors.boundary_title")}</h1>
+        <button
+          type="button"
+          onClick={() => location.reload()}
+          className="rounded-md bg-primary px-4 py-2 text-primary-foreground"
+        >
+          {t("errors.boundary_reload")}
+        </button>
+      </div>
+    </div>
   );
 }
