@@ -1,0 +1,70 @@
+name: 3d-portal
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks: [portal]
+
+  api:
+    image: portal-api:${PORTAL_VERSION}
+    build: ../apps/api
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: sqlite:////data/state/portal.db
+      REDIS_URL: redis://redis:6379/0
+      CATALOG_DATA_DIR: /data/catalog
+      RENDERS_DIR: /data/renders
+      STATE_DIR: /data/state
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS}
+    volumes:
+      - ${CATALOG_HOST_DIR}:/data/catalog:ro
+      - ${RENDERS_HOST_DIR}:/data/renders:ro
+      - ${STATE_HOST_DIR}:/data/state
+    depends_on: [redis]
+    restart: unless-stopped
+    networks: [portal]
+
+  worker:
+    image: portal-render:${PORTAL_VERSION}
+    build: ../workers/render
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CATALOG_DATA_DIR: /data/catalog
+      RENDERS_DIR: /data/renders
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS}
+    volumes:
+      - ${CATALOG_HOST_DIR}:/data/catalog:ro
+      - ${RENDERS_HOST_DIR}:/data/renders
+    depends_on: [redis]
+    restart: unless-stopped
+    networks: [portal]
+
+  web:
+    image: portal-web:${PORTAL_VERSION}
+    build:
+      context: ../apps/web
+      args:
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN}
+        VITE_PORTAL_VERSION: ${PORTAL_VERSION}
+        VITE_ENVIRONMENT: ${ENVIRONMENT}
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on: [api]
+    restart: unless-stopped
+    networks: [portal]
+
+networks:
+  portal:
+    driver: bridge
+
+volumes:
+  redis-data:
