@@ -30,7 +30,7 @@ export function ShareView() {
         <span className="text-sm font-semibold">{t("app.name")}</span>
         <span className="text-xs text-muted-foreground">{t("share.tagline")}</span>
       </header>
-      <Gallery images={data.images} />
+      <Gallery images={data.images.map((url) => ({ url, path: url }))} />
       <h1 className="mt-4 text-2xl font-semibold">{primary}</h1>
       {note !== "" && <p className="mt-2 text-sm text-muted-foreground">{note}</p>}
       {data.stl_url !== null && (

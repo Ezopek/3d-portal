@@ -49,7 +49,7 @@ export function CatalogDetail() {
   return (
     <div className="grid gap-4 p-4 md:grid-cols-[1fr_1fr]">
       <div>
-        {view3d && stlHref !== null ? <ModelViewer src={stlHref} /> : <Gallery images={images} />}
+        {view3d && stlHref !== null ? <ModelViewer src={stlHref} /> : <Gallery images={images.map((url) => ({ url, path: url }))} />}
       </div>
       <div>
         <h1 className="text-2xl font-semibold">{primary}</h1>
