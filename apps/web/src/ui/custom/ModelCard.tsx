@@ -26,7 +26,7 @@ export function ModelCard({ model }: { model: ModelListItem }) {
           )}
         </div>
         <CardContent className="space-y-2 p-3">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <StatusBadge status={model.status} />
             <SourceBadge source={model.source} />
           </div>
