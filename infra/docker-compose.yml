@@ -58,8 +58,10 @@ services:
         VITE_ENVIRONMENT: ${ENVIRONMENT}
     ports:
       # Host port 8090 because 8080 is occupied by another service on .190.
-      # Internal container port stays 8080 to match nginx.conf inside the image.
-      - "127.0.0.1:8090:8080"
+      # Bound on 0.0.0.0 so the dev/working LAN can reach it directly while
+      # nginx-180 is not yet wired up. Tighten to 127.0.0.1 once nginx-180
+      # fronts the stack on `https://3d.ezop.ddns.net`.
+      - "8090:8080"
     depends_on: [api]
     restart: unless-stopped
     networks: [portal]
