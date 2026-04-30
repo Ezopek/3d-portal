@@ -19,5 +19,6 @@ def override_catalog_paths(app: FastAPI, *, index_path: Path) -> None:
     settings = get_settings()
     app.state.catalog_service = CatalogService(
         catalog_dir=settings.catalog_data_dir,
+        renders_dir=settings.renders_dir,
         index_path=index_path,
     )

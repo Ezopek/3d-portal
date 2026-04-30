@@ -36,9 +36,7 @@ def _scrub(value: Any) -> Any:
     return value
 
 
-def scrub_event(
-    event: dict[str, Any] | None, hint: dict[str, Any]
-) -> dict[str, Any] | None:
+def scrub_event(event: dict[str, Any] | None, hint: dict[str, Any]) -> dict[str, Any] | None:
     if event is None:
         return None
     return _scrub(event)

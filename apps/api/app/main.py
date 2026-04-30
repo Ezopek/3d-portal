@@ -37,6 +37,7 @@ async def lifespan(app: FastAPI):
     )
     app.state.catalog_service = CatalogService(
         catalog_dir=settings.catalog_data_dir,
+        renders_dir=settings.renders_dir,
         index_path=settings.catalog_data_dir / "_index" / "index.json",
     )
     app.state.redis = RedisFactory(url=settings.redis_url)

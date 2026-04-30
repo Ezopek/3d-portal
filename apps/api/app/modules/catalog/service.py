@@ -1,13 +1,17 @@
 import json
+import logging
 import threading
 from pathlib import Path
 
 from app.modules.catalog.models import Model, ModelListItem, ModelListResponse
 
+_log = logging.getLogger(__name__)
+
 
 class CatalogService:
-    def __init__(self, *, catalog_dir: Path, index_path: Path) -> None:
+    def __init__(self, *, catalog_dir: Path, renders_dir: Path, index_path: Path) -> None:
         self._catalog_dir = catalog_dir
+        self._renders_dir = renders_dir
         self._index_path = index_path
         self._lock = threading.RLock()
         self._cache: dict[str, Model] | None = None
@@ -20,7 +24,14 @@ class CatalogService:
         with self._lock:
             if self._cache is not None:
                 return self._cache
-            raw = json.loads(self._index_path.read_text(encoding="utf-8"))
+            try:
+                raw = json.loads(self._index_path.read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                # Transient during catalog sync: behave as empty rather than 500.
+                # Do NOT cache — next call retries so the catalog recovers as soon
+                # as the index reappears (a manual refresh is not required).
+                _log.warning("catalog index missing at %s — serving empty", self._index_path)
+                return {}
             models = [Model.model_validate(entry) for entry in raw]
             self._cache = {m.id: m for m in models}
             return self._cache
@@ -72,6 +83,10 @@ class CatalogService:
             for child in sorted(images_dir.iterdir()):
                 if child.is_file() and child.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
                     return f"/api/files/{m.id}/images/{child.name}"
+        # Fall back to a worker-computed render so list cards aren't blank
+        # when the source catalog has no images/ folder.
+        if (self._renders_dir / m.id / "front.png").is_file():
+            return f"/api/files/{m.id}/front.png"
         return None
 
     def _has_3d(self, m: Model) -> bool:
