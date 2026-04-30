@@ -11,6 +11,7 @@ dependencies = [
     "pillow>=11.0",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
+    "sentry-sdk>=2.20",
     # OTel contrib/instrumentation packages have no stable 1.x yet; 0.5xb pins are intentional.
     "opentelemetry-distro>=0.50b0",
     "opentelemetry-exporter-otlp-proto-http>=1.29",
