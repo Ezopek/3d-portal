@@ -1,0 +1,5 @@
+node_modules/
+dist/
+tests/visual/test-results/
+tests/visual/__snapshots__/
+.env*.local
