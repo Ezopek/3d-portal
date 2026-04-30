@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { readToken } from "@/lib/auth";
+import { isAdmin } from "@/lib/auth";
 import { useFiles } from "@/modules/catalog/hooks/useFiles";
 import { useModel } from "@/modules/catalog/hooks/useModel";
 import { useClearThumbnail, useSetThumbnail } from "@/modules/catalog/hooks/useThumbnail";
@@ -24,7 +24,7 @@ export function CatalogDetail() {
 
   const setThumb = useSetThumbnail(id);
   const clearThumb = useClearThumbnail(id);
-  const isAdmin = readToken() !== null;
+  const admin = isAdmin();
 
   if (model === undefined) return <div className="p-4 text-sm text-muted-foreground">…</div>;
 
@@ -82,7 +82,7 @@ export function CatalogDetail() {
             images={uniq}
             currentDefaultPath={currentDefaultPath}
             onSetDefault={
-              isAdmin
+              admin
                 ? (path) =>
                     setThumb.mutate(path, {
                       onSuccess: () => toast.success(t("toasts.thumbnail_updated")),
@@ -90,7 +90,7 @@ export function CatalogDetail() {
                 : undefined
             }
             onClearDefault={
-              isAdmin
+              admin
                 ? () =>
                     clearThumb.mutate(undefined, {
                       onSuccess: () => toast.success(t("toasts.thumbnail_cleared")),

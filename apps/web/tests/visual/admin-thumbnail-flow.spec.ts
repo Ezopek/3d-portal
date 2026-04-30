@@ -1,20 +1,11 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 import { stubCatalog } from "./api-stubs";
+import { loginAsAdmin } from "./helpers";
 
 // Admin star overlay is only reachable on desktop (mobile sticky header
 // physically covers the absolute-positioned star button at top-2).
 test.skip(({ isMobile }) => isMobile, "desktop-only: star button covered by sticky header on mobile");
-
-async function loginAsAdmin(page: Page) {
-  await page.addInitScript(() => {
-    localStorage.setItem("portal.token", "fake-test-token");
-    localStorage.setItem(
-      "portal.token.exp",
-      String(Date.now() + 60 * 60 * 1000),
-    );
-  });
-}
 
 test("admin star click PUTs to the override endpoint", async ({ page }) => {
   await loginAsAdmin(page);

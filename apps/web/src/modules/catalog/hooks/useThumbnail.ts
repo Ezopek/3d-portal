@@ -12,8 +12,9 @@ export function useSetThumbnail(modelId: string) {
         { authenticated: true },
       ),
     onSuccess: () => {
+      // Prefix-invalidate covers both ["catalog","models"] (list) and
+      // ["catalog","models",id] (single) since useModel uses the same prefix.
       qc.invalidateQueries({ queryKey: ["catalog", "models"] });
-      qc.invalidateQueries({ queryKey: ["catalog", "model", modelId] });
     },
   });
 }
@@ -29,7 +30,6 @@ export function useClearThumbnail(modelId: string) {
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["catalog", "models"] });
-      qc.invalidateQueries({ queryKey: ["catalog", "model", modelId] });
     },
   });
 }
