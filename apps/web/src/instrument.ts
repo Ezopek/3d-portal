@@ -1,3 +1,15 @@
-// Sentry init lives here. Phase 11 will fill in the real DSN-driven init.
-// Importing this file at the top of main.tsx is intentional — it must run first.
-export {};
+import * as Sentry from "@sentry/react";
+
+const dsn = import.meta.env.VITE_SENTRY_DSN;
+
+if (typeof dsn === "string" && dsn !== "") {
+  Sentry.init({
+    dsn,
+    environment: import.meta.env.VITE_ENVIRONMENT ?? "dev",
+    release: import.meta.env.VITE_PORTAL_VERSION ?? "0.1.0",
+    sampleRate: 1.0,
+    tracesSampleRate: 0,
+  });
+}
+
+export { Sentry };

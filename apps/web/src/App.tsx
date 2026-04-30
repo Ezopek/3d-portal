@@ -5,6 +5,7 @@ import { queryClient } from "@/lib/queryClient";
 import { LangProvider } from "@/shell/LangProvider";
 import { ThemeProvider } from "@/shell/ThemeProvider";
 
+import { Sentry } from "./instrument";
 import { routeTree } from "./routeTree.gen";
 
 const router = createRouter({ routeTree });
@@ -17,12 +18,14 @@ declare module "@tanstack/react-router" {
 
 export function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <LangProvider>
-        <ThemeProvider>
-          <RouterProvider router={router} />
-        </ThemeProvider>
-      </LangProvider>
-    </QueryClientProvider>
+    <Sentry.ErrorBoundary fallback={<div className="p-4 text-destructive">Something went wrong</div>}>
+      <QueryClientProvider client={queryClient}>
+        <LangProvider>
+          <ThemeProvider>
+            <RouterProvider router={router} />
+          </ThemeProvider>
+        </LangProvider>
+      </QueryClientProvider>
+    </Sentry.ErrorBoundary>
   );
 }
