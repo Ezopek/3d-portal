@@ -30,6 +30,7 @@ export interface Model {
   status: Status;
   notes: string;
   thumbnail: string | null;
+  thumbnail_url: string | null;
   date_added: string;
   prints: Print[];
 }
