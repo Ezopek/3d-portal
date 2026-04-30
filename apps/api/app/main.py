@@ -8,6 +8,7 @@ from app.core.config import get_settings
 from app.core.db.seed import seed_admin
 from app.core.db.session import get_engine, init_schema
 from app.core.logging import configure_logging
+from app.core.observability import init_observability, instrument_app
 from app.core.redis import RedisFactory
 from app.modules.catalog.service import CatalogService
 from app.router import api_router
@@ -46,6 +47,12 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    init_observability(
+        service_name=settings.app_name,
+        service_version=settings.app_version,
+        environment=settings.environment,
+        otlp_endpoint=settings.otel_exporter_otlp_endpoint,
+    )
     app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
@@ -53,6 +60,7 @@ def create_app() -> FastAPI:
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
     )
+    instrument_app(app)
 
     @app.get("/api/health")
     def health() -> dict[str, str]:
