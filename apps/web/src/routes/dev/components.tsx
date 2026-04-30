@@ -1,13 +1,117 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { Badge } from "@/ui/badge";
+import { Button } from "@/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
+import { ComingSoonStub } from "@/ui/custom/ComingSoonStub";
+import { EmptyState } from "@/ui/custom/EmptyState";
+import { Gallery } from "@/ui/custom/Gallery";
+import { ModelCard } from "@/ui/custom/ModelCard";
+import { SourceBadge } from "@/ui/custom/SourceBadge";
+import { StatusBadge } from "@/ui/custom/StatusBadge";
+import { Input } from "@/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
+
+import type { ModelListItem } from "@/modules/catalog/types";
+
+const FAKE_MODEL: ModelListItem = {
+  id: "001",
+  name_en: "Dragon",
+  name_pl: "Smok",
+  category: "decorations",
+  tags: ["dragon", "smok"],
+  source: "printables",
+  status: "printed",
+  rating: 5,
+  thumbnail_url: null,
+  has_3d: true,
+  date_added: "2026-04-12",
+};
+
+const FAKE_MODEL_2: ModelListItem = {
+  ...FAKE_MODEL,
+  id: "002",
+  name_en: "Vase",
+  name_pl: "Wazon",
+  status: "not_printed",
+  source: "unknown",
+};
+
 function DevComponents() {
   return (
-    <div className="p-4">
-      <h1 className="text-xl font-semibold">Component playground</h1>
-      <p className="text-sm text-muted-foreground">
-        Phase 7 stub. Phase 10 fills with full primitive grid.
-      </p>
+    <div className="space-y-8 p-6">
+      <Section title="Buttons">
+        <div className="flex flex-wrap gap-2">
+          <Button>Default</Button>
+          <Button variant="outline">Outline</Button>
+          <Button variant="ghost">Ghost</Button>
+          <Button variant="secondary">Secondary</Button>
+          <Button variant="destructive">Destructive</Button>
+          <Button size="sm">Small</Button>
+          <Button size="icon" aria-label="icon">+</Button>
+        </div>
+      </Section>
+      <Section title="Badges">
+        <div className="flex flex-wrap gap-2">
+          <Badge>Default</Badge>
+          <Badge variant="outline">Outline</Badge>
+          <Badge variant="secondary">Secondary</Badge>
+          <StatusBadge status="printed" />
+          <StatusBadge status="not_printed" />
+          <StatusBadge status="in_progress" />
+          <StatusBadge status="needs_revision" />
+          <SourceBadge source="printables" />
+          <SourceBadge source="thangs" />
+        </div>
+      </Section>
+      <Section title="Card">
+        <Card>
+          <CardHeader>
+            <CardTitle>Title</CardTitle>
+          </CardHeader>
+          <CardContent>Body content goes here.</CardContent>
+        </Card>
+      </Section>
+      <Section title="Input">
+        <Input placeholder="Type here…" />
+      </Section>
+      <Section title="Tabs">
+        <Tabs defaultValue="a">
+          <TabsList>
+            <TabsTrigger value="a">A</TabsTrigger>
+            <TabsTrigger value="b">B</TabsTrigger>
+          </TabsList>
+          <TabsContent value="a">Content A</TabsContent>
+          <TabsContent value="b">Content B</TabsContent>
+        </Tabs>
+      </Section>
+      <Section title="ModelCard">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+          <ModelCard model={FAKE_MODEL} />
+          <ModelCard model={FAKE_MODEL_2} />
+        </div>
+      </Section>
+      <Section title="EmptyState">
+        <EmptyState messageKey="catalog.empty" />
+      </Section>
+      <Section title="ComingSoonStub">
+        <ComingSoonStub moduleKey="queue" />
+      </Section>
+      <Section title="Gallery">
+        <Gallery images={[]} />
+      </Section>
     </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+        {title}
+      </h2>
+      {children}
+    </section>
   );
 }
 
