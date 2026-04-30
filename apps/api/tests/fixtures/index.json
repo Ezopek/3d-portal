@@ -20,8 +20,8 @@
     "status": "not_printed", "notes": "",
     "thumbnail": null, "date_added": "2026-04-29",
     "prints": [
-      {"path": "decorum/vase/prints/2026-04-29-front.jpg", "date": "2026-04-29",
-       "notes_en": "First", "notes_pl": "Pierwszy"}
+      {"path": "decorum/vase/prints/2026-04-12-vase.jpg", "date": "2026-04-12", "notes_en": "", "notes_pl": ""},
+      {"path": "decorum/vase/prints/2026-04-30-vase-newest.jpg", "date": "2026-04-30", "notes_en": "", "notes_pl": ""}
     ]
   },
   {

@@ -26,7 +26,8 @@ async def resolve_share(token: str, request: Request) -> ShareModelView:
                 images.append(f"/api/files/{model.id}/images/{child.name}")
 
     has_3d = catalog._has_3d(model)
-    thumbnail = catalog._resolve_thumbnail(model)
+    overrides = catalog._overrides.get_all()
+    thumbnail = catalog._resolve_thumbnail(model, overrides.get(model.id))
 
     # Find first STL for the share view's download button
     catalog_root = catalog._catalog_dir / model.path

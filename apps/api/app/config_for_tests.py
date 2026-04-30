@@ -5,7 +5,9 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from app.core.config import get_settings
+from app.core.db.session import get_engine
 from app.modules.catalog.service import CatalogService
+from app.modules.catalog.thumbnail_overrides import ThumbnailOverrideRepo
 
 
 def override_catalog_paths(app: FastAPI, *, index_path: Path) -> None:
@@ -17,8 +19,11 @@ def override_catalog_paths(app: FastAPI, *, index_path: Path) -> None:
     not depend on prior `app.state` content.
     """
     settings = get_settings()
+    overrides = ThumbnailOverrideRepo(get_engine())
+    app.state.thumbnail_overrides = overrides
     app.state.catalog_service = CatalogService(
         catalog_dir=settings.catalog_data_dir,
         renders_dir=settings.renders_dir,
         index_path=index_path,
+        overrides=overrides,
     )
