@@ -57,7 +57,9 @@ services:
         VITE_PORTAL_VERSION: ${PORTAL_VERSION}
         VITE_ENVIRONMENT: ${ENVIRONMENT}
     ports:
-      - "127.0.0.1:8080:8080"
+      # Host port 8090 because 8080 is occupied by another service on .190.
+      # Internal container port stays 8080 to match nginx.conf inside the image.
+      - "127.0.0.1:8090:8080"
     depends_on: [api]
     restart: unless-stopped
     networks: [portal]
