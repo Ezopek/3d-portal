@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from typing import Any, ClassVar
 
+import sentry_sdk
 from arq.connections import RedisSettings
 
 from render.config import get_settings
@@ -38,6 +39,7 @@ async def render_model(ctx: dict[str, Any], model_id: str) -> dict[str, str]:
         await redis.set(_STATUS_KEY + model_id, b"done", ex=_STATUS_TTL_SECONDS)
         return {"status": "done", "model_id": model_id}
     except Exception as exc:  # Worker boundary: any failure becomes status=failed
+        sentry_sdk.capture_exception(exc)
         await redis.set(_STATUS_KEY + model_id, b"failed", ex=_STATUS_TTL_SECONDS)
         return {"status": "failed", "reason": str(exc)}
 
