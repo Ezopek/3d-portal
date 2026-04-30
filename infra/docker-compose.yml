@@ -24,6 +24,8 @@ services:
       STATE_DIR: /data/state
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
       OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS}
+      SENTRY_DSN: ${SENTRY_DSN}
+      PORTAL_VERSION: ${PORTAL_VERSION}
     volumes:
       - ${CATALOG_HOST_DIR}:/data/catalog:ro
       - ${RENDERS_HOST_DIR}:/data/renders:ro
