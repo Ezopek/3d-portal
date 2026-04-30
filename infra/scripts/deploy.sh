@@ -20,6 +20,21 @@ if [[ ! -f "$LOCAL_ENV" ]]; then
   chmod 600 "$LOCAL_ENV"
 fi
 
+# Build the web bundle locally first so we can ship its sourcemaps to
+# GlitchTip before docker rebuilds it inside the image. The local build
+# adds ~3s; the dist/ output is otherwise unused (docker handles its own
+# build context).
+echo "→ Build web locally for sourcemap upload"
+( cd "$REPO_DIR/apps/web" && pnpm install --frozen-lockfile --silent && pnpm build )
+
+echo "→ Upload sourcemaps to GlitchTip"
+set -a; source "$LOCAL_ENV"; set +a
+if [[ -n "${GLITCHTIP_AUTH_TOKEN:-}" ]]; then
+  bash "$REPO_DIR/infra/scripts/upload-sourcemaps.sh"
+else
+  echo "  skipped: GLITCHTIP_AUTH_TOKEN not set in $LOCAL_ENV"
+fi
+
 echo "→ Build images locally (tag: $VERSION)"
 cd "$REPO_DIR"
 docker compose --env-file "$LOCAL_ENV" -f infra/docker-compose.yml build
