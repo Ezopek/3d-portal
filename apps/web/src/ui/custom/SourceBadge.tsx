@@ -18,7 +18,7 @@ export function SourceBadge({ source }: { source: Source }) {
   return (
     <Badge
       variant="secondary"
-      className="text-xs whitespace-nowrap max-w-[7ch] truncate"
+      className="text-xs whitespace-nowrap"
     >
       {LABEL[source]}
     </Badge>
