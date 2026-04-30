@@ -16,13 +16,24 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 @router.post("/refresh-catalog")
 def refresh_catalog(request: Request, user_id: int = current_admin) -> dict[str, int]:
     service = request.app.state.catalog_service
+    overrides = request.app.state.thumbnail_overrides
     service.refresh()
     response = service.list_models()
+
+    purged = overrides.purge_orphans(exists=service.thumbnail_target_exists)
+    for model_id, relative_path in purged:
+        record_event(
+            get_engine(),
+            kind="thumbnail.orphan_purged",
+            actor_user_id=user_id,
+            payload={"model_id": model_id, "relative_path": relative_path},
+        )
+
     record_event(
         get_engine(),
         kind="catalog.refresh",
         actor_user_id=user_id,
-        payload={"total": response.total},
+        payload={"total": response.total, "thumbnails_purged": len(purged)},
     )
     return {"total": response.total}
 

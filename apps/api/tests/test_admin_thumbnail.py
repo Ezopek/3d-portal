@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -5,7 +6,9 @@ from fastapi.testclient import TestClient
 
 from app.config_for_tests import override_catalog_paths
 from app.core.auth.jwt import encode_token
+from app.core.db.session import get_engine
 from app.main import create_app
+from app.modules.catalog.thumbnail_overrides import ThumbnailOverrideRepo
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -125,3 +128,31 @@ def test_delete_idempotent_no_audit_on_noop(client):
     audit_after = c.get("/api/admin/audit", headers=_hdrs(token)).json()
     n_after = sum(1 for e in audit_after["events"] if e["kind"] == "thumbnail.cleared")
     assert n_after == n_before
+
+
+def test_refresh_purges_orphan_overrides(client):
+    c, token = client
+    # Set an override that points at a real file.
+    c.put(
+        "/api/admin/models/001/thumbnail",
+        json={"path": "images/Dragon.png"},
+        headers=_hdrs(token),
+    )
+
+    # Bypass the PUT validator to plant an orphan: set a row directly via the
+    # repo with a path that whitelists but resolves nowhere.
+    repo = ThumbnailOverrideRepo(get_engine())
+    repo.set(model_id="002", relative_path="prints/ghost.jpg", user_id=1)
+
+    # Refresh — orphan should be purged with an audit event.
+    resp = c.post("/api/admin/refresh-catalog", headers=_hdrs(token))
+    assert resp.status_code == 200
+
+    audit = c.get("/api/admin/audit", headers=_hdrs(token)).json()
+    purged_events = [e for e in audit["events"] if e["kind"] == "thumbnail.orphan_purged"]
+    assert len(purged_events) >= 1
+    assert any(json.loads(e["payload"]).get("model_id") == "002" for e in purged_events)
+    # The orphan row is gone.
+    assert repo.get("002") is None
+    # The legitimate override survives.
+    assert repo.get("001") == "images/Dragon.png"
