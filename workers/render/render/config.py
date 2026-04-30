@@ -14,6 +14,9 @@ class RenderSettings(BaseSettings):
     service_name: str = "3d-portal-worker"
     otel_exporter_otlp_endpoint: str | None = None
     otel_exporter_otlp_headers: str | None = None
+    sentry_dsn: str | None = None
+    portal_version: str = "0.1.0"
+    environment: str = "production"
 
 
 @lru_cache

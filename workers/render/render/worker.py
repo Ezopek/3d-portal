@@ -6,6 +6,7 @@ from arq.connections import RedisSettings
 
 from render.config import get_settings
 from render.observability import init_observability
+from render.sentry import init_sentry
 from render.trimesh_render import render_views
 
 _STATUS_KEY = "render:status:"
@@ -48,6 +49,11 @@ async def startup(ctx: dict[str, Any]) -> None:
         service_version="0.1.0",
         environment="production",
         otlp_endpoint=settings.otel_exporter_otlp_endpoint,
+    )
+    init_sentry(
+        dsn=settings.sentry_dsn,
+        environment=settings.environment,
+        release=settings.portal_version,
     )
     ctx["catalog_dir"] = settings.catalog_data_dir
     ctx["renders_dir"] = settings.renders_dir
