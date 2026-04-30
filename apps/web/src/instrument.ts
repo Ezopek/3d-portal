@@ -10,6 +10,7 @@ if (typeof dsn === "string" && dsn !== "") {
     sampleRate: 1.0,
     tracesSampleRate: 0,
   });
+  Sentry.setTag("service", "web");
 }
 
 export { Sentry };
