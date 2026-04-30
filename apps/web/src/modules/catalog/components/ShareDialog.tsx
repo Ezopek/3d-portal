@@ -18,13 +18,19 @@ export function ShareDialog({ modelId, open, onOpenChange }: Props) {
   const { t } = useTranslation();
   const [hours, setHours] = useState(72);
   const [result, setResult] = useState<ShareResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function create() {
-    const r = await api<ShareResponse>("/admin/share", {
-      method: "POST",
-      body: JSON.stringify({ model_id: modelId, expires_in_hours: hours }),
-    }, { authenticated: true });
-    setResult(r);
+    setError(null);
+    try {
+      const r = await api<ShareResponse>("/admin/share", {
+        method: "POST",
+        body: JSON.stringify({ model_id: modelId, expires_in_hours: hours }),
+      }, { authenticated: true });
+      setResult(r);
+    } catch {
+      setError("create_failed");
+    }
   }
 
   return (
@@ -39,7 +45,12 @@ export function ShareDialog({ modelId, open, onOpenChange }: Props) {
             <Input type="number" value={hours} onChange={(e) => setHours(Number(e.target.value))} min={1} max={720} />
           </label>
           {result === null ? (
-            <Button onClick={() => void create()}>{t("catalog.actions.share")}</Button>
+            <>
+              {error !== null && (
+                <p className="text-sm text-destructive">{t("errors.network")}</p>
+              )}
+              <Button onClick={() => void create()}>{t("catalog.actions.share")}</Button>
+            </>
           ) : (
             <>
               <Input readOnly value={`${window.location.origin}${result.url}`} />

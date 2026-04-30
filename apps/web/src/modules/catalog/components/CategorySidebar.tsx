@@ -21,7 +21,7 @@ export function CategorySidebar({ models, state, onChange }: Props) {
     <aside className="hidden w-60 shrink-0 border-r border-border bg-card p-4 lg:block">
       <Group label={t("catalog.filters.category")}>
         <Row
-          label="All"
+          label={t("common.all")}
           count={models.length}
           active={state.category === null}
           onClick={() => onChange({ ...state, category: null })}
