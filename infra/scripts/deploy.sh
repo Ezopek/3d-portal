@@ -28,7 +28,16 @@ echo "→ Build web locally for sourcemap upload"
 ( cd "$REPO_DIR/apps/web" && pnpm install --frozen-lockfile --silent && pnpm build )
 
 echo "→ Upload sourcemaps to GlitchTip"
-set -a; source "$LOCAL_ENV"; set +a
+# Cherry-pick only the env vars the upload step needs. `source` would choke on
+# lines like OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer <token> where the
+# unquoted value contains spaces (docker-compose tolerates this; bash does not).
+read_env_var() { grep -E "^$1=" "$LOCAL_ENV" | head -1 | cut -d= -f2-; }
+GLITCHTIP_AUTH_TOKEN="$(read_env_var GLITCHTIP_AUTH_TOKEN)"
+GLITCHTIP_ORG_SLUG="$(read_env_var GLITCHTIP_ORG_SLUG)"
+GLITCHTIP_PROJECT_SLUG="$(read_env_var GLITCHTIP_PROJECT_SLUG)"
+PORTAL_VERSION_ENV="$(read_env_var PORTAL_VERSION)"
+export GLITCHTIP_AUTH_TOKEN GLITCHTIP_ORG_SLUG GLITCHTIP_PROJECT_SLUG
+export PORTAL_VERSION="${PORTAL_VERSION_ENV:-$VERSION}"
 if [[ -n "${GLITCHTIP_AUTH_TOKEN:-}" ]]; then
   bash "$REPO_DIR/infra/scripts/upload-sourcemaps.sh"
 else
