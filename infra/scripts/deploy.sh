@@ -20,13 +20,14 @@ if [[ ! -f "$LOCAL_ENV" ]]; then
   chmod 600 "$LOCAL_ENV"
 fi
 
-# Build the web bundle locally first so we can ship its sourcemaps to
-# GlitchTip before docker rebuilds it inside the image. The local build
-# adds ~3s; the dist/ output is otherwise unused (docker handles its own
-# build context).
-echo "→ Build web locally for sourcemap upload"
-( cd "$REPO_DIR/apps/web" && pnpm install --frozen-lockfile --silent && pnpm build )
+echo "→ Build images locally (tag: $VERSION)"
+cd "$REPO_DIR"
+docker compose --env-file "$LOCAL_ENV" -f infra/docker-compose.yml build
 
+# Extract the dist/ baked into the just-built web image so we upload the
+# *exact* bundle hashes we are about to deploy. Building locally first then
+# uploading those would race with the in-image build (different node/pnpm
+# versions yield different content hashes), so we copy out of the image.
 echo "→ Upload sourcemaps to GlitchTip"
 # Cherry-pick only the env vars the upload step needs. `source` would choke on
 # lines like OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer <token> where the
@@ -39,14 +40,16 @@ PORTAL_VERSION_ENV="$(read_env_var PORTAL_VERSION)"
 export GLITCHTIP_AUTH_TOKEN GLITCHTIP_ORG_SLUG GLITCHTIP_PROJECT_SLUG
 export PORTAL_VERSION="${PORTAL_VERSION_ENV:-$VERSION}"
 if [[ -n "${GLITCHTIP_AUTH_TOKEN:-}" ]]; then
-  bash "$REPO_DIR/infra/scripts/upload-sourcemaps.sh"
+  EXTRACT_DIR="$(mktemp -d)"
+  trap 'rm -rf "$EXTRACT_DIR"' EXIT
+  CONTAINER="portal-web-extract-$$"
+  docker create --name "$CONTAINER" "portal-web:$VERSION" >/dev/null
+  docker cp "$CONTAINER:/usr/share/nginx/html" "$EXTRACT_DIR/dist"
+  docker rm "$CONTAINER" >/dev/null
+  DIST_DIR="$EXTRACT_DIR/dist" bash "$REPO_DIR/infra/scripts/upload-sourcemaps.sh"
 else
   echo "  skipped: GLITCHTIP_AUTH_TOKEN not set in $LOCAL_ENV"
 fi
-
-echo "→ Build images locally (tag: $VERSION)"
-cd "$REPO_DIR"
-docker compose --env-file "$LOCAL_ENV" -f infra/docker-compose.yml build
 
 echo "→ Save and ship images to $TARGET_HOST"
 docker save \
