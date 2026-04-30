@@ -9,5 +9,6 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: false,
+    exclude: ["**/node_modules/**", "**/tests/visual/**"],
   },
 });
