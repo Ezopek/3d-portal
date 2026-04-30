@@ -57,6 +57,7 @@ class Model(BaseModel):
     status: Status = Status.not_printed
     notes: str = ""
     thumbnail: str | None = None
+    thumbnail_url: str | None = None
     date_added: str
     prints: list[Print] = Field(default_factory=list)
 

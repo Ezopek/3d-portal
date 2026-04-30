@@ -55,3 +55,11 @@ def test_list_files_for_model(client):
     assert r.status_code == 200
     files = r.json()["files"]
     assert "Dragon.stl" in files
+
+
+def test_get_model_returns_thumbnail_url(client):
+    resp = client.get("/api/catalog/models/001")
+    assert resp.status_code == 200
+    body = resp.json()
+    # Same chain logic as the list — Dragon has images/Dragon.png.
+    assert body["thumbnail_url"] == "/api/files/001/images/Dragon.png"

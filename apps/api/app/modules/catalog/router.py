@@ -16,10 +16,16 @@ def list_models(request: Request) -> ModelListResponse:
 
 @router.get("/models/{model_id}", response_model=Model)
 def get_model(model_id: str, request: Request) -> Model:
-    model = _service(request).get_model(model_id)
+    service = _service(request)
+    model = service.get_model(model_id)
     if model is None:
         raise HTTPException(404, f"Model {model_id} not found")
-    return model
+    overrides = request.app.state.thumbnail_overrides.get_all()
+    return model.model_copy(
+        update={
+            "thumbnail_url": service._resolve_thumbnail(model, overrides.get(model_id)),
+        }
+    )
 
 
 @router.get("/models/{model_id}/files")
