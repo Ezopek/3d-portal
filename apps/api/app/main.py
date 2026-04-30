@@ -10,6 +10,7 @@ from app.core.db.session import get_engine, init_schema
 from app.core.logging import configure_logging
 from app.core.observability import init_observability, instrument_app
 from app.core.redis import RedisFactory
+from app.core.sentry import init_sentry
 from app.modules.catalog.service import CatalogService
 from app.router import api_router
 
@@ -47,6 +48,12 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    # Init Sentry first so it can capture any errors raised during OTel setup.
+    init_sentry(
+        dsn=settings.sentry_dsn,
+        environment=settings.environment,
+        release=settings.portal_version,
+    )
     init_observability(
         service_name=settings.app_name,
         service_version=settings.app_version,

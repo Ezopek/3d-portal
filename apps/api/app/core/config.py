@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     otel_exporter_otlp_endpoint: str | None = None
     otel_exporter_otlp_headers: str | None = None  # e.g. "authorization=Bearer <token>"
 
+    # Error tracking (GlitchTip / Sentry SDK)
+    sentry_dsn: str | None = None
+    portal_version: str = "0.1.0"
+
     @property
     def sqlite_path(self) -> Path | None:
         # SQLite URLs use 3 slashes for relative paths (sqlite:///portal.db -> portal.db)
