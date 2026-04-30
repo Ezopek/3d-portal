@@ -9,6 +9,9 @@ export default defineConfig({
   resolve: {
     alias: { "@": path.resolve(__dirname, "src") },
   },
+  build: {
+    sourcemap: "hidden",
+  },
   server: {
     host: "0.0.0.0",
     port: 5173,
