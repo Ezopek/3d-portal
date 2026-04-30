@@ -55,5 +55,7 @@
   "share.title": "Shared model",
   "share.tagline": "Shared with you",
   "errors.network": "Network error. Try again.",
-  "errors.not_found": "Not found."
+  "errors.not_found": "Not found.",
+  "errors.boundary_title": "Something went wrong",
+  "errors.boundary_reload": "Reload page"
 }

@@ -55,5 +55,7 @@
   "share.title": "Udostępniony model",
   "share.tagline": "Model udostępniony Tobie",
   "errors.network": "Błąd sieci. Spróbuj ponownie.",
-  "errors.not_found": "Nie znaleziono."
+  "errors.not_found": "Nie znaleziono.",
+  "errors.boundary_title": "Coś poszło nie tak",
+  "errors.boundary_reload": "Odśwież stronę"
 }
