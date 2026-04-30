@@ -33,3 +33,12 @@ class AuditEvent(SQLModel, table=True):
     actor_user_id: int | None = Field(default=None, foreign_key="user.id")
     kind: str = Field(index=True)
     payload: str
+
+
+class ThumbnailOverride(SQLModel, table=True):
+    __tablename__ = "thumbnailoverride"
+
+    model_id: str = Field(primary_key=True)
+    relative_path: str
+    set_by_user_id: int = Field(foreign_key="user.id")
+    set_at: datetime.datetime = Field(default_factory=_now_utc)
