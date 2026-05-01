@@ -89,6 +89,7 @@ class CatalogService:
             thumbnail_url=thumbnail_url,
             has_3d=has_3d,
             date_added=m.date_added,
+            image_count=self._count_gallery_images(m),
         )
 
     def _resolve_thumbnail(self, m: Model, override: str | None) -> str | None:
@@ -114,6 +115,21 @@ class CatalogService:
             return f"/api/files/{m.id}/iso.png"
 
         return None
+
+    def _count_gallery_images(self, m: Model) -> int:
+        count = 0
+        images_dir = self._catalog_dir / m.path / "images"
+        if images_dir.is_dir():
+            for child in images_dir.iterdir():
+                if child.is_file() and child.suffix.lower() in _IMAGE_EXTS:
+                    count += 1
+        for p in m.prints:
+            rel = self._strip_model_prefix(m, p.path)
+            if rel.lower().endswith(_IMAGE_EXTS) and (self._catalog_dir / m.path / rel).is_file():
+                count += 1
+        if (self._renders_dir / m.id / "iso.png").is_file():
+            count += 4  # iso/front/side/top generated atomically by the render worker
+        return count
 
     def _strip_model_prefix(self, m: Model, full_path: str) -> str:
         prefix = m.path + "/"

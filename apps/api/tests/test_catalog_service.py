@@ -142,3 +142,40 @@ def test_missing_index_returns_empty_catalog_without_raising(repo, tmp_path):
     assert response.total == 0
     assert response.models == []
     assert service.get_model("001") is None
+
+
+def test_image_count_includes_images_dir(service):
+    response = service.list_models()
+    by_id = {m.id: m for m in response.models}
+    # 001 (Dragon) has at least one file in images/ in the fixture catalog;
+    # exact count depends on fixtures so we assert >= 1.
+    assert by_id["001"].image_count >= 1
+
+
+def test_image_count_includes_prints(service):
+    response = service.list_models()
+    by_id = {m.id: m for m in response.models}
+    # 002 (Vase) has prints in fixtures, no images/.
+    # The service counts each Print whose path resolves to an existing image.
+    assert by_id["002"].image_count >= 1
+
+
+def test_image_count_includes_renders_when_iso_exists(service):
+    response = service.list_models()
+    by_id = {m.id: m for m in response.models}
+    # 003 (Holder) has only renders/003/iso.png in fixtures → +4 (iso/front/side/top).
+    assert by_id["003"].image_count == 4
+
+
+def test_image_count_zero_when_nothing(repo, tmp_path):
+    empty_renders = tmp_path / "empty_renders"
+    empty_renders.mkdir()
+    s = CatalogService(
+        catalog_dir=FIXTURES / "catalog",
+        renders_dir=empty_renders,
+        index_path=FIXTURES / "index.json",
+        overrides=repo,
+    )
+    by_id = {m.id: m for m in s.list_models().models}
+    # 003 has nothing visible without renders.
+    assert by_id["003"].image_count == 0

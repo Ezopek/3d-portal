@@ -74,6 +74,7 @@ class ModelListItem(BaseModel):
     thumbnail_url: str | None  # API-relative URL
     has_3d: bool
     date_added: str
+    image_count: int = 0
 
 
 class ModelListResponse(BaseModel):
