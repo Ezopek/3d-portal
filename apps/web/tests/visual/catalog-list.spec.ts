@@ -27,9 +27,12 @@ test("tag chips meet WCAG AA contrast", async ({ page }) => {
   const ratio = await chip.evaluate((el) => {
     const parseRgb = (str: string): [number, number, number] => {
       const match = str.match(/rgba?\(([^)]+)\)/);
-      if (match === null) throw new Error(`Cannot parse color: ${str}`);
-      const [r, g, b] = match[1].split(",").map((s) => Number(s.trim()));
-      return [r, g, b];
+      if (match === null || match[1] === undefined) throw new Error(`Cannot parse color: ${str}`);
+      const parts = match[1].split(",").map((s) => Number(s.trim()));
+      if (parts.length < 3 || parts[0] === undefined || parts[1] === undefined || parts[2] === undefined) {
+        throw new Error(`Cannot parse color components: ${str}`);
+      }
+      return [parts[0], parts[1], parts[2]];
     };
     const luminance = ([r, g, b]: [number, number, number]) => {
       const norm = (c: number) => {

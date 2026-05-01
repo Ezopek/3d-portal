@@ -96,6 +96,7 @@ One-way Windows → `.190` rsync. Portal never writes to the catalog. See `docs/
 
 - Conversation language: Polish. Committed file content (code + docs): English.
 - Frontend: zero inline hex colors in components — use Tailwind classes referencing CSS variables in `apps/web/src/styles/theme.css`.
+- Frontend: `npm run lint` from `apps/web/` runs ESLint 9 flat config (`eslint.config.js`); it must pass with `--max-warnings=0` before commit. Python (`apps/api/`, `workers/render/`) is on `ruff`.
 - Backend: structured JSON logs only; canonical fields per `~/repos/configs/docs/observability-logging-contract.md`.
 - Tests: TDD for backend logic; Playwright visual regression for UI.
 
