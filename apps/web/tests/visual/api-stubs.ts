@@ -60,7 +60,7 @@ export async function stubCatalog(page: Page) {
         source_url: "https://printables.com/m/12345",
         rating: 5,
         status: "printed",
-        notes: "",
+        notes: "Printed in PLA at 0.2mm layer height.\nSupports auto-generated.\nNo issues during 6-hour print.",
         thumbnail: null,
         thumbnail_url: "/api/files/001/images/Dragon.png",
         date_added: "2026-04-12",
