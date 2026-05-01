@@ -4,7 +4,7 @@ from pathlib import Path
 from PIL import Image, UnidentifiedImageError
 
 ALLOWED_WIDTHS: frozenset[int] = frozenset({240, 480, 720, 960, 1280})
-_IMAGE_EXTS: frozenset[str] = frozenset({".png", ".jpg", ".jpeg", ".webp"})
+IMAGE_EXTENSIONS: frozenset[str] = frozenset({".png", ".jpg", ".jpeg", ".webp"})
 _WEBP_QUALITY = 80
 _THUMBS_SUBDIR = "thumbnails"
 
@@ -38,7 +38,7 @@ def resize_image(src: Path, width: int, cache_root: Path) -> Path:
     """
     if width not in ALLOWED_WIDTHS:
         raise InvalidWidthError(f"width {width} not in {sorted(ALLOWED_WIDTHS)}")
-    if src.suffix.lower() not in _IMAGE_EXTS:
+    if src.suffix.lower() not in IMAGE_EXTENSIONS:
         raise NotAnImageError(f"unsupported extension: {src.suffix}")
 
     out = cache_path_for(src, width, cache_root)

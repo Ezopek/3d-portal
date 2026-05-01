@@ -320,3 +320,27 @@ def test_resized_etag_round_trip(client):
     etag = r1.headers["ETag"]
     r2 = client.get("/api/files/001/images/Dragon.png?w=480", headers={"If-None-Match": etag})
     assert r2.status_code == 304
+
+
+def test_serve_renders_volume_image_with_width_returns_webp(client, tmp_path, monkeypatch):
+    """Resize branch must work for files served from the renders volume,
+    not just the catalog dir."""
+    from PIL import Image
+
+    renders_root = tmp_path / "renders"
+    (renders_root / "001").mkdir(parents=True)
+    img = Image.new("RGB", (1200, 800), color=(40, 80, 160))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    (renders_root / "001" / "iso.png").write_bytes(buf.getvalue())
+
+    monkeypatch.setenv("RENDERS_DIR", str(renders_root))
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+
+    r = client.get("/api/files/001/iso.png?w=480")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/webp"
+    assert "ETag" in r.headers
+    assert r.headers.get("cache-control", "").startswith("public")

@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.core.etag import file_etag
 from app.core.filenames import safe_filename
 from app.modules.catalog.thumbnails import (
+    IMAGE_EXTENSIONS,
     InvalidWidthError,
     NotAnImageError,
     resize_image,
@@ -151,7 +152,7 @@ def serve_file(
     for candidate in candidates:
         if not candidate.is_file():
             continue
-        if w is not None and candidate.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
+        if w is not None and candidate.suffix.lower() in IMAGE_EXTENSIONS:
             try:
                 resized = resize_image(candidate, width=w, cache_root=settings.catalog_cache_dir)
             except InvalidWidthError as exc:
