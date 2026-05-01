@@ -1,30 +1,98 @@
-import { useMemo, useState } from "react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import { applySearch } from "@/lib/search";
 import { CategorySidebar } from "@/modules/catalog/components/CategorySidebar";
 import { useModels } from "@/modules/catalog/hooks/useModels";
 import type { ModelListItem } from "@/modules/catalog/types";
+import type { CatalogSearch } from "@/routes/catalog/index";
 import { EmptyState } from "@/ui/custom/EmptyState";
 import { FilterBar, type FilterState, type SortKey } from "@/ui/custom/FilterBar";
 import { ModelCard } from "@/ui/custom/ModelCard";
 import { Input } from "@/ui/input";
 
+const STORAGE_KEY = "catalog:last-filters";
+
 export function CatalogList() {
   const { t } = useTranslation();
+  const search = useSearch({ from: "/catalog/" });
+  const navigate = useNavigate({ from: "/catalog/" });
   const { data, isLoading, isError } = useModels();
-  const [state, setState] = useState<FilterState>({ category: null, status: null, sort: "recent" });
-  const [query, setQuery] = useState("");
+
+  const { category: searchCategory, status: searchStatus, sort: searchSort, q: searchQ } = search;
+
+  // Persist current filters to sessionStorage; restore them when arriving at
+  // /catalog with no params (e.g. via the sidebar "Catalog" link).
+  useEffect(() => {
+    const isEmpty =
+      searchCategory === undefined &&
+      searchStatus === undefined &&
+      searchSort === undefined &&
+      searchQ === undefined;
+    if (!isEmpty) {
+      const snapshot: CatalogSearch = {
+        category: searchCategory,
+        status: searchStatus,
+        sort: searchSort,
+        q: searchQ,
+      };
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+      return;
+    }
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (raw === null) return;
+    try {
+      const stored = JSON.parse(raw) as CatalogSearch;
+      const hasAny =
+        stored.category !== undefined ||
+        stored.status !== undefined ||
+        stored.sort !== undefined ||
+        stored.q !== undefined;
+      if (hasAny) void navigate({ search: stored, replace: true });
+    } catch {
+      sessionStorage.removeItem(STORAGE_KEY);
+    }
+  }, [searchCategory, searchStatus, searchSort, searchQ, navigate]);
+
+  const filterState: FilterState = {
+    category: search.category ?? null,
+    status: search.status ?? null,
+    sort: search.sort ?? "recent",
+  };
+  const query = search.q ?? "";
+
+  const setFilterState = (next: FilterState) => {
+    void navigate({
+      search: (prev: CatalogSearch): CatalogSearch => ({
+        ...prev,
+        category: next.category ?? undefined,
+        status: next.status ?? undefined,
+        sort: next.sort === "recent" ? undefined : next.sort,
+      }),
+      replace: true,
+    });
+  };
+
+  const setQuery = (q: string) => {
+    void navigate({
+      search: (prev: CatalogSearch): CatalogSearch => ({
+        ...prev,
+        q: q === "" ? undefined : q,
+      }),
+      replace: true,
+    });
+  };
 
   const visible = useMemo(() => {
     if (data === undefined) return [];
     let items: ModelListItem[] = [...data.models];
-    if (state.category !== null) items = items.filter((m) => m.category === state.category);
-    if (state.status !== null) items = items.filter((m) => m.status === state.status);
+    if (filterState.category !== null) items = items.filter((m) => m.category === filterState.category);
+    if (filterState.status !== null) items = items.filter((m) => m.status === filterState.status);
     items = applySearch(items, query);
-    items = sortModels(items, state.sort);
+    items = sortModels(items, filterState.sort);
     return items;
-  }, [data, state, query]);
+  }, [data, filterState.category, filterState.status, filterState.sort, query]);
 
   if (isLoading) return <div className="p-4 text-sm text-muted-foreground">…</div>;
   if (isError || data === undefined) {
@@ -33,7 +101,7 @@ export function CatalogList() {
 
   return (
     <div className="flex">
-      <CategorySidebar models={data.models} state={state} onChange={setState} />
+      <CategorySidebar models={data.models} state={filterState} onChange={setFilterState} />
       <div className="flex-1">
         <div className="hidden border-b border-border bg-background/95 p-3 lg:block">
           <Input
@@ -42,7 +110,7 @@ export function CatalogList() {
             placeholder={t("common.search")}
           />
         </div>
-        <FilterBar state={state} onChange={setState} />
+        <FilterBar state={filterState} onChange={setFilterState} />
         {visible.length === 0 ? (
           <EmptyState messageKey="catalog.empty" />
         ) : (
