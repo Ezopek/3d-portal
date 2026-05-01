@@ -26,6 +26,7 @@ const FAKE_MODEL: ModelListItem = {
   thumbnail_url: null,
   has_3d: true,
   date_added: "2026-04-12",
+  image_count: 0,
 };
 
 const FAKE_MODEL_2: ModelListItem = {

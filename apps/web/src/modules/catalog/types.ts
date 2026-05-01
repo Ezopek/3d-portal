@@ -47,6 +47,7 @@ export interface ModelListItem {
   thumbnail_url: string | null;
   has_3d: boolean;
   date_added: string;
+  image_count: number;
 }
 
 export interface ModelListResponse {

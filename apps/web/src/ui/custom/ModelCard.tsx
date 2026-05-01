@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/ui/card";
 
 import type { ModelListItem } from "@/modules/catalog/types";
 
+import { CardCarousel } from "./CardCarousel";
 import { SourceBadge } from "./SourceBadge";
 import { StatusBadge } from "./StatusBadge";
 
@@ -16,15 +17,35 @@ export function ModelCard({ model }: { model: ModelListItem }) {
   return (
     <Link to="/catalog/$id" params={{ id: model.id }}>
       <Card className="overflow-hidden border-border bg-card transition-colors hover:border-ring">
-        <div className="aspect-square bg-muted">
-          {model.thumbnail_url !== null ? (
-            <img src={model.thumbnail_url} alt={primary} className="h-full w-full object-cover" loading="lazy" />
-          ) : (
-            <div className="grid h-full place-items-center text-muted-foreground">
-              <span className="text-xs">no preview</span>
-            </div>
-          )}
-        </div>
+        {model.image_count >= 2 ? (
+          <CardCarousel
+            modelId={model.id}
+            // ModelListItem doesn't carry model.path or prints[]. The CardCarousel/useGallery
+            // pair uses pickGalleryCandidates' empty-prints fallback path, which discovers
+            // prints/*.{png,jpg,webp} from the lazy /files response.
+            modelPath=""
+            prints={[]}
+            initialThumbnailUrl={model.thumbnail_url}
+            imageCount={model.image_count}
+            alt={primary}
+          />
+        ) : (
+          <div className="aspect-square bg-muted">
+            {model.thumbnail_url !== null ? (
+              <img
+                src={`${model.thumbnail_url}?w=480`}
+                srcSet={`${model.thumbnail_url}?w=480 1x, ${model.thumbnail_url}?w=960 2x`}
+                alt={primary}
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            ) : (
+              <div className="grid h-full place-items-center text-muted-foreground">
+                <span className="text-xs">no preview</span>
+              </div>
+            )}
+          </div>
+        )}
         <CardContent className="space-y-2 p-3">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <StatusBadge status={model.status} />
@@ -37,7 +58,10 @@ export function ModelCard({ model }: { model: ModelListItem }) {
           {topTags.length > 0 && (
             <div className="flex flex-wrap gap-1">
               {topTags.map((tag) => (
-                <span key={tag} className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                <span
+                  key={tag}
+                  className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                >
                   {tag}
                 </span>
               ))}

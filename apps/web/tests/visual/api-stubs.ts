@@ -20,6 +20,7 @@ export async function stubCatalog(page: Page) {
             thumbnail_url: null,
             has_3d: true,
             date_added: "2026-04-12",
+            image_count: 3,
           },
           {
             id: "002",
@@ -33,6 +34,7 @@ export async function stubCatalog(page: Page) {
             thumbnail_url: null,
             has_3d: true,
             date_added: "2026-04-29",
+            image_count: 1,
           },
         ],
       }),
@@ -78,7 +80,13 @@ export async function stubCatalog(page: Page) {
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ files: ["Dragon.stl", "images/Dragon.png"] }),
+      body: JSON.stringify({
+        files: [
+          "Dragon.stl",
+          "images/Dragon.png",
+          "images/Dragon-detail.png",
+        ],
+      }),
     }),
   );
 
