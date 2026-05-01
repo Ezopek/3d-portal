@@ -7,7 +7,7 @@ export default defineConfig({
     alias: { "@": path.resolve(__dirname, "src") },
   },
   test: {
-    environment: "node",
+    environment: "jsdom",
     globals: false,
     exclude: ["**/node_modules/**", "**/tests/visual/**"],
   },
