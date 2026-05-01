@@ -6,6 +6,10 @@ from PIL import Image, UnidentifiedImageError
 ALLOWED_WIDTHS: frozenset[int] = frozenset({240, 480, 720, 960, 1280})
 IMAGE_EXTENSIONS: frozenset[str] = frozenset({".png", ".jpg", ".jpeg", ".webp"})
 _WEBP_QUALITY = 80
+# WebP encoder effort. method=6 is max-compression but ~120x slower than method=4
+# on RGBA inputs (the trimesh-generated 768x768 renders) — 1.9s vs 15ms per call.
+# method=4 trades ~4% larger output for a usable cold-cache experience.
+_WEBP_METHOD = 4
 _THUMBS_SUBDIR = "thumbnails"
 
 
@@ -55,7 +59,7 @@ def resize_image(src: Path, width: int, cache_root: Path) -> Path:
             elif img.mode not in ("RGB", "RGBA"):
                 img = img.convert("RGB")
             img.thumbnail((width, width))
-            img.save(out, format="WEBP", quality=_WEBP_QUALITY, method=6)
+            img.save(out, format="WEBP", quality=_WEBP_QUALITY, method=_WEBP_METHOD)
     except UnidentifiedImageError as exc:
         raise NotAnImageError(f"cannot decode image: {src}") from exc
     return out
