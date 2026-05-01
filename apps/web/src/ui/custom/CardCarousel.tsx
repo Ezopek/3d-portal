@@ -223,27 +223,29 @@ export function CardCarousel(props: Props) {
             </span>
           </button>
 
-          <div className="pointer-events-auto absolute inset-x-0 bottom-1 flex items-center justify-center gap-1">
-            {Array.from({ length: visibleCount }).map((_, i) => {
-              const active = i === Math.min(index, visibleCount - 1);
-              return (
-                <button
-                  type="button"
-                  key={i}
-                  aria-label={`go to image ${i + 1}`}
-                  aria-current={active ? "true" : undefined}
-                  onClick={(e) => handleDot(e, i)}
-                  className={`size-1.5 rounded-full transition-colors ${
-                    active ? "bg-foreground/90" : "bg-foreground/30"
-                  }`}
-                />
-              );
-            })}
-            {total > MAX_DOTS_VISIBLE && (
-              <span className="ml-1 rounded-full bg-background/70 px-1 text-[10px] text-foreground/80 backdrop-blur">
-                +{total - MAX_DOTS_VISIBLE}
-              </span>
-            )}
+          <div className="pointer-events-auto absolute inset-x-0 bottom-1 flex items-center justify-center">
+            <div className="flex items-center gap-1 rounded-full bg-background/40 px-1.5 py-0.5 backdrop-blur-sm">
+              {Array.from({ length: visibleCount }).map((_, i) => {
+                const active = i === Math.min(index, visibleCount - 1);
+                return (
+                  <button
+                    type="button"
+                    key={i}
+                    aria-label={`go to image ${i + 1}`}
+                    aria-current={active ? "true" : undefined}
+                    onClick={(e) => handleDot(e, i)}
+                    className={`size-1.5 rounded-full transition-colors ${
+                      active ? "bg-foreground/90" : "bg-foreground/50"
+                    }`}
+                  />
+                );
+              })}
+              {total > MAX_DOTS_VISIBLE && (
+                <span className="ml-0.5 text-[10px] text-foreground/80">
+                  +{total - MAX_DOTS_VISIBLE}
+                </span>
+              )}
+            </div>
           </div>
         </>
       )}
