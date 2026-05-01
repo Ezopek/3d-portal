@@ -129,7 +129,19 @@ export function CatalogList() {
         </div>
         <FilterBar state={filterState} onChange={setFilterState} />
         {visible.length === 0 ? (
-          <EmptyState messageKey="catalog.empty" />
+          <EmptyState
+            messageKey="catalog.empty"
+            action={
+              filterState.category !== null || filterState.status !== null || query !== ""
+                ? {
+                    labelKey: "catalog.actions.clear_filters",
+                    onClick: () => {
+                      void navigate({ search: {}, replace: true });
+                    },
+                  }
+                : undefined
+            }
+          />
         ) : (
           <div className="grid grid-cols-2 gap-3 p-3 md:grid-cols-3 lg:grid-cols-4">
             {visible.map((m) => <ModelCard key={m.id} model={m} />)}

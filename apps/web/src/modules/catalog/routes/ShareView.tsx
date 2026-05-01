@@ -1,8 +1,10 @@
 import { useParams } from "@tanstack/react-router";
+import { Unlink } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { useShare } from "@/modules/catalog/hooks/useShare";
 import { Button } from "@/ui/button";
+import { EmptyState } from "@/ui/custom/EmptyState";
 import { Gallery } from "@/ui/custom/Gallery";
 
 export function ShareView() {
@@ -15,8 +17,12 @@ export function ShareView() {
   }
   if (isError || data === undefined) {
     return (
-      <div className="grid min-h-screen place-items-center text-sm text-destructive">
-        {t("errors.not_found")}
+      <div className="grid min-h-screen place-items-center">
+        <EmptyState
+          messageKey="errors.not_found"
+          icon={<Unlink className="size-12" />}
+          tone="error"
+        />
       </div>
     );
   }

@@ -33,6 +33,7 @@
   "catalog.actions.download_stl": "Download STL",
   "catalog.actions.view_3d": "View 3D",
   "catalog.actions.share": "Share",
+  "catalog.actions.clear_filters": "Clear filters",
   "catalog.status.printed": "Printed",
   "catalog.status.in_progress": "In progress",
   "catalog.status.needs_revision": "Needs revision",

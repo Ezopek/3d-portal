@@ -33,6 +33,7 @@
   "catalog.actions.download_stl": "Pobierz STL",
   "catalog.actions.view_3d": "Podgląd 3D",
   "catalog.actions.share": "Udostępnij",
+  "catalog.actions.clear_filters": "Wyczyść filtry",
   "catalog.status.printed": "Wydrukowane",
   "catalog.status.in_progress": "W trakcie",
   "catalog.status.needs_revision": "Wymaga poprawki",
