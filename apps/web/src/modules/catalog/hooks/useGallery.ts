@@ -4,19 +4,9 @@ import { useState } from "react";
 import { api } from "@/lib/api";
 import {
   type GalleryImage,
+  type ModelLike,
   pickGalleryCandidates,
 } from "@/lib/galleryCandidates";
-
-interface PrintLike {
-  path: string;
-  date: string;
-}
-
-interface ModelLike {
-  id: string;
-  path: string;
-  prints: PrintLike[];
-}
 
 interface FilesResponse {
   files: string[];

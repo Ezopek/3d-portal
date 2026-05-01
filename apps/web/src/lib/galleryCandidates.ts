@@ -3,12 +3,12 @@ export interface GalleryImage {
   path: string;
 }
 
-interface PrintLike {
+export interface PrintLike {
   path: string;
   date: string;
 }
 
-interface ModelLike {
+export interface ModelLike {
   id: string;
   path: string;
   prints: PrintLike[];
