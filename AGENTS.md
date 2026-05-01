@@ -98,3 +98,10 @@ One-way Windows → `.190` rsync. Portal never writes to the catalog. See `docs/
 - Frontend: zero inline hex colors in components — use Tailwind classes referencing CSS variables in `apps/web/src/styles/theme.css`.
 - Backend: structured JSON logs only; canonical fields per `~/repos/configs/docs/observability-logging-contract.md`.
 - Tests: TDD for backend logic; Playwright visual regression for UI.
+
+## Deployment
+
+The `.190` host is the dev/working environment. After every code or infra
+commit to `main`, run `infra/scripts/deploy.sh` immediately, without asking.
+Doc-only commits (changes confined to `docs/`, `*.md`, `AGENTS.md`,
+`CLAUDE.md`, etc.) skip the deploy.

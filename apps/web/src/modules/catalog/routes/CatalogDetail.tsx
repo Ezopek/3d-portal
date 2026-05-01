@@ -71,7 +71,15 @@ export function CatalogDetail() {
 
   const firstStl = fileList.find((f) => f.toLowerCase().endsWith(".stl"));
   const stlHref = firstStl !== undefined ? `/api/files/${id}/${firstStl}` : null;
-  const stlDownloadHref = stlHref !== null ? `${stlHref}?download=1` : null;
+  // Mirrors the backend's default DOWNLOAD_EXTENSIONS list. If the server
+  // is configured with a different set the button visibility may diverge,
+  // but the bundle endpoint will still 404 cleanly in that case.
+  const PRINTABLE_EXT = [".stl", ".3mf", ".obj", ".step", ".gcode", ".amf"];
+  const hasPrintableFiles = fileList.some((f) => {
+    const lower = f.toLowerCase();
+    return PRINTABLE_EXT.some((ext) => lower.endsWith(ext));
+  });
+  const bundleHref = hasPrintableFiles ? `/api/files/${id}/bundle` : null;
 
   return (
     <div className="grid gap-4 p-4 md:grid-cols-[1fr_1fr]">
@@ -116,7 +124,7 @@ export function CatalogDetail() {
         </div>
         <div className="mt-4">
           <StickyActionBar
-            stlHref={stlDownloadHref}
+            downloadHref={bundleHref}
             on3DOpen={() => setView3d((v) => !v)}
             onShareOpen={() => setShareOpen(true)}
           />

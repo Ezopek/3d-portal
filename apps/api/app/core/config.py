@@ -1,8 +1,9 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated
 
-from pydantic import Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -42,6 +43,32 @@ class Settings(BaseSettings):
     # Error tracking (GlitchTip / Sentry SDK)
     sentry_dsn: str | None = None
     portal_version: str = "0.1.0"
+
+    # Print-ready file extensions used by the bundle download endpoint.
+    # Configurable via DOWNLOAD_EXTENSIONS env var as a comma-separated list
+    # (with or without leading dots), e.g. "stl,3mf,obj".
+    download_extensions: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: [".stl", ".3mf", ".obj", ".step", ".gcode", ".amf"]
+    )
+
+    @field_validator("download_extensions", mode="before")
+    @classmethod
+    def _parse_extensions(cls, v: object) -> object:
+        if isinstance(v, str):
+            v = [item for item in v.split(",")]
+        if isinstance(v, list):
+            normalized = []
+            for item in v:
+                if not isinstance(item, str):
+                    continue
+                ext = item.strip().lower()
+                if not ext:
+                    continue
+                if not ext.startswith("."):
+                    ext = "." + ext
+                normalized.append(ext)
+            return normalized
+        return v
 
     @property
     def sqlite_path(self) -> Path | None:
