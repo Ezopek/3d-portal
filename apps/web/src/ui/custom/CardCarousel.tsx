@@ -24,11 +24,13 @@ const CARD_SRCSET_1X = 480;
 const CARD_SRCSET_2X = 960;
 const MAX_DOTS_VISIBLE = 7;
 const SWIPE_THRESHOLD_PX = 40;
-// Give up on the lazy gallery and revert to the initial thumbnail after this
-// many consecutive image-load failures. Two strikes is enough to cover the
-// common case of a stale candidate plus a fallback render miss without
-// flapping forever through the candidate list.
-const MAX_GALLERY_ERRORS = 2;
+// After this many consecutive errors, give up early instead of cycling through
+// all candidates — `pickGalleryCandidates` always appends 4 render fallbacks,
+// and a user clicking through 4+ broken thumbnails is worse UX than just
+// seeing the static thumbnail. This is in addition to `failedPaths` /
+// `visibleList.length === 0`, which handle the case where every candidate
+// is exhausted.
+const MAX_CONSECUTIVE_GALLERY_ERRORS = 2;
 
 function withWidth(url: string, width: number): string {
   const sep = url.includes("?") ? "&" : "?";
@@ -45,7 +47,7 @@ export function CardCarousel(props: Props) {
 
   const [index, setIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
   const [failedPaths, setFailedPaths] = useState<ReadonlySet<string>>(new Set());
   const [errorCount, setErrorCount] = useState(0);
 
@@ -59,7 +61,7 @@ export function CardCarousel(props: Props) {
   }, [list, failedPaths]);
 
   const galleryExhausted =
-    errorCount >= MAX_GALLERY_ERRORS ||
+    errorCount >= MAX_CONSECUTIVE_GALLERY_ERRORS ||
     (list !== undefined && visibleList !== undefined && visibleList.length === 0);
   const total = list?.length ?? imageCount;
   const visibleCount = Math.min(total, MAX_DOTS_VISIBLE);
@@ -122,20 +124,41 @@ export function CardCarousel(props: Props) {
   };
 
   const handleTouchStart = (e: TouchEvent) => {
-    setTouchStartX(e.touches[0]?.clientX ?? null);
+    if (e.touches.length !== 1) {
+      setTouchStart(null);
+      return;
+    }
+    const t = e.touches[0];
+    if (t === undefined) return;
+    setTouchStart({ x: t.clientX, y: t.clientY });
   };
   const handleTouchEnd = (e: TouchEvent) => {
-    if (touchStartX === null) return;
-    const endX = e.changedTouches[0]?.clientX ?? touchStartX;
-    const dx = endX - touchStartX;
+    if (touchStart === null) return;
+    const t = e.changedTouches[0];
+    if (t === undefined) {
+      setTouchStart(null);
+      return;
+    }
+    const dx = t.clientX - touchStart.x;
+    const dy = t.clientY - touchStart.y;
+    // Reject vertical-dominant gestures (likely scroll, not swipe).
+    if (Math.abs(dy) > Math.abs(dx)) {
+      setTouchStart(null);
+      return;
+    }
     if (Math.abs(dx) > SWIPE_THRESHOLD_PX) advance(dx < 0 ? 1 : -1);
-    setTouchStartX(null);
+    setTouchStart(null);
   };
 
   const onImgLoaded = () => setIsLoading(false);
   const onImgError = () => {
     setIsLoading(false);
-    setErrorCount((n) => n + 1);
+    // Once we've fallen back to the initial thumbnail, additional onError
+    // events shouldn't keep ticking the counter — the budget only applies
+    // while we're still attempting gallery candidates.
+    if (!galleryExhausted) {
+      setErrorCount((n) => n + 1);
+    }
     if (visibleList !== undefined && visibleList.length > 0) {
       const failed = visibleList[index];
       if (failed !== undefined) {
@@ -204,6 +227,7 @@ export function CardCarousel(props: Props) {
                   type="button"
                   key={i}
                   aria-label={`go to image ${i + 1}`}
+                  aria-current={active ? "true" : undefined}
                   onClick={(e) => handleDot(e, i)}
                   className={`size-1.5 rounded-full transition-colors ${
                     active ? "bg-foreground/90" : "bg-foreground/30"
