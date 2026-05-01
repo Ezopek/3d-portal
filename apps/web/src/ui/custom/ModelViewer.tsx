@@ -4,7 +4,7 @@ interface Props { src: string }
 // Future improvement: convert STL→GLB server-side or fall back to three.js + STLLoader.
 export function ModelViewer({ src }: Props) {
   return (
-    <div className="aspect-square w-full overflow-hidden rounded-md bg-muted">
+    <div className="mx-auto aspect-square w-full max-w-[70vh] overflow-hidden rounded-md bg-muted">
       <model-viewer
         src={src}
         alt=""

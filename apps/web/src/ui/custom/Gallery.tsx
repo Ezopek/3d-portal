@@ -19,7 +19,7 @@ export function Gallery({ images, currentDefaultPath, onSetDefault, onClearDefau
   const [active, setActive] = useState(0);
   if (images.length === 0) {
     return (
-      <div className="aspect-square w-full rounded-md bg-muted text-center text-sm text-muted-foreground">
+      <div className="mx-auto aspect-square w-full max-w-[70vh] rounded-md bg-muted text-center text-sm text-muted-foreground">
         <div className="grid h-full place-items-center">{t("catalog.no_preview")}</div>
       </div>
     );
@@ -29,7 +29,7 @@ export function Gallery({ images, currentDefaultPath, onSetDefault, onClearDefau
 
   return (
     <div>
-      <div className="relative aspect-square w-full overflow-hidden rounded-md bg-muted">
+      <div className="relative mx-auto aspect-square w-full max-w-[70vh] overflow-hidden rounded-md bg-muted">
         <img src={safe.url} alt="" className="h-full w-full object-contain" />
         {adminControls && (
           <StarBadge
