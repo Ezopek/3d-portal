@@ -119,7 +119,7 @@ export function CatalogList() {
   return (
     <div className="flex">
       <CategorySidebar models={data.models} state={filterState} onChange={setFilterState} />
-      <div className="flex-1">
+      <div className="min-w-0 flex-1">
         <div className="hidden border-b border-border bg-background/95 p-3 lg:block">
           <Input
             value={query}

@@ -9,3 +9,11 @@ test("catalog list matches baseline", async ({ page }) => {
   await waitForReady(page);
   await expect(page).toHaveScreenshot("catalog-list.png", { fullPage: true });
 });
+
+test("catalog list has no horizontal overflow", async ({ page, viewport }) => {
+  await stubCatalog(page);
+  await page.goto("/catalog");
+  await waitForReady(page);
+  const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+  expect(scrollWidth).toBeLessThanOrEqual(viewport!.width);
+});

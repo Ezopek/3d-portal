@@ -13,7 +13,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen">
       <ModuleRail />
-      <div className="flex min-h-screen flex-1 flex-col">
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         <TopBar />
         <main className="flex-1 pb-16 lg:pb-0">{children}</main>
       </div>
