@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     catalog_data_dir: Path = Path("/data/catalog")
     renders_dir: Path = Path("/data/renders")
     state_dir: Path = Path("/data/state")
+    catalog_cache_dir: Path = Path("/data/cache")
 
     # DB
     database_url: str = "sqlite:////data/state/portal.db"

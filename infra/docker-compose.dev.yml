@@ -18,11 +18,13 @@ services:
       REDIS_URL: redis://redis:6379/0
       CATALOG_DATA_DIR: /data/catalog
       RENDERS_DIR: /data/renders
+      CATALOG_CACHE_DIR: /data/cache
     volumes:
       - ../apps/api:/app
       - /mnt/c/Users/ezope/Nextcloud/3d_modelowanie:/data/catalog:ro
       - dev-renders:/data/renders
       - dev-state:/data/state
+      - dev-cache:/data/cache
     ports: ["8000:8000"]
     depends_on: [redis]
     networks: [portal-dev]
@@ -59,4 +61,5 @@ networks:
 volumes:
   dev-renders:
   dev-state:
+  dev-cache:
   dev-web-node-modules:

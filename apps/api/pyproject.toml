@@ -24,6 +24,7 @@ dependencies = [
     "opentelemetry-instrumentation-logging>=0.50b0",
     "opentelemetry-instrumentation-redis>=0.50b0",
     "opentelemetry-instrumentation-sqlalchemy>=0.50b0",
+    "pillow>=10.4",
 ]
 
 [project.optional-dependencies]

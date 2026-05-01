@@ -10,6 +10,11 @@ from fastapi.responses import FileResponse, StreamingResponse
 from app.core.config import get_settings
 from app.core.etag import file_etag
 from app.core.filenames import safe_filename
+from app.modules.catalog.thumbnails import (
+    InvalidWidthError,
+    NotAnImageError,
+    resize_image,
+)
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
@@ -109,14 +114,21 @@ def download_bundle(model_id: str, request: Request) -> Response:
 
 
 @router.get("/{model_id}/{relative:path}")
-def serve_file(model_id: str, relative: str, request: Request, download: bool = False) -> Response:
+def serve_file(
+    model_id: str,
+    relative: str,
+    request: Request,
+    download: bool = False,
+    w: int | None = None,
+) -> Response:
     service = request.app.state.catalog_service
     model = service.get_model(model_id)
     if model is None:
         raise HTTPException(404, f"Model {model_id} not found")
 
     catalog_dir = service._catalog_dir  # intentional internal use
-    renders_dir = get_settings().renders_dir
+    settings = get_settings()
+    renders_dir = settings.renders_dir
 
     candidates = []
 
@@ -137,13 +149,31 @@ def serve_file(model_id: str, relative: str, request: Request, download: bool = 
         pass  # renders path traversal — silently skip, the catalog candidate already validated
 
     for candidate in candidates:
-        if candidate.is_file():
-            etag = file_etag(candidate)
-            if request.headers.get("if-none-match") == etag:
-                return Response(status_code=304, headers={"ETag": etag})
-            return FileResponse(
-                candidate,
-                filename=candidate.name if download else None,
-                headers={"ETag": etag, "Cache-Control": "private, max-age=300"},
-            )
+        if not candidate.is_file():
+            continue
+        if w is not None and candidate.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
+            try:
+                resized = resize_image(candidate, width=w, cache_root=settings.catalog_cache_dir)
+            except InvalidWidthError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            except NotAnImageError:
+                # Decoder couldn't read it — fall through and serve original.
+                pass
+            else:
+                etag = file_etag(resized)
+                if request.headers.get("if-none-match") == etag:
+                    return Response(status_code=304, headers={"ETag": etag})
+                return FileResponse(
+                    resized,
+                    media_type="image/webp",
+                    headers={"ETag": etag, "Cache-Control": "public, max-age=86400"},
+                )
+        etag = file_etag(candidate)
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers={"ETag": etag})
+        return FileResponse(
+            candidate,
+            filename=candidate.name if download else None,
+            headers={"ETag": etag, "Cache-Control": "private, max-age=300"},
+        )
     raise HTTPException(404, "File not found")

@@ -15,6 +15,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/f.db")
     monkeypatch.setenv("CATALOG_DATA_DIR", str(FIXTURES / "catalog"))
+    monkeypatch.setenv("CATALOG_CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.setenv("ADMIN_EMAIL", "admin@localhost.localdomain")
     monkeypatch.setenv("ADMIN_PASSWORD", "pw")
     monkeypatch.setenv("JWT_SECRET", "test")
@@ -109,6 +110,7 @@ def multi_file_client(tmp_path, monkeypatch):
 
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/f.db")
     monkeypatch.setenv("CATALOG_DATA_DIR", str(catalog))
+    monkeypatch.setenv("CATALOG_CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.setenv("ADMIN_EMAIL", "admin@localhost.localdomain")
     monkeypatch.setenv("ADMIN_PASSWORD", "pw")
     monkeypatch.setenv("JWT_SECRET", "test")
@@ -159,6 +161,7 @@ def test_bundle_no_printable_files_returns_404(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/f.db")
     monkeypatch.setenv("CATALOG_DATA_DIR", str(catalog))
+    monkeypatch.setenv("CATALOG_CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.setenv("ADMIN_EMAIL", "a@l")
     monkeypatch.setenv("ADMIN_PASSWORD", "pw")
     monkeypatch.setenv("JWT_SECRET", "test")
@@ -196,6 +199,7 @@ def test_bundle_extensions_configurable(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/f.db")
     monkeypatch.setenv("CATALOG_DATA_DIR", str(catalog))
+    monkeypatch.setenv("CATALOG_CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.setenv("ADMIN_EMAIL", "a@l")
     monkeypatch.setenv("ADMIN_PASSWORD", "pw")
     monkeypatch.setenv("JWT_SECRET", "test")
@@ -242,6 +246,7 @@ def test_bundle_collision_with_file_named_bundle(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/f.db")
     monkeypatch.setenv("CATALOG_DATA_DIR", str(catalog))
+    monkeypatch.setenv("CATALOG_CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.setenv("ADMIN_EMAIL", "a@l")
     monkeypatch.setenv("ADMIN_PASSWORD", "pw")
     monkeypatch.setenv("JWT_SECRET", "test")
@@ -279,3 +284,39 @@ def test_serve_falls_back_to_renders_volume(client, tmp_path, monkeypatch):
     assert r.status_code == 200
     # Expect ETag header
     assert "ETag" in r.headers
+
+
+def test_serve_image_with_width_returns_webp(client):
+    # 001 has images/Dragon.png in the fixture catalog.
+    r = client.get("/api/files/001/images/Dragon.png?w=480")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/webp"
+    assert "ETag" in r.headers
+    assert r.headers.get("cache-control", "").startswith("public")
+
+
+def test_serve_image_without_width_unchanged(client):
+    r = client.get("/api/files/001/images/Dragon.png")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("image/")
+    # Original behaviour: private cache, not the resized variant.
+    assert r.headers.get("cache-control", "").startswith("private")
+
+
+def test_serve_invalid_width_returns_400(client):
+    r = client.get("/api/files/001/images/Dragon.png?w=999")
+    assert r.status_code == 400
+
+
+def test_width_ignored_for_non_image(client):
+    # ?w=N is silently ignored on non-images (e.g. STL).
+    r = client.get("/api/files/001/Dragon.stl?w=480")
+    assert r.status_code == 200
+    assert r.headers["content-type"] != "image/webp"
+
+
+def test_resized_etag_round_trip(client):
+    r1 = client.get("/api/files/001/images/Dragon.png?w=480")
+    etag = r1.headers["ETag"]
+    r2 = client.get("/api/files/001/images/Dragon.png?w=480", headers={"If-None-Match": etag})
+    assert r2.status_code == 304
