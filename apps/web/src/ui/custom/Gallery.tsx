@@ -2,10 +2,9 @@ import { Star } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-export interface GalleryImage {
-  url: string;
-  path: string;
-}
+import type { GalleryImage } from "@/lib/galleryCandidates";
+
+export type { GalleryImage };
 
 interface Props {
   images: GalleryImage[];

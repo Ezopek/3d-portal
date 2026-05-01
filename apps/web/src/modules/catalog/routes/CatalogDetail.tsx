@@ -4,10 +4,11 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { isAdmin } from "@/lib/auth";
+import { pickGalleryCandidates } from "@/lib/galleryCandidates";
 import { useFiles } from "@/modules/catalog/hooks/useFiles";
 import { useModel } from "@/modules/catalog/hooks/useModel";
 import { useClearThumbnail, useSetThumbnail } from "@/modules/catalog/hooks/useThumbnail";
-import { Gallery, type GalleryImage } from "@/ui/custom/Gallery";
+import { Gallery } from "@/ui/custom/Gallery";
 import { ModelViewer } from "@/ui/custom/ModelViewer";
 
 import { ModelDetailTabs } from "@/modules/catalog/components/ModelDetailTabs";
@@ -32,33 +33,7 @@ export function CatalogDetail() {
   const secondary = i18n.language.startsWith("pl") ? model.name_en : model.name_pl;
 
   const fileList = files?.files ?? [];
-  const candidates: GalleryImage[] = [];
-
-  // 1. catalog images
-  for (const f of fileList) {
-    if (f.startsWith("images/") && /\.(png|jpe?g|webp)$/i.test(f)) {
-      candidates.push({ url: `/api/files/${id}/${f}`, path: f });
-    }
-  }
-
-  // 2. own prints, sorted desc by date
-  const printsSorted = [...model.prints].sort((a, b) => b.date.localeCompare(a.date));
-  for (const p of printsSorted) {
-    const segments = p.path.split("/");
-    const rel = segments.slice(model.path.split("/").length).join("/");
-    if (/\.(png|jpe?g|webp)$/i.test(rel)) {
-      candidates.push({ url: `/api/files/${id}/${rel}`, path: rel });
-    }
-  }
-
-  // 3. computed renders (always offered; <img onError> hides 404s if any)
-  for (const view of ["iso", "front", "side", "top"]) {
-    candidates.push({ url: `/api/files/${id}/${view}.png`, path: `${view}.png` });
-  }
-
-  // dedupe by path (preserves order)
-  const seen = new Set<string>();
-  const uniq = candidates.filter((c) => (seen.has(c.path) ? false : seen.add(c.path)));
+  const uniq = pickGalleryCandidates(model, fileList);
 
   // figure out which path the API has resolved as the current default
   const currentDefaultPath: string | null = (() => {
