@@ -5,12 +5,14 @@ import { useTranslation } from "react-i18next";
 import { applySearch } from "@/lib/search";
 import { CategorySidebar } from "@/modules/catalog/components/CategorySidebar";
 import { useModels } from "@/modules/catalog/hooks/useModels";
+import { SORT_OPTIONS, type SortKey } from "@/modules/catalog/sortOptions";
 import type { ModelListItem } from "@/modules/catalog/types";
 import type { CatalogSearch } from "@/routes/catalog/index";
 import { EmptyState } from "@/ui/custom/EmptyState";
-import { FilterBar, type FilterState, type SortKey } from "@/ui/custom/FilterBar";
+import { FilterBar, type FilterState } from "@/ui/custom/FilterBar";
 import { ModelCard } from "@/ui/custom/ModelCard";
 import { Input } from "@/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
 
 const STORAGE_KEY = "catalog:last-filters";
 
@@ -120,12 +122,28 @@ export function CatalogList() {
     <div className="flex">
       <CategorySidebar models={data.models} state={filterState} onChange={setFilterState} />
       <div className="min-w-0 flex-1">
-        <div className="hidden border-b border-border bg-background/95 p-3 lg:block">
+        <div className="hidden border-b border-border bg-background/95 p-3 lg:flex lg:gap-3">
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("common.search")}
+            className="flex-1"
           />
+          <Select
+            value={filterState.sort}
+            onValueChange={(v) => setFilterState({ ...filterState, sort: v as SortKey })}
+          >
+            <SelectTrigger className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SORT_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {t(opt.labelKey)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <FilterBar state={filterState} onChange={setFilterState} />
         {visible.length === 0 ? (

@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { CatalogList } from "@/modules/catalog/routes/CatalogList";
+import { SORT_KEYS, type SortKey } from "@/modules/catalog/sortOptions";
 import type { Category, Status } from "@/modules/catalog/types";
-import type { SortKey } from "@/ui/custom/FilterBar";
 
 const CATEGORIES: readonly Category[] = [
   "decorations",
@@ -17,8 +17,6 @@ const CATEGORIES: readonly Category[] = [
 ];
 
 const STATUSES: readonly Status[] = ["printed", "not_printed", "in_progress", "needs_revision"];
-
-const SORTS: readonly SortKey[] = ["recent", "oldest", "name_asc", "name_desc", "status"];
 
 export interface CatalogSearch {
   category?: Category;
@@ -37,7 +35,7 @@ export const Route = createFileRoute("/catalog/")({
     if (typeof raw.status === "string" && (STATUSES as readonly string[]).includes(raw.status)) {
       out.status = raw.status as Status;
     }
-    if (typeof raw.sort === "string" && (SORTS as readonly string[]).includes(raw.sort)) {
+    if (typeof raw.sort === "string" && (SORT_KEYS as readonly string[]).includes(raw.sort)) {
       out.sort = raw.sort as SortKey;
     }
     if (typeof raw.q === "string" && raw.q.length > 0) {

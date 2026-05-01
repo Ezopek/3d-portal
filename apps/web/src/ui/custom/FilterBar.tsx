@@ -1,10 +1,13 @@
 import { useTranslation } from "react-i18next";
 
+import { SORT_OPTIONS, type SortKey } from "@/modules/catalog/sortOptions";
 import { Button } from "@/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
 import { cn } from "@/lib/utils";
 
 import type { Category, Status } from "@/modules/catalog/types";
+
+export type { SortKey };
 
 const CATEGORIES: Category[] = [
   "decorations", "printer_3d", "gridfinity", "multiboard",
@@ -12,8 +15,6 @@ const CATEGORIES: Category[] = [
 ];
 
 const STATUSES: Status[] = ["printed", "not_printed", "in_progress", "needs_revision"];
-
-export type SortKey = "recent" | "oldest" | "name_asc" | "name_desc" | "status";
 
 export interface FilterState {
   category: Category | null;
@@ -65,11 +66,11 @@ export function FilterBar({ state, onChange }: Props) {
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="recent">{t("catalog.sort.recent")}</SelectItem>
-          <SelectItem value="oldest">{t("catalog.sort.oldest")}</SelectItem>
-          <SelectItem value="name_asc">{t("catalog.sort.name_asc")}</SelectItem>
-          <SelectItem value="name_desc">{t("catalog.sort.name_desc")}</SelectItem>
-          <SelectItem value="status">{t("catalog.sort.status")}</SelectItem>
+          {SORT_OPTIONS.map((opt) => (
+            <SelectItem key={opt.value} value={opt.value}>
+              {t(opt.labelKey)}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
     </div>
