@@ -30,6 +30,7 @@
   "catalog.tabs.files": "Pliki",
   "catalog.tabs.prints": "Moje wydruki",
   "catalog.actions.download": "Pobierz",
+  "catalog.actions.download_all": "Pobierz wszystko",
   "catalog.actions.download_stl": "Pobierz STL",
   "catalog.actions.view_3d": "Podgląd 3D",
   "catalog.actions.share": "Udostępnij",
