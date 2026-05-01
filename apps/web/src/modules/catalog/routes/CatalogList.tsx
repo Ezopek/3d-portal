@@ -1,5 +1,5 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { applySearch } from "@/lib/search";
@@ -22,24 +22,19 @@ export function CatalogList() {
 
   const { category: searchCategory, status: searchStatus, sort: searchSort, q: searchQ } = search;
 
-  // Persist current filters to sessionStorage; restore them when arriving at
-  // /catalog with no params (e.g. via the sidebar "Catalog" link).
+  // Hydrate from sessionStorage exactly once on mount, only if the URL has no
+  // filters (e.g. arriving via the sidebar "Catalog" link). After that the URL
+  // is the source of truth — clearing a filter must NOT trigger re-hydration.
+  const hydratedRef = useRef(false);
   useEffect(() => {
+    if (hydratedRef.current) return;
+    hydratedRef.current = true;
     const isEmpty =
       searchCategory === undefined &&
       searchStatus === undefined &&
       searchSort === undefined &&
       searchQ === undefined;
-    if (!isEmpty) {
-      const snapshot: CatalogSearch = {
-        category: searchCategory,
-        status: searchStatus,
-        sort: searchSort,
-        q: searchQ,
-      };
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-      return;
-    }
+    if (!isEmpty) return;
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (raw === null) return;
     try {
@@ -53,7 +48,29 @@ export function CatalogList() {
     } catch {
       sessionStorage.removeItem(STORAGE_KEY);
     }
-  }, [searchCategory, searchStatus, searchSort, searchQ, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist current filters to sessionStorage on every change (including the
+  // empty state, so an intentional clear doesn't get re-hydrated next visit).
+  useEffect(() => {
+    const isEmpty =
+      searchCategory === undefined &&
+      searchStatus === undefined &&
+      searchSort === undefined &&
+      searchQ === undefined;
+    if (isEmpty) {
+      sessionStorage.removeItem(STORAGE_KEY);
+      return;
+    }
+    const snapshot: CatalogSearch = {
+      category: searchCategory,
+      status: searchStatus,
+      sort: searchSort,
+      q: searchQ,
+    };
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+  }, [searchCategory, searchStatus, searchSort, searchQ]);
 
   const filterState: FilterState = {
     category: search.category ?? null,
