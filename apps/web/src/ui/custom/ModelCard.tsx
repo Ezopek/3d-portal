@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Card, CardContent } from "@/ui/card";
@@ -11,6 +12,7 @@ import { StatusBadge } from "./StatusBadge";
 
 export function ModelCard({ model }: { model: ModelListItem }) {
   const { i18n } = useTranslation();
+  const [imageLoaded, setImageLoaded] = useState(false);
   const primary = i18n.language.startsWith("pl") ? model.name_pl : model.name_en;
   const secondary = i18n.language.startsWith("pl") ? model.name_en : model.name_pl;
   const topTags = model.tags.slice(0, 2);
@@ -30,7 +32,11 @@ export function ModelCard({ model }: { model: ModelListItem }) {
             alt={primary}
           />
         ) : (
-          <div className="aspect-square bg-muted">
+          <div
+            className={`aspect-square bg-muted ${
+              model.thumbnail_url !== null && !imageLoaded ? "animate-pulse" : ""
+            }`}
+          >
             {model.thumbnail_url !== null ? (
               <img
                 src={`${model.thumbnail_url}?w=480`}
@@ -38,6 +44,7 @@ export function ModelCard({ model }: { model: ModelListItem }) {
                 alt={primary}
                 className="h-full w-full object-cover"
                 loading="lazy"
+                onLoad={() => setImageLoaded(true)}
               />
             ) : (
               <div className="grid h-full place-items-center text-muted-foreground">

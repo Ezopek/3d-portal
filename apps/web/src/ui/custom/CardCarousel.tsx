@@ -46,7 +46,9 @@ export function CardCarousel(props: Props) {
   const gallery = useGallery(model);
 
   const [index, setIndex] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
+  // Start in loading state so the first paint shows the blur skeleton —
+  // not just transitions between images.
+  const [isLoading, setIsLoading] = useState(true);
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
   const [failedPaths, setFailedPaths] = useState<ReadonlySet<string>>(new Set());
   const [errorCount, setErrorCount] = useState(0);
@@ -174,7 +176,9 @@ export function CardCarousel(props: Props) {
 
   return (
     <div
-      className="group relative aspect-square bg-muted"
+      className={`group relative aspect-square bg-muted ${
+        isLoading ? "animate-pulse" : ""
+      }`}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
