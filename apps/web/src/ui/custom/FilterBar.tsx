@@ -30,7 +30,7 @@ export function FilterBar({ state, onChange }: Props) {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-2 border-b border-border bg-background/95 p-3 lg:hidden">
-      <div className="flex gap-1 overflow-x-auto">
+      <div className="flex gap-1 overflow-x-auto [mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]">
         <Pill
           active={state.category === null}
           onClick={() => onChange({ ...state, category: null })}
@@ -45,7 +45,7 @@ export function FilterBar({ state, onChange }: Props) {
           />
         ))}
       </div>
-      <div className="flex gap-1 overflow-x-auto">
+      <div className="flex gap-1 overflow-x-auto [mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]">
         <Pill
           active={state.status === null}
           onClick={() => onChange({ ...state, status: null })}
