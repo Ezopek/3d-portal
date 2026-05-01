@@ -60,7 +60,8 @@ export function ModelCard({ model }: { model: ModelListItem }) {
               {topTags.map((tag) => (
                 <span
                   key={tag}
-                  className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                  data-testid="tag-chip"
+                  className="rounded bg-muted px-1.5 py-0.5 text-xs text-chip-foreground"
                 >
                   {tag}
                 </span>

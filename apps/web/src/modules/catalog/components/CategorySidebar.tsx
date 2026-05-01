@@ -50,7 +50,7 @@ export function CategorySidebar({ models, state, onChange }: Props) {
       <Group label={t("catalog.filters.tags")}>
         <div className="flex flex-wrap gap-1">
           {topTags.map(([tag, count]) => (
-            <span key={tag} className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            <span key={tag} className="rounded bg-muted px-1.5 py-0.5 text-xs text-chip-foreground">
               {tag} · {count}
             </span>
           ))}
