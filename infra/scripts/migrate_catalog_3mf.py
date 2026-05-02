@@ -265,3 +265,50 @@ def _archive_path_for(src_3mf: Path, catalog_root: Path) -> Path:
     """Compute the archive destination preserving the catalog-relative path."""
     rel = src_3mf.relative_to(catalog_root)
     return catalog_root / ARCHIVE_REL / rel
+
+
+# === Index updater ===
+
+INDEX_DELETIONS = (
+    "wlasne modele/podstawka_laptop_latitude_5450.FCStd",
+    "wlasne modele/test_spiecia.FCStd",
+)
+
+
+def apply_index_updates(
+    index: list[dict],
+    actions: list,
+    catalog_root: Path,
+) -> list[dict]:
+    """Return a new index list with paths/categories updated per actions.
+
+    Mutations applied (in this order):
+      1. Drop entries whose `path` matches INDEX_DELETIONS.
+      2. For each MoveDir whose src matches an entry's `path`, update the
+         entry's `path` (and `category` if mosfet → tools).
+      3. For each WrapInFolder whose file matches an entry's `path`,
+         update the entry's `path` to the new folder.
+    """
+
+    def rel(p: Path) -> str:
+        return str(p.relative_to(catalog_root)).replace("\\", "/")
+
+    new_index = [e for e in index if e["path"] not in INDEX_DELETIONS]
+
+    for action in actions:
+        if isinstance(action, MoveDir):
+            src_rel = rel(action.src)
+            dst_rel = rel(action.dst)
+            for entry in new_index:
+                if entry["path"] == src_rel:
+                    entry["path"] = dst_rel
+                    if action.dst.parts[-2] == NARZEDZIA_DIR:
+                        entry["category"] = "tools"
+        elif isinstance(action, WrapInFolder):
+            src_rel = rel(action.file)
+            dst_rel = rel(action.folder)
+            for entry in new_index:
+                if entry["path"] == src_rel:
+                    entry["path"] = dst_rel
+
+    return new_index
