@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
-# Sync catalog from Windows / WSL → .190 portal data volume.
+# Sync catalog from Windows / WSL → .190 portal data volume, then refresh
+# the portal's in-memory index.
 # Run from WSL after a catalog change.
 
 set -euo pipefail
 
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ENV_FILE="$REPO_DIR/infra/.env"
+
 SOURCE="${PORTAL_CATALOG_SRC:-/mnt/c/Users/ezope/Nextcloud/3d_modelowanie/}"
 DEST="${PORTAL_CATALOG_DEST:-ezop@192.168.2.190:/mnt/raid/3d-portal-data/}"
 SSH_PORT="${PORTAL_SSH_PORT:-30022}"
-PORTAL_URL="${PORTAL_URL:-https://3d.ezop.ddns.net}"
-PORTAL_AUTH="${PORTAL_AUTH:-}"
-PORTAL_ADMIN_TOKEN="${PORTAL_ADMIN_TOKEN:-}"
+# Default to LAN URL — works without VPN, no TLS dance, and parallels
+# the rsync target on the same box.
+PORTAL_URL="${PORTAL_URL:-http://192.168.2.190:8090}"
 
 echo "→ rsync $SOURCE → $DEST (ssh port $SSH_PORT)"
 rsync -avz --delete -e "ssh -p $SSH_PORT" \
@@ -24,11 +28,37 @@ rsync -avz --delete -e "ssh -p $SSH_PORT" \
   --exclude='*' \
   "$SOURCE" "$DEST"
 
-if [[ -n "$PORTAL_ADMIN_TOKEN" ]]; then
-  echo "→ POST $PORTAL_URL/api/admin/refresh-catalog"
-  curl -fsS -u "${PORTAL_AUTH}" \
-    -H "Authorization: Bearer ${PORTAL_ADMIN_TOKEN}" \
-    -X POST "$PORTAL_URL/api/admin/refresh-catalog" || true
-else
-  echo "→ Skipped refresh-catalog: PORTAL_ADMIN_TOKEN not set"
+read_env_var() {
+  # Cherry-pick a single variable from infra/.env without sourcing the file.
+  # `source` would choke on values containing unquoted spaces (e.g. OTLP
+  # headers like "authorization=Bearer <token>").
+  [[ -f "$ENV_FILE" ]] || return
+  grep -E "^$1=" "$ENV_FILE" | head -1 | cut -d= -f2-
+}
+
+ADMIN_EMAIL="${ADMIN_EMAIL:-$(read_env_var ADMIN_EMAIL)}"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(read_env_var ADMIN_PASSWORD)}"
+
+if [[ -z "$ADMIN_EMAIL" || -z "$ADMIN_PASSWORD" ]]; then
+  echo "→ Skipped refresh-catalog: ADMIN_EMAIL / ADMIN_PASSWORD not set" \
+       "(env vars or $ENV_FILE)"
+  exit 0
 fi
+
+echo "→ Authenticating against $PORTAL_URL/api/auth/login"
+LOGIN_PAYLOAD="$(jq -nc --arg e "$ADMIN_EMAIL" --arg p "$ADMIN_PASSWORD" \
+                 '{email:$e, password:$p}')"
+TOKEN="$(curl -fsS -H "Content-Type: application/json" \
+              -d "$LOGIN_PAYLOAD" \
+              "$PORTAL_URL/api/auth/login" \
+         | jq -r '.access_token')"
+
+if [[ -z "$TOKEN" || "$TOKEN" == "null" ]]; then
+  echo "→ Login failed; skipping refresh-catalog" >&2
+  exit 1
+fi
+
+echo "→ POST $PORTAL_URL/api/admin/refresh-catalog"
+curl -fsS -H "Authorization: Bearer $TOKEN" \
+     -X POST "$PORTAL_URL/api/admin/refresh-catalog"
+echo
