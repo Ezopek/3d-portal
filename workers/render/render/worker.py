@@ -71,3 +71,6 @@ class WorkerSettings:
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
+    # Some catalog STLs are 30+ MB / millions of faces; trimesh + matplotlib
+    # at 768px takes minutes. arq's 300s default cancels them mid-render.
+    job_timeout = 1800
