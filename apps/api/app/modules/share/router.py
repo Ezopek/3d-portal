@@ -33,10 +33,12 @@ async def resolve_share(token: str, request: Request) -> ShareModelView:
     catalog_root = catalog._catalog_dir / model.path
     stl_url = None
     if catalog_root.is_dir():
-        for stl in sorted(catalog_root.rglob("*.stl")):
-            rel = stl.relative_to(catalog_root).as_posix()
+        stls = sorted(
+            p for p in catalog_root.rglob("*") if p.is_file() and p.suffix.lower() == ".stl"
+        )
+        if stls:
+            rel = stls[0].relative_to(catalog_root).as_posix()
             stl_url = f"/api/files/{model.id}/{rel}?download=1"
-            break
 
     return ShareModelView(
         id=model.id,

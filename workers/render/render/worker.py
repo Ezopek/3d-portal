@@ -29,7 +29,7 @@ async def render_model(ctx: dict[str, Any], model_id: str) -> dict[str, str]:
             return {"status": "failed", "reason": f"Unknown model {model_id}"}
 
         model_dir = catalog_dir / match["path"]
-        stls = sorted(model_dir.rglob("*.stl"))
+        stls = sorted(p for p in model_dir.rglob("*") if p.is_file() and p.suffix.lower() == ".stl")
         if not stls:
             await redis.set(_STATUS_KEY + model_id, b"failed", ex=_STATUS_TTL_SECONDS)
             return {"status": "failed", "reason": "no STL files in model directory"}

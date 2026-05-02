@@ -94,6 +94,50 @@ def test_list_has_3d_true_when_stl_present(service):
     assert by_id["003"].has_3d is True
 
 
+def test_list_has_3d_true_for_uppercase_extension(repo, tmp_path):
+    import json as _json
+
+    catalog = tmp_path / "catalog"
+    (catalog / "decorum/uppercase").mkdir(parents=True)
+    (catalog / "decorum/uppercase/Model.STL").write_bytes(b"")
+    (tmp_path / "renders").mkdir()
+    index_path = tmp_path / "index.json"
+    index_path.write_text(
+        _json.dumps(
+            [
+                {
+                    "id": "uc1",
+                    "name_en": "UC",
+                    "name_pl": "UC",
+                    "path": "decorum/uppercase",
+                    "category": "decorations",
+                    "subcategory": "",
+                    "tags": [],
+                    "source": "unknown",
+                    "printables_id": None,
+                    "thangs_id": None,
+                    "makerworld_id": None,
+                    "source_url": None,
+                    "rating": None,
+                    "status": "not_printed",
+                    "notes": "",
+                    "thumbnail": None,
+                    "date_added": "2026-04-29",
+                    "prints": [],
+                }
+            ]
+        )
+    )
+    svc = CatalogService(
+        catalog_dir=catalog,
+        renders_dir=tmp_path / "renders",
+        index_path=index_path,
+        overrides=repo,
+    )
+    response = svc.list_models()
+    assert response.models[0].has_3d is True
+
+
 def test_get_model_returns_full_payload(service):
     m = service.get_model("002")
     assert m is not None

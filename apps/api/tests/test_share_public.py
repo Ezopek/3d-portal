@@ -77,3 +77,76 @@ def test_resolve_returns_stl_url_when_stl_present(client):
     ).json()
     body = c.get(f"/api/share/{created['token']}").json()
     assert body["stl_url"] == "/api/files/001/Dragon.stl?download=1"
+
+
+def test_resolve_returns_stl_url_for_uppercase_extension(tmp_path, monkeypatch):
+    # Build a private catalog with a single model whose only printable file
+    # is named with an uppercase .STL extension.
+    import json as _json
+
+    catalog = tmp_path / "catalog"
+    (catalog / "decorum/upper").mkdir(parents=True)
+    (catalog / "decorum/upper/Big.STL").write_bytes(b"")
+    (catalog / "_index").mkdir()
+    (catalog / "_index" / "index.json").write_text(
+        _json.dumps(
+            [
+                {
+                    "id": "uc1",
+                    "name_en": "U",
+                    "name_pl": "U",
+                    "path": "decorum/upper",
+                    "category": "decorations",
+                    "subcategory": "",
+                    "tags": [],
+                    "source": "unknown",
+                    "printables_id": None,
+                    "thangs_id": None,
+                    "makerworld_id": None,
+                    "source_url": None,
+                    "rating": None,
+                    "status": "not_printed",
+                    "notes": "",
+                    "thumbnail": None,
+                    "date_added": "2026-04-29",
+                    "prints": [],
+                }
+            ]
+        )
+    )
+
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/p.db")
+    monkeypatch.setenv("CATALOG_DATA_DIR", str(catalog))
+    monkeypatch.setenv("ADMIN_EMAIL", "admin@localhost.localdomain")
+    monkeypatch.setenv("ADMIN_PASSWORD", "pw")
+    monkeypatch.setenv("JWT_SECRET", "test")
+    from app.core.config import get_settings
+    from app.core.db.session import get_engine
+
+    get_settings.cache_clear()
+    get_engine.cache_clear()
+    app = create_app()
+    fake = fakeredis.aioredis.FakeRedis()
+    factory = MagicMock()
+    factory.get = MagicMock(return_value=fake)
+
+    async def _aclose():
+        return None
+
+    factory.aclose = _aclose
+
+    with TestClient(app) as c:
+        override_catalog_paths(app, index_path=catalog / "_index" / "index.json")
+        app.state.redis = factory
+        token = encode_token(subject="1", role="admin", secret="test", ttl_minutes=30)
+        headers = {"Authorization": f"Bearer {token}"}
+        created = c.post(
+            "/api/admin/share",
+            json={"model_id": "uc1", "expires_in_hours": 1},
+            headers=headers,
+        ).json()
+        body = c.get(f"/api/share/{created['token']}").json()
+        assert body["stl_url"] == "/api/files/uc1/Big.STL?download=1"
+        assert body["has_3d"] is True
+    get_settings.cache_clear()
+    get_engine.cache_clear()

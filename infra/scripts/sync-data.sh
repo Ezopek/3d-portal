@@ -23,7 +23,8 @@ rsync -avz --delete -e "ssh -p $SSH_PORT" \
   --exclude='_archive/' \
   --include='*/' \
   --include='_index/index.json' \
-  --include='**/*.stl' --include='**/*.3mf' --include='**/*.step' \
+  --include='**/*.[sS][tT][lL]' --include='**/*.[3][mM][fF]' \
+  --include='**/*.[sS][tT][eE][pP]' \
   --include='**/images/**' --include='**/prints/**' \
   --exclude='*' \
   "$SOURCE" "$DEST"

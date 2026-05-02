@@ -153,4 +153,5 @@ class CatalogService:
         root = self._catalog_dir / m.path
         if not root.is_dir():
             return False
-        return any(any(root.rglob(f"*{ext}")) for ext in (".stl", ".3mf", ".step"))
+        printable = {".stl", ".3mf", ".step"}
+        return any(p.is_file() and p.suffix.lower() in printable for p in root.rglob("*"))
