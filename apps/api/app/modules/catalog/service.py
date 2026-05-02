@@ -72,6 +72,9 @@ class CatalogService:
             return False
         return self._target_path(model, relative_path) is not None
 
+    def model_ids_missing_renders(self) -> list[str]:
+        return [mid for mid in self._load() if not (self._renders_dir / mid / "iso.png").is_file()]
+
     # --- helpers -----------------------------------------------------------
 
     def _project(self, m: Model, overrides: dict[str, str]) -> ModelListItem:

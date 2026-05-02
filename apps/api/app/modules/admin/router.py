@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
 @router.post("/refresh-catalog")
-def refresh_catalog(request: Request, user_id: int = current_admin) -> dict[str, int]:
+async def refresh_catalog(request: Request, user_id: int = current_admin) -> dict[str, int]:
     service = request.app.state.catalog_service
     overrides = request.app.state.thumbnail_overrides
     service.refresh()
@@ -29,13 +29,21 @@ def refresh_catalog(request: Request, user_id: int = current_admin) -> dict[str,
             payload={"model_id": model_id, "relative_path": relative_path},
         )
 
+    missing = service.model_ids_missing_renders()
+    for model_id in missing:
+        await request.app.state.arq.enqueue_job("render_model", model_id)
+
     record_event(
         get_engine(),
         kind="catalog.refresh",
         actor_user_id=user_id,
-        payload={"total": response.total, "thumbnails_purged": len(purged)},
+        payload={
+            "total": response.total,
+            "thumbnails_purged": len(purged),
+            "renders_enqueued": len(missing),
+        },
     )
-    return {"total": response.total}
+    return {"total": response.total, "renders_enqueued": len(missing)}
 
 
 @router.post("/render/{model_id}", status_code=202)
