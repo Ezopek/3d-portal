@@ -312,3 +312,105 @@ def apply_index_updates(
                     entry["path"] = dst_rel
 
     return new_index
+
+
+# === Planner ===
+
+
+@dataclass
+class Plan:
+    actions: list
+    index_after: list
+    validations: list  # human-readable strings
+
+
+def plan_migration(actions: list, index: list, catalog_root: Path) -> Plan:
+    """Apply pure validation passes; do not touch disk."""
+    validations: list[str] = []
+
+    # Validation 1: wrap target collisions.
+    for a in actions:
+        if isinstance(a, WrapInFolder):
+            if a.folder.exists() and a.folder.is_dir():
+                validations.append(
+                    f"COLLISION: cannot wrap {a.file} — folder {a.folder} "
+                    f"already exists as a directory"
+                )
+
+    index_after = (
+        apply_index_updates(index, actions, catalog_root) if index else []
+    )
+
+    # Validation 2: index orphans.
+    if index:
+        produced_paths: set[str] = set()
+        for a in actions:
+            if isinstance(a, WrapInFolder):
+                produced_paths.add(
+                    str(a.folder.relative_to(catalog_root)).replace("\\", "/")
+                )
+            elif isinstance(a, MoveDir):
+                produced_paths.add(
+                    str(a.dst.relative_to(catalog_root)).replace("\\", "/")
+                )
+        for entry in index_after:
+            entry_path = entry["path"]
+            target = catalog_root / entry_path
+            if not target.exists() and entry_path not in produced_paths:
+                validations.append(
+                    f"ORPHAN: index entry id={entry['id']} → {entry_path} "
+                    f"has no corresponding file/folder post-migration"
+                )
+
+    return Plan(
+        actions=actions, index_after=index_after, validations=validations
+    )
+
+
+def render_plan_markdown(plan: Plan) -> str:
+    sections: dict[str, list] = {
+        "Wraps": [a for a in plan.actions if isinstance(a, WrapInFolder)],
+        "Moves": [a for a in plan.actions if isinstance(a, MoveDir)],
+        "Conversions": [a for a in plan.actions if isinstance(a, Convert3mf)],
+        "Archives": [a for a in plan.actions if isinstance(a, Archive3mf)],
+        "Deletions": [a for a in plan.actions if isinstance(a, DeleteFile)],
+        "Removals": [a for a in plan.actions if isinstance(a, RemoveEmptyDir)],
+    }
+    lines: list[str] = ["# Migration plan", ""]
+    for title, items in sections.items():
+        lines.append(f"## {title} ({len(items)})")
+        if not items:
+            lines.append("_none_")
+        else:
+            for it in items:
+                lines.append(f"- `{_describe_action(it)}`")
+        lines.append("")
+
+    if plan.validations:
+        lines.append("## Validations / warnings")
+        for v in plan.validations:
+            lines.append(f"- {v}")
+        lines.append("")
+
+    lines.append("## Summary")
+    lines.append(
+        f"- {sum(len(v) for v in sections.values())} actions, "
+        f"{len(plan.validations)} validation issue(s)"
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _describe_action(a) -> str:
+    if isinstance(a, WrapInFolder):
+        return f"WrapInFolder: {a.file} → {a.folder}"
+    if isinstance(a, MoveDir):
+        return f"MoveDir: {a.src} → {a.dst}"
+    if isinstance(a, Convert3mf):
+        return f"Convert3mf: {a.src}"
+    if isinstance(a, Archive3mf):
+        return f"Archive3mf: {a.src} → {a.dst}"
+    if isinstance(a, DeleteFile):
+        return f"DeleteFile: {a.path}"
+    if isinstance(a, RemoveEmptyDir):
+        return f"RemoveEmptyDir: {a.path}"
+    return repr(a)
