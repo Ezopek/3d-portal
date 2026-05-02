@@ -155,3 +155,113 @@ def convert_3mf_to_stls(src: Path) -> list[Path]:
         raise
 
     return written
+
+
+# === Constants ===
+
+CATEGORIES = (
+    "decorum",
+    "drukarka_3d",
+    "gridfinity",
+    "multiboard",
+    "narzedzia",
+    "praktyczne",
+    "premium",
+    "inne",
+)
+ARCHIVE_REL = Path("_archive") / "3mf-originals"
+WLASNE_DIR = "wlasne modele"
+MOSFET_DIR = "mosfet_hw-700_case"
+NARZEDZIA_DIR = "narzedzia"
+WRAPPABLE_EXTS = {".stl", ".3mf", ".step", ".stp"}
+SKIP_SUBDIRS = {"prints", "_archive"}
+
+
+# === Scanner ===
+
+
+def scan_catalog(root: Path) -> list:
+    """Walk the catalog and produce an ordered Action list.
+
+    Order invariants:
+      - Wraps come before any Convert/Archive that operates on a wrapped path.
+      - Within wlasne modele/, MoveDir/DeleteFile come before RemoveEmptyDir.
+    """
+    actions: list = []
+
+    for category in CATEGORIES:
+        cat_path = root / category
+        if not cat_path.is_dir():
+            continue
+
+        for entry in sorted(cat_path.iterdir(), key=lambda p: p.name.lower()):
+            if entry.is_file():
+                ext = entry.suffix.lower()
+                if ext in WRAPPABLE_EXTS:
+                    new_folder = cat_path / entry.stem
+                    actions.append(WrapInFolder(file=entry, folder=new_folder))
+                    if ext == ".3mf":
+                        new_3mf = new_folder / entry.name
+                        actions.append(Convert3mf(src=new_3mf))
+                        actions.append(
+                            Archive3mf(
+                                src=new_3mf,
+                                dst=_archive_path_for(new_3mf, root),
+                            )
+                        )
+            elif entry.is_dir():
+                for f3mf in _find_3mfs_in_model_folder(entry):
+                    has_sibling_stl = any(
+                        sib.is_file() and sib.suffix.lower() == ".stl"
+                        for sib in f3mf.parent.iterdir()
+                    )
+                    if has_sibling_stl:
+                        actions.append(
+                            Archive3mf(
+                                src=f3mf,
+                                dst=_archive_path_for(f3mf, root),
+                            )
+                        )
+                    else:
+                        actions.append(Convert3mf(src=f3mf))
+                        actions.append(
+                            Archive3mf(
+                                src=f3mf,
+                                dst=_archive_path_for(f3mf, root),
+                            )
+                        )
+
+    wlasne = root / WLASNE_DIR
+    if wlasne.is_dir():
+        for entry in sorted(wlasne.iterdir(), key=lambda p: p.name.lower()):
+            if entry.is_dir() and entry.name == MOSFET_DIR:
+                actions.append(
+                    MoveDir(src=entry, dst=root / NARZEDZIA_DIR / MOSFET_DIR)
+                )
+            elif entry.is_file():
+                actions.append(DeleteFile(path=entry))
+            elif entry.is_dir():
+                # Unknown subdir under wlasne modele/; skip (surface as orphan in report).
+                continue
+        actions.append(RemoveEmptyDir(path=wlasne))
+
+    return actions
+
+
+def _find_3mfs_in_model_folder(folder: Path) -> list:
+    """Recurse into a model folder, collecting 3mfs, skipping prints/ and _archive/."""
+    out = []
+    for entry in folder.iterdir():
+        if entry.is_dir():
+            if entry.name in SKIP_SUBDIRS:
+                continue
+            out.extend(_find_3mfs_in_model_folder(entry))
+        elif entry.is_file() and entry.suffix.lower() == ".3mf":
+            out.append(entry)
+    return out
+
+
+def _archive_path_for(src_3mf: Path, catalog_root: Path) -> Path:
+    """Compute the archive destination preserving the catalog-relative path."""
+    rel = src_3mf.relative_to(catalog_root)
+    return catalog_root / ARCHIVE_REL / rel
