@@ -472,3 +472,118 @@ def execute(actions: list, catalog_root: Path, dry_run: bool = False) -> Executi
             failed.append((action, f"{type(e).__name__}: {e}"))
 
     return ExecutionResult(completed=completed, failed=failed, skipped=skipped)
+
+
+# === Report ===
+
+from datetime import datetime  # noqa: E402
+
+
+def render_report(
+    result: ExecutionResult,
+    plan: Plan,
+    started_at: datetime,
+    finished_at: datetime,
+) -> str:
+    duration = finished_at - started_at
+    is_dry = bool(result.skipped) and not result.completed and not result.failed
+
+    lines: list[str] = ["# 3MF → STL Migration Report", ""]
+    lines.append(f"- Started:  {started_at.isoformat()}")
+    lines.append(f"- Finished: {finished_at.isoformat()}")
+    lines.append(f"- Duration: {duration}")
+    if is_dry:
+        lines.append("- Mode: **DRY RUN** (no disk changes)")
+    lines.append("")
+
+    def _section(title: str, items: list, formatter):
+        lines.append(f"## {title} ({len(items)})")
+        if not items:
+            lines.append("_none_")
+        else:
+            for it in items:
+                lines.append(f"- {formatter(it)}")
+        lines.append("")
+
+    _section(
+        "Wraps",
+        [a for a in result.completed if isinstance(a, WrapInFolder)],
+        lambda a: f"`{a.file}` → `{a.folder}`",
+    )
+    _section(
+        "Moves",
+        [a for a in result.completed if isinstance(a, MoveDir)],
+        lambda a: f"`{a.src}` → `{a.dst}`",
+    )
+    _section(
+        "Conversions (success)",
+        [a for a in result.completed if isinstance(a, Convert3mf)],
+        lambda a: f"`{a.src}`",
+    )
+
+    failed_conversions = [
+        (a, e) for a, e in result.failed if isinstance(a, Convert3mf)
+    ]
+    failed_other = [
+        (a, e) for a, e in result.failed if not isinstance(a, Convert3mf)
+    ]
+    lines.append(
+        f"## Conversions (failed — manual review) ({len(failed_conversions)})"
+    )
+    if not failed_conversions:
+        lines.append("_none_")
+    else:
+        for a, e in failed_conversions:
+            lines.append(f"- `{a.src}` — {e}")
+    lines.append("")
+
+    _section(
+        "Archives",
+        [a for a in result.completed if isinstance(a, Archive3mf)],
+        lambda a: f"`{a.src}` → `{a.dst}`",
+    )
+    _section(
+        "Deletions",
+        [a for a in result.completed if isinstance(a, DeleteFile)],
+        lambda a: f"`{a.path}`",
+    )
+    _section(
+        "Removals",
+        [a for a in result.completed if isinstance(a, RemoveEmptyDir)],
+        lambda a: f"`{a.path}`",
+    )
+
+    if failed_other:
+        lines.append(f"## Other failures ({len(failed_other)})")
+        for a, e in failed_other:
+            lines.append(f"- {_describe_action(a)} — {e}")
+        lines.append("")
+
+    if plan.validations:
+        lines.append("## Plan validations")
+        for v in plan.validations:
+            lines.append(f"- {v}")
+        lines.append("")
+
+    if is_dry:
+        skipped_count = len(result.skipped)
+        lines.append(f"## Skipped (dry run) ({skipped_count})")
+        for a in result.skipped:
+            lines.append(f"- {_describe_action(a)}")
+        lines.append("")
+
+    exit_code = 2 if failed_other else (1 if failed_conversions else 0)
+    n_total = len(result.completed) + len(result.failed) + len(result.skipped)
+    lines.append("## Summary")
+    lines.append(
+        f"- {n_total} actions ({len(result.completed)} ok, "
+        f"{len(result.failed)} failed, {len(result.skipped)} skipped)"
+    )
+    lines.append(f"- {len(failed_conversions)} conversion(s) need manual review")
+    lines.append(f"- Exit code: {exit_code}")
+    if failed_conversions:
+        lines.append("")
+        lines.append("### NEXT STEPS")
+        lines.append("- Open each failed 3MF in OrcaSlicer and triage manually.")
+        lines.append("- Once resolved, re-run `--apply` (the script is idempotent).")
+    return "\n".join(lines) + "\n"
