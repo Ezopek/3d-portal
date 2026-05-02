@@ -414,3 +414,61 @@ def _describe_action(a) -> str:
     if isinstance(a, RemoveEmptyDir):
         return f"RemoveEmptyDir: {a.path}"
     return repr(a)
+
+
+# === Executor ===
+
+import shutil  # noqa: E402
+
+
+@dataclass
+class ExecutionResult:
+    completed: list
+    failed: list  # list of (action, error_message)
+    skipped: list
+
+
+def execute(actions: list, catalog_root: Path, dry_run: bool = False) -> ExecutionResult:
+    """Run actions in order; return per-action outcome.
+
+    Failures of independent actions do not abort the remaining ones.
+    """
+    completed: list = []
+    failed: list[tuple] = []
+    skipped: list = []
+
+    if dry_run:
+        return ExecutionResult(completed=[], failed=[], skipped=list(actions))
+
+    for action in actions:
+        try:
+            if isinstance(action, WrapInFolder):
+                if action.folder.exists():
+                    raise OSError(f"target {action.folder} already exists")
+                action.folder.mkdir(parents=True)
+                shutil.move(
+                    str(action.file), str(action.folder / action.file.name)
+                )
+            elif isinstance(action, MoveDir):
+                if action.dst.exists():
+                    raise OSError(f"target {action.dst} already exists")
+                action.dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(action.src), str(action.dst))
+            elif isinstance(action, Convert3mf):
+                convert_3mf_to_stls(action.src)
+            elif isinstance(action, Archive3mf):
+                action.dst.parent.mkdir(parents=True, exist_ok=True)
+                if action.dst.exists():
+                    raise OSError(f"archive target exists: {action.dst}")
+                shutil.move(str(action.src), str(action.dst))
+            elif isinstance(action, DeleteFile):
+                action.path.unlink()
+            elif isinstance(action, RemoveEmptyDir):
+                action.path.rmdir()
+            else:
+                raise MigrationError(f"unknown action: {action!r}")
+            completed.append(action)
+        except Exception as e:
+            failed.append((action, f"{type(e).__name__}: {e}"))
+
+    return ExecutionResult(completed=completed, failed=failed, skipped=skipped)
