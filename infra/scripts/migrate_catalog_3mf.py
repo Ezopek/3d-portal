@@ -587,3 +587,155 @@ def render_report(
         lines.append("- Open each failed 3MF in OrcaSlicer and triage manually.")
         lines.append("- Once resolved, re-run `--apply` (the script is idempotent).")
     return "\n".join(lines) + "\n"
+
+
+# === CLI ===
+
+import argparse  # noqa: E402
+import json  # noqa: E402
+import sys  # noqa: E402
+from datetime import timezone  # noqa: E402
+
+
+DEFAULT_CATALOG_ROOT = Path("/mnt/c/Users/ezope/Nextcloud/3d_modelowanie")
+
+
+def _check_preconditions(catalog_root: Path) -> None:
+    if not catalog_root.is_dir():
+        raise MigrationError(f"catalog root does not exist: {catalog_root}")
+    index_path = catalog_root / "_index" / "index.json"
+    if not index_path.exists():
+        raise MigrationError(f"no index.json at {index_path}")
+    try:
+        with index_path.open("r", encoding="utf-8") as f:
+            json.load(f)
+    except json.JSONDecodeError as e:
+        raise MigrationError(f"index.json is malformed: {e}")
+    suspicious = list(catalog_root.rglob(".~lock*")) + list(
+        catalog_root.rglob("*.part")
+    )
+    if suspicious:
+        print(
+            f"WARNING: {len(suspicious)} sync-in-progress file(s) detected "
+            "(.~lock* / *.part). Consider waiting for Nextcloud to finish.",
+            file=sys.stderr,
+        )
+
+
+def _backup_index(catalog_root: Path) -> Path:
+    src = catalog_root / "_index" / "index.json"
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    dst = src.with_suffix(f".json.bak-{ts}")
+    shutil.copy2(src, dst)
+    return dst
+
+
+def _load_index(catalog_root: Path) -> list[dict]:
+    with (catalog_root / "_index" / "index.json").open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _save_index(catalog_root: Path, index: list[dict]) -> None:
+    path = catalog_root / "_index" / "index.json"
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(index, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Migrate the 3D model catalog: wrap loose files, "
+        "convert 3MFs, archive originals."
+    )
+    parser.add_argument(
+        "--catalog-root",
+        type=Path,
+        default=DEFAULT_CATALOG_ROOT,
+        help=f"Catalog root directory (default: {DEFAULT_CATALOG_ROOT}).",
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print plan to stdout, make no changes (default).",
+    )
+    mode.add_argument(
+        "--apply",
+        action="store_true",
+        help="Execute the migration and write a report.",
+    )
+    mode.add_argument(
+        "--convert",
+        type=Path,
+        metavar="PATH",
+        help="Convert a single 3MF file in place; archive original.",
+    )
+    parser.add_argument(
+        "--report-dir",
+        type=Path,
+        default=Path(__file__).resolve().parents[2]
+        / "docs"
+        / "migration-reports",
+        help="Where to write the migration report (apply mode).",
+    )
+    args = parser.parse_args(argv)
+
+    if args.convert:
+        if not args.convert.exists():
+            print(f"ERROR: {args.convert} does not exist", file=sys.stderr)
+            return 2
+        try:
+            written = convert_3mf_to_stls(args.convert)
+        except ConversionError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            return 2
+        archive_dst = _archive_path_for(args.convert, args.catalog_root)
+        archive_dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(args.convert), str(archive_dst))
+        print(
+            f"Converted {args.convert.name} → {len(written)} STL(s); "
+            f"archived to {archive_dst}"
+        )
+        return 0
+
+    try:
+        _check_preconditions(args.catalog_root)
+    except MigrationError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+
+    started = datetime.now(timezone.utc)
+    actions = scan_catalog(args.catalog_root)
+    index = _load_index(args.catalog_root)
+    plan = plan_migration(actions, index, args.catalog_root)
+
+    if args.apply:
+        backup = _backup_index(args.catalog_root)
+        print(f"Backed up index.json → {backup.name}", file=sys.stderr)
+        result = execute(plan.actions, args.catalog_root, dry_run=False)
+        index_after = apply_index_updates(
+            index, result.completed, args.catalog_root
+        )
+        _save_index(args.catalog_root, index_after)
+        finished = datetime.now(timezone.utc)
+        report = render_report(result, plan, started, finished)
+        args.report_dir.mkdir(parents=True, exist_ok=True)
+        report_path = (
+            args.report_dir
+            / f"{started.strftime('%Y-%m-%d')}-3mf-to-stl-migration.md"
+        )
+        report_path.write_text(report, encoding="utf-8")
+        print(f"Report → {report_path}", file=sys.stderr)
+        if any(not isinstance(a, Convert3mf) for a, _ in result.failed):
+            return 2
+        if result.failed:
+            return 1
+        return 0
+
+    # Default: dry-run.
+    print(render_plan_markdown(plan))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
