@@ -16,6 +16,7 @@ rsync -avz --delete -e "ssh -p $SSH_PORT" \
   --exclude='.git/' --exclude='.claude/' --exclude='.codex/' \
   --exclude='.playwright-mcp/' --exclude='.superpowers/' \
   --exclude='docs/' --exclude='AGENTS.md' --exclude='CLAUDE.md' \
+  --exclude='_archive/' \
   --include='*/' \
   --include='_index/index.json' \
   --include='**/*.stl' --include='**/*.3mf' --include='**/*.step' \
