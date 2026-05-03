@@ -68,14 +68,11 @@ def test_refresh_picks_up_index_changes(setup):
     new_data = json.loads(index_path.read_text())[:1]
     index_path.write_text(json.dumps(new_data))
 
-    # Without refresh, cache still has 3.
-    assert client.get("/api/catalog/models").json()["total"] == 3
-
     r = client.post("/api/admin/refresh-catalog", headers=headers)
     assert r.status_code == 200
     assert r.json()["total"] == 1
 
-    # Now the list reflects the change.
+    # The list reflects the change.
     assert client.get("/api/catalog/models").json()["total"] == 1
 
 

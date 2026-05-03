@@ -34,6 +34,7 @@ coverage/
 .pytest_cache/
 test-results/
 playwright-report/
+.playwright-mcp/
 
 # OS
 .DS_Store

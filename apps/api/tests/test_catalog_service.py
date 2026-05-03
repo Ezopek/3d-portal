@@ -172,6 +172,39 @@ def test_refresh_invalidates_cache(repo, tmp_path):
     assert service2.list_models().total == 1
 
 
+def test_cache_reloads_when_index_mtime_changes(repo, tmp_path):
+    # Multi-worker safety net: a sibling uvicorn worker that did not
+    # receive the refresh-catalog POST should still pick up the new
+    # state once it sees a fresher index file. Otherwise readers race
+    # against whichever worker handled the refresh.
+    import os
+
+    index = tmp_path / "index.json"
+    index.write_text("[]")
+    svc = CatalogService(
+        catalog_dir=FIXTURES / "catalog",
+        renders_dir=FIXTURES / "renders",
+        index_path=index,
+        overrides=repo,
+    )
+    assert svc.list_models().total == 0
+
+    index.write_text(
+        '[{"id":"001","name_en":"X","name_pl":"X","path":"x","category":"decorations",'
+        '"subcategory":"","tags":[],"source":"unknown","printables_id":null,'
+        '"thangs_id":null,"makerworld_id":null,"source_url":null,"rating":null,'
+        '"status":"not_printed","notes":"","thumbnail":null,"date_added":"2026-04-29",'
+        '"prints":[]}]'
+    )
+    # Force a strictly-greater mtime so this works even on filesystems
+    # where two writes inside the same test land on the same timestamp.
+    st = index.stat()
+    os.utime(index, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))
+
+    # Note: no .refresh() call — cache must invalidate on its own.
+    assert svc.list_models().total == 1
+
+
 def test_missing_index_returns_empty_catalog_without_raising(repo, tmp_path):
     # Index path that does not exist must not crash the service —
     # transient gap during sync should yield empty catalog, not 500.

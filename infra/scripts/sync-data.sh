@@ -37,10 +37,11 @@ RSYNC_ARGS=(
 attempt=1
 max_attempts=3
 while true; do
-  if rsync "${RSYNC_ARGS[@]}" "$SOURCE" "$DEST"; then
+  rc=0
+  rsync "${RSYNC_ARGS[@]}" "$SOURCE" "$DEST" || rc=$?
+  if [[ $rc -eq 0 ]]; then
     break
   fi
-  rc=$?
   if [[ $rc -ne 23 || $attempt -ge $max_attempts ]]; then
     exit "$rc"
   fi

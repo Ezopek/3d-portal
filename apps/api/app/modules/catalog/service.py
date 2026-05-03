@@ -25,22 +25,26 @@ class CatalogService:
         self._overrides = overrides
         self._lock = threading.RLock()
         self._cache: dict[str, Model] | None = None
+        self._cache_mtime_ns: int | None = None
 
     def refresh(self) -> None:
         with self._lock:
             self._cache = None
+            self._cache_mtime_ns = None
 
     def _load(self) -> dict[str, Model]:
         with self._lock:
-            if self._cache is not None:
-                return self._cache
             try:
-                raw = json.loads(self._index_path.read_text(encoding="utf-8"))
+                current_mtime_ns = self._index_path.stat().st_mtime_ns
             except FileNotFoundError:
                 _log.warning("catalog index missing at %s — serving empty", self._index_path)
                 return {}
+            if self._cache is not None and self._cache_mtime_ns == current_mtime_ns:
+                return self._cache
+            raw = json.loads(self._index_path.read_text(encoding="utf-8"))
             models = [Model.model_validate(entry) for entry in raw]
             self._cache = {m.id: m for m in models}
+            self._cache_mtime_ns = current_mtime_ns
             return self._cache
 
     # --- public API --------------------------------------------------------
