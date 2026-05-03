@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Request
 
 from app.modules.catalog.models import Model, ModelListResponse
@@ -29,8 +31,12 @@ def get_model(model_id: str, request: Request) -> Model:
 
 
 @router.get("/models/{model_id}/files")
-def list_files(model_id: str, request: Request) -> dict[str, list[str]]:
+def list_files(
+    model_id: str,
+    request: Request,
+    kind: Literal["all", "printable"] = "all",
+) -> dict[str, list[str]]:
     service = _service(request)
     if service.get_model(model_id) is None:
         raise HTTPException(404, f"Model {model_id} not found")
-    return {"files": service.list_files(model_id)}
+    return {"files": service.list_files(model_id, kind=kind)}

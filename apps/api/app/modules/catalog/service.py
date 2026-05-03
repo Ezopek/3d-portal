@@ -59,16 +59,19 @@ class CatalogService:
     def get_model(self, model_id: str) -> Model | None:
         return self._load().get(model_id)
 
-    def list_files(self, model_id: str) -> list[str]:
+    def list_files(self, model_id: str, *, kind: str = "all") -> list[str]:
         model = self.get_model(model_id)
         if model is None:
             return []
         root = self._catalog_dir / model.path
         if not root.is_dir():
             return []
-        return sorted(
+        paths = (
             str(p.relative_to(root)).replace("\\", "/") for p in root.rglob("*") if p.is_file()
         )
+        if kind == "printable":
+            paths = (p for p in paths if p.lower().endswith(".stl"))
+        return sorted(paths)
 
     def thumbnail_target_exists(self, model_id: str, relative_path: str) -> bool:
         model = self.get_model(model_id)

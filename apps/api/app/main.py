@@ -11,8 +11,8 @@ from app.core.logging import configure_logging
 from app.core.observability import init_observability, instrument_app
 from app.core.redis import RedisFactory
 from app.core.sentry import init_sentry
-from app.modules.catalog.service import CatalogService
 from app.modules.catalog.render_selection import RenderSelectionRepo
+from app.modules.catalog.service import CatalogService
 from app.modules.catalog.thumbnail_overrides import ThumbnailOverrideRepo
 from app.router import api_router
 
