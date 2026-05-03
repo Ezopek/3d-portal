@@ -86,6 +86,33 @@ describe("CardCarousel", () => {
     });
   });
 
+  it("skips past the initial thumbnail when it matches a non-zero gallery candidate", async () => {
+    // Backend's thumbnail can resolve to e.g. prints/02 even when prints/01
+    // also exists. Without the index normalisation, the first arrow click
+    // would land on visibleList[1] = the same URL that's already on screen,
+    // <img src> wouldn't change, and onLoad would never fire — leaving the
+    // skeleton spinning forever.
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          files: ["images/a.png", "images/b.png", "images/c.png"],
+        }),
+        { status: 200 },
+      ),
+    );
+    render(
+      <CardCarousel {...baseProps} initialThumbnailUrl="/api/files/001/images/b.png" />,
+      { wrapper },
+    );
+    const next = screen.getByRole("button", { name: /next image/i });
+    fireEvent.click(next);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      const img = screen.getByRole("img", { name: "Dragon" }) as HTMLImageElement;
+      expect(img.src).toContain("/api/files/001/images/c.png");
+    });
+  });
+
   it("falls back to initial thumbnail when all gallery images error", async () => {
     fetchMock.mockResolvedValue(
       new Response(

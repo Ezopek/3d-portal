@@ -52,6 +52,7 @@ export function CardCarousel(props: Props) {
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
   const [failedPaths, setFailedPaths] = useState<ReadonlySet<string>>(new Set());
   const [errorCount, setErrorCount] = useState(0);
+  const [hasNormalizedFromInitial, setHasNormalizedFromInitial] = useState(false);
 
   const list = gallery.images;
   // If the lazy list arrived, derive the visible list by filtering out paths
@@ -109,6 +110,23 @@ export function CardCarousel(props: Props) {
       setIndex(0);
     }
   }, [visibleList, index]);
+
+  // The first time the lazy list resolves, treat `initialThumbnailUrl` as the
+  // user's logical "position 0" rather than visibleList[0]. Without this,
+  // backends that resolve thumbnail to a non-zero candidate (e.g. prints/02
+  // when prints/01 also exists) would have advance(1) land on the same URL
+  // that was already on screen — <img src> wouldn't change, onLoad wouldn't
+  // fire, and the loading skeleton would stay forever.
+  useEffect(() => {
+    if (visibleList === undefined || hasNormalizedFromInitial) return;
+    if (initialThumbnailUrl !== null) {
+      const initIdx = visibleList.findIndex((c) => c.url === initialThumbnailUrl);
+      if (initIdx > 0) {
+        setIndex((i) => (i + initIdx) % visibleList.length);
+      }
+    }
+    setHasNormalizedFromInitial(true);
+  }, [visibleList, initialThumbnailUrl, hasNormalizedFromInitial]);
 
   const handleNext = (e: MouseEvent) => {
     stop(e);
