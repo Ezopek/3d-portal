@@ -1,7 +1,7 @@
 from pathlib import Path
 
-import trimesh.path.packing as _trimesh_packing
 import matplotlib
+import trimesh.path.packing as _trimesh_packing
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
