@@ -160,3 +160,17 @@ def clear_thumbnail(
             actor_user_id=user_id,
             payload={"model_id": model_id},
         )
+
+
+@router.get("/models/{model_id}/render-selection")
+def get_render_selection(
+    model_id: str,
+    request: Request,
+    _user_id: int = current_admin,
+) -> dict[str, list[str]]:
+    service = request.app.state.catalog_service
+    if service.get_model(model_id) is None:
+        raise HTTPException(404, f"Model {model_id} not found")
+    selection = request.app.state.render_selection.get(model_id)
+    available = service.list_files(model_id, kind="printable")
+    return {"paths": selection, "available_stls": available}
