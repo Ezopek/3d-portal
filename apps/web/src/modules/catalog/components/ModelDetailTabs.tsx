@@ -14,7 +14,7 @@ export function ModelDetailTabs({ model }: { model: Model }) {
     <Tabs defaultValue="info" className="w-full">
       <TabsList>
         <TabsTrigger value="info">{t("catalog.tabs.info")}</TabsTrigger>
-        <TabsTrigger value="files">{t("catalog.tabs.files")}</TabsTrigger>
+        <TabsTrigger value="files">{t("catalog.tabs.modelFiles")}</TabsTrigger>
         <TabsTrigger value="prints">{t("catalog.tabs.prints")} ({model.prints.length})</TabsTrigger>
       </TabsList>
       <TabsContent value="info"><InfoTab model={model} /></TabsContent>
