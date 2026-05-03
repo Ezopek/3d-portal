@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import trimesh.path.packing as _trimesh_packing
 import matplotlib
 
 matplotlib.use("Agg")
@@ -18,12 +19,45 @@ _VIEW_ANGLES = {
 }
 
 
-def render_views(*, stl_path: Path, output_dir: Path, size: int = 768) -> dict[str, Path]:
+def render_views(*, stl_paths: list[Path], output_dir: Path, size: int = 768) -> dict[str, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    mesh = trimesh.load(stl_path, force="mesh")
+    if len(stl_paths) == 1:
+        mesh = trimesh.load(stl_paths[0], force="mesh")
+    else:
+        mesh = _pack_meshes_xy(stl_paths, spacing_mm=5.0)
     if not isinstance(mesh, trimesh.Trimesh):
-        raise ValueError(f"Not a triangle mesh: {stl_path}")
+        raise ValueError(f"Not a triangle mesh: {stl_paths}")
+    return _render_mesh_views(mesh, output_dir, size)
 
+
+def _pack_meshes_xy(stl_paths: list[Path], spacing_mm: float) -> trimesh.Trimesh:
+    placed: list[trimesh.Trimesh] = []
+    extents_xy: list[tuple[float, float]] = []
+    for path in stl_paths:
+        m = trimesh.load(path, force="mesh")
+        if not isinstance(m, trimesh.Trimesh):
+            continue  # silently skip non-mesh STLs (e.g. multi-geometry Scenes)
+        m = m.copy()
+        m.apply_translation(-m.bounds[0])  # bbox.min -> origin (bottom on z=0)
+        placed.append(m)
+        extents_xy.append((float(m.extents[0] + spacing_mm), float(m.extents[1] + spacing_mm)))
+
+    if not placed:
+        raise ValueError("no usable triangle meshes for packing")
+
+    # 2D bin-pack: returns (boxes, inserted) where boxes is shape (N, 2, 2)
+    # — each entry is [[min_x, min_y], [max_x, max_y]].  The min corner is
+    # where we translate each mesh to.
+    boxes, _inserted = _trimesh_packing.rectangles(extents_xy)
+
+    for mesh, box in zip(placed, boxes, strict=True):
+        tx, ty = float(box[0][0]), float(box[0][1])
+        mesh.apply_translation([tx, ty, 0.0])
+
+    return trimesh.util.concatenate(placed)
+
+
+def _render_mesh_views(mesh: trimesh.Trimesh, output_dir: Path, size: int) -> dict[str, Path]:
     # Normalize: center on origin, scale so longest extent fits.
     mesh = mesh.copy()
     mesh.apply_translation(-mesh.centroid)
