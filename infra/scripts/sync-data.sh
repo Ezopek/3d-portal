@@ -16,18 +16,37 @@ SSH_PORT="${PORTAL_SSH_PORT:-30022}"
 PORTAL_URL="${PORTAL_URL:-http://192.168.2.190:8090}"
 
 echo "→ rsync $SOURCE → $DEST (ssh port $SSH_PORT)"
-rsync -avz --delete -e "ssh -p $SSH_PORT" \
-  --exclude='.git/' --exclude='.claude/' --exclude='.codex/' \
-  --exclude='.playwright-mcp/' --exclude='.superpowers/' \
-  --exclude='docs/' --exclude='AGENTS.md' --exclude='CLAUDE.md' \
-  --exclude='_archive/' \
-  --include='*/' \
-  --include='_index/index.json' \
-  --include='**/*.[sS][tT][lL]' --include='**/*.[3][mM][fF]' \
-  --include='**/*.[sS][tT][eE][pP]' \
-  --include='**/images/**' --include='**/prints/**' \
-  --exclude='*' \
-  "$SOURCE" "$DEST"
+RSYNC_ARGS=(
+  -avz --delete -e "ssh -p $SSH_PORT"
+  --exclude='.git/' --exclude='.claude/' --exclude='.codex/'
+  --exclude='.playwright-mcp/' --exclude='.superpowers/'
+  --exclude='docs/' --exclude='AGENTS.md' --exclude='CLAUDE.md'
+  --exclude='_archive/'
+  --include='*/'
+  --include='_index/index.json'
+  --include='**/*.[sS][tT][lL]' --include='**/*.[3][mM][fF]'
+  --include='**/*.[sS][tT][eE][pP]'
+  --include='**/images/**' --include='**/prints/**'
+  --exclude='*'
+)
+# Auto-retry on exit 23 (partial transfer). On WSL/Nextcloud this is
+# almost always a Cloud Files API placeholder: a freshly-modified
+# directory hasn't been hydrated yet, so readdir() returns EINVAL. The
+# failed listing itself triggers Windows-side hydration, so the next
+# attempt usually succeeds.
+attempt=1
+max_attempts=3
+while true; do
+  if rsync "${RSYNC_ARGS[@]}" "$SOURCE" "$DEST"; then
+    break
+  fi
+  rc=$?
+  if [[ $rc -ne 23 || $attempt -ge $max_attempts ]]; then
+    exit "$rc"
+  fi
+  attempt=$((attempt + 1))
+  echo "→ rsync exit 23 (Nextcloud placeholder?), retry $attempt/$max_attempts"
+done
 
 read_env_var() {
   # Cherry-pick a single variable from infra/.env without sourcing the file.
