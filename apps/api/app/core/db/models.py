@@ -2,7 +2,7 @@ import datetime
 import uuid
 from enum import StrEnum
 
-from sqlalchemy import Column, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import CheckConstraint, Column, ForeignKey, Index, UniqueConstraint
 from sqlalchemy import Uuid as _SAUuid
 from sqlmodel import Field, SQLModel
 
@@ -167,5 +167,33 @@ class Tag(SQLModel, table=True):
     slug: str = Field(unique=True, index=True)
     name_en: str
     name_pl: str | None = None
+    created_at: datetime.datetime = Field(default_factory=_now_utc)
+    updated_at: datetime.datetime = Field(default_factory=_now_utc)
+
+
+class Model(SQLModel, table=True):
+    __tablename__ = "model"
+    __table_args__ = (
+        CheckConstraint(
+            "rating IS NULL OR (rating BETWEEN 1.0 AND 5.0)",
+            name="ck_model_rating_range",
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    legacy_id: str | None = Field(default=None, unique=True, index=True)
+    slug: str = Field(unique=True, index=True)
+    name_en: str
+    name_pl: str | None = None
+    category_id: uuid.UUID = Field(
+        sa_column=uuid_fk("category.id", ondelete="RESTRICT", nullable=False),
+    )
+    source: ModelSource = Field(default=ModelSource.unknown)
+    status: ModelStatus = Field(default=ModelStatus.not_printed, index=True)
+    rating: float | None = None
+    date_added: datetime.date = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.UTC).date()
+    )
+    deleted_at: datetime.datetime | None = Field(default=None, index=True)
     created_at: datetime.datetime = Field(default_factory=_now_utc)
     updated_at: datetime.datetime = Field(default_factory=_now_utc)

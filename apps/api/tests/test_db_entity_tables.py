@@ -8,6 +8,7 @@ from sqlmodel import Session, select
 from app.core.db.models import (
     Category,
     ExternalSource,
+    Model,
     ModelFileKind,
     ModelSource,
     ModelStatus,
@@ -149,5 +150,110 @@ def test_tag_slug_unique_globally(engine):
         a = Tag(slug="dragon", name_en="A")
         b = Tag(slug="dragon", name_en="B")
         session.add_all([a, b])
+        with pytest.raises(sqlalchemy.exc.IntegrityError):
+            session.commit()
+
+
+def test_model_basic_persist(engine):
+    with Session(engine) as session:
+        cat = Category(slug="decorum", name_en="Decorum")
+        session.add(cat)
+        session.commit()
+        session.refresh(cat)
+
+        m = Model(
+            slug="dragon-001",
+            name_en="Dragon",
+            category_id=cat.id,
+        )
+        session.add(m)
+        session.commit()
+        session.refresh(m)
+
+        assert isinstance(m.id, uuid.UUID)
+        assert m.source == ModelSource.unknown
+        assert m.status == ModelStatus.not_printed
+        assert m.deleted_at is None
+        assert m.legacy_id is None
+        assert m.rating is None
+
+
+def test_model_legacy_id_unique(engine):
+    with Session(engine) as session:
+        cat = Category(slug="decorum", name_en="Decorum")
+        session.add(cat)
+        session.commit()
+        session.refresh(cat)
+
+        a = Model(slug="a-001", name_en="A", category_id=cat.id, legacy_id="001")
+        b = Model(slug="b-001", name_en="B", category_id=cat.id, legacy_id="001")
+        session.add_all([a, b])
+        with pytest.raises(sqlalchemy.exc.IntegrityError):
+            session.commit()
+
+
+def test_model_slug_unique(engine):
+    with Session(engine) as session:
+        cat = Category(slug="decorum", name_en="Decorum")
+        session.add(cat)
+        session.commit()
+        session.refresh(cat)
+
+        a = Model(slug="dup", name_en="A", category_id=cat.id)
+        b = Model(slug="dup", name_en="B", category_id=cat.id)
+        session.add_all([a, b])
+        with pytest.raises(sqlalchemy.exc.IntegrityError):
+            session.commit()
+
+
+def test_model_rating_check_constraint_rejects_out_of_range(engine):
+    with Session(engine) as session:
+        cat = Category(slug="decorum", name_en="Decorum")
+        session.add(cat)
+        session.commit()
+        session.refresh(cat)
+
+        m = Model(
+            slug="bad-rating",
+            name_en="Bad",
+            category_id=cat.id,
+            rating=6.0,
+        )
+        session.add(m)
+        with pytest.raises(sqlalchemy.exc.IntegrityError):
+            session.commit()
+
+
+def test_model_rating_accepts_float_in_range(engine):
+    with Session(engine) as session:
+        cat = Category(slug="decorum", name_en="Decorum")
+        session.add(cat)
+        session.commit()
+        session.refresh(cat)
+
+        m = Model(
+            slug="good-rating",
+            name_en="Good",
+            category_id=cat.id,
+            rating=4.3,
+        )
+        session.add(m)
+        session.commit()
+        session.refresh(m)
+        assert m.rating == pytest.approx(4.3)
+
+
+def test_model_category_restrict_on_delete(engine):
+    with Session(engine) as session:
+        cat = Category(slug="decorum", name_en="Decorum")
+        session.add(cat)
+        session.commit()
+        session.refresh(cat)
+
+        m = Model(slug="x", name_en="X", category_id=cat.id)
+        session.add(m)
+        session.commit()
+
+        session.delete(cat)
         with pytest.raises(sqlalchemy.exc.IntegrityError):
             session.commit()
