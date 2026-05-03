@@ -87,3 +87,132 @@ def test_get_returns_empty_paths_and_available_stls(client):
     assert isinstance(body["available_stls"], list)
     assert all(p.lower().endswith(".stl") for p in body["available_stls"])
     assert "Dragon.stl" in body["available_stls"]
+
+
+def test_put_requires_admin(client):
+    c, *_ = client
+    r = c.put("/api/admin/models/001/render-selection", json={"paths": []})
+    assert r.status_code == 401
+
+
+def test_put_403_for_non_admin(client):
+    c, *_ = client
+    user_token = encode_token(subject="42", role="user", secret="test", ttl_minutes=30)
+    r = c.put(
+        "/api/admin/models/001/render-selection",
+        json={"paths": []},
+        headers=_hdrs(user_token),
+    )
+    assert r.status_code == 403
+
+
+def test_put_404_for_unknown_model(client):
+    c, token, _ = client
+    r = c.put(
+        "/api/admin/models/999/render-selection",
+        json={"paths": []},
+        headers=_hdrs(token),
+    )
+    assert r.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "bad_path",
+    [
+        "../escape.stl",
+        "/etc/passwd.stl",
+        "files/x.exe",
+        "files//double.stl",
+        ".hidden.stl",
+        "files/.hidden.stl",
+    ],
+)
+def test_put_400_for_invalid_path(client, bad_path):
+    c, token, _ = client
+    r = c.put(
+        "/api/admin/models/001/render-selection",
+        json={"paths": [bad_path]},
+        headers=_hdrs(token),
+    )
+    assert r.status_code == 400
+
+
+def test_put_400_when_path_does_not_exist(client):
+    c, token, _ = client
+    r = c.put(
+        "/api/admin/models/001/render-selection",
+        json={"paths": ["files/nonexistent.stl"]},
+        headers=_hdrs(token),
+    )
+    assert r.status_code == 400
+
+
+def test_put_400_when_more_than_16_paths(client):
+    c, token, _ = client
+    paths = [f"files/p{i}.stl" for i in range(17)]
+    r = c.put(
+        "/api/admin/models/001/render-selection",
+        json={"paths": paths},
+        headers=_hdrs(token),
+    )
+    assert r.status_code == 400
+
+
+def test_put_with_valid_paths_persists_and_enqueues(client):
+    """Use Dragon.stl which exists in tests/fixtures/catalog/decorum/dragon/."""
+    c, token, arq = client
+    valid_paths = ["Dragon.stl"]
+    r = c.put(
+        "/api/admin/models/001/render-selection",
+        json={"paths": valid_paths},
+        headers=_hdrs(token),
+    )
+    assert r.status_code == 204
+    arq.enqueue_job.assert_awaited_once_with("render_model", "001", selected_paths=valid_paths)
+
+
+def test_put_empty_paths_clears_and_enqueues_with_none(client):
+    c, token, arq = client
+    # Seed a non-empty state first so the empty PUT is a state change.
+    c.put(
+        "/api/admin/models/001/render-selection",
+        json={"paths": ["Dragon.stl"]},
+        headers=_hdrs(token),
+    )
+    arq.enqueue_job.reset_mock()
+    r = c.put(
+        "/api/admin/models/001/render-selection",
+        json={"paths": []},
+        headers=_hdrs(token),
+    )
+    assert r.status_code == 204
+    arq.enqueue_job.assert_awaited_once_with("render_model", "001", selected_paths=None)
+
+
+def test_put_identical_set_does_not_enqueue(client):
+    c, token, arq = client
+    valid_paths = ["Dragon.stl"]
+    c.put(
+        "/api/admin/models/001/render-selection",
+        json={"paths": valid_paths},
+        headers=_hdrs(token),
+    )
+    arq.enqueue_job.reset_mock()
+    r = c.put(
+        "/api/admin/models/001/render-selection",
+        json={"paths": valid_paths},
+        headers=_hdrs(token),
+    )
+    assert r.status_code == 204
+    arq.enqueue_job.assert_not_awaited()
+
+
+def test_put_empty_when_already_empty_is_noop(client):
+    c, token, arq = client
+    r = c.put(
+        "/api/admin/models/001/render-selection",
+        json={"paths": []},
+        headers=_hdrs(token),
+    )
+    assert r.status_code == 204
+    arq.enqueue_job.assert_not_awaited()
