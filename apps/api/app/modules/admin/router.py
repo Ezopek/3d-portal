@@ -29,6 +29,18 @@ async def refresh_catalog(request: Request, user_id: int = current_admin) -> dic
             payload={"model_id": model_id, "relative_path": relative_path},
         )
 
+    # Render-selection orphan purge (analogous to thumbnail orphans).
+    selection_purged = request.app.state.render_selection.purge_orphans(
+        exists=lambda mid, rel: service.thumbnail_target_exists(mid, rel)
+    )
+    for model_id, relative_path in selection_purged:
+        record_event(
+            get_engine(),
+            kind="render_selection.orphan_purged",
+            actor_user_id=user_id,
+            payload={"model_id": model_id, "relative_path": relative_path},
+        )
+
     missing = service.model_ids_missing_renders()
     for model_id in missing:
         await request.app.state.arq.enqueue_job("render_model", model_id)
