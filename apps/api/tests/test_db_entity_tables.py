@@ -12,6 +12,7 @@ from app.core.db.models import (
     ModelSource,
     ModelStatus,
     NoteKind,
+    Tag,
 )
 from app.core.db.session import create_engine_for_url, init_schema
 
@@ -129,3 +130,24 @@ def test_category_same_slug_under_different_parents_allowed(engine):
         c2 = Category(parent_id=p2.id, slug="accessories", name_en="B.acc")
         session.add_all([c1, c2])
         session.commit()  # must NOT raise
+
+
+def test_tag_basic_persist(engine):
+    with Session(engine) as session:
+        t = Tag(slug="dragon", name_en="Dragon", name_pl="Smok")
+        session.add(t)
+        session.commit()
+        session.refresh(t)
+
+        assert isinstance(t.id, uuid.UUID)
+        assert t.slug == "dragon"
+        assert t.name_pl == "Smok"
+
+
+def test_tag_slug_unique_globally(engine):
+    with Session(engine) as session:
+        a = Tag(slug="dragon", name_en="A")
+        b = Tag(slug="dragon", name_en="B")
+        session.add_all([a, b])
+        with pytest.raises(sqlalchemy.exc.IntegrityError):
+            session.commit()

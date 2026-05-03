@@ -158,3 +158,14 @@ class Category(SQLModel, table=True):
     name_pl: str | None = None
     created_at: datetime.datetime = Field(default_factory=_now_utc)
     updated_at: datetime.datetime = Field(default_factory=_now_utc)
+
+
+class Tag(SQLModel, table=True):
+    __tablename__ = "tag"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    slug: str = Field(unique=True, index=True)
+    name_en: str
+    name_pl: str | None = None
+    created_at: datetime.datetime = Field(default_factory=_now_utc)
+    updated_at: datetime.datetime = Field(default_factory=_now_utc)
