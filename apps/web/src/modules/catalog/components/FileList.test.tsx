@@ -90,7 +90,7 @@ describe("FileList — admin view", () => {
     render(<FileList modelId="001" />, { wrapper: Wrapper });
     const apply = await screen.findByRole("button", { name: /apply/i });
     expect((apply as HTMLButtonElement).disabled).toBe(true);
-    await userEvent.click(screen.getAllByRole("checkbox")[0]);
+    await userEvent.click(screen.getAllByRole("checkbox")[0]!);
     expect((apply as HTMLButtonElement).disabled).toBe(false);
   });
 
