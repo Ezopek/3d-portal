@@ -76,17 +76,27 @@ export async function stubCatalog(page: Page) {
     }),
   );
 
-  await page.route("**/api/catalog/models/001/files", (route: Route) =>
+  // kind=printable → STL only; kind=all → all files (default for other consumers)
+  await page.route("**/api/catalog/models/001/files*", (route: Route) => {
+    const url = new URL(route.request().url());
+    const kind = url.searchParams.get("kind");
+    const files =
+      kind === "printable"
+        ? ["Dragon.stl"]
+        : ["Dragon.stl", "images/Dragon.png", "images/Dragon-detail.png"];
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ files }),
+    });
+  });
+
+  // Admin render-selection endpoint (required so networkidle resolves when logged in as admin).
+  await page.route("**/api/admin/models/001/render-selection", (route: Route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({
-        files: [
-          "Dragon.stl",
-          "images/Dragon.png",
-          "images/Dragon-detail.png",
-        ],
-      }),
+      body: JSON.stringify({ paths: [], available_stls: ["Dragon.stl"] }),
     }),
   );
 
@@ -119,6 +129,42 @@ export async function stubCatalog(page: Page) {
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
         "base64",
       ),
+    }),
+  );
+}
+
+/**
+ * Like stubCatalog but the model has two STLs so the admin FileList shows
+ * multiple checkboxes. The render-selection starts empty (auto/default state).
+ */
+export async function stubCatalogMultiStl(page: Page) {
+  // Re-use all the catalog/list and model-detail routes from the base stub.
+  await stubCatalog(page);
+
+  // Override the files route with two STLs (kind=printable returns both).
+  await page.route("**/api/catalog/models/001/files*", (route: Route) => {
+    const url = new URL(route.request().url());
+    const kind = url.searchParams.get("kind");
+    const files =
+      kind === "printable"
+        ? ["Dragon-body.stl", "Dragon-wings.stl"]
+        : ["Dragon-body.stl", "Dragon-wings.stl", "images/Dragon.png"];
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ files }),
+    });
+  });
+
+  // Override render-selection with two available STLs, none selected (auto).
+  await page.route("**/api/admin/models/001/render-selection", (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        paths: [],
+        available_stls: ["Dragon-body.stl", "Dragon-wings.stl"],
+      }),
     }),
   );
 }
