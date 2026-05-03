@@ -197,3 +197,27 @@ class Model(SQLModel, table=True):
     deleted_at: datetime.datetime | None = Field(default=None, index=True)
     created_at: datetime.datetime = Field(default_factory=_now_utc)
     updated_at: datetime.datetime = Field(default_factory=_now_utc)
+
+
+class ModelFile(SQLModel, table=True):
+    __tablename__ = "model_file"
+    __table_args__ = (
+        UniqueConstraint(
+            "model_id",
+            "sha256",
+            "kind",
+            name="uq_model_file_model_sha_kind",
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    model_id: uuid.UUID = Field(
+        sa_column=uuid_fk("model.id", ondelete="CASCADE", nullable=False, index=True),
+    )
+    kind: ModelFileKind
+    original_name: str
+    storage_path: str = Field(unique=True)
+    sha256: str = Field(index=True)
+    size_bytes: int
+    mime_type: str
+    created_at: datetime.datetime = Field(default_factory=_now_utc)

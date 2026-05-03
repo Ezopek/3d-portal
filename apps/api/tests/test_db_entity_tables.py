@@ -9,6 +9,7 @@ from app.core.db.models import (
     Category,
     ExternalSource,
     Model,
+    ModelFile,
     ModelFileKind,
     ModelSource,
     ModelStatus,
@@ -257,3 +258,134 @@ def test_model_category_restrict_on_delete(engine):
         session.delete(cat)
         with pytest.raises(sqlalchemy.exc.IntegrityError):
             session.commit()
+
+
+def _make_model(session, slug="m1"):
+    cat = Category(slug=f"cat-{slug}", name_en="C")
+    session.add(cat)
+    session.commit()
+    session.refresh(cat)
+    m = Model(slug=slug, name_en=slug, category_id=cat.id)
+    session.add(m)
+    session.commit()
+    session.refresh(m)
+    return m
+
+
+def test_model_file_basic_persist(engine):
+    with Session(engine) as session:
+        m = _make_model(session)
+        f = ModelFile(
+            model_id=m.id,
+            kind=ModelFileKind.stl,
+            original_name="dragon.stl",
+            storage_path=f"models/{m.id}/files/abc.stl",
+            sha256="a" * 64,
+            size_bytes=1234,
+            mime_type="model/stl",
+        )
+        session.add(f)
+        session.commit()
+        session.refresh(f)
+
+        assert isinstance(f.id, uuid.UUID)
+        assert f.kind == ModelFileKind.stl
+
+
+def test_model_file_storage_path_unique(engine):
+    with Session(engine) as session:
+        m = _make_model(session)
+        f1 = ModelFile(
+            model_id=m.id,
+            kind=ModelFileKind.stl,
+            original_name="a.stl",
+            storage_path="dup/path.stl",
+            sha256="a" * 64,
+            size_bytes=1,
+            mime_type="model/stl",
+        )
+        f2 = ModelFile(
+            model_id=m.id,
+            kind=ModelFileKind.image,
+            original_name="b.png",
+            storage_path="dup/path.stl",
+            sha256="b" * 64,
+            size_bytes=1,
+            mime_type="image/png",
+        )
+        session.add_all([f1, f2])
+        with pytest.raises(sqlalchemy.exc.IntegrityError):
+            session.commit()
+
+
+def test_model_file_unique_per_model_sha_kind(engine):
+    with Session(engine) as session:
+        m = _make_model(session)
+        f1 = ModelFile(
+            model_id=m.id,
+            kind=ModelFileKind.stl,
+            original_name="a.stl",
+            storage_path="p1.stl",
+            sha256="a" * 64,
+            size_bytes=1,
+            mime_type="model/stl",
+        )
+        f2 = ModelFile(
+            model_id=m.id,
+            kind=ModelFileKind.stl,
+            original_name="b.stl",
+            storage_path="p2.stl",
+            sha256="a" * 64,
+            size_bytes=1,
+            mime_type="model/stl",
+        )
+        session.add_all([f1, f2])
+        with pytest.raises(sqlalchemy.exc.IntegrityError):
+            session.commit()
+
+
+def test_model_file_same_sha_different_kind_allowed(engine):
+    with Session(engine) as session:
+        m = _make_model(session)
+        f1 = ModelFile(
+            model_id=m.id,
+            kind=ModelFileKind.stl,
+            original_name="a.stl",
+            storage_path="p1.stl",
+            sha256="a" * 64,
+            size_bytes=1,
+            mime_type="model/stl",
+        )
+        f2 = ModelFile(
+            model_id=m.id,
+            kind=ModelFileKind.image,
+            original_name="a.png",
+            storage_path="p2.png",
+            sha256="a" * 64,
+            size_bytes=1,
+            mime_type="image/png",
+        )
+        session.add_all([f1, f2])
+        session.commit()  # must NOT raise
+
+
+def test_model_file_cascade_on_model_delete(engine):
+    with Session(engine) as session:
+        m = _make_model(session)
+        f = ModelFile(
+            model_id=m.id,
+            kind=ModelFileKind.stl,
+            original_name="x.stl",
+            storage_path="x.stl",
+            sha256="c" * 64,
+            size_bytes=1,
+            mime_type="model/stl",
+        )
+        session.add(f)
+        session.commit()
+
+        session.delete(m)
+        session.commit()
+
+        rows = session.exec(select(ModelFile)).all()
+        assert rows == []
