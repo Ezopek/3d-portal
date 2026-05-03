@@ -43,7 +43,12 @@ async def refresh_catalog(request: Request, user_id: int = current_admin) -> dic
 
     missing = service.model_ids_missing_renders()
     for model_id in missing:
-        await request.app.state.arq.enqueue_job("render_model", model_id)
+        selection = request.app.state.render_selection.get(model_id)
+        await request.app.state.arq.enqueue_job(
+            "render_model",
+            model_id,
+            selected_paths=selection or None,
+        )
 
     record_event(
         get_engine(),
@@ -67,7 +72,12 @@ async def trigger_render(
     catalog = request.app.state.catalog_service
     if catalog.get_model(model_id) is None:
         raise HTTPException(404, f"Model {model_id} not found")
-    job = await request.app.state.arq.enqueue_job("render_model", model_id)
+    selection = request.app.state.render_selection.get(model_id)
+    job = await request.app.state.arq.enqueue_job(
+        "render_model",
+        model_id,
+        selected_paths=selection or None,
+    )
     record_event(
         get_engine(),
         kind="render.triggered",

@@ -71,7 +71,17 @@ def test_render_enqueues_job_and_returns_id(client):
     r = c.post("/api/admin/render/001", headers=headers)
     assert r.status_code == 202
     assert r.json()["job_id"] == "job-001"
-    arq.enqueue_job.assert_awaited_once_with("render_model", "001")
+    arq.enqueue_job.assert_awaited_once_with("render_model", "001", selected_paths=None)
+
+
+def test_render_enqueues_with_saved_selection(client):
+    c, token, _fake, arq = client
+    headers = {"Authorization": f"Bearer {token}"}
+    c.app.state.render_selection.set(model_id="001", paths=["Dragon.stl"], user_id=1)
+    arq.enqueue_job.reset_mock()
+    r = c.post("/api/admin/render/001", headers=headers)
+    assert r.status_code == 202
+    arq.enqueue_job.assert_awaited_once_with("render_model", "001", selected_paths=["Dragon.stl"])
 
 
 def test_render_unknown_model_404(client):
