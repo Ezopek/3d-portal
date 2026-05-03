@@ -4,9 +4,12 @@ import { api } from "@/lib/api";
 
 interface FilesResponse { files: string[] }
 
-export function useFiles(id: string) {
+export type FilesKind = "all" | "printable";
+
+export function useFiles(id: string, opts?: { kind?: FilesKind }) {
+  const kind: FilesKind = opts?.kind ?? "all";
   return useQuery<FilesResponse>({
-    queryKey: ["catalog", "models", id, "files"],
-    queryFn: () => api<FilesResponse>(`/catalog/models/${id}/files`),
+    queryKey: ["catalog", "models", id, "files", kind],
+    queryFn: () => api<FilesResponse>(`/catalog/models/${id}/files?kind=${kind}`),
   });
 }
