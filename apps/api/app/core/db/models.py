@@ -1,6 +1,9 @@
 import datetime
+import uuid
 from enum import StrEnum
 
+from sqlalchemy import Column, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import Uuid as _SAUuid
 from sqlmodel import Field, SQLModel
 
 
@@ -55,6 +58,16 @@ def _now_utc() -> datetime.datetime:
     return datetime.datetime.now(datetime.UTC)
 
 
+def sa_uuid_type():
+    """SQLAlchemy UUID type that works on both SQLite (TEXT) and Postgres (uuid).
+
+    Translates to a native uuid column on Postgres and CHAR(32) on SQLite —
+    both transparent to Python which sees uuid.UUID. Isolated as a helper so
+    every entity FK uses the same type definition.
+    """
+    return _SAUuid(as_uuid=True)
+
+
 class User(SQLModel, table=True):
     __tablename__ = "user"
 
@@ -93,3 +106,38 @@ class RenderSelection(SQLModel, table=True):
     selected_paths: str  # JSON-encoded list[str], paths relative to model folder
     set_by_user_id: int = Field(foreign_key="user.id")
     set_at: datetime.datetime = Field(default_factory=_now_utc)
+
+
+class Category(SQLModel, table=True):
+    __tablename__ = "category"
+    __table_args__ = (
+        UniqueConstraint(
+            "parent_id", "slug", name="uq_category_parent_slug"
+        ),
+        # NULL != NULL in SQL, so the composite constraint above won't catch two
+        # root categories (parent_id IS NULL) with the same slug.  A partial
+        # unique index on slug WHERE parent_id IS NULL covers that case on both
+        # SQLite (3.9+) and Postgres.
+        Index(
+            "uq_category_root_slug",
+            "slug",
+            unique=True,
+            sqlite_where=Column("parent_id").is_(None),
+            postgresql_where=Column("parent_id").is_(None),
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    parent_id: uuid.UUID | None = Field(
+        default=None,
+        sa_column=Column(
+            sa_uuid_type(),
+            ForeignKey("category.id", ondelete="RESTRICT"),
+            nullable=True,
+        ),
+    )
+    slug: str = Field(index=True)
+    name_en: str
+    name_pl: str | None = None
+    created_at: datetime.datetime = Field(default_factory=_now_utc)
+    updated_at: datetime.datetime = Field(default_factory=_now_utc)
