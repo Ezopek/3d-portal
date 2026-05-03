@@ -58,7 +58,7 @@ def _now_utc() -> datetime.datetime:
     return datetime.datetime.now(datetime.UTC)
 
 
-def sa_uuid_type():
+def sa_uuid_type() -> _SAUuid:
     """SQLAlchemy UUID type that works on both SQLite (TEXT) and Postgres (uuid).
 
     Translates to a native uuid column on Postgres and CHAR(32) on SQLite —
@@ -66,6 +66,29 @@ def sa_uuid_type():
     every entity FK uses the same type definition.
     """
     return _SAUuid(as_uuid=True)
+
+
+def uuid_fk(
+    target: str,
+    *,
+    ondelete: str,
+    nullable: bool = False,
+    index: bool = False,
+    primary_key: bool = False,
+) -> Column:
+    """Standard UUID foreign-key column for entity tables.
+
+    Centralizes the (sa_uuid_type, ForeignKey, nullable, index, primary_key)
+    pattern so every entity table FK looks the same and uses the same UUID
+    column type.
+    """
+    return Column(
+        sa_uuid_type(),
+        ForeignKey(target, ondelete=ondelete),
+        nullable=nullable,
+        index=index,
+        primary_key=primary_key,
+    )
 
 
 class User(SQLModel, table=True):
@@ -111,9 +134,7 @@ class RenderSelection(SQLModel, table=True):
 class Category(SQLModel, table=True):
     __tablename__ = "category"
     __table_args__ = (
-        UniqueConstraint(
-            "parent_id", "slug", name="uq_category_parent_slug"
-        ),
+        UniqueConstraint("parent_id", "slug", name="uq_category_parent_slug"),
         # NULL != NULL in SQL, so the composite constraint above won't catch two
         # root categories (parent_id IS NULL) with the same slug.  A partial
         # unique index on slug WHERE parent_id IS NULL covers that case on both
@@ -130,11 +151,7 @@ class Category(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     parent_id: uuid.UUID | None = Field(
         default=None,
-        sa_column=Column(
-            sa_uuid_type(),
-            ForeignKey("category.id", ondelete="RESTRICT"),
-            nullable=True,
-        ),
+        sa_column=uuid_fk("category.id", ondelete="RESTRICT", nullable=True),
     )
     slug: str = Field(index=True)
     name_en: str

@@ -98,9 +98,7 @@ def test_category_parent_child_relationship(engine):
         session.commit()
         session.refresh(parent)
 
-        child = Category(
-            parent_id=parent.id, slug="k1_max", name_en="K1 Max"
-        )
+        child = Category(parent_id=parent.id, slug="k1_max", name_en="K1 Max")
         session.add(child)
         session.commit()
         session.refresh(child)
