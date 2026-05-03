@@ -15,6 +15,30 @@ SSH_PORT="${PORTAL_SSH_PORT:-30022}"
 # the rsync target on the same box.
 PORTAL_URL="${PORTAL_URL:-http://192.168.2.190:8090}"
 
+# Pre-hydrate Nextcloud Cloud Files API placeholders.
+# When new files / directories arrive in the catalog (PowerShell drop,
+# Nextcloud sync from another device, agent edits), Windows lazily
+# marks them as cloud placeholders. WSL's DrvFs returns EINVAL on
+# readdir() for any unhydrated directory, breaking rsync. Each failed
+# readdir triggers Windows-side hydration but only for that one dir,
+# so we walk the tree repeatedly until a pass finishes with no errors
+# (or progress stalls). Cheap when everything is already hydrated.
+echo "→ pre-hydrate (Nextcloud placeholders) under $SOURCE"
+prev_errs=-1
+for pass in 1 2 3 4 5 6 7 8; do
+  errs=$(find "$SOURCE" -type d 2>&1 >/dev/null | grep -c "Invalid argument" || true)
+  if [[ $errs -eq 0 ]]; then
+    [[ $pass -gt 1 ]] && echo "  hydrated after pass $pass"
+    break
+  fi
+  if [[ $errs -eq $prev_errs ]]; then
+    echo "  stalled at $errs unhydrated dirs after pass $pass; proceeding anyway" >&2
+    break
+  fi
+  echo "  pass $pass: $errs EINVAL → retry"
+  prev_errs=$errs
+done
+
 echo "→ rsync $SOURCE → $DEST (ssh port $SSH_PORT)"
 RSYNC_ARGS=(
   -avz --delete -e "ssh -p $SSH_PORT"
@@ -35,7 +59,7 @@ RSYNC_ARGS=(
 # failed listing itself triggers Windows-side hydration, so the next
 # attempt usually succeeds.
 attempt=1
-max_attempts=3
+max_attempts=5
 while true; do
   rc=0
   rsync "${RSYNC_ARGS[@]}" "$SOURCE" "$DEST" || rc=$?
