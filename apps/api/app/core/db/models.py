@@ -42,3 +42,12 @@ class ThumbnailOverride(SQLModel, table=True):
     relative_path: str
     set_by_user_id: int = Field(foreign_key="user.id")
     set_at: datetime.datetime = Field(default_factory=_now_utc)
+
+
+class RenderSelection(SQLModel, table=True):
+    __tablename__ = "renderselection"
+
+    model_id: str = Field(primary_key=True)
+    selected_paths: str  # JSON-encoded list[str], paths relative to model folder
+    set_by_user_id: int = Field(foreign_key="user.id")
+    set_at: datetime.datetime = Field(default_factory=_now_utc)
