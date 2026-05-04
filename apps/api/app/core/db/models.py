@@ -254,3 +254,24 @@ class ModelPrint(SQLModel, table=True):
     note: str | None = None
     created_at: datetime.datetime = Field(default_factory=_now_utc)
     updated_at: datetime.datetime = Field(default_factory=_now_utc)
+
+
+class ModelExternalLink(SQLModel, table=True):
+    __tablename__ = "model_external_link"
+    __table_args__ = (
+        UniqueConstraint(
+            "model_id",
+            "source",
+            name="uq_model_external_link_model_source",
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    model_id: uuid.UUID = Field(
+        sa_column=uuid_fk("model.id", ondelete="CASCADE", nullable=False),
+    )
+    source: ExternalSource
+    external_id: str | None = None
+    url: str
+    created_at: datetime.datetime = Field(default_factory=_now_utc)
+    updated_at: datetime.datetime = Field(default_factory=_now_utc)

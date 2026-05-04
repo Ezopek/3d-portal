@@ -9,6 +9,7 @@ from app.core.db.models import (
     Category,
     ExternalSource,
     Model,
+    ModelExternalLink,
     ModelFile,
     ModelFileKind,
     ModelPrint,
@@ -562,4 +563,57 @@ def test_model_print_cascade_on_model_delete(engine):
         session.commit()
 
         rows = session.exec(select(ModelPrint)).all()
+        assert rows == []
+
+
+def test_external_link_basic_persist(engine):
+    with Session(engine) as session:
+        m = _make_model(session, slug="m-link")
+        link = ModelExternalLink(
+            model_id=m.id,
+            source=ExternalSource.printables,
+            external_id="12345",
+            url="https://printables.com/model/12345",
+        )
+        session.add(link)
+        session.commit()
+        session.refresh(link)
+
+        assert isinstance(link.id, uuid.UUID)
+        assert link.external_id == "12345"
+
+
+def test_external_link_unique_per_model_source(engine):
+    with Session(engine) as session:
+        m = _make_model(session, slug="m-link-dup")
+        a = ModelExternalLink(
+            model_id=m.id,
+            source=ExternalSource.printables,
+            url="https://example.com/a",
+        )
+        b = ModelExternalLink(
+            model_id=m.id,
+            source=ExternalSource.printables,
+            url="https://example.com/b",
+        )
+        session.add_all([a, b])
+        with pytest.raises(sqlalchemy.exc.IntegrityError):
+            session.commit()
+
+
+def test_external_link_cascade_on_model_delete(engine):
+    with Session(engine) as session:
+        m = _make_model(session, slug="m-link-cascade")
+        link = ModelExternalLink(
+            model_id=m.id,
+            source=ExternalSource.thangs,
+            url="https://thangs.com/x",
+        )
+        session.add(link)
+        session.commit()
+
+        session.delete(m)
+        session.commit()
+
+        rows = session.exec(select(ModelExternalLink)).all()
         assert rows == []
