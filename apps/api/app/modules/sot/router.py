@@ -8,11 +8,14 @@ untouched until the cutover slice.
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlmodel import Session
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import FileResponse, Response
+from sqlmodel import Session, select
 
-from app.core.db.models import ModelFileKind, ModelStatus
+from app.core.config import get_settings
+from app.core.db.models import ModelFile, ModelFileKind, ModelStatus
 from app.core.db.session import get_session
+from app.core.etag import file_etag
 from app.modules.sot.schemas import (
     CategoryTree,
     FileListResponse,
@@ -92,3 +95,47 @@ def get_model_files(
     if result is None:
         raise HTTPException(status_code=404, detail="Model not found")
     return result
+
+
+@router.get("/models/{model_id}/files/{file_id}/content")
+def get_model_file_content(
+    model_id: uuid.UUID,
+    file_id: uuid.UUID,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    download: bool = False,
+) -> Response:
+    """Stream a model file's binary content from portal-content storage.
+
+    Returns 404 if the file row is not found OR if it does not belong to
+    the given `model_id` (paths are constructed defensively to prevent
+    confused-deputy attacks across models).
+    """
+    row = session.exec(
+        select(ModelFile).where(ModelFile.id == file_id, ModelFile.model_id == model_id)
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    settings = get_settings()
+    base = settings.portal_content_dir.resolve()
+    candidate = (base / row.storage_path).resolve()
+    # Path traversal defense: storage_path comes from DB but assert
+    # the resolved path stays under the storage root anyway.
+    try:
+        candidate.relative_to(base)
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail="Invalid storage path") from exc
+    if not candidate.is_file():
+        # DB row exists but file missing on disk — integrity issue.
+        raise HTTPException(status_code=404, detail="File missing in storage")
+
+    etag = file_etag(candidate)
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    return FileResponse(
+        candidate,
+        media_type=row.mime_type,
+        filename=row.original_name if download else None,
+        headers={"ETag": etag, "Cache-Control": "private, max-age=300"},
+    )

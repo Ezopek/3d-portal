@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     renders_dir: Path = Path("/data/renders")
     state_dir: Path = Path("/data/state")
     catalog_cache_dir: Path = Path("/data/cache")
+    portal_content_dir: Path = Path("/data/content")  # SoT binary storage (Slice 2B+)
 
     # DB
     database_url: str = "sqlite:////data/state/portal.db"

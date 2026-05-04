@@ -32,10 +32,13 @@ def _patch_arq_pool():
 def _isolated_db():
     tmp_dir = Path(tempfile.mkdtemp(prefix="portal-test-"))
     db_path = tmp_dir / "portal.db"
+    content_dir = tmp_dir / "content"
+    content_dir.mkdir()
     os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
     os.environ["ADMIN_EMAIL"] = "admin@localhost.localdomain"
     os.environ["ADMIN_PASSWORD"] = "test-admin-pw"
     os.environ["JWT_SECRET"] = "test-secret-not-real"
+    os.environ["PORTAL_CONTENT_DIR"] = str(content_dir)
     # Clear any cached settings or engine that read env at import time
     from app.core.config import get_settings
     from app.core.db.session import get_engine
