@@ -1,3 +1,4 @@
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -48,7 +49,7 @@ def login(
 @router.get("/me", response_model=MeResponse)
 def me(
     session: Annotated[Session, Depends(get_session)],
-    user_id: int = current_admin,
+    user_id: uuid.UUID = current_admin,
 ) -> MeResponse:
     user = session.get(User, user_id)
     if user is None:

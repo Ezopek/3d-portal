@@ -37,7 +37,16 @@ def client(tmp_path, monkeypatch):
         override_catalog_paths(app, index_path=FIXTURES / "index.json")
         # Swap the lifespan-created factory for the fakeredis one.
         app.state.redis = factory
-        token = encode_token(subject="1", role="admin", secret="test", ttl_minutes=30)
+        # Retrieve the seeded admin user UUID for the token.
+        from sqlmodel import Session, select
+
+        from app.core.db.models import User
+
+        engine = get_engine()
+        with Session(engine) as s:
+            user = s.exec(select(User).where(User.email == "admin@localhost.localdomain")).first()
+            user_id = user.id
+        token = encode_token(subject=str(user_id), role="admin", secret="test", ttl_minutes=30)
         yield c, token
     get_settings.cache_clear()
     get_engine.cache_clear()

@@ -1,4 +1,5 @@
 import json
+import uuid
 from typing import Any
 
 from sqlalchemy.engine import Engine
@@ -11,7 +12,7 @@ def record_event(
     engine: Engine,
     *,
     kind: str,
-    actor_user_id: int | None,
+    actor_user_id: uuid.UUID | None,
     payload: dict[str, Any] | None = None,
 ) -> None:
     # Use a dedicated session so audit writes commit independently of any caller's

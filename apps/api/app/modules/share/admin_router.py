@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from app.core.audit import record_event
@@ -21,7 +23,7 @@ def _service(request: Request) -> ShareService:
 async def create_share(
     payload: CreateShareRequest,
     request: Request,
-    user_id: int = current_admin,
+    user_id: uuid.UUID = current_admin,
 ) -> CreateShareResponse:
     catalog = request.app.state.catalog_service
     if catalog.get_model(payload.model_id) is None:
@@ -46,7 +48,7 @@ async def create_share(
 
 @router.get("", response_model=dict)
 async def list_share(
-    request: Request, _user_id: int = current_admin
+    request: Request, _user_id: uuid.UUID = current_admin
 ) -> dict[str, list[ShareToken]]:
     tokens = await _service(request).list_active()
     return {"tokens": tokens}
@@ -56,7 +58,7 @@ async def list_share(
 async def revoke_share(
     token: str,
     request: Request,
-    user_id: int = current_admin,
+    user_id: uuid.UUID = current_admin,
 ) -> Response:
     await _service(request).revoke(token)
     record_event(

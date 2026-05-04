@@ -1,4 +1,5 @@
 import re
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
 @router.post("/refresh-catalog")
-async def refresh_catalog(request: Request, user_id: int = current_admin) -> dict[str, int]:
+async def refresh_catalog(request: Request, user_id: uuid.UUID = current_admin) -> dict[str, int]:
     service = request.app.state.catalog_service
     overrides = request.app.state.thumbnail_overrides
     service.refresh()
@@ -67,7 +68,7 @@ async def refresh_catalog(request: Request, user_id: int = current_admin) -> dic
 async def trigger_render(
     model_id: str,
     request: Request,
-    user_id: int = current_admin,
+    user_id: uuid.UUID = current_admin,
 ) -> dict[str, str]:
     catalog = request.app.state.catalog_service
     if catalog.get_model(model_id) is None:
@@ -91,7 +92,7 @@ async def trigger_render(
 async def render_status(
     model_id: str,
     request: Request,
-    _user_id: int = current_admin,
+    _user_id: uuid.UUID = current_admin,
 ) -> dict[str, str]:
     redis = request.app.state.redis.get()
     raw = await redis.get(f"render:status:{model_id}")
@@ -101,7 +102,7 @@ async def render_status(
 
 
 @router.post("/sentry-test", status_code=204)
-def sentry_test(_user_id: int = current_admin) -> None:
+def sentry_test(_user_id: uuid.UUID = current_admin) -> None:
     """Deliberately raise to verify GlitchTip plumbing. Admin-only."""
     raise RuntimeError("sentry-test: deliberate test event")
 
@@ -111,7 +112,7 @@ def list_audit(
     session: Annotated[Session, Depends(get_session)],
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
-    _user_id: int = current_admin,
+    _user_id: uuid.UUID = current_admin,
 ) -> dict:
     total = session.exec(select(func.count()).select_from(AuditEvent)).one()
     rows = session.exec(
@@ -146,7 +147,7 @@ def set_thumbnail(
     model_id: str,
     payload: _ThumbnailPayload,
     request: Request,
-    user_id: int = current_admin,
+    user_id: uuid.UUID = current_admin,
 ) -> None:
     service = request.app.state.catalog_service
     if service.get_model(model_id) is None:
@@ -172,7 +173,7 @@ def set_thumbnail(
 def clear_thumbnail(
     model_id: str,
     request: Request,
-    user_id: int = current_admin,
+    user_id: uuid.UUID = current_admin,
 ) -> None:
     removed = request.app.state.thumbnail_overrides.clear(model_id)
     if removed:
@@ -188,7 +189,7 @@ def clear_thumbnail(
 def get_render_selection(
     model_id: str,
     request: Request,
-    _user_id: int = current_admin,
+    _user_id: uuid.UUID = current_admin,
 ) -> dict[str, list[str]]:
     service = request.app.state.catalog_service
     if service.get_model(model_id) is None:
@@ -214,7 +215,7 @@ async def set_render_selection(
     model_id: str,
     payload: _RenderSelectionPayload,
     request: Request,
-    user_id: int = current_admin,
+    user_id: uuid.UUID = current_admin,
 ) -> None:
     service = request.app.state.catalog_service
     model = service.get_model(model_id)

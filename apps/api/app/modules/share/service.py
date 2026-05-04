@@ -1,4 +1,5 @@
 import secrets
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from redis.asyncio import Redis
@@ -13,7 +14,9 @@ class ShareService:
     def __init__(self, *, redis: Redis) -> None:
         self._redis = redis
 
-    async def create(self, *, model_id: str, expires_in_hours: int, created_by: int) -> ShareToken:
+    async def create(
+        self, *, model_id: str, expires_in_hours: int, created_by: uuid.UUID
+    ) -> ShareToken:
         if expires_in_hours < 1:
             raise ValueError("expires_in_hours must be >= 1")
         token = secrets.token_urlsafe(24)

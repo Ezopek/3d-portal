@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 
 from pydantic import BaseModel, Field
@@ -7,7 +8,7 @@ class ShareToken(BaseModel):
     token: str
     model_id: str
     expires_at: datetime
-    created_by: int
+    created_by: uuid.UUID
     created_at: datetime
 
 

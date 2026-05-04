@@ -1,8 +1,9 @@
 from pathlib import Path
 
 import pytest
-from sqlmodel import SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine
 
+from app.core.db.models import User, UserRole
 from app.modules.catalog.service import CatalogService
 from app.modules.catalog.thumbnail_overrides import ThumbnailOverrideRepo
 
@@ -13,7 +14,16 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def repo() -> ThumbnailOverrideRepo:
     engine = create_engine("sqlite:///:memory:")
     SQLModel.metadata.create_all(engine)
-    return ThumbnailOverrideRepo(engine)
+    # Seed an admin user so FK constraints on set_by_user_id are satisfied.
+    with Session(engine) as s:
+        admin = User(email="a@b", display_name="A", role=UserRole.admin, password_hash="x")
+        s.add(admin)
+        s.commit()
+        s.refresh(admin)
+        admin_id = admin.id
+    r = ThumbnailOverrideRepo(engine)
+    r._admin_id = admin_id  # stash for test use
+    return r
 
 
 @pytest.fixture
@@ -73,7 +83,7 @@ def test_list_uses_override_when_set(service, repo):
     iso = iso_dir / "iso.png"
     iso.touch()
     try:
-        repo.set(model_id="001", relative_path="iso.png", user_id=1)
+        repo.set(model_id="001", relative_path="iso.png", user_id=repo._admin_id)
         by_id = {m.id: m for m in service.list_models().models}
         assert by_id["001"].thumbnail_url == "/api/files/001/iso.png"
     finally:
@@ -81,7 +91,7 @@ def test_list_uses_override_when_set(service, repo):
 
 
 def test_list_silent_fallback_when_override_target_missing(service, repo):
-    repo.set(model_id="001", relative_path="prints/ghost.jpg", user_id=1)
+    repo.set(model_id="001", relative_path="prints/ghost.jpg", user_id=repo._admin_id)
     by_id = {m.id: m for m in service.list_models().models}
     # Falls back to the next chain step: images/Dragon.png.
     assert by_id["001"].thumbnail_url == "/api/files/001/images/Dragon.png"

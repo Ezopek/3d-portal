@@ -53,8 +53,17 @@ def client(tmp_path, monkeypatch):
         override_catalog_paths(app, index_path=FIXTURES / "index.json")
         app.state.redis = factory
         app.state.arq = arq_pool
-        token = encode_token(subject="1", role="admin", secret="test", ttl_minutes=30)
-        yield c, token, fake_sync, arq_pool
+        # Retrieve the seeded admin user UUID for token and repo calls.
+        from sqlmodel import Session, select
+
+        from app.core.db.models import User
+
+        engine = get_engine()
+        with Session(engine) as s:
+            user = s.exec(select(User).where(User.email == "admin@localhost.localdomain")).first()
+            user_id = user.id
+        token = encode_token(subject=str(user_id), role="admin", secret="test", ttl_minutes=30)
+        yield c, token, fake_sync, arq_pool, user_id
     get_settings.cache_clear()
     get_engine.cache_clear()
 
@@ -66,7 +75,7 @@ def test_render_requires_admin(client):
 
 
 def test_render_enqueues_job_and_returns_id(client):
-    c, token, _fake, arq = client
+    c, token, _fake, arq, _uid = client
     headers = {"Authorization": f"Bearer {token}"}
     r = c.post("/api/admin/render/001", headers=headers)
     assert r.status_code == 202
@@ -75,9 +84,9 @@ def test_render_enqueues_job_and_returns_id(client):
 
 
 def test_render_enqueues_with_saved_selection(client):
-    c, token, _fake, arq = client
+    c, token, _fake, arq, user_id = client
     headers = {"Authorization": f"Bearer {token}"}
-    c.app.state.render_selection.set(model_id="001", paths=["Dragon.stl"], user_id=1)
+    c.app.state.render_selection.set(model_id="001", paths=["Dragon.stl"], user_id=user_id)
     arq.enqueue_job.reset_mock()
     r = c.post("/api/admin/render/001", headers=headers)
     assert r.status_code == 202
@@ -92,7 +101,7 @@ def test_render_unknown_model_404(client):
 
 
 def test_status_returns_running_when_set(client):
-    c, token, fake_sync, _ = client
+    c, token, fake_sync, _, _uid = client
     # fake_sync is a sync FakeStrictRedis sharing the same FakeServer as the async client
     fake_sync.set("render:status:001", b"running", ex=60)
     headers = {"Authorization": f"Bearer {token}"}

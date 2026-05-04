@@ -1,4 +1,5 @@
 import json
+import uuid
 from collections.abc import Callable
 
 from sqlalchemy.engine import Engine
@@ -23,7 +24,7 @@ class RenderSelectionRepo:
             rows = s.exec(select(RenderSelection)).all()
             return {r.model_id: json.loads(r.selected_paths) for r in rows}
 
-    def set(self, *, model_id: str, paths: list[str], user_id: int) -> None:
+    def set(self, *, model_id: str, paths: list[str], user_id: uuid.UUID) -> None:
         encoded = json.dumps(list(paths))
         with Session(self._engine) as s:
             row = s.get(RenderSelection, model_id)

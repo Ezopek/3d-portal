@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.config_for_tests import override_catalog_paths
 from app.core.audit import record_event
 from app.core.auth.jwt import encode_token
+from app.core.db.models import User
 from app.core.db.session import get_engine
 from app.main import create_app
 
@@ -19,6 +20,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("ADMIN_EMAIL", "admin@localhost.localdomain")
     monkeypatch.setenv("ADMIN_PASSWORD", "pw")
     monkeypatch.setenv("JWT_SECRET", "test")
+    from sqlmodel import Session, select
+
     from app.core.config import get_settings
     from app.core.db.session import get_engine as ge
 
@@ -27,11 +30,15 @@ def client(tmp_path, monkeypatch):
     app = create_app()
     with TestClient(app) as c:
         override_catalog_paths(app, index_path=FIXTURES / "index.json")
-        # Seed audit events. The admin user (id=1) is created by lifespan seed_admin.
+        # The admin user is created by lifespan seed_admin. Retrieve its UUID.
         engine = get_engine()
+        with Session(engine) as s:
+            user = s.exec(select(User).where(User.email == "admin@localhost.localdomain")).first()
+            user_id = user.id
+        # Seed audit events using the real user UUID.
         for i in range(5):
-            record_event(engine, kind=f"test.event.{i}", actor_user_id=1, payload={"i": i})
-        token = encode_token(subject="1", role="admin", secret="test", ttl_minutes=30)
+            record_event(engine, kind=f"test.event.{i}", actor_user_id=user_id, payload={"i": i})
+        token = encode_token(subject=str(user_id), role="admin", secret="test", ttl_minutes=30)
         yield c, token
     get_settings.cache_clear()
     from app.core.db.session import get_engine as ge2

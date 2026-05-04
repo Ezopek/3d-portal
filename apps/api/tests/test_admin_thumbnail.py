@@ -12,6 +12,9 @@ from app.modules.catalog.thumbnail_overrides import ThumbnailOverrideRepo
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
+# A fixed UUID used for non-admin "wrong role" token tests (never looked up in DB).
+_NON_ADMIN_UUID = "00000000-0000-0000-0000-000000000042"
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -28,8 +31,17 @@ def client(tmp_path, monkeypatch):
     app = create_app()
     with TestClient(app) as c:
         override_catalog_paths(app, index_path=FIXTURES / "index.json")
-        token = encode_token(subject="1", role="admin", secret="test", ttl_minutes=30)
-        yield c, token
+        # Retrieve the seeded admin user UUID for token.
+        from sqlmodel import Session, select
+
+        from app.core.db.models import User
+
+        engine = get_engine()
+        with Session(engine) as s:
+            user = s.exec(select(User).where(User.email == "admin@localhost.localdomain")).first()
+            user_id = user.id
+        token = encode_token(subject=str(user_id), role="admin", secret="test", ttl_minutes=30)
+        yield c, token, user_id
     get_settings.cache_clear()
     from app.core.db.session import get_engine as ge2
 
@@ -41,14 +53,14 @@ def _hdrs(token: str) -> dict:
 
 
 def test_put_requires_auth(client):
-    c, _ = client
+    c, _, _uid = client
     resp = c.put("/api/admin/models/001/thumbnail", json={"path": "iso.png"})
     assert resp.status_code == 401
 
 
 def test_put_403_for_non_admin(client):
-    c, _ = client
-    user_token = encode_token(subject="42", role="user", secret="test", ttl_minutes=30)
+    c, _, _uid = client
+    user_token = encode_token(subject=_NON_ADMIN_UUID, role="user", secret="test", ttl_minutes=30)
     resp = c.put(
         "/api/admin/models/001/thumbnail", json={"path": "iso.png"}, headers=_hdrs(user_token)
     )
@@ -56,7 +68,7 @@ def test_put_403_for_non_admin(client):
 
 
 def test_put_404_for_unknown_model(client):
-    c, token = client
+    c, token, _uid = client
     resp = c.put("/api/admin/models/999/thumbnail", json={"path": "iso.png"}, headers=_hdrs(token))
     assert resp.status_code == 404
 
@@ -73,13 +85,13 @@ def test_put_404_for_unknown_model(client):
     ],
 )
 def test_put_400_for_invalid_path(client, bad_path):
-    c, token = client
+    c, token, _uid = client
     resp = c.put("/api/admin/models/001/thumbnail", json={"path": bad_path}, headers=_hdrs(token))
     assert resp.status_code == 400
 
 
 def test_put_404_when_path_whitelisted_but_file_missing(client):
-    c, token = client
+    c, token, _uid = client
     resp = c.put(
         "/api/admin/models/001/thumbnail",
         json={"path": "prints/does-not-exist.jpg"},
@@ -89,7 +101,7 @@ def test_put_404_when_path_whitelisted_but_file_missing(client):
 
 
 def test_put_happy_path_updates_list_and_audit(client):
-    c, token = client
+    c, token, _uid = client
     resp = c.put(
         "/api/admin/models/001/thumbnail", json={"path": "images/Dragon.png"}, headers=_hdrs(token)
     )
@@ -105,7 +117,7 @@ def test_put_happy_path_updates_list_and_audit(client):
 
 
 def test_delete_happy_path_clears_and_audits(client):
-    c, token = client
+    c, token, _uid = client
     c.put(
         "/api/admin/models/001/thumbnail", json={"path": "images/Dragon.png"}, headers=_hdrs(token)
     )
@@ -118,7 +130,7 @@ def test_delete_happy_path_clears_and_audits(client):
 
 
 def test_delete_idempotent_no_audit_on_noop(client):
-    c, token = client
+    c, token, _uid = client
     audit_before = c.get("/api/admin/audit", headers=_hdrs(token)).json()
     n_before = sum(1 for e in audit_before["events"] if e["kind"] == "thumbnail.cleared")
 
@@ -131,7 +143,7 @@ def test_delete_idempotent_no_audit_on_noop(client):
 
 
 def test_refresh_purges_orphan_overrides(client):
-    c, token = client
+    c, token, user_id = client
     # Set an override that points at a real file.
     c.put(
         "/api/admin/models/001/thumbnail",
@@ -142,7 +154,7 @@ def test_refresh_purges_orphan_overrides(client):
     # Bypass the PUT validator to plant an orphan: set a row directly via the
     # repo with a path that whitelists but resolves nowhere.
     repo = ThumbnailOverrideRepo(get_engine())
-    repo.set(model_id="002", relative_path="prints/ghost.jpg", user_id=1)
+    repo.set(model_id="002", relative_path="prints/ghost.jpg", user_id=user_id)
 
     # Refresh — orphan should be purged with an audit event.
     resp = c.post("/api/admin/refresh-catalog", headers=_hdrs(token))

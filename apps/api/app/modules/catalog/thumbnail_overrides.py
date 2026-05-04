@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Callable
 
 from sqlalchemy.engine import Engine
@@ -20,7 +21,7 @@ class ThumbnailOverrideRepo:
             rows = s.exec(select(ThumbnailOverride)).all()
             return {r.model_id: r.relative_path for r in rows}
 
-    def set(self, *, model_id: str, relative_path: str, user_id: int) -> None:
+    def set(self, *, model_id: str, relative_path: str, user_id: uuid.UUID) -> None:
         with Session(self._engine) as s:
             row = s.get(ThumbnailOverride, model_id)
             if row is None:

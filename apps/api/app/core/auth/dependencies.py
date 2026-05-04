@@ -1,3 +1,4 @@
+import uuid
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
@@ -12,7 +13,7 @@ _bearer = HTTPBearer(auto_error=False)
 def _resolve_admin(
     creds: HTTPAuthorizationCredentials | None,
     settings: Settings,
-) -> int:
+) -> uuid.UUID:
     if creds is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing bearer token")
     try:
@@ -21,13 +22,16 @@ def _resolve_admin(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token") from exc
     if claims.get("role") != "admin":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin role required")
-    return int(claims["sub"])
+    try:
+        return uuid.UUID(claims["sub"])
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Malformed subject claim") from exc
 
 
 def _current_admin_dep(
     creds: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     settings: Annotated[Settings, Depends(get_settings)],
-) -> int:
+) -> uuid.UUID:
     return _resolve_admin(creds, settings)
 
 

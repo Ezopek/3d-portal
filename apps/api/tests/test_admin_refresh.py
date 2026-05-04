@@ -45,7 +45,16 @@ def setup(tmp_path, monkeypatch):
     with TestClient(app) as c:
         override_catalog_paths(app, index_path=dst)
         app.state.arq = arq_pool
-        token = encode_token(subject="1", role="admin", secret="test", ttl_minutes=30)
+        # Retrieve the seeded admin user UUID for use in token and repo calls.
+        from sqlmodel import Session, select
+
+        from app.core.db.models import User
+
+        engine = get_engine()
+        with Session(engine) as s:
+            user = s.exec(select(User).where(User.email == "admin@localhost.localdomain")).first()
+            user_id = user.id
+        token = encode_token(subject=str(user_id), role="admin", secret="test", ttl_minutes=30)
         yield c, token, dst, renders_dir, arq_pool
     get_settings.cache_clear()
     get_engine.cache_clear()
@@ -114,10 +123,21 @@ def test_refresh_purges_orphan_render_selections(setup):
     headers = {"Authorization": f"Bearer {token}"}
 
     # Seed a render selection that references a path we know does NOT exist on disk.
+    # Retrieve the admin user UUID for the repo call.
+    from sqlmodel import Session, select
+
+    from app.core.db.models import User
+    from app.core.db.session import get_engine
+
+    engine = get_engine()
+    with Session(engine) as s:
+        user = s.exec(select(User).where(User.email == "admin@localhost.localdomain")).first()
+        user_id = user.id
+
     client.app.state.render_selection.set(
         model_id="001",
         paths=["files/this-stl-does-not-exist.stl"],
-        user_id=1,
+        user_id=user_id,
     )
 
     r = client.post("/api/admin/refresh-catalog", headers=headers)

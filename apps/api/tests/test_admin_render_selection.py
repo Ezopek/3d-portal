@@ -12,6 +12,9 @@ from app.main import create_app
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
+# A fixed UUID used for non-admin "wrong role" token tests (never looked up in DB).
+_NON_ADMIN_UUID = "00000000-0000-0000-0000-000000000042"
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -49,7 +52,16 @@ def client(tmp_path, monkeypatch):
         override_catalog_paths(app, index_path=FIXTURES / "index.json")
         app.state.redis = factory
         app.state.arq = arq_pool
-        token = encode_token(subject="1", role="admin", secret="test", ttl_minutes=30)
+        # Retrieve the seeded admin user UUID for token.
+        from sqlmodel import Session, select
+
+        from app.core.db.models import User
+
+        engine = get_engine()
+        with Session(engine) as s:
+            user = s.exec(select(User).where(User.email == "admin@localhost.localdomain")).first()
+            user_id = user.id
+        token = encode_token(subject=str(user_id), role="admin", secret="test", ttl_minutes=30)
         yield c, token, arq_pool
     get_settings.cache_clear()
     get_engine.cache_clear()
@@ -67,7 +79,7 @@ def test_get_requires_admin(client):
 
 def test_get_403_for_non_admin(client):
     c, *_ = client
-    user_token = encode_token(subject="42", role="user", secret="test", ttl_minutes=30)
+    user_token = encode_token(subject=_NON_ADMIN_UUID, role="user", secret="test", ttl_minutes=30)
     r = c.get("/api/admin/models/001/render-selection", headers=_hdrs(user_token))
     assert r.status_code == 403
 
@@ -97,7 +109,7 @@ def test_put_requires_admin(client):
 
 def test_put_403_for_non_admin(client):
     c, *_ = client
-    user_token = encode_token(subject="42", role="user", secret="test", ttl_minutes=30)
+    user_token = encode_token(subject=_NON_ADMIN_UUID, role="user", secret="test", ttl_minutes=30)
     r = c.put(
         "/api/admin/models/001/render-selection",
         json={"paths": []},

@@ -37,7 +37,16 @@ def client(tmp_path, monkeypatch):
     with TestClient(app) as c:
         override_catalog_paths(app, index_path=FIXTURES / "index.json")
         app.state.redis = factory
-        token = encode_token(subject="1", role="admin", secret="test", ttl_minutes=30)
+        # Retrieve the seeded admin user UUID for the token.
+        from sqlmodel import Session, select
+
+        from app.core.db.models import User
+
+        engine = get_engine()
+        with Session(engine) as s:
+            user = s.exec(select(User).where(User.email == "admin@localhost.localdomain")).first()
+            user_id = user.id
+        token = encode_token(subject=str(user_id), role="admin", secret="test", ttl_minutes=30)
         yield c, token
     get_settings.cache_clear()
     get_engine.cache_clear()
@@ -138,7 +147,16 @@ def test_resolve_returns_stl_url_for_uppercase_extension(tmp_path, monkeypatch):
     with TestClient(app) as c:
         override_catalog_paths(app, index_path=catalog / "_index" / "index.json")
         app.state.redis = factory
-        token = encode_token(subject="1", role="admin", secret="test", ttl_minutes=30)
+        # Retrieve the seeded admin user UUID for the token.
+        from sqlmodel import Session, select
+
+        from app.core.db.models import User
+
+        engine = get_engine()
+        with Session(engine) as s:
+            user = s.exec(select(User).where(User.email == "admin@localhost.localdomain")).first()
+            user_id = user.id
+        token = encode_token(subject=str(user_id), role="admin", secret="test", ttl_minutes=30)
         headers = {"Authorization": f"Bearer {token}"}
         created = c.post(
             "/api/admin/share",
