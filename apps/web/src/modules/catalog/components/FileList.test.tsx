@@ -10,8 +10,18 @@ const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
 
 const isAdminMock = vi.fn();
+vi.mock("@/shell/AuthContext", () => ({
+  useAuth: () => ({
+    user: null,
+    role: isAdminMock() ? "admin" : null,
+    isAdmin: isAdminMock(),
+    isMember: false,
+    isAdminOrAgent: isAdminMock(),
+    isAuthenticated: isAdminMock(),
+    isLoading: false,
+  }),
+}));
 vi.mock("@/lib/auth", () => ({
-  isAdmin: () => isAdminMock(),
   readToken: () => ({ token: "tok" }),
 }));
 

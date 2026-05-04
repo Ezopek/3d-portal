@@ -3,8 +3,8 @@ import { Download } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { isAdmin } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
+import { useAuth } from "@/shell/AuthContext";
 import { useFiles } from "../hooks/useFiles";
 import { useRenderSelection, useSetRenderSelection } from "../hooks/useRenderSelection";
 
@@ -12,7 +12,7 @@ const MAX_SELECTION = 16;
 
 export function FileList({ modelId }: { modelId: string }) {
   const { t } = useTranslation();
-  const admin = isAdmin();
+  const { isAdmin: admin } = useAuth();
   const { data: filesData } = useFiles(modelId, { kind: "printable" });
   const { data: selectionData } = useRenderSelection(modelId, { enabled: admin });
   const setSelection = useSetRenderSelection(modelId);
