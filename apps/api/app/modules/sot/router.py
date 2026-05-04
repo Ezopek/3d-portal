@@ -8,13 +8,18 @@ untouched until the cutover slice.
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session
 
 from app.core.db.models import ModelStatus
 from app.core.db.session import get_session
-from app.modules.sot.schemas import CategoryTree, ModelListResponse, TagRead
-from app.modules.sot.service import list_categories_tree, list_models, list_tags
+from app.modules.sot.schemas import CategoryTree, ModelDetail, ModelListResponse, TagRead
+from app.modules.sot.service import (
+    get_model_detail,
+    list_categories_tree,
+    list_models,
+    list_tags,
+)
 
 router = APIRouter(prefix="/api", tags=["sot-read"])
 
@@ -56,3 +61,15 @@ def get_models(
         offset=offset,
         limit=limit,
     )
+
+
+@router.get("/models/{model_id}", response_model=ModelDetail)
+def get_model(
+    model_id: uuid.UUID,
+    session: Annotated[Session, Depends(get_session)],
+    include_deleted: bool = False,
+) -> ModelDetail:
+    detail = get_model_detail(session, model_id, include_deleted=include_deleted)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Model not found")
+    return detail

@@ -14,15 +14,25 @@ from sqlmodel import Session, select
 from app.core.db.models import (
     Category,
     Model,
+    ModelExternalLink,
+    ModelFile,
+    ModelNote,
+    ModelPrint,
     ModelStatus,
     ModelTag,
     Tag,
 )
 from app.modules.sot.schemas import (
     CategoryNode,
+    CategorySummary,
     CategoryTree,
+    ExternalLinkRead,
+    ModelDetail,
+    ModelFileRead,
     ModelListResponse,
     ModelSummary,
+    NoteRead,
+    PrintRead,
     TagRead,
 )
 
@@ -143,3 +153,62 @@ def list_models(
         for m in rows
     ]
     return ModelListResponse(items=items, total=total, offset=offset, limit=limit)
+
+
+def get_model_detail(
+    session: Session,
+    model_id: uuid.UUID,
+    *,
+    include_deleted: bool = False,
+) -> ModelDetail | None:
+    """Return a Model with full embed of related entities, or None if not found."""
+    stmt = select(Model).where(Model.id == model_id)
+    if not include_deleted:
+        stmt = stmt.where(Model.deleted_at.is_(None))
+    m = session.exec(stmt).first()
+    if m is None:
+        return None
+
+    cat = session.exec(select(Category).where(Category.id == m.category_id)).one()
+
+    tag_rows = session.exec(
+        select(Tag)
+        .join(ModelTag, ModelTag.tag_id == Tag.id)
+        .where(ModelTag.model_id == model_id)
+        .order_by(Tag.slug)
+    ).all()
+    tags = [TagRead.model_validate(t) for t in tag_rows]
+
+    file_rows = session.exec(
+        select(ModelFile).where(ModelFile.model_id == model_id).order_by(ModelFile.created_at)
+    ).all()
+    files = [ModelFileRead.model_validate(f) for f in file_rows]
+
+    note_rows = session.exec(
+        select(ModelNote).where(ModelNote.model_id == model_id).order_by(ModelNote.created_at)
+    ).all()
+    notes = [NoteRead.model_validate(n) for n in note_rows]
+
+    print_rows = session.exec(
+        select(ModelPrint).where(ModelPrint.model_id == model_id).order_by(ModelPrint.created_at)
+    ).all()
+    prints = [PrintRead.model_validate(p) for p in print_rows]
+
+    link_rows = session.exec(
+        select(ModelExternalLink)
+        .where(ModelExternalLink.model_id == model_id)
+        .order_by(ModelExternalLink.source)
+    ).all()
+    external_links = [ExternalLinkRead.model_validate(link) for link in link_rows]
+
+    return ModelDetail.model_validate(
+        {
+            **m.model_dump(),
+            "tags": tags,
+            "category": CategorySummary.model_validate(cat),
+            "files": files,
+            "prints": prints,
+            "notes": notes,
+            "external_links": external_links,
+        }
+    )
