@@ -373,15 +373,15 @@ model_note
   created_at, updated_at
 
 audit_log
-  id          UUID PK
-  actor_id    UUID NULL REFERENCES user(id) ON DELETE SET NULL
-  action      AuditAction NOT NULL
-  entity_type text NOT NULL                      -- 'model', 'model_file', ...
-  entity_id   UUID NOT NULL
-  before_json jsonb NULL                         -- SQLite: TEXT-as-JSON
-  after_json  jsonb NULL
-  request_id  text NULL                          -- correlate with API request log
-  at          timestamptz NOT NULL DEFAULT now()
+  id            UUID PK
+  actor_user_id UUID NULL REFERENCES user(id) ON DELETE SET NULL  -- column name diverges from spec ('actor_id' originally) but matches existing AuditEvent convention; harmless rename if desired in Slice 2
+  action        text NOT NULL                                      -- free text in Slice 1B; will be tightened to AuditAction enum in Slice 2 once API mutation catalog is final
+  entity_type   text NOT NULL
+  entity_id     UUID NULL                                          -- nullable: not every event ties to a single entity (auth.login.fail, refresh_catalog)
+  before_json   text NULL                                          -- 'jsonb' on Postgres; SQLite stores TEXT — application stores JSON-encoded strings
+  after_json    text NULL
+  request_id    text NULL
+  at            timestamptz NOT NULL DEFAULT now()
 ```
 
 ### 3.3 Explicit indexes (in addition to PK/UNIQUE)
@@ -439,6 +439,19 @@ both tables.
 10. **`category` as a self-FK on `parent_id`** rather than a separate
     `subcategory` table. The current depth is two levels; the cost of
     hierarchy is zero, and it removes schema duplication.
+
+11. **`audit_log.action` is `text` in Slice 1B**, not yet the `AuditAction`
+    enum from Section 3.1. Reason: the spec's enum enumerates ~20 actions
+    keyed to API mutations that don't exist yet. Slice 1B preserves
+    existing free-text kinds (`auth.login.success`, `admin.thumbnail.set`,
+    etc.). Slice 2 will refactor to a strict enum once the full API
+    mutation catalog is final.
+
+12. **`audit_log.entity_id` is nullable.** Spec section 3.2 originally
+    listed it as `NOT NULL`, but real audit events don't always tie to a
+    specific entity (login failures, catalog refresh, share-token
+    operations on legacy string `model_id`s). Amended to nullable; events
+    without a specific entity carry contextual data in `after_json`.
 
 ---
 
