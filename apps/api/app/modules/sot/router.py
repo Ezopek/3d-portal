@@ -11,12 +11,19 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session
 
-from app.core.db.models import ModelStatus
+from app.core.db.models import ModelFileKind, ModelStatus
 from app.core.db.session import get_session
-from app.modules.sot.schemas import CategoryTree, ModelDetail, ModelListResponse, TagRead
+from app.modules.sot.schemas import (
+    CategoryTree,
+    FileListResponse,
+    ModelDetail,
+    ModelListResponse,
+    TagRead,
+)
 from app.modules.sot.service import (
     get_model_detail,
     list_categories_tree,
+    list_model_files,
     list_models,
     list_tags,
 )
@@ -73,3 +80,15 @@ def get_model(
     if detail is None:
         raise HTTPException(status_code=404, detail="Model not found")
     return detail
+
+
+@router.get("/models/{model_id}/files", response_model=FileListResponse)
+def get_model_files(
+    model_id: uuid.UUID,
+    session: Annotated[Session, Depends(get_session)],
+    kind: ModelFileKind | None = None,
+) -> FileListResponse:
+    result = list_model_files(session, model_id, kind=kind)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Model not found")
+    return result
