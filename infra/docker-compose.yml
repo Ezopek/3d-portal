@@ -23,6 +23,7 @@ services:
       RENDERS_DIR: /data/renders
       STATE_DIR: /data/state
       CATALOG_CACHE_DIR: /data/cache
+      PORTAL_CONTENT_DIR: /data/content
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
       OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS}
       SENTRY_DSN: ${SENTRY_DSN}
@@ -32,6 +33,7 @@ services:
       - ${RENDERS_HOST_DIR}:/data/renders:ro
       - ${STATE_HOST_DIR}:/data/state
       - ${CACHE_HOST_DIR}:/data/cache
+      - ${CONTENT_HOST_DIR}:/data/content
     depends_on: [redis]
     restart: unless-stopped
     networks: [portal]
