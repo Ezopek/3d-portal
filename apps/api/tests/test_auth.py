@@ -19,6 +19,8 @@ def test_login_with_wrong_password_returns_401(client):
 
 
 def test_me_with_token_returns_user(client):
+    import uuid
+
     r = client.post(
         "/api/auth/login",
         json={"email": "admin@localhost.localdomain", "password": "test-admin-pw"},
@@ -29,6 +31,9 @@ def test_me_with_token_returns_user(client):
     body = r2.json()
     assert body["email"] == "admin@localhost.localdomain"
     assert body["role"] == "admin"
+    # Lock the public contract: `id` must round-trip as a UUID string.
+    assert "id" in body
+    uuid.UUID(body["id"])  # raises if malformed
 
 
 def test_me_without_token_returns_401(client):
