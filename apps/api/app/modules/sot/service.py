@@ -6,12 +6,25 @@ the raw query layer.
 """
 
 import uuid
+from collections.abc import Sequence
 
 from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
-from app.core.db.models import Category, Tag
-from app.modules.sot.schemas import CategoryNode, CategoryTree, TagRead
+from app.core.db.models import (
+    Category,
+    Model,
+    ModelStatus,
+    ModelTag,
+    Tag,
+)
+from app.modules.sot.schemas import (
+    CategoryNode,
+    CategoryTree,
+    ModelListResponse,
+    ModelSummary,
+    TagRead,
+)
 
 
 def list_categories_tree(session: Session) -> CategoryTree:
@@ -73,3 +86,60 @@ def list_tags(
     stmt = stmt.order_by(Tag.slug).limit(limit)
     rows = list(session.exec(stmt).all())
     return [TagRead.model_validate(r) for r in rows]
+
+
+def list_models(
+    session: Session,
+    *,
+    category: uuid.UUID | None = None,
+    status: ModelStatus | None = None,
+    tag: uuid.UUID | None = None,
+    q: str | None = None,
+    include_deleted: bool = False,
+    offset: int = 0,
+    limit: int = 50,
+) -> ModelListResponse:
+    """List models with optional filters; tags eagerly attached per item."""
+    base = select(Model)
+    if not include_deleted:
+        base = base.where(Model.deleted_at.is_(None))
+    if category is not None:
+        base = base.where(Model.category_id == category)
+    if status is not None:
+        base = base.where(Model.status == status)
+    if tag is not None:
+        base = base.where(Model.id.in_(select(ModelTag.model_id).where(ModelTag.tag_id == tag)))
+    if q:
+        like = f"%{q.lower()}%"
+        base = base.where(
+            or_(
+                func.lower(Model.name_en).like(like),
+                func.lower(Model.name_pl).like(like),
+                func.lower(Model.slug).like(like),
+            )
+        )
+
+    # Total before pagination
+    total_stmt = select(func.count()).select_from(base.subquery())
+    total = session.exec(total_stmt).one()
+
+    base = base.order_by(Model.created_at.desc()).offset(offset).limit(limit)
+    rows: Sequence[Model] = session.exec(base).all()
+
+    # Eagerly fetch tags for the page
+    model_ids = [m.id for m in rows]
+    tags_by_model: dict[uuid.UUID, list[TagRead]] = {mid: [] for mid in model_ids}
+    if model_ids:
+        join_stmt = (
+            select(ModelTag.model_id, Tag)
+            .join(Tag, Tag.id == ModelTag.tag_id)
+            .where(ModelTag.model_id.in_(model_ids))
+        )
+        for model_id, tag_row in session.exec(join_stmt).all():
+            tags_by_model[model_id].append(TagRead.model_validate(tag_row))
+
+    items = [
+        ModelSummary.model_validate({**m.model_dump(), "tags": tags_by_model.get(m.id, [])})
+        for m in rows
+    ]
+    return ModelListResponse(items=items, total=total, offset=offset, limit=limit)
