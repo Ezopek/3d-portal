@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 
-import { readToken } from "@/lib/auth";
+import { useAuth } from "@/shell/AuthContext";
 
 export function AuthGate({ children, fallback = null }: { children: ReactNode; fallback?: ReactNode }) {
-  const token = readToken();
-  if (token === null) return <>{fallback}</>;
+  const { isAuthenticated } = useAuth();
+  if (!isAuthenticated) return <>{fallback}</>;
   return <>{children}</>;
 }
