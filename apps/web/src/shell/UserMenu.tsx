@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 
-import { clearToken, readToken } from "@/lib/auth";
+import { clearToken } from "@/lib/auth";
+import { useAuth } from "@/shell/AuthContext";
 import { Button } from "@/ui/button";
 import {
   DropdownMenu,
@@ -11,8 +12,8 @@ import {
 
 export function UserMenu() {
   const { t } = useTranslation();
-  const token = readToken();
-  if (token === null) {
+  const { isAuthenticated } = useAuth();
+  if (!isAuthenticated) {
     return (
       <Button variant="outline" size="sm" render={<a href="/login" />}>
         {t("auth.login")}
