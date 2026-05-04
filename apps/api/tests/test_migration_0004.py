@@ -94,7 +94,8 @@ def test_alembic_downgrade_one_removes_only_new_tables(alembic_env, api_dir, ale
     db_path, env = alembic_env
     r = _run_alembic(["upgrade", "head"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
     assert r.returncode == 0, r.stderr
-    # downgrade one revision (0004 -> 0003)
+    # downgrade one revision (0005 -> 0004): audit_log and UUID user go away,
+    # auditevent + int-id user come back; entity tables introduced in 0004 remain.
     r = _run_alembic(["downgrade", "-1"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
     assert r.returncode == 0, r.stderr
 
@@ -109,7 +110,8 @@ def test_alembic_downgrade_one_removes_only_new_tables(alembic_env, api_dir, ale
     finally:
         conn.close()
 
-    new_tables = {
+    # Entity tables are still present (created in 0004, not touched by 0005 downgrade).
+    entity_tables = {
         "category",
         "tag",
         "model",
@@ -119,12 +121,15 @@ def test_alembic_downgrade_one_removes_only_new_tables(alembic_env, api_dir, ale
         "model_external_link",
         "model_note",
     }
-    assert names.isdisjoint(new_tables), (
-        f"these new-tables remained after downgrade -1: {names & new_tables}"
+    missing_entity = entity_tables - names
+    assert not missing_entity, (
+        f"entity tables unexpectedly removed by downgrade -1: {missing_entity}"
     )
+    # 0005 downgrade restores auditevent and removes audit_log
+    assert "auditevent" in names, "auditevent should be restored after downgrade -1"
+    assert "audit_log" not in names, "audit_log should be removed after downgrade -1"
     # Existing pre-0004 tables are still there
     assert "user" in names
-    assert "auditevent" in names
     assert "thumbnailoverride" in names
     assert "renderselection" in names
 
