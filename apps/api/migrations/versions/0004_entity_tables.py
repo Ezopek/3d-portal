@@ -54,20 +54,20 @@ def upgrade() -> None:
     op.create_table(
         "tag",
         sa.Column("id", sa.Uuid(as_uuid=True), primary_key=True),
-        sa.Column("slug", sa.String(), nullable=False, unique=True),
+        sa.Column("slug", sa.String(), nullable=False),
         sa.Column("name_en", sa.String(), nullable=False),
         sa.Column("name_pl", sa.String(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
     )
-    op.create_index("ix_tag_slug", "tag", ["slug"])
+    op.create_index("ix_tag_slug", "tag", ["slug"], unique=True)
 
     # model (no thumbnail_file_id yet — added below after model_file exists)
     op.create_table(
         "model",
         sa.Column("id", sa.Uuid(as_uuid=True), primary_key=True),
-        sa.Column("legacy_id", sa.String(), nullable=True, unique=True),
-        sa.Column("slug", sa.String(), nullable=False, unique=True),
+        sa.Column("legacy_id", sa.String(), nullable=True),
+        sa.Column("slug", sa.String(), nullable=False),
         sa.Column("name_en", sa.String(), nullable=False),
         sa.Column("name_pl", sa.String(), nullable=True),
         sa.Column(
@@ -91,8 +91,8 @@ def upgrade() -> None:
     op.create_index("ix_model_category_id", "model", ["category_id"])
     op.create_index("ix_model_status", "model", ["status"])
     op.create_index("ix_model_deleted_at", "model", ["deleted_at"])
-    op.create_index("ix_model_legacy_id", "model", ["legacy_id"])
-    op.create_index("ix_model_slug", "model", ["slug"])
+    op.create_index("ix_model_legacy_id", "model", ["legacy_id"], unique=True)
+    op.create_index("ix_model_slug", "model", ["slug"], unique=True)
 
     # model_file
     op.create_table(

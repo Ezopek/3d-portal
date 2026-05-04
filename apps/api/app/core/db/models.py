@@ -2,7 +2,7 @@ import datetime
 import uuid
 from enum import StrEnum
 
-from sqlalchemy import CheckConstraint, Column, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import BigInteger, CheckConstraint, Column, ForeignKey, Index, UniqueConstraint
 from sqlalchemy import Uuid as _SAUuid
 from sqlmodel import Field, SQLModel
 
@@ -222,7 +222,7 @@ class ModelFile(SQLModel, table=True):
     original_name: str
     storage_path: str = Field(unique=True)
     sha256: str = Field(index=True)
-    size_bytes: int
+    size_bytes: int = Field(sa_column=Column(BigInteger(), nullable=False))
     mime_type: str
     created_at: datetime.datetime = Field(default_factory=_now_utc)
 
