@@ -13,6 +13,7 @@ from app.core.db.models import (
     ModelFileKind,
     ModelSource,
     ModelStatus,
+    ModelTag,
     NoteKind,
     Tag,
 )
@@ -439,3 +440,72 @@ def test_model_thumbnail_set_null_on_file_delete(engine):
         session.refresh(m)
 
         assert m.thumbnail_file_id is None
+
+
+def test_model_tag_basic_persist(engine):
+    with Session(engine) as session:
+        m = _make_model(session, slug="m-tag")
+        t = Tag(slug="dragon", name_en="Dragon")
+        session.add(t)
+        session.commit()
+        session.refresh(t)
+
+        link = ModelTag(model_id=m.id, tag_id=t.id)
+        session.add(link)
+        session.commit()
+
+        rows = session.exec(select(ModelTag)).all()
+        assert len(rows) == 1
+
+
+def test_model_tag_composite_pk_prevents_duplicate(engine):
+    with Session(engine) as session:
+        m = _make_model(session, slug="m-tag-dup")
+        t = Tag(slug="dragon", name_en="Dragon")
+        session.add(t)
+        session.commit()
+        session.refresh(t)
+
+        a = ModelTag(model_id=m.id, tag_id=t.id)
+        b = ModelTag(model_id=m.id, tag_id=t.id)
+        session.add(a)
+        session.commit()
+        session.add(b)
+        with pytest.raises(sqlalchemy.exc.IntegrityError):
+            session.commit()
+
+
+def test_model_tag_cascade_on_model_delete(engine):
+    with Session(engine) as session:
+        m = _make_model(session, slug="m-tag-cascade")
+        t = Tag(slug="dragon", name_en="Dragon")
+        session.add(t)
+        session.commit()
+        session.refresh(t)
+
+        link = ModelTag(model_id=m.id, tag_id=t.id)
+        session.add(link)
+        session.commit()
+
+        session.delete(m)
+        session.commit()
+
+        rows = session.exec(select(ModelTag)).all()
+        assert rows == []
+
+
+def test_model_tag_restrict_on_tag_delete_when_in_use(engine):
+    with Session(engine) as session:
+        m = _make_model(session, slug="m-tag-restrict")
+        t = Tag(slug="dragon", name_en="Dragon")
+        session.add(t)
+        session.commit()
+        session.refresh(t)
+
+        link = ModelTag(model_id=m.id, tag_id=t.id)
+        session.add(link)
+        session.commit()
+
+        session.delete(t)
+        with pytest.raises(sqlalchemy.exc.IntegrityError):
+            session.commit()

@@ -225,3 +225,15 @@ class ModelFile(SQLModel, table=True):
     size_bytes: int
     mime_type: str
     created_at: datetime.datetime = Field(default_factory=_now_utc)
+
+
+class ModelTag(SQLModel, table=True):
+    __tablename__ = "model_tag"
+
+    model_id: uuid.UUID = Field(
+        sa_column=uuid_fk("model.id", ondelete="CASCADE", primary_key=True),
+    )
+    tag_id: uuid.UUID = Field(
+        sa_column=uuid_fk("tag.id", ondelete="RESTRICT", primary_key=True),
+    )
+    created_at: datetime.datetime = Field(default_factory=_now_utc)
