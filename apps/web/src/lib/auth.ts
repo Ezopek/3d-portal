@@ -22,17 +22,3 @@ export function clearToken(): void {
   localStorage.removeItem(KEY);
   localStorage.removeItem(EXP_KEY);
 }
-
-export function isAdmin(): boolean {
-  // Decode the role claim from the stored JWT instead of treating any logged-in
-  // user as admin — the API has both admin and member roles and the UI gate
-  // should match the API guard, not just "has a token".
-  const stored = readToken();
-  if (stored === null) return false;
-  try {
-    const payload = JSON.parse(atob(stored.token.split(".")[1] ?? ""));
-    return payload?.role === "admin";
-  } catch {
-    return false;
-  }
-}
