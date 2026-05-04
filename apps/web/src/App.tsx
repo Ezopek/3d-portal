@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Toaster } from "sonner";
 
 import { queryClient } from "@/lib/queryClient";
+import { AuthProvider } from "@/shell/AuthContext";
 import { LangProvider } from "@/shell/LangProvider";
 import { ThemeProvider } from "@/shell/ThemeProvider";
 
@@ -21,14 +22,16 @@ declare module "@tanstack/react-router" {
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <LangProvider>
-        <ThemeProvider>
-          <Toaster position="bottom-right" richColors />
-          <Sentry.ErrorBoundary fallback={<ErrorFallback />}>
-            <RouterProvider router={router} />
-          </Sentry.ErrorBoundary>
-        </ThemeProvider>
-      </LangProvider>
+      <AuthProvider>
+        <LangProvider>
+          <ThemeProvider>
+            <Toaster position="bottom-right" richColors />
+            <Sentry.ErrorBoundary fallback={<ErrorFallback />}>
+              <RouterProvider router={router} />
+            </Sentry.ErrorBoundary>
+          </ThemeProvider>
+        </LangProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }
