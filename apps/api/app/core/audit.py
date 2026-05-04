@@ -7,6 +7,28 @@ from sqlmodel import Session
 
 from app.core.db.models import AuditLog
 
+# Closed set of valid `entity_type` values for audit_log rows. The column is
+# typed `text` for now (Slice 1B) so it could hold anything, but every
+# record_event call site is expected to use one of these constants. Tightening
+# the column to a strict enum in Slice 2 is a no-op once every caller is on
+# the closed set.
+#   catalog            — admin.refresh_catalog (entity_id always None)
+#   model              — admin.render.trigger and future model CRUD
+#   render_selection   — admin.render.selection.set/delete (entity_id None: legacy str model_id)
+#   share_token        — admin.share.create/delete (entity_id None: keyed by token string)
+#   thumbnail_override — admin.thumbnail.set/unset (entity_id None: legacy str model_id)
+#   user               — auth.login.success/fail
+KNOWN_ENTITY_TYPES: frozenset[str] = frozenset(
+    {
+        "catalog",
+        "model",
+        "render_selection",
+        "share_token",
+        "thumbnail_override",
+        "user",
+    }
+)
+
 
 def record_event(
     engine: Engine,
@@ -23,7 +45,17 @@ def record_event(
 
     Uses a dedicated session so audit writes commit independently of the
     caller's transaction (e.g. a failed login still records the event).
+
+    `entity_type` MUST be one of `KNOWN_ENTITY_TYPES`; unknown values raise
+    `ValueError`. This is a forward guard for the planned Slice 2 enum
+    tightening — silent drift would otherwise pile up across call sites.
     """
+    if entity_type not in KNOWN_ENTITY_TYPES:
+        raise ValueError(
+            f"unknown entity_type {entity_type!r}; "
+            f"add it to KNOWN_ENTITY_TYPES in app/core/audit.py if "
+            f"this is a new resource"
+        )
     with Session(engine) as session:
         log = AuditLog(
             actor_user_id=actor_user_id,

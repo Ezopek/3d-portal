@@ -40,7 +40,7 @@ def client(tmp_path, monkeypatch):
             record_event(
                 engine,
                 action=f"test.event.{i}",
-                entity_type="test",
+                entity_type="catalog",
                 entity_id=None,
                 actor_user_id=user_id,
                 after={"i": i},
@@ -71,7 +71,7 @@ def test_audit_returns_paginated_events(client):
     assert actions[0] == "test.event.4"
     # New fields are present.
     e0 = body["events"][0]
-    assert e0["entity_type"] == "test"
+    assert e0["entity_type"] == "catalog"
     assert e0["entity_id"] is None
     assert e0["actor_user_id"] == str(user_id)
     assert e0["before"] is None
