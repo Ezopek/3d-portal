@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -14,7 +14,6 @@ interface LoginResponse {
 
 function Login() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +27,11 @@ function Login() {
         body: JSON.stringify({ email, password }),
       });
       writeToken(r.access_token, r.expires_in);
-      void navigate({ to: "/" });
+      // Full page navigation: AuthProvider reads localStorage synchronously at
+      // its top-level render, so soft-nav (TanStack Router) leaves the auth
+      // context stale until a reload. Router-aware refresh lands in a later
+      // slice; for now hard-load is the minimal correct behavior.
+      window.location.assign("/");
     } catch {
       setError(t("errors.not_found"));
     }
