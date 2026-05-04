@@ -191,6 +191,9 @@ class ModelNote(SQLModel, table=True):
     )
     kind: NoteKind
     body: str
-    # author_id is deferred to Slice 1B (User UUID migration).
+    author_id: uuid.UUID | None = Field(
+        default=None,
+        sa_column=uuid_fk("user.id", ondelete="SET NULL", nullable=True),
+    )
     created_at: datetime.datetime = Field(default_factory=_now_utc)
     updated_at: datetime.datetime = Field(default_factory=_now_utc)

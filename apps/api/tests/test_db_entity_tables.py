@@ -655,10 +655,72 @@ def test_model_note_cascade_on_model_delete(engine):
         assert rows == []
 
 
-def test_model_note_does_not_yet_have_author_id():
-    # Slice 1A intentionally omits author_id; it is added in Slice 1B
-    # alongside the User UUID migration.
-    assert "author_id" not in ModelNote.model_fields
+def test_model_note_author_id_optional(engine):
+    with Session(engine) as session:
+        m = _make_model(session, slug="m-note-author")
+        n = ModelNote(
+            model_id=m.id,
+            kind=NoteKind.description,
+            body="without author",
+        )
+        session.add(n)
+        session.commit()
+        session.refresh(n)
+        assert n.author_id is None
+
+
+def test_model_note_with_author(engine):
+    with Session(engine) as session:
+        m = _make_model(session, slug="m-note-with-author")
+        u = User(
+            email="author@b.c",
+            display_name="Author",
+            role=UserRole.agent,
+            password_hash="x",
+        )
+        session.add(u)
+        session.commit()
+        session.refresh(u)
+
+        n = ModelNote(
+            model_id=m.id,
+            kind=NoteKind.ai_review,
+            body="reviewed by AI",
+            author_id=u.id,
+        )
+        session.add(n)
+        session.commit()
+        session.refresh(n)
+        assert n.author_id == u.id
+
+
+def test_model_note_author_set_null_on_user_delete(engine):
+    with Session(engine) as session:
+        m = _make_model(session, slug="m-note-cascade-author")
+        u = User(
+            email="author2@b.c",
+            display_name="Author2",
+            role=UserRole.agent,
+            password_hash="x",
+        )
+        session.add(u)
+        session.commit()
+        session.refresh(u)
+
+        n = ModelNote(
+            model_id=m.id,
+            kind=NoteKind.description,
+            body="will lose author",
+            author_id=u.id,
+        )
+        session.add(n)
+        session.commit()
+        session.refresh(n)
+
+        session.delete(u)
+        session.commit()
+        session.refresh(n)
+        assert n.author_id is None
 
 
 def test_audit_log_basic_persist(engine):
