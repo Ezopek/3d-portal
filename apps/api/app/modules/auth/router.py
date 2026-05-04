@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlmodel import Session, select
 
 from app.core.audit import record_event
-from app.core.auth.dependencies import current_admin
+from app.core.auth.dependencies import current_user
 from app.core.auth.jwt import encode_token
 from app.core.auth.password import verify_password
 from app.core.config import Settings, get_settings
@@ -53,7 +53,7 @@ def login(
 @router.get("/me", response_model=MeResponse)
 def me(
     session: Annotated[Session, Depends(get_session)],
-    user_id: uuid.UUID = current_admin,
+    user_id: uuid.UUID = current_user,
 ) -> MeResponse:
     user = session.get(User, user_id)
     if user is None:

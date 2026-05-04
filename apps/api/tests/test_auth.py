@@ -44,3 +44,52 @@ def test_me_without_token_returns_401(client):
 def test_logout_returns_204(client):
     r = client.post("/api/auth/logout")
     assert r.status_code == 204
+
+
+def test_me_with_member_token_returns_user(client):
+    """Member role can fetch their own /me — needed for AuthContext on FE."""
+    from sqlmodel import Session
+
+    from app.core.auth.password import hash_password
+    from app.core.db.models import User, UserRole
+    from app.core.db.session import get_engine
+
+    with Session(get_engine()) as s:
+        member = User(
+            email="member-me@portal.example.com",
+            display_name="Test Member",
+            role=UserRole.member,
+            password_hash=hash_password("member-pw"),
+        )
+        s.add(member)
+        s.commit()
+
+    r = client.post(
+        "/api/auth/login",
+        json={"email": "member-me@portal.example.com", "password": "member-pw"},
+    )
+    assert r.status_code == 200
+    token = r.json()["access_token"]
+    r2 = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["email"] == "member-me@portal.example.com"
+    assert body["role"] == "member"
+    assert body["display_name"] == "Test Member"
+
+
+def test_me_with_agent_token_returns_user(client):
+    """Agent role can fetch its own /me — symmetry with member; backend should
+    not gate /me by role (only by authenticated-or-not)."""
+    from scripts.bootstrap_agent import bootstrap_agent
+
+    _user, _, password = bootstrap_agent(email="agent-me@portal.example.com")
+
+    r = client.post(
+        "/api/auth/login",
+        json={"email": "agent-me@portal.example.com", "password": password},
+    )
+    token = r.json()["access_token"]
+    r2 = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert r2.status_code == 200
+    assert r2.json()["role"] == "agent"
