@@ -147,6 +147,7 @@ PL_EN: dict[str, str] = {
     "chmura": "cloud",
     # Misc
     "klasyk": "classic",
+    "gadżet": "gadget",
     "zabawny": "funny",
     "wymiary": "dimensions",
     "test": "test",
