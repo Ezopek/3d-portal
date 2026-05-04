@@ -478,7 +478,8 @@ Every mutation: middleware reads `actor_id` from the JWT and writes to
 ### 4.2 Public read (basic-auth household)
 
 ```
-GET  /api/models                          ?category=&status=&tag=&q=&include_deleted=false&limit=50&cursor=
+GET  /api/models                          ?category=&status=&tag=&q=&include_deleted=false&offset=0&limit=50
+                                          (cursor-based pagination deferred — Slice 2A uses offset/limit)
 GET  /api/models/{id}                     → full model embedding category, tags, files, prints, notes, external_links
 GET  /api/models/{id}/files               → list (already exists; kind filter)
 GET  /api/models/{id}/files/{file_id}/content   → bytes, ETag, Content-Type, Content-Disposition
