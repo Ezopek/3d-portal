@@ -1044,9 +1044,7 @@ def merge_tags(
         raise LookupError("to tag not found")
 
     # Find all model_tag rows referencing from_tag
-    from_rows = session.exec(
-        select(ModelTag).where(ModelTag.tag_id == payload.from_id)
-    ).all()
+    from_rows = session.exec(select(ModelTag).where(ModelTag.tag_id == payload.from_id)).all()
 
     rewired = 0
     for row in from_rows:
@@ -1100,9 +1098,7 @@ def _would_cycle(session: Session, category_id: uuid.UUID, new_parent_id: uuid.U
         if cur in visited:
             return True
         visited.add(cur)
-        parent = session.exec(
-            select(Category.parent_id).where(Category.id == cur)
-        ).first()
+        parent = session.exec(select(Category.parent_id).where(Category.id == cur)).first()
         cur = parent
     return False
 
