@@ -5,6 +5,7 @@ Re-exports every public symbol so imports of the historical form
 without changes at call sites.
 """
 
+from ._audit import AuditLog
 from ._entities import (
     Category,
     Model,
@@ -24,7 +25,8 @@ from ._enums import (
     UserRole,
 )
 from ._helpers import _now_utc, sa_uuid_type, uuid_fk
-from ._legacy import AuditLog, RenderSelection, ThumbnailOverride, User
+from ._legacy import RenderSelection, ThumbnailOverride
+from ._user import User
 
 __all__ = [
     "AuditLog",
