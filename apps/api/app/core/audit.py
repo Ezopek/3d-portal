@@ -12,18 +12,30 @@ from app.core.db.models import AuditLog
 # record_event call site is expected to use one of these constants. Tightening
 # the column to a strict enum in Slice 2 is a no-op once every caller is on
 # the closed set.
-#   catalog            — admin.refresh_catalog (entity_id always None)
-#   model              — admin.render.trigger and future model CRUD
-#   render_selection   — admin.render.selection.set/delete (entity_id None: legacy str model_id)
-#   share_token        — admin.share.create/delete (entity_id None: keyed by token string)
-#   thumbnail_override — admin.thumbnail.set/unset (entity_id None: legacy str model_id)
-#   user               — auth.login.success/fail
+#   catalog              — admin.refresh_catalog (entity_id always None)
+#   category             — future category CRUD (Slice 2C.x)
+#   model                — admin.render.trigger + model CRUD (Slice 2C.1)
+#   model_external_link  — future link CRUD (Slice 2C.x)
+#   model_file           — file upload/delete (Slice 2C.2)
+#   model_note           — note CRUD (Slice 2C.x)
+#   model_print          — print record CRUD (Slice 2C.x)
+#   render_selection     — admin.render.selection.set/delete (entity_id None: legacy str model_id)
+#   share_token          — admin.share.create/delete (entity_id None: keyed by token string)
+#   tag                  — future tag CRUD (Slice 2C.x)
+#   thumbnail_override   — admin.thumbnail.set/unset (entity_id None: legacy str model_id)
+#   user                 — auth.login.success/fail
 KNOWN_ENTITY_TYPES: frozenset[str] = frozenset(
     {
         "catalog",
+        "category",
         "model",
+        "model_external_link",
+        "model_file",
+        "model_note",
+        "model_print",
         "render_selection",
         "share_token",
+        "tag",
         "thumbnail_override",
         "user",
     }
