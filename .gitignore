@@ -62,3 +62,6 @@ tmp/
 
 # Orchestration logs (local-only operational state)
 .codex/
+
+# Brainstorming companion (local mockups + state)
+.superpowers/
