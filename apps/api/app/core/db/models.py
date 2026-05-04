@@ -195,6 +195,10 @@ class Model(SQLModel, table=True):
         default_factory=lambda: datetime.datetime.now(datetime.UTC).date()
     )
     deleted_at: datetime.datetime | None = Field(default=None, index=True)
+    thumbnail_file_id: uuid.UUID | None = Field(
+        default=None,
+        sa_column=uuid_fk("model_file.id", ondelete="SET NULL", nullable=True),
+    )
     created_at: datetime.datetime = Field(default_factory=_now_utc)
     updated_at: datetime.datetime = Field(default_factory=_now_utc)
 

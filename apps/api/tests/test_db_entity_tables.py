@@ -389,3 +389,53 @@ def test_model_file_cascade_on_model_delete(engine):
 
         rows = session.exec(select(ModelFile)).all()
         assert rows == []
+
+
+def test_model_thumbnail_set_to_file(engine):
+    with Session(engine) as session:
+        m = _make_model(session, slug="m-thumb")
+        f = ModelFile(
+            model_id=m.id,
+            kind=ModelFileKind.image,
+            original_name="thumb.png",
+            storage_path="thumb.png",
+            sha256="t" * 64,
+            size_bytes=10,
+            mime_type="image/png",
+        )
+        session.add(f)
+        session.commit()
+        session.refresh(f)
+
+        m.thumbnail_file_id = f.id
+        session.add(m)
+        session.commit()
+        session.refresh(m)
+
+        assert m.thumbnail_file_id == f.id
+
+
+def test_model_thumbnail_set_null_on_file_delete(engine):
+    with Session(engine) as session:
+        m = _make_model(session, slug="m-null")
+        f = ModelFile(
+            model_id=m.id,
+            kind=ModelFileKind.image,
+            original_name="t.png",
+            storage_path="t.png",
+            sha256="n" * 64,
+            size_bytes=10,
+            mime_type="image/png",
+        )
+        session.add(f)
+        session.commit()
+        session.refresh(f)
+        m.thumbnail_file_id = f.id
+        session.add(m)
+        session.commit()
+
+        session.delete(f)
+        session.commit()
+        session.refresh(m)
+
+        assert m.thumbnail_file_id is None
