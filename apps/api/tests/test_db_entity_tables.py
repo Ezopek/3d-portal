@@ -12,6 +12,7 @@ from app.core.db.models import (
     ModelExternalLink,
     ModelFile,
     ModelFileKind,
+    ModelNote,
     ModelPrint,
     ModelSource,
     ModelStatus,
@@ -617,3 +618,39 @@ def test_external_link_cascade_on_model_delete(engine):
 
         rows = session.exec(select(ModelExternalLink)).all()
         assert rows == []
+
+
+def test_model_note_basic_persist(engine):
+    with Session(engine) as session:
+        m = _make_model(session, slug="m-note")
+        n = ModelNote(
+            model_id=m.id,
+            kind=NoteKind.description,
+            body="From Printables: a great dragon",
+        )
+        session.add(n)
+        session.commit()
+        session.refresh(n)
+
+        assert isinstance(n.id, uuid.UUID)
+        assert n.kind == NoteKind.description
+
+
+def test_model_note_cascade_on_model_delete(engine):
+    with Session(engine) as session:
+        m = _make_model(session, slug="m-note-cascade")
+        n = ModelNote(model_id=m.id, kind=NoteKind.operational, body="print at 220")
+        session.add(n)
+        session.commit()
+
+        session.delete(m)
+        session.commit()
+
+        rows = session.exec(select(ModelNote)).all()
+        assert rows == []
+
+
+def test_model_note_does_not_yet_have_author_id():
+    # Slice 1A intentionally omits author_id; it is added in Slice 1B
+    # alongside the User UUID migration.
+    assert "author_id" not in ModelNote.model_fields

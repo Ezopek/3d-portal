@@ -275,3 +275,17 @@ class ModelExternalLink(SQLModel, table=True):
     url: str
     created_at: datetime.datetime = Field(default_factory=_now_utc)
     updated_at: datetime.datetime = Field(default_factory=_now_utc)
+
+
+class ModelNote(SQLModel, table=True):
+    __tablename__ = "model_note"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    model_id: uuid.UUID = Field(
+        sa_column=uuid_fk("model.id", ondelete="CASCADE", nullable=False, index=True),
+    )
+    kind: NoteKind
+    body: str
+    # author_id is deferred to Slice 1B (User UUID migration).
+    created_at: datetime.datetime = Field(default_factory=_now_utc)
+    updated_at: datetime.datetime = Field(default_factory=_now_utc)
