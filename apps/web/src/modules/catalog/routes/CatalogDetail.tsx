@@ -3,11 +3,11 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { isAdmin } from "@/lib/auth";
 import { pickGalleryCandidates } from "@/lib/galleryCandidates";
 import { useFiles } from "@/modules/catalog/hooks/useFiles";
 import { useModel } from "@/modules/catalog/hooks/useModel";
 import { useClearThumbnail, useSetThumbnail } from "@/modules/catalog/hooks/useThumbnail";
+import { useAuth } from "@/shell/AuthContext";
 import { Gallery } from "@/ui/custom/Gallery";
 import { ModelViewer } from "@/ui/custom/ModelViewer";
 
@@ -25,7 +25,7 @@ export function CatalogDetail() {
 
   const setThumb = useSetThumbnail(id);
   const clearThumb = useClearThumbnail(id);
-  const admin = isAdmin();
+  const { isAdmin: admin } = useAuth();
 
   if (model === undefined) return <div className="p-4 text-sm text-muted-foreground">…</div>;
 
