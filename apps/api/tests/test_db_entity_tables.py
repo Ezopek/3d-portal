@@ -11,6 +11,7 @@ from app.core.db.models import (
     Model,
     ModelFile,
     ModelFileKind,
+    ModelPrint,
     ModelSource,
     ModelStatus,
     ModelTag,
@@ -509,3 +510,56 @@ def test_model_tag_restrict_on_tag_delete_when_in_use(engine):
         session.delete(t)
         with pytest.raises(sqlalchemy.exc.IntegrityError):
             session.commit()
+
+
+def test_model_print_basic_persist(engine):
+    with Session(engine) as session:
+        m = _make_model(session, slug="m-print")
+        p = ModelPrint(model_id=m.id, note="first print")
+        session.add(p)
+        session.commit()
+        session.refresh(p)
+
+        assert isinstance(p.id, uuid.UUID)
+        assert p.photo_file_id is None
+        assert p.printed_at is None
+
+
+def test_model_print_photo_set_null_on_file_delete(engine):
+    with Session(engine) as session:
+        m = _make_model(session, slug="m-print-photo")
+        f = ModelFile(
+            model_id=m.id,
+            kind=ModelFileKind.print,
+            original_name="ph.jpg",
+            storage_path="ph.jpg",
+            sha256="p" * 64,
+            size_bytes=10,
+            mime_type="image/jpeg",
+        )
+        session.add(f)
+        session.commit()
+        session.refresh(f)
+
+        p = ModelPrint(model_id=m.id, photo_file_id=f.id, note="ok")
+        session.add(p)
+        session.commit()
+
+        session.delete(f)
+        session.commit()
+        session.refresh(p)
+        assert p.photo_file_id is None
+
+
+def test_model_print_cascade_on_model_delete(engine):
+    with Session(engine) as session:
+        m = _make_model(session, slug="m-print-cascade")
+        p = ModelPrint(model_id=m.id, note="x")
+        session.add(p)
+        session.commit()
+
+        session.delete(m)
+        session.commit()
+
+        rows = session.exec(select(ModelPrint)).all()
+        assert rows == []

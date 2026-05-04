@@ -237,3 +237,20 @@ class ModelTag(SQLModel, table=True):
         sa_column=uuid_fk("tag.id", ondelete="RESTRICT", primary_key=True),
     )
     created_at: datetime.datetime = Field(default_factory=_now_utc)
+
+
+class ModelPrint(SQLModel, table=True):
+    __tablename__ = "model_print"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    model_id: uuid.UUID = Field(
+        sa_column=uuid_fk("model.id", ondelete="CASCADE", nullable=False, index=True),
+    )
+    photo_file_id: uuid.UUID | None = Field(
+        default=None,
+        sa_column=uuid_fk("model_file.id", ondelete="SET NULL", nullable=True),
+    )
+    printed_at: datetime.date | None = None
+    note: str | None = None
+    created_at: datetime.datetime = Field(default_factory=_now_utc)
+    updated_at: datetime.datetime = Field(default_factory=_now_utc)
