@@ -1,0 +1,44 @@
+[
+  {
+    "id": "001",
+    "name_en": "Articulated Dragon",
+    "name_pl": "Smok przegubowy",
+    "path": "decorum/Articulated Dragon - 001",
+    "category": "decorations",
+    "subcategory": "articulated_figures",
+    "tags": ["dragon", "smok", "articulated"],
+    "source": "printables",
+    "printables_id": "12345",
+    "thangs_id": null,
+    "makerworld_id": null,
+    "source_url": null,
+    "rating": 4,
+    "status": "printed",
+    "notes": "great print",
+    "thumbnail": "iso.png",
+    "date_added": "2026-04-12",
+    "prints": [
+      {"path": "missing.jpg", "date": "2026-04-15", "notes_en": "first try"}
+    ]
+  },
+  {
+    "id": "002",
+    "name_en": "Holder",
+    "name_pl": null,
+    "path": "practical/Holder - 002",
+    "category": "practical",
+    "subcategory": null,
+    "tags": ["holder"],
+    "source": "unknown",
+    "printables_id": null,
+    "thangs_id": null,
+    "makerworld_id": null,
+    "source_url": null,
+    "rating": null,
+    "status": "not_printed",
+    "notes": "",
+    "thumbnail": null,
+    "date_added": "2026-04-15",
+    "prints": []
+  }
+]
