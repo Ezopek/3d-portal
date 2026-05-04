@@ -41,10 +41,14 @@ def _isolated_db():
     os.environ["PORTAL_CONTENT_DIR"] = str(content_dir)
     # Clear any cached settings or engine that read env at import time
     from app.core.config import get_settings
-    from app.core.db.session import get_engine
+    from app.core.db.session import get_engine, init_schema
 
     get_settings.cache_clear()
     get_engine.cache_clear()
+    # Initialize schema once for the session so tests that don't use the
+    # `client` fixture (which runs lifespan + init_schema) can still query
+    # the DB directly via get_engine().
+    init_schema(get_engine())
     yield
     # Cleanup tmp dir best-effort
     import shutil

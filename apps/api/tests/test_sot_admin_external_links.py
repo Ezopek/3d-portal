@@ -92,7 +92,7 @@ def test_create_link_201(client):
             "source": "printables",
             "url": "https://printables.com/model/123",
             "external_id": "123",
-        },  # noqa: E501
+        },
         headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 201, r.text
