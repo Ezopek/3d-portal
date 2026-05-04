@@ -146,6 +146,9 @@ class Category(SQLModel, table=True):
             sqlite_where=Column("parent_id").is_(None),
             postgresql_where=Column("parent_id").is_(None),
         ),
+        # Named to match the alembic migration (ix_category_parent), which
+        # differs from the SQLModel auto-generated name (ix_category_parent_id).
+        Index("ix_category_parent", "parent_id"),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -186,7 +189,7 @@ class Model(SQLModel, table=True):
     name_en: str
     name_pl: str | None = None
     category_id: uuid.UUID = Field(
-        sa_column=uuid_fk("category.id", ondelete="RESTRICT", nullable=False),
+        sa_column=uuid_fk("category.id", ondelete="RESTRICT", nullable=False, index=True),
     )
     source: ModelSource = Field(default=ModelSource.unknown)
     status: ModelStatus = Field(default=ModelStatus.not_printed, index=True)
@@ -229,6 +232,7 @@ class ModelFile(SQLModel, table=True):
 
 class ModelTag(SQLModel, table=True):
     __tablename__ = "model_tag"
+    __table_args__ = (Index("ix_model_tag_tag_model", "tag_id", "model_id"),)
 
     model_id: uuid.UUID = Field(
         sa_column=uuid_fk("model.id", ondelete="CASCADE", primary_key=True),
@@ -264,6 +268,11 @@ class ModelExternalLink(SQLModel, table=True):
             "source",
             name="uq_model_external_link_model_source",
         ),
+        Index(
+            "ix_model_external_lookup",
+            "source",
+            "external_id",
+        ),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -279,10 +288,11 @@ class ModelExternalLink(SQLModel, table=True):
 
 class ModelNote(SQLModel, table=True):
     __tablename__ = "model_note"
+    __table_args__ = (Index("ix_model_note_model_kind", "model_id", "kind"),)
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     model_id: uuid.UUID = Field(
-        sa_column=uuid_fk("model.id", ondelete="CASCADE", nullable=False, index=True),
+        sa_column=uuid_fk("model.id", ondelete="CASCADE", nullable=False),
     )
     kind: NoteKind
     body: str
