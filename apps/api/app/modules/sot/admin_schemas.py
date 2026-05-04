@@ -8,7 +8,7 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.db.models import ModelSource, ModelStatus
+from app.core.db.models import ModelFileKind, ModelSource, ModelStatus
 
 
 class ModelCreate(BaseModel):
@@ -37,3 +37,14 @@ class ModelPatch(BaseModel):
 
 class ThumbnailSet(BaseModel):
     file_id: uuid.UUID
+
+
+class ModelFilePatch(BaseModel):
+    """Updateable fields for a ModelFile.  Content-tied fields (storage_path,
+    sha256, size_bytes, mime_type) are intentionally excluded — replace the
+    binary via DELETE + POST upload instead."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: ModelFileKind | None = None
+    original_name: str | None = Field(default=None, min_length=1)

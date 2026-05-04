@@ -8,24 +8,37 @@ Hard-delete (?hard=true) is restricted to admin role only.
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import Session
 
 from app.core.auth.jwt import TokenError, decode_token
 from app.core.config import Settings, get_settings
-from app.core.db.models import User, UserRole
+from app.core.db.models import ModelFileKind, User, UserRole
 from app.core.db.session import get_session
-from app.modules.sot.admin_schemas import ModelCreate, ModelPatch, ThumbnailSet
+from app.modules.sot.admin_schemas import ModelCreate, ModelFilePatch, ModelPatch, ThumbnailSet
 from app.modules.sot.admin_service import (
     create_model,
+    delete_model_file,
     hard_delete_model,
     restore_model,
     set_thumbnail,
     soft_delete_model,
     update_model,
+    update_model_file,
+    upload_model_file,
 )
-from app.modules.sot.schemas import ModelDetail
+from app.modules.sot.schemas import ModelDetail, ModelFileRead
 from app.modules.sot.service import get_model_detail
 
 router = APIRouter(prefix="/api/admin", tags=["sot-admin"])
@@ -197,3 +210,94 @@ def admin_set_thumbnail(
     if detail is None:
         raise HTTPException(500, "model disappeared after thumbnail update")
     return detail
+
+
+# ---------------------------------------------------------------------------
+# ModelFile endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/models/{model_id}/files",
+    response_model=ModelFileRead,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        200: {"description": "Existing file returned (sha256 dedup)"},
+        201: {"description": "File uploaded"},
+        413: {"description": "File too large"},
+    },
+)
+async def admin_upload_file(
+    model_id: uuid.UUID,
+    response: Response,
+    file: Annotated[UploadFile, File()],
+    kind: Annotated[ModelFileKind, Form()],
+    session: Annotated[Session, Depends(get_session)],
+    actor_user_id: uuid.UUID = _current_principal,
+) -> ModelFileRead:
+    settings = get_settings()
+    file_row, was_existing = await upload_model_file(
+        session,
+        model_id=model_id,
+        kind=kind,
+        upload=file,
+        actor_user_id=actor_user_id,
+        content_dir=settings.portal_content_dir,
+    )
+    if was_existing:
+        response.status_code = status.HTTP_200_OK
+    return ModelFileRead.model_validate(file_row)
+
+
+@router.patch(
+    "/models/{model_id}/files/{file_id}",
+    response_model=ModelFileRead,
+)
+def admin_patch_file(
+    model_id: uuid.UUID,
+    file_id: uuid.UUID,
+    patch: ModelFilePatch,
+    session: Annotated[Session, Depends(get_session)],
+    actor_user_id: uuid.UUID = _current_principal,
+) -> ModelFileRead:
+    try:
+        f = update_model_file(
+            session,
+            model_id=model_id,
+            file_id=file_id,
+            patch=patch,
+            actor_user_id=actor_user_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(404, "file not found") from exc
+    except ValueError as exc:
+        msg = str(exc)
+        if "kind_conflict" in msg:
+            raise HTTPException(
+                409, "kind change would violate unique (model, sha256, kind)"
+            ) from exc
+        raise HTTPException(422, msg) from exc
+    return ModelFileRead.model_validate(f)
+
+
+@router.delete(
+    "/models/{model_id}/files/{file_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def admin_delete_file(
+    model_id: uuid.UUID,
+    file_id: uuid.UUID,
+    session: Annotated[Session, Depends(get_session)],
+    actor_user_id: uuid.UUID = _current_principal,
+) -> None:
+    settings = get_settings()
+    try:
+        delete_model_file(
+            session,
+            model_id=model_id,
+            file_id=file_id,
+            actor_user_id=actor_user_id,
+            content_dir=settings.portal_content_dir,
+        )
+    except LookupError as exc:
+        raise HTTPException(404, "file not found") from exc
