@@ -240,3 +240,56 @@ curl -s -b /tmp/gt-cookies.txt -H "X-CSRFTOKEN: $CSRF" -H "Referer: https://glit
 ```
 
 5. For sourcemap uploads, use any existing long-lived API token from `https://glitchtip.ezop.ddns.net/profile/auth-tokens/` with scopes `org:read`, `project:read`, `project:write`, `project:releases`. Save as `GLITCHTIP_AUTH_TOKEN` in local `infra/.env`.
+
+## SoT migration — operational state (post Slice 2 series)
+
+**As of 2026-05-04**, the source-of-truth migration is complete through
+Slices 2A/2B/2C/2D plus reverse-sync. The portal database on `.190` now
+holds the canonical catalog: 89 models, 821 binary files (2.8 GB across
+`/mnt/raid/3d-portal-content/`), 243 deduplicated tags, 43 categories,
+62 external links, 31 notes, 26 print records.
+
+### Active surfaces
+
+- **Public read** (`/api/categories`, `/api/tags`, `/api/models`,
+  `/api/models/{id}`, `/api/models/{id}/files`,
+  `/api/models/{id}/files/{id}/content`) — serves real DB-backed data.
+- **Admin write** (`/api/admin/*` for models, files, tags, categories,
+  notes, prints, external_links) — JWT-protected; admin role plus the
+  newly-enabled `agent` role can both call most endpoints.
+  Hard-delete (`?hard=true`) is admin-only.
+- **Legacy file-based** (`/api/catalog/*`, `/api/files/*`) — left in
+  place for the existing UI to continue working. Reads from
+  `/mnt/raid/3d-portal-data/` (rsync target). Will be removed when the
+  UI is rewritten to call the new endpoints.
+
+### Agent service account
+
+A user `agent@portal.example.com` exists on `.190` with role=`agent`.
+Provisioned via `python -m scripts.bootstrap_agent --email ... [--rotate]`.
+Local credentials cached at `~/.config/3d-portal/agent.token` (chmod 600);
+the `hydrate_local_tree.py` script reads it for re-auth.
+
+### Reverse-sync
+
+Run `python -m scripts.hydrate_local_tree --portal-url
+http://192.168.2.190:8090 --target <local-dir> --token-file
+~/.config/3d-portal/agent.token --kinds stl` from WSL to materialize
+STLs locally. State is kept in `<target>/.hydrate-state.json` for
+incremental updates. Layout: `<category-slug>/<subcategory-slug>/<model-slug>-<legacy_id>/<original_name>`.
+
+### What remains
+
+- **Cutover (operational, not implementation):** when the UI is rewritten
+  to consume `/api/*` instead of `/api/catalog/*`, the legacy router can
+  be removed and the WSL `sync-data.sh` cron disabled. Until then both
+  paths coexist; the rsync from Windows is harmless because the new SoT
+  is the DB, not the file tree (the rsync target is read by the legacy
+  endpoints only).
+- **`audit_log.action` enum tightening** (Slice 2 polish) — currently the
+  column is free `text`. The closed-set `KNOWN_ENTITY_TYPES` runtime
+  guard prevents drift; future polish slice can convert to a strict
+  `AuditAction` enum once the API mutation catalog is finalized.
+- **3MF originals in production** — the migration imported the 3MF set
+  from `/mnt/raid/3d-portal-staging/3mf-originals/` (300 MB). The
+  staging dir can be removed once the migration is confirmed stable.
