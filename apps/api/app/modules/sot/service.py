@@ -7,10 +7,11 @@ the raw query layer.
 
 import uuid
 
+from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
-from app.core.db.models import Category
-from app.modules.sot.schemas import CategoryNode, CategoryTree
+from app.core.db.models import Category, Tag
+from app.modules.sot.schemas import CategoryNode, CategoryTree, TagRead
 
 
 def list_categories_tree(session: Session) -> CategoryTree:
@@ -49,3 +50,26 @@ def list_categories_tree(session: Session) -> CategoryTree:
         _sort_recursive(r)
 
     return CategoryTree(roots=roots)
+
+
+def list_tags(
+    session: Session,
+    *,
+    q: str | None = None,
+    limit: int = 200,
+) -> list[TagRead]:
+    """Return tags ordered by slug, optionally filtered by q in name_en/name_pl/slug."""
+    stmt = select(Tag)
+    if q:
+        like = f"%{q.lower()}%"
+        # SQLite LIKE is case-insensitive for ASCII by default; use lower() for safety
+        stmt = stmt.where(
+            or_(
+                func.lower(Tag.slug).like(like),
+                func.lower(Tag.name_en).like(like),
+                func.lower(Tag.name_pl).like(like),
+            )
+        )
+    stmt = stmt.order_by(Tag.slug).limit(limit)
+    rows = list(session.exec(stmt).all())
+    return [TagRead.model_validate(r) for r in rows]
