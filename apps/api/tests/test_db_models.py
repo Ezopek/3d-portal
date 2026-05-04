@@ -7,8 +7,7 @@ from app.core.db.session import create_engine_for_url, init_schema
 
 
 def test_user_role_enum_values():
-    assert UserRole.admin.value == "admin"
-    assert UserRole.member.value == "member"
+    assert {r.value for r in UserRole} == {"admin", "agent", "member"}
 
 
 def test_user_table_metadata():
