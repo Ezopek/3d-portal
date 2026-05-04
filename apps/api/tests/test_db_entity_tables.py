@@ -24,14 +24,16 @@ from app.core.db.session import create_engine_for_url, init_schema
 
 
 def test_model_source_enum_values():
-    assert ModelSource.unknown.value == "unknown"
-    assert ModelSource.printables.value == "printables"
-    assert ModelSource.thangs.value == "thangs"
-    assert ModelSource.makerworld.value == "makerworld"
-    assert ModelSource.cults3d.value == "cults3d"
-    assert ModelSource.thingiverse.value == "thingiverse"
-    assert ModelSource.own.value == "own"
-    assert ModelSource.other.value == "other"
+    assert {m.value for m in ModelSource} == {
+        "unknown",
+        "printables",
+        "thangs",
+        "makerworld",
+        "cults3d",
+        "thingiverse",
+        "own",
+        "other",
+    }
 
 
 def test_model_status_enum_values():

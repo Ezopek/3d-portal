@@ -299,7 +299,13 @@ category
   name_en     text NOT NULL
   name_pl     text NULL
   created_at, updated_at
-  UNIQUE (parent_id, slug)           -- slug unique within parent
+  UNIQUE (parent_id, slug)                                    -- slug unique within parent
+  UNIQUE INDEX uq_category_root_slug ON slug WHERE parent_id IS NULL
+                                                              -- NULL-aware: ANSI SQL treats NULL != NULL,
+                                                              -- so the composite UNIQUE above does not catch
+                                                              -- two root-level categories with the same slug.
+                                                              -- The partial unique index closes that gap on
+                                                              -- both SQLite (>=3.8.9) and Postgres.
 
 tag
   id          UUID PK
@@ -411,7 +417,9 @@ both tables.
    `INSERT model (thumbnail_file_id=NULL)` → `INSERT model_file …` →
    `UPDATE model SET thumbnail_file_id=...`. Trivial in the service layer.
 3. **`category.slug` UNIQUE per parent**, not globally. Two distinct
-   `accessories` subcategories under different parents are fine.
+   `accessories` subcategories under different parents are fine. Root-level
+   uniqueness (parent_id IS NULL) is enforced by an extra partial unique
+   index `uq_category_root_slug` because ANSI SQL treats NULL != NULL.
 4. **`model_tag.tag_id ON DELETE RESTRICT`** — protects against accidental
    deletion of a tag that is still attached to models. Deleting a tag means
    `DELETE FROM model_tag WHERE tag_id=…` first, then `DELETE FROM tag`.
