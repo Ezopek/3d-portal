@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 import pytest
@@ -112,8 +111,8 @@ def test_put_happy_path_updates_list_and_audit(client):
     assert by_id["001"]["thumbnail_url"] == "/api/files/001/images/Dragon.png"
 
     audit = c.get("/api/admin/audit", headers=_hdrs(token)).json()
-    kinds = [e["kind"] for e in audit["events"]]
-    assert "thumbnail.set" in kinds
+    actions = [e["action"] for e in audit["events"]]
+    assert "admin.thumbnail.set" in actions
 
 
 def test_delete_happy_path_clears_and_audits(client):
@@ -125,20 +124,20 @@ def test_delete_happy_path_clears_and_audits(client):
     assert resp.status_code == 204
 
     audit = c.get("/api/admin/audit", headers=_hdrs(token)).json()
-    kinds = [e["kind"] for e in audit["events"]]
-    assert "thumbnail.cleared" in kinds
+    actions = [e["action"] for e in audit["events"]]
+    assert "admin.thumbnail.cleared" in actions
 
 
 def test_delete_idempotent_no_audit_on_noop(client):
     c, token, _uid = client
     audit_before = c.get("/api/admin/audit", headers=_hdrs(token)).json()
-    n_before = sum(1 for e in audit_before["events"] if e["kind"] == "thumbnail.cleared")
+    n_before = sum(1 for e in audit_before["events"] if e["action"] == "admin.thumbnail.cleared")
 
     resp = c.delete("/api/admin/models/001/thumbnail", headers=_hdrs(token))
     assert resp.status_code == 204
 
     audit_after = c.get("/api/admin/audit", headers=_hdrs(token)).json()
-    n_after = sum(1 for e in audit_after["events"] if e["kind"] == "thumbnail.cleared")
+    n_after = sum(1 for e in audit_after["events"] if e["action"] == "admin.thumbnail.cleared")
     assert n_after == n_before
 
 
@@ -161,9 +160,9 @@ def test_refresh_purges_orphan_overrides(client):
     assert resp.status_code == 200
 
     audit = c.get("/api/admin/audit", headers=_hdrs(token)).json()
-    purged_events = [e for e in audit["events"] if e["kind"] == "thumbnail.orphan_purged"]
+    purged_events = [e for e in audit["events"] if e["action"] == "thumbnail.orphan_purged"]
     assert len(purged_events) >= 1
-    assert any(json.loads(e["payload"]).get("model_id") == "002" for e in purged_events)
+    assert any((e["after"] or {}).get("model_id") == "002" for e in purged_events)
     # The orphan row is gone.
     assert repo.get("002") is None
     # The legitimate override survives.

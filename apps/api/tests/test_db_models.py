@@ -3,7 +3,7 @@ from datetime import datetime
 
 from sqlmodel import Session, select
 
-from app.core.db.models import AuditEvent, User, UserRole
+from app.core.db.models import AuditLog, User, UserRole
 from app.core.db.session import create_engine_for_url, init_schema
 
 
@@ -29,9 +29,9 @@ def test_user_id_is_uuid_pk():
     assert isinstance(user.id, uuid.UUID)
 
 
-def test_audit_event_defaults_now():
-    event = AuditEvent(kind="test", payload="{}")
-    assert isinstance(event.at, datetime)
+def test_audit_log_defaults_now():
+    log = AuditLog(action="test", entity_type="test")
+    assert isinstance(log.at, datetime)
 
 
 def test_engine_can_create_schema(tmp_path):

@@ -1,17 +1,17 @@
 """Pre-Slice-1A legacy tables.
 
-User has been migrated to UUID PK as part of Slice 1B. AuditEvent and the
-ThumbnailOverride/RenderSelection set_by_user_id FKs follow the same UUID
-convention. AuditEvent will be replaced by AuditLog in a follow-up task.
+User has been migrated to UUID PK as part of Slice 1B. AuditEvent has been
+replaced by AuditLog (rich schema) in Slice 1B Task 3.
 """
 
 import datetime
 import uuid
 
+from sqlalchemy import Column, Index
 from sqlmodel import Field, SQLModel
 
 from ._enums import UserRole
-from ._helpers import _now_utc, uuid_fk
+from ._helpers import _now_utc, sa_uuid_type, uuid_fk
 
 
 class User(SQLModel, table=True):
@@ -26,17 +26,28 @@ class User(SQLModel, table=True):
     last_login_at: datetime.datetime | None = None
 
 
-class AuditEvent(SQLModel, table=True):
-    __tablename__ = "auditevent"
+class AuditLog(SQLModel, table=True):
+    __tablename__ = "audit_log"
+    __table_args__ = (
+        Index("ix_audit_log_entity", "entity_type", "entity_id", "at"),
+        Index("ix_audit_log_actor", "actor_user_id", "at"),
+    )
 
-    id: int | None = Field(default=None, primary_key=True)
-    at: datetime.datetime = Field(default_factory=_now_utc, index=True)
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     actor_user_id: uuid.UUID | None = Field(
         default=None,
         sa_column=uuid_fk("user.id", ondelete="SET NULL", nullable=True),
     )
-    kind: str = Field(index=True)
-    payload: str
+    action: str = Field(index=True)
+    entity_type: str
+    entity_id: uuid.UUID | None = Field(
+        default=None,
+        sa_column=Column(sa_uuid_type(), nullable=True),
+    )
+    before_json: str | None = None
+    after_json: str | None = None
+    request_id: str | None = None
+    at: datetime.datetime = Field(default_factory=_now_utc, index=True)
 
 
 class ThumbnailOverride(SQLModel, table=True):

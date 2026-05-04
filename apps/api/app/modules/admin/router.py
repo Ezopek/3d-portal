@@ -1,3 +1,4 @@
+import json
 import re
 import uuid
 from typing import Annotated
@@ -8,7 +9,7 @@ from sqlmodel import Session, func, select
 
 from app.core.audit import record_event
 from app.core.auth.dependencies import current_admin
-from app.core.db.models import AuditEvent
+from app.core.db.models import AuditLog
 from app.core.db.session import get_engine, get_session
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -25,9 +26,11 @@ async def refresh_catalog(request: Request, user_id: uuid.UUID = current_admin) 
     for model_id, relative_path in purged:
         record_event(
             get_engine(),
-            kind="thumbnail.orphan_purged",
+            action="thumbnail.orphan_purged",
+            entity_type="thumbnail_override",
+            entity_id=None,
             actor_user_id=user_id,
-            payload={"model_id": model_id, "relative_path": relative_path},
+            after={"model_id": model_id, "relative_path": relative_path},
         )
 
     # Render-selection orphan purge (analogous to thumbnail orphans).
@@ -37,9 +40,11 @@ async def refresh_catalog(request: Request, user_id: uuid.UUID = current_admin) 
     for model_id, relative_path in selection_purged:
         record_event(
             get_engine(),
-            kind="render_selection.orphan_purged",
+            action="render_selection.orphan_purged",
+            entity_type="render_selection",
+            entity_id=None,
             actor_user_id=user_id,
-            payload={"model_id": model_id, "relative_path": relative_path},
+            after={"model_id": model_id, "relative_path": relative_path},
         )
 
     missing = service.model_ids_missing_renders()
@@ -53,9 +58,11 @@ async def refresh_catalog(request: Request, user_id: uuid.UUID = current_admin) 
 
     record_event(
         get_engine(),
-        kind="catalog.refresh",
+        action="admin.refresh_catalog",
+        entity_type="catalog",
+        entity_id=None,
         actor_user_id=user_id,
-        payload={
+        after={
             "total": response.total,
             "thumbnails_purged": len(purged),
             "renders_enqueued": len(missing),
@@ -81,9 +88,11 @@ async def trigger_render(
     )
     record_event(
         get_engine(),
-        kind="render.triggered",
+        action="admin.render.triggered",
+        entity_type="model",
+        entity_id=None,
         actor_user_id=user_id,
-        payload={"model_id": model_id, "job_id": job.job_id},
+        after={"model_id": model_id, "job_id": job.job_id},
     )
     return {"job_id": job.job_id, "model_id": model_id}
 
@@ -114,19 +123,23 @@ def list_audit(
     offset: int = Query(default=0, ge=0),
     _user_id: uuid.UUID = current_admin,
 ) -> dict:
-    total = session.exec(select(func.count()).select_from(AuditEvent)).one()
+    total = session.exec(select(func.count()).select_from(AuditLog)).one()
     rows = session.exec(
-        select(AuditEvent).order_by(AuditEvent.id.desc()).offset(offset).limit(limit),
+        select(AuditLog).order_by(AuditLog.at.desc()).offset(offset).limit(limit),
     ).all()
     return {
         "total": total,
         "events": [
             {
-                "id": e.id,
+                "id": str(e.id),
                 "at": e.at.isoformat(),
-                "actor_user_id": e.actor_user_id,
-                "kind": e.kind,
-                "payload": e.payload,
+                "actor_user_id": str(e.actor_user_id) if e.actor_user_id else None,
+                "action": e.action,
+                "entity_type": e.entity_type,
+                "entity_id": str(e.entity_id) if e.entity_id else None,
+                "before": json.loads(e.before_json) if e.before_json else None,
+                "after": json.loads(e.after_json) if e.after_json else None,
+                "request_id": e.request_id,
             }
             for e in rows
         ],
@@ -163,9 +176,11 @@ def set_thumbnail(
     )
     record_event(
         get_engine(),
-        kind="thumbnail.set",
+        action="admin.thumbnail.set",
+        entity_type="thumbnail_override",
+        entity_id=None,
         actor_user_id=user_id,
-        payload={"model_id": model_id, "relative_path": payload.path},
+        after={"model_id": model_id, "relative_path": payload.path},
     )
 
 
@@ -179,9 +194,11 @@ def clear_thumbnail(
     if removed:
         record_event(
             get_engine(),
-            kind="thumbnail.cleared",
+            action="admin.thumbnail.cleared",
+            entity_type="thumbnail_override",
+            entity_id=None,
             actor_user_id=user_id,
-            payload={"model_id": model_id},
+            after={"model_id": model_id},
         )
 
 
@@ -249,17 +266,21 @@ async def set_render_selection(
         repo.set(model_id=model_id, paths=payload.paths, user_id=user_id)
         record_event(
             get_engine(),
-            kind="render_selection.set",
+            action="admin.render_selection.set",
+            entity_type="render_selection",
+            entity_id=None,
             actor_user_id=user_id,
-            payload={"model_id": model_id, "paths": payload.paths, "count": len(payload.paths)},
+            after={"model_id": model_id, "paths": payload.paths, "count": len(payload.paths)},
         )
     else:
         repo.clear(model_id)
         record_event(
             get_engine(),
-            kind="render_selection.cleared",
+            action="admin.render_selection.cleared",
+            entity_type="render_selection",
+            entity_id=None,
             actor_user_id=user_id,
-            payload={"model_id": model_id},
+            after={"model_id": model_id},
         )
 
     await request.app.state.arq.enqueue_job(

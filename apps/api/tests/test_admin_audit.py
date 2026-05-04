@@ -37,9 +37,16 @@ def client(tmp_path, monkeypatch):
             user_id = user.id
         # Seed audit events using the real user UUID.
         for i in range(5):
-            record_event(engine, kind=f"test.event.{i}", actor_user_id=user_id, payload={"i": i})
+            record_event(
+                engine,
+                action=f"test.event.{i}",
+                entity_type="test",
+                entity_id=None,
+                actor_user_id=user_id,
+                after={"i": i},
+            )
         token = encode_token(subject=str(user_id), role="admin", secret="test", ttl_minutes=30)
-        yield c, token
+        yield c, token, user_id
     get_settings.cache_clear()
     from app.core.db.session import get_engine as ge2
 
@@ -47,12 +54,12 @@ def client(tmp_path, monkeypatch):
 
 
 def test_audit_requires_admin(client):
-    c, _ = client
+    c, _, _uid = client
     assert c.get("/api/admin/audit").status_code == 401
 
 
 def test_audit_returns_paginated_events(client):
-    c, token = client
+    c, token, user_id = client
     headers = {"Authorization": f"Bearer {token}"}
     r = c.get("/api/admin/audit?limit=3", headers=headers)
     assert r.status_code == 200
@@ -60,12 +67,23 @@ def test_audit_returns_paginated_events(client):
     assert len(body["events"]) == 3
     assert body["total"] >= 5
     # Newest first.
-    kinds = [e["kind"] for e in body["events"]]
-    assert kinds[0] == "test.event.4"
+    actions = [e["action"] for e in body["events"]]
+    assert actions[0] == "test.event.4"
+    # New fields are present.
+    e0 = body["events"][0]
+    assert e0["entity_type"] == "test"
+    assert e0["entity_id"] is None
+    assert e0["actor_user_id"] == str(user_id)
+    assert e0["before"] is None
+    assert e0["after"] == {"i": 4}
+    assert "request_id" in e0
+    # Old field "kind" / "payload" are gone.
+    assert "kind" not in e0
+    assert "payload" not in e0
 
 
 def test_audit_offset_paginates(client):
-    c, token = client
+    c, token, _uid = client
     headers = {"Authorization": f"Bearer {token}"}
     page1 = c.get("/api/admin/audit?limit=2&offset=0", headers=headers).json()["events"]
     page2 = c.get("/api/admin/audit?limit=2&offset=2", headers=headers).json()["events"]

@@ -35,9 +35,11 @@ async def create_share(
     )
     record_event(
         get_engine(),
-        kind="share.created",
+        action="admin.share.create",
+        entity_type="share_token",
+        entity_id=None,
         actor_user_id=user_id,
-        payload={"token": record.token, "model_id": record.model_id},
+        after={"token": record.token, "model_id": record.model_id},
     )
     return CreateShareResponse(
         token=record.token,
@@ -63,8 +65,10 @@ async def revoke_share(
     await _service(request).revoke(token)
     record_event(
         get_engine(),
-        kind="share.revoked",
+        action="admin.share.delete",
+        entity_type="share_token",
+        entity_id=None,
         actor_user_id=user_id,
-        payload={"token": token},
+        after={"token": token},
     )
     return Response(status_code=204)

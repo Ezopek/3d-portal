@@ -6,6 +6,7 @@ import sqlalchemy.exc
 from sqlmodel import Session, select
 
 from app.core.db.models import (
+    AuditLog,
     Category,
     ExternalSource,
     Model,
@@ -19,6 +20,8 @@ from app.core.db.models import (
     ModelTag,
     NoteKind,
     Tag,
+    User,
+    UserRole,
 )
 from app.core.db.session import create_engine_for_url, init_schema
 
@@ -656,3 +659,65 @@ def test_model_note_does_not_yet_have_author_id():
     # Slice 1A intentionally omits author_id; it is added in Slice 1B
     # alongside the User UUID migration.
     assert "author_id" not in ModelNote.model_fields
+
+
+def test_audit_log_basic_persist(engine):
+    with Session(engine) as session:
+        log = AuditLog(
+            actor_user_id=None,
+            action="auth.login.fail",
+            entity_type="user",
+            entity_id=uuid.uuid4(),
+            before_json=None,
+            after_json=None,
+            request_id="req-1",
+        )
+        session.add(log)
+        session.commit()
+        session.refresh(log)
+
+        assert isinstance(log.id, uuid.UUID)
+        assert log.action == "auth.login.fail"
+        assert log.entity_type == "user"
+        assert isinstance(log.at, datetime.datetime)
+
+
+def test_audit_log_entity_id_nullable(engine):
+    with Session(engine) as session:
+        log = AuditLog(
+            actor_user_id=None,
+            action="auth.login.fail",
+            entity_type="user",
+            entity_id=None,
+        )
+        session.add(log)
+        session.commit()
+        session.refresh(log)
+        assert log.entity_id is None
+
+
+def test_audit_log_actor_set_null_on_user_delete(engine):
+    with Session(engine) as session:
+        u = User(
+            email="a@b",
+            display_name="A",
+            role=UserRole.admin,
+            password_hash="x",
+        )
+        session.add(u)
+        session.commit()
+        session.refresh(u)
+        log = AuditLog(
+            actor_user_id=u.id,
+            action="x",
+            entity_type="t",
+            entity_id=uuid.uuid4(),
+        )
+        session.add(log)
+        session.commit()
+        session.refresh(log)
+
+        session.delete(u)
+        session.commit()
+        session.refresh(log)
+        assert log.actor_user_id is None

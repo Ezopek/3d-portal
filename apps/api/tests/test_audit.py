@@ -1,34 +1,43 @@
-import json
-
 from sqlmodel import Session, select
 
 from app.core.audit import record_event
-from app.core.db.models import AuditEvent, User, UserRole
+from app.core.db.models import AuditLog, User, UserRole
 from app.core.db.session import create_engine_for_url, init_schema
 
 
-def test_record_event_persists_with_payload(tmp_path):
-    engine = create_engine_for_url(f"sqlite:///{tmp_path}/a.db")
+def test_record_event_persists(tmp_path):
+    db_path = tmp_path / "audit_test.db"
+    engine = create_engine_for_url(f"sqlite:///{db_path}")
     init_schema(engine)
-    # Seed a user so the actor_user_id FK constraint is satisfied
-    with Session(engine) as s:
+
+    with Session(engine) as session:
         u = User(
             email="a@b.c",
-            display_name="Test",
+            display_name="A",
             role=UserRole.admin,
-            password_hash="pw",
+            password_hash="x",
         )
-        s.add(u)
-        s.commit()
-        s.refresh(u)
+        session.add(u)
+        session.commit()
+        session.refresh(u)
         user_id = u.id
 
     record_event(
-        engine, kind="auth.login.success", actor_user_id=user_id, payload={"email": "a@b.c"}
+        engine,
+        action="auth.login.success",
+        entity_type="user",
+        entity_id=user_id,
+        actor_user_id=user_id,
+        after={"email": "a@b.c"},
     )
-    with Session(engine) as s:
-        events = s.exec(select(AuditEvent)).all()
+
+    with Session(engine) as session:
+        events = session.exec(select(AuditLog)).all()
+
     assert len(events) == 1
-    assert events[0].kind == "auth.login.success"
     assert events[0].actor_user_id == user_id
-    assert json.loads(events[0].payload) == {"email": "a@b.c"}
+    assert events[0].action == "auth.login.success"
+    assert events[0].entity_type == "user"
+    assert events[0].entity_id == user_id
+    assert events[0].after_json is not None
+    assert '"email": "a@b.c"' in events[0].after_json

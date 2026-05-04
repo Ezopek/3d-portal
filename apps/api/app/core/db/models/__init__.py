@@ -24,10 +24,10 @@ from ._enums import (
     UserRole,
 )
 from ._helpers import _now_utc, sa_uuid_type, uuid_fk
-from ._legacy import AuditEvent, RenderSelection, ThumbnailOverride, User
+from ._legacy import AuditLog, RenderSelection, ThumbnailOverride, User
 
 __all__ = [
-    "AuditEvent",
+    "AuditLog",
     "Category",
     "ExternalSource",
     "Model",

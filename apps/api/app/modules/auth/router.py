@@ -26,9 +26,11 @@ def login(
     if user is None or not verify_password(payload.password, user.password_hash):
         record_event(
             get_engine(),
-            kind="auth.login.fail",
+            action="auth.login.fail",
+            entity_type="user",
+            entity_id=None,
             actor_user_id=None,
-            payload={"email": payload.email},
+            after={"email": payload.email},
         )
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
     token = encode_token(
@@ -39,9 +41,11 @@ def login(
     )
     record_event(
         get_engine(),
-        kind="auth.login.success",
+        action="auth.login.success",
+        entity_type="user",
+        entity_id=user.id,
         actor_user_id=user.id,
-        payload={"email": user.email},
+        after={"email": user.email},
     )
     return TokenResponse(access_token=token, expires_in=settings.jwt_ttl_minutes * 60)
 

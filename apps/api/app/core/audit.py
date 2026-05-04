@@ -5,23 +5,34 @@ from typing import Any
 from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
-from app.core.db.models import AuditEvent
+from app.core.db.models import AuditLog
 
 
 def record_event(
     engine: Engine,
     *,
-    kind: str,
+    action: str,
+    entity_type: str,
+    entity_id: uuid.UUID | None,
     actor_user_id: uuid.UUID | None,
-    payload: dict[str, Any] | None = None,
+    before: dict[str, Any] | None = None,
+    after: dict[str, Any] | None = None,
+    request_id: str | None = None,
 ) -> None:
-    # Use a dedicated session so audit writes commit independently of any caller's
-    # transaction (e.g. a failed login still records the auth.login.fail event).
+    """Record one mutation in audit_log.
+
+    Uses a dedicated session so audit writes commit independently of the
+    caller's transaction (e.g. a failed login still records the event).
+    """
     with Session(engine) as session:
-        event = AuditEvent(
-            kind=kind,
+        log = AuditLog(
             actor_user_id=actor_user_id,
-            payload=json.dumps(payload or {}),
+            action=action,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            before_json=json.dumps(before) if before is not None else None,
+            after_json=json.dumps(after) if after is not None else None,
+            request_id=request_id,
         )
-        session.add(event)
+        session.add(log)
         session.commit()
