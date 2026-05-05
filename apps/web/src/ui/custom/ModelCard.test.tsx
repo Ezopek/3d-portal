@@ -31,6 +31,8 @@ function makeSummary(over: Partial<ModelSummary> = {}): ModelSummary {
       { id: "34", slug: "articulated", name_en: "Articulated", name_pl: null },
       { id: "35", slug: "extra-tag", name_en: "Extra", name_pl: null },
     ],
+    gallery_file_ids: [],
+    image_count: 0,
     ...over,
   };
 }

@@ -98,6 +98,8 @@ def test_model_summary_from_orm_includes_tags(engine):
             {
                 **m.model_dump(),
                 "tags": [],
+                "gallery_file_ids": [],
+                "image_count": 0,
             }
         )
         assert schema.slug == "dragon-001"
@@ -105,6 +107,8 @@ def test_model_summary_from_orm_includes_tags(engine):
         assert schema.status == "printed"
         assert schema.rating == 4.5
         assert schema.tags == []
+        assert schema.gallery_file_ids == []
+        assert schema.image_count == 0
 
 
 def test_model_detail_from_orm_with_embeds(engine):
@@ -163,6 +167,8 @@ def test_model_detail_from_orm_with_embeds(engine):
             {
                 **m.model_dump(),
                 "tags": [],
+                "gallery_file_ids": [],
+                "image_count": 0,
                 "category": {
                     "id": cat.id,
                     "parent_id": cat.parent_id,

@@ -100,6 +100,10 @@ class ModelSummary(_OrmBase):
     created_at: datetime.datetime
     updated_at: datetime.datetime
     tags: list[TagRead]
+    # Top up to 4 image/print files, ordered by (position NULLS LAST, created_at).
+    gallery_file_ids: list[uuid.UUID]
+    # Total image+print files for this model.
+    image_count: int
 
 
 class ModelDetail(ModelSummary):

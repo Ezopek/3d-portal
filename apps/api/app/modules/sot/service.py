@@ -9,7 +9,7 @@ import uuid
 from collections.abc import Sequence
 from enum import StrEnum
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, nullslast, or_
 from sqlmodel import Session, select
 
 from app.core.db.models import (
@@ -200,8 +200,41 @@ def list_models(
         for model_id, tag_row in session.exec(join_stmt).all():
             tags_by_model[model_id].append(TagRead.model_validate(tag_row))
 
+    # Eagerly fetch gallery hints (top 4 image/print file ids per model + total
+    # image/print count) so list cards can render a mini-carousel without a
+    # separate fetch per row. Ordering matches list_model_files: position
+    # NULLS LAST, then created_at ascending.
+    gallery_by_model: dict[uuid.UUID, list[uuid.UUID]] = {mid: [] for mid in model_ids}
+    image_counts: dict[uuid.UUID, int] = {mid: 0 for mid in model_ids}
+    if model_ids:
+        file_stmt = (
+            select(
+                ModelFile.model_id,
+                ModelFile.id,
+                ModelFile.kind,
+                ModelFile.position,
+                ModelFile.created_at,
+            )
+            .where(ModelFile.model_id.in_(model_ids))
+            .where(ModelFile.kind.in_([ModelFileKind.image, ModelFileKind.print]))
+            .order_by(nullslast(ModelFile.position.asc()), ModelFile.created_at.asc())
+        )
+        for row in session.exec(file_stmt).all():
+            mid = row[0]
+            fid = row[1]
+            image_counts[mid] = image_counts.get(mid, 0) + 1
+            if len(gallery_by_model[mid]) < 4:
+                gallery_by_model[mid].append(fid)
+
     items = [
-        ModelSummary.model_validate({**m.model_dump(), "tags": tags_by_model.get(m.id, [])})
+        ModelSummary.model_validate(
+            {
+                **m.model_dump(),
+                "tags": tags_by_model.get(m.id, []),
+                "gallery_file_ids": gallery_by_model.get(m.id, []),
+                "image_count": image_counts.get(m.id, 0),
+            }
+        )
         for m in rows
     ]
     return ModelListResponse(items=items, total=total, offset=offset, limit=limit)
@@ -221,8 +254,6 @@ def _apply_sort(stmt, sort: ModelListSort):
         return stmt.order_by(Model.status.asc(), Model.created_at.desc())
     if sort == ModelListSort.rating:
         # Rating desc, NULLs last; SQLAlchemy: nullslast(col.desc())
-        from sqlalchemy import nullslast
-
         return stmt.order_by(nullslast(Model.rating.desc()), Model.created_at.desc())
     return stmt.order_by(Model.created_at.desc())  # safety net
 
@@ -273,10 +304,20 @@ def get_model_detail(
     ).all()
     external_links = [ExternalLinkRead.model_validate(link) for link in link_rows]
 
+    gallery_rows = session.exec(
+        select(ModelFile.id)
+        .where(ModelFile.model_id == model_id)
+        .where(ModelFile.kind.in_([ModelFileKind.image, ModelFileKind.print]))
+        .order_by(nullslast(ModelFile.position.asc()), ModelFile.created_at.asc())
+    ).all()
+    gallery_file_ids = list(gallery_rows)
+
     return ModelDetail.model_validate(
         {
             **m.model_dump(),
             "tags": tags,
+            "gallery_file_ids": gallery_file_ids[:4],
+            "image_count": len(gallery_file_ids),
             "category": CategorySummary.model_validate(cat),
             "files": files,
             "prints": prints,

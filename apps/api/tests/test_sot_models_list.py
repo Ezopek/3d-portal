@@ -335,3 +335,71 @@ def test_list_combined_filters(client, seeded_listing):
     )
     slugs = {it["slug"] for it in r.json()["items"]}
     assert slugs == {"m-list-1", "m-list-2"}
+
+
+def test_list_models_exposes_gallery_hints(client):
+    """Each ModelSummary carries gallery_file_ids (top 4) and total image_count.
+
+    A model with image + print files reports both, ordered by
+    (position NULLS LAST, created_at). A model with no image/print files
+    reports image_count=0 and an empty gallery.
+    """
+    from app.core.db.models import ModelFile, ModelFileKind
+
+    engine = get_engine()
+    with Session(engine) as s:
+        cat = _seed_cat(s, "cat-4-gallery")
+        with_imgs = _seed_model(s, "model-4-gallery-with", category_id=cat.id)
+        without_imgs = _seed_model(s, "model-4-gallery-without", category_id=cat.id)
+
+        # Insert in scrambled order to confirm ordering isn't insertion-order.
+        f_print = ModelFile(
+            model_id=with_imgs.id,
+            kind=ModelFileKind.print,
+            original_name="print.png",
+            storage_path=f"models/{with_imgs.id}/files/p.png",
+            sha256="0" * 64,
+            size_bytes=1,
+            mime_type="image/png",
+            position=2,
+        )
+        f_img_a = ModelFile(
+            model_id=with_imgs.id,
+            kind=ModelFileKind.image,
+            original_name="a.png",
+            storage_path=f"models/{with_imgs.id}/files/a.png",
+            sha256="1" * 64,
+            size_bytes=1,
+            mime_type="image/png",
+            position=0,
+        )
+        f_img_b = ModelFile(
+            model_id=with_imgs.id,
+            kind=ModelFileKind.image,
+            original_name="b.png",
+            storage_path=f"models/{with_imgs.id}/files/b.png",
+            sha256="2" * 64,
+            size_bytes=1,
+            mime_type="image/png",
+            position=1,
+        )
+        s.add_all([f_print, f_img_a, f_img_b])
+        s.commit()
+        s.refresh(f_print)
+        s.refresh(f_img_a)
+        s.refresh(f_img_b)
+        with_id = str(with_imgs.id)
+        without_id = str(without_imgs.id)
+        expected_order = [str(f_img_a.id), str(f_img_b.id), str(f_print.id)]
+
+    r = client.get("/api/models?limit=200")
+    body = r.json()
+    by_id = {it["id"]: it for it in body["items"]}
+
+    item = by_id[with_id]
+    assert item["image_count"] == 3
+    assert item["gallery_file_ids"] == expected_order
+
+    empty = by_id[without_id]
+    assert empty["image_count"] == 0
+    assert empty["gallery_file_ids"] == []

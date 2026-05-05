@@ -149,6 +149,10 @@ export interface ModelSummary {
   created_at: string;
   updated_at: string;
   tags: TagRead[];
+  /** Top up to 4 image/print file IDs, ordered by (position NULLS LAST, created_at). */
+  gallery_file_ids: string[];
+  /** Total image+print files for this model. */
+  image_count: number;
 }
 
 export interface ModelDetail extends ModelSummary {

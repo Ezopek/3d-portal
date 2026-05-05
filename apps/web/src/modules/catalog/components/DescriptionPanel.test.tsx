@@ -67,6 +67,8 @@ function makeDetail(notes: NoteRead[] = []): ModelDetail {
     prints: [],
     notes,
     external_links: [],
+    gallery_file_ids: [],
+    image_count: 0,
   };
 }
 

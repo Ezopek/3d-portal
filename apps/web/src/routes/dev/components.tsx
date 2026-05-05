@@ -32,6 +32,8 @@ const FAKE_MODEL: ModelSummary = {
     { id: "tag-1", slug: "dragon", name_en: "Dragon", name_pl: "Smok" },
     { id: "tag-2", slug: "smok", name_en: "Smok", name_pl: null },
   ],
+  gallery_file_ids: [],
+  image_count: 0,
 };
 
 const FAKE_MODEL_2: ModelSummary = {
