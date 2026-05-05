@@ -7,6 +7,7 @@ import { RatingPopover } from "@/modules/catalog/components/popovers/RatingPopov
 import { StatusPopover } from "@/modules/catalog/components/popovers/StatusPopover";
 import { EditDescriptionSheet } from "@/modules/catalog/components/sheets/EditDescriptionSheet";
 import { EditTagsSheet } from "@/modules/catalog/components/sheets/EditTagsSheet";
+import { RenderSheet } from "@/modules/catalog/components/sheets/RenderSheet";
 import { useCategoriesTree } from "@/modules/catalog/hooks/useCategoriesTree";
 import { useAuth } from "@/shell/AuthContext";
 import { Button } from "@/ui/button";
@@ -57,6 +58,7 @@ export function ModelHero({ detail }: { detail: ModelDetail }) {
   const { isAdmin } = useAuth();
   const [tagsOpen, setTagsOpen] = useState(false);
   const [descriptionOpen, setDescriptionOpen] = useState(false);
+  const [renderSheetOpen, setRenderSheetOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const tree = useCategoriesTree();
 
@@ -116,6 +118,9 @@ export function ModelHero({ detail }: { detail: ModelDetail }) {
               <DropdownMenuItem onClick={() => setDescriptionOpen(true)}>
                 Edit description
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setRenderSheetOpen(true)}>
+                Re-render
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setDeleteOpen(true)}>
                 Delete
               </DropdownMenuItem>
@@ -171,6 +176,11 @@ export function ModelHero({ detail }: { detail: ModelDetail }) {
             detail={detail}
             open={descriptionOpen}
             onOpenChange={setDescriptionOpen}
+          />
+          <RenderSheet
+            detail={detail}
+            open={renderSheetOpen}
+            onOpenChange={setRenderSheetOpen}
           />
           <DeleteModelDialog
             detail={detail}

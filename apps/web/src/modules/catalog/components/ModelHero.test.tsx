@@ -182,4 +182,12 @@ describe("ModelHero", () => {
     render(<ModelHero detail={makeDetail()} />, { wrapper: wrap() });
     expect(screen.getByLabelText("Model actions")).toBeTruthy();
   });
+
+  it("admin sees Re-render in the ⋮ menu", async () => {
+    mockUseAuth.mockReturnValue({ isAdmin: true });
+    render(<ModelHero detail={makeDetail()} />, { wrapper: wrap() });
+    const kebab = screen.getByLabelText("Model actions");
+    fireEvent.click(kebab);
+    expect(await screen.findByText(/re-render/i)).toBeTruthy();
+  });
 });
