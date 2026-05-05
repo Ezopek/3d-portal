@@ -36,7 +36,7 @@ export function SecondaryTabs({ detail }: { detail: ModelDetail }) {
         <PrintsTab modelId={detail.id} prints={detail.prints} />
       </TabsContent>
       <TabsContent value="ops">
-        <OperationalNotesTab notes={detail.notes} />
+        <OperationalNotesTab modelId={detail.id} notes={detail.notes} />
       </TabsContent>
     </Tabs>
   );

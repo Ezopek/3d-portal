@@ -1,12 +1,35 @@
-import { render, screen, cleanup } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import "@/locales/i18n";
 
 import { ModelHero } from "./ModelHero";
 import type { ModelDetail } from "@/lib/api-types";
 
-afterEach(() => cleanup());
+const mockUseAuth = vi.fn();
+vi.mock("@/shell/AuthContext", () => ({
+  useAuth: () => mockUseAuth(),
+}));
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
+
+const fetchMock = vi.fn();
+vi.stubGlobal("fetch", fetchMock);
+
+beforeEach(() => {
+  fetchMock.mockReset();
+  fetchMock.mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
+  mockUseAuth.mockReturnValue({ isAdmin: false });
+});
+
+afterEach(() => {
+  cleanup();
+  mockUseAuth.mockReset();
+});
 
 function makeDetail(over: Partial<ModelDetail> = {}): ModelDetail {
   return {
@@ -47,15 +70,22 @@ function makeDetail(over: Partial<ModelDetail> = {}): ModelDetail {
   };
 }
 
+function wrap() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+  };
+}
+
 describe("ModelHero", () => {
   it("renders breadcrumb with category and title", () => {
-    render(<ModelHero detail={makeDetail()} />);
+    render(<ModelHero detail={makeDetail()} />, { wrapper: wrap() });
     expect(screen.getByText("Decorations")).toBeTruthy();
     expect(screen.getByText("Dragon")).toBeTruthy();
   });
 
   it("renders status badge, rating, source, top tags", () => {
-    render(<ModelHero detail={makeDetail()} />);
+    render(<ModelHero detail={makeDetail()} />, { wrapper: wrap() });
     expect(document.body.textContent?.toLowerCase()).toContain("printed");
     expect(document.body.textContent).toContain("4.5");
     expect(document.body.textContent?.toLowerCase()).toContain("printables");
@@ -64,12 +94,34 @@ describe("ModelHero", () => {
   });
 
   it("shows overflow indicator when more than 5 tags", () => {
-    render(<ModelHero detail={makeDetail()} />);
+    render(<ModelHero detail={makeDetail()} />, { wrapper: wrap() });
     expect(document.body.textContent).toContain("+1");
   });
 
   it("does not render rating when null", () => {
-    render(<ModelHero detail={makeDetail({ rating: null })} />);
+    render(<ModelHero detail={makeDetail({ rating: null })} />, { wrapper: wrap() });
     expect(document.body.textContent).not.toMatch(/★\s*\d/);
+  });
+
+  it("does not render admin affordances for non-admin", () => {
+    mockUseAuth.mockReturnValue({ isAdmin: false });
+    render(<ModelHero detail={makeDetail()} />, { wrapper: wrap() });
+    expect(screen.queryByLabelText("Edit tags")).toBeNull();
+    expect(screen.queryByLabelText("Model actions")).toBeNull();
+  });
+
+  it("renders the edit-tags pencil for admin and opens EditTagsSheet on click", async () => {
+    mockUseAuth.mockReturnValue({ isAdmin: true });
+    render(<ModelHero detail={makeDetail()} />, { wrapper: wrap() });
+    const editBtn = screen.getByLabelText("Edit tags");
+    expect(editBtn).toBeTruthy();
+    fireEvent.click(editBtn);
+    await waitFor(() => expect(screen.getByText("Edit tags")).toBeTruthy());
+  });
+
+  it("renders the actions ⋮ menu for admin", () => {
+    mockUseAuth.mockReturnValue({ isAdmin: true });
+    render(<ModelHero detail={makeDetail()} />, { wrapper: wrap() });
+    expect(screen.getByLabelText("Model actions")).toBeTruthy();
   });
 });

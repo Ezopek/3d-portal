@@ -27,7 +27,7 @@ export function CatalogDetail() {
       <div className="grid grid-cols-1 gap-4 px-4 md:grid-cols-[36%_1fr]">
         <ModelGallery modelId={detail.id} files={detail.files} />
         <div className="space-y-3">
-          <DescriptionPanel notes={detail.notes} />
+          <DescriptionPanel detail={detail} />
           <ExternalLinksPanel links={detail.external_links} />
           <MetadataPanel detail={detail} />
         </div>

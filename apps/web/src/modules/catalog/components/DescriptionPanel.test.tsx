@@ -1,10 +1,28 @@
-import { render, screen, cleanup } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DescriptionPanel } from "./DescriptionPanel";
-import type { NoteRead } from "@/lib/api-types";
+import type { ModelDetail, NoteRead } from "@/lib/api-types";
 
-afterEach(() => cleanup());
+const mockUseAuth = vi.fn();
+vi.mock("@/shell/AuthContext", () => ({
+  useAuth: () => mockUseAuth(),
+}));
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
+
+afterEach(() => {
+  cleanup();
+  mockUseAuth.mockReset();
+});
+
+beforeEach(() => {
+  mockUseAuth.mockReturnValue({ isAdmin: false });
+});
 
 const MODEL_ID = "m1";
 
@@ -21,19 +39,80 @@ function note(over: Partial<NoteRead> = {}): NoteRead {
   };
 }
 
+function makeDetail(notes: NoteRead[] = []): ModelDetail {
+  return {
+    id: MODEL_ID,
+    legacy_id: null,
+    slug: "dragon",
+    name_en: "Dragon",
+    name_pl: null,
+    category_id: "c1",
+    source: "printables",
+    status: "not_printed",
+    rating: null,
+    thumbnail_file_id: null,
+    date_added: "2026-04-12",
+    deleted_at: null,
+    created_at: "",
+    updated_at: "",
+    tags: [],
+    category: {
+      id: "c1",
+      parent_id: null,
+      slug: "c",
+      name_en: "C",
+      name_pl: null,
+    },
+    files: [],
+    prints: [],
+    notes,
+    external_links: [],
+  };
+}
+
+function wrap() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+  };
+}
+
 describe("DescriptionPanel", () => {
   it("renders the description body", () => {
-    render(<DescriptionPanel notes={[note()]} />);
+    render(<DescriptionPanel detail={makeDetail([note()])} />, { wrapper: wrap() });
     expect(screen.getByText(/Articulated dragon/)).toBeTruthy();
   });
 
   it("ignores non-description notes", () => {
-    render(<DescriptionPanel notes={[note({ kind: "operational", body: "tip" })]} />);
+    render(
+      <DescriptionPanel
+        detail={makeDetail([note({ kind: "operational", body: "tip" })])}
+      />,
+      { wrapper: wrap() },
+    );
     expect(document.body.textContent).not.toContain("tip");
   });
 
   it("renders fallback when no description", () => {
-    render(<DescriptionPanel notes={[]} />);
+    render(<DescriptionPanel detail={makeDetail()} />, { wrapper: wrap() });
     expect(document.body.textContent?.toLowerCase()).toContain("no description");
+  });
+
+  it("does not render the edit affordance for non-admin", () => {
+    mockUseAuth.mockReturnValue({ isAdmin: false });
+    render(<DescriptionPanel detail={makeDetail([note()])} />, { wrapper: wrap() });
+    expect(screen.queryByLabelText("Edit description")).toBeNull();
+  });
+
+  it("renders the edit affordance for admin and opens the sheet on click", async () => {
+    mockUseAuth.mockReturnValue({ isAdmin: true });
+    render(<DescriptionPanel detail={makeDetail([note()])} />, { wrapper: wrap() });
+    const editBtn = screen.getByLabelText("Edit description");
+    expect(editBtn).toBeTruthy();
+    fireEvent.click(editBtn);
+    await waitFor(() => expect(screen.getByText("Edit description")).toBeTruthy());
+    // Sheet renders a textbox with the body preloaded
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    expect(textarea.value).toBe("Articulated dragon for Bambu A1.");
   });
 });
