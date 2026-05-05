@@ -9,6 +9,8 @@ class RenderSettings(BaseSettings):
 
     catalog_data_dir: Path = Path("/data/catalog")
     renders_dir: Path = Path("/data/renders")
+    database_url: str = "sqlite:////data/cache/portal.db"
+    content_dir: Path = Path("/data/content")
     redis_url: str = "redis://redis:6379/0"
     image_size: int = 768
     service_name: str = "3d-portal-worker"
