@@ -40,7 +40,9 @@ services:
 
   worker:
     image: portal-render:${PORTAL_VERSION}
-    build: ../workers/render
+    build:
+      context: ..
+      dockerfile: workers/render/Dockerfile
     environment:
       REDIS_URL: redis://redis:6379/0
       DATABASE_URL: sqlite:////data/cache/portal.db
