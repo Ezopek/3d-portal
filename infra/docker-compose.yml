@@ -43,16 +43,16 @@ services:
     build: ../workers/render
     environment:
       REDIS_URL: redis://redis:6379/0
-      CATALOG_DATA_DIR: /data/catalog
-      RENDERS_DIR: /data/renders
+      DATABASE_URL: sqlite:////data/cache/portal.db
+      CONTENT_DIR: /data/content
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
       OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS}
       SENTRY_DSN: ${SENTRY_DSN}
       PORTAL_VERSION: ${PORTAL_VERSION}
       ENVIRONMENT: ${ENVIRONMENT}
     volumes:
-      - ${CATALOG_HOST_DIR}:/data/catalog:ro
-      - ${RENDERS_HOST_DIR}:/data/renders
+      - ${CACHE_HOST_DIR}:/data/cache
+      - ${CONTENT_HOST_DIR}:/data/content
     depends_on: [redis]
     restart: unless-stopped
     networks: [portal]
