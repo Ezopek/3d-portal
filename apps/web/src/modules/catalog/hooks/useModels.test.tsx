@@ -39,6 +39,32 @@ describe("useModels", () => {
     expect(url).toContain("category_ids=abc");
   });
 
+  it("emits each id as repeated category_ids when caller passes an array", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EMPTY), { status: 200 }));
+    renderHook(
+      () => useModels({ category_ids: ["root", "child-a", "child-b"] }),
+      { wrapper: wrap() },
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const url = fetchMock.mock.calls[0]?.[0] as string;
+    expect(url).toContain("category_ids=root");
+    expect(url).toContain("category_ids=child-a");
+    expect(url).toContain("category_ids=child-b");
+  });
+
+  it("prefers category_ids over category_id when both are passed", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EMPTY), { status: 200 }));
+    renderHook(
+      () => useModels({ category_id: "ignored", category_ids: ["a", "b"] }),
+      { wrapper: wrap() },
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const url = fetchMock.mock.calls[0]?.[0] as string;
+    expect(url).toContain("category_ids=a");
+    expect(url).toContain("category_ids=b");
+    expect(url).not.toContain("category_ids=ignored");
+  });
+
   it("translates tag_ids array to repeated tag_ids params", async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EMPTY), { status: 200 }));
     renderHook(

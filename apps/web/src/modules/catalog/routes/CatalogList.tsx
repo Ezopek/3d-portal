@@ -2,6 +2,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import type { CategoryNode, CategoryTree } from "@/lib/api-types";
 import { CategoryTreeSidebar } from "@/modules/catalog/components/CategoryTreeSidebar";
 import { FilterRibbon, type FilterRibbonState } from "@/modules/catalog/components/FilterRibbon";
 import { useCategoriesTree } from "@/modules/catalog/hooks/useCategoriesTree";
@@ -36,8 +37,13 @@ export function CatalogList() {
     return m;
   }, [tagsData]);
 
+  const categoryIds = useMemo(
+    () => expandCategoryIds(tree.data, search.category_id),
+    [tree.data, search.category_id],
+  );
+
   const models = useModels({
-    category_id: search.category_id,
+    category_ids: categoryIds,
     tag_ids: search.tag_ids,
     status: search.status,
     source: search.source,
@@ -196,4 +202,44 @@ export function CatalogList() {
       </div>
     </div>
   );
+}
+
+/**
+ * Expand a selected category id to the list of ids the API should match.
+ *
+ * Backend `/api/models?category_ids=...` filters by exact match, so picking a
+ * parent like "Practical" without expansion returns 0 models even when its
+ * children (e.g. "Practical → Cables") have plenty. This walks the loaded
+ * tree and returns the selected id plus all descendant ids.
+ *
+ * Returns `undefined` (no filter) when the user has not selected a category.
+ * Returns `[selectedId]` as a degenerate fallback when the tree is not yet
+ * loaded or the id is not found — that matches pre-fix behavior so we never
+ * silently widen the result set.
+ */
+function expandCategoryIds(
+  tree: CategoryTree | undefined,
+  selectedId: string | undefined,
+): string[] | undefined {
+  if (selectedId === undefined) return undefined;
+  if (tree === undefined) return [selectedId];
+  const root = findNode(tree.roots, selectedId);
+  if (root === null) return [selectedId];
+  const ids: string[] = [];
+  const stack: CategoryNode[] = [root];
+  while (stack.length > 0) {
+    const node = stack.pop() as CategoryNode;
+    ids.push(node.id);
+    for (const child of node.children) stack.push(child);
+  }
+  return ids;
+}
+
+function findNode(roots: CategoryNode[], id: string): CategoryNode | null {
+  for (const node of roots) {
+    if (node.id === id) return node;
+    const found = findNode(node.children, id);
+    if (found !== null) return found;
+  }
+  return null;
 }

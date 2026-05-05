@@ -7,6 +7,12 @@ export type ModelListSort = "recent" | "oldest" | "name_asc" | "name_desc" | "st
 
 export interface ModelsFilters {
   category_id?: string;
+  /**
+   * Multiple category ids (e.g. a parent and all its descendants). Sent as
+   * repeated `?category_ids=` query params. When both `category_id` and
+   * `category_ids` are provided, `category_ids` wins.
+   */
+  category_ids?: string[];
   tag_ids?: string[];
   status?: ModelStatus;
   source?: ModelSource;
@@ -29,7 +35,11 @@ export function useModels(filters: ModelsFilters) {
 
 function buildParams(f: ModelsFilters): URLSearchParams {
   const p = new URLSearchParams();
-  if (f.category_id !== undefined) p.append("category_ids", f.category_id);
+  if (f.category_ids !== undefined && f.category_ids.length > 0) {
+    for (const cid of f.category_ids) p.append("category_ids", cid);
+  } else if (f.category_id !== undefined) {
+    p.append("category_ids", f.category_id);
+  }
   if (f.tag_ids !== undefined) {
     for (const tid of f.tag_ids) p.append("tag_ids", tid);
   }
