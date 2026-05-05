@@ -34,28 +34,9 @@ async def refresh_catalog(request: Request, user_id: uuid.UUID = current_admin) 
             after={"model_id": model_id, "relative_path": relative_path},
         )
 
-    # Render-selection orphan purge (analogous to thumbnail orphans).
-    selection_purged = request.app.state.render_selection.purge_orphans(
-        exists=lambda mid, rel: service.thumbnail_target_exists(mid, rel)
-    )
-    for model_id, relative_path in selection_purged:
-        record_event(
-            get_engine(),
-            action="render_selection.orphan_purged",
-            entity_type="render_selection",
-            entity_id=None,
-            actor_user_id=user_id,
-            after={"model_id": model_id, "relative_path": relative_path},
-        )
-
     missing = service.model_ids_missing_renders()
     for model_id in missing:
-        selection = request.app.state.render_selection.get(model_id)
-        await request.app.state.arq.enqueue_job(
-            "render_model",
-            model_id,
-            selected_paths=selection or None,
-        )
+        await request.app.state.arq.enqueue_job("render_model", model_id)
 
     record_event(
         get_engine(),
@@ -81,12 +62,7 @@ async def trigger_render(
     catalog = request.app.state.catalog_service
     if catalog.get_model(model_id) is None:
         raise HTTPException(404, f"Model {model_id} not found")
-    selection = request.app.state.render_selection.get(model_id)
-    job = await request.app.state.arq.enqueue_job(
-        "render_model",
-        model_id,
-        selected_paths=selection or None,
-    )
+    job = await request.app.state.arq.enqueue_job("render_model", model_id)
     record_event(
         get_engine(),
         action="admin.render.triggered",
@@ -247,91 +223,3 @@ def clear_thumbnail(
             actor_user_id=user_id,
             after={"model_id": model_id},
         )
-
-
-@router.get("/models/{model_id}/render-selection")
-def get_render_selection(
-    model_id: str,
-    request: Request,
-    _user_id: uuid.UUID = current_admin,
-) -> dict[str, list[str]]:
-    service = request.app.state.catalog_service
-    if service.get_model(model_id) is None:
-        raise HTTPException(404, f"Model {model_id} not found")
-    selection = request.app.state.render_selection.get(model_id)
-    available = service.list_files(model_id, kind="printable")
-    return {"paths": selection, "available_stls": available}
-
-
-_RENDER_SELECTION_PATH_RE = re.compile(
-    r"^[^/.][^/]*(/[^/.][^/]*)*\.stl$",
-    re.IGNORECASE,
-)
-_RENDER_SELECTION_MAX = 16
-
-
-class _RenderSelectionPayload(BaseModel):
-    paths: list[str]
-
-
-@router.put("/models/{model_id}/render-selection", status_code=204)
-async def set_render_selection(
-    model_id: str,
-    payload: _RenderSelectionPayload,
-    request: Request,
-    user_id: uuid.UUID = current_admin,
-) -> None:
-    service = request.app.state.catalog_service
-    model = service.get_model(model_id)
-    if model is None:
-        raise HTTPException(404, f"Model {model_id} not found")
-
-    if len(payload.paths) > _RENDER_SELECTION_MAX:
-        raise HTTPException(400, f"too_many_files: max {_RENDER_SELECTION_MAX}")
-
-    catalog_dir = service._catalog_dir  # intentional internal use
-    base = (catalog_dir / model.path).resolve()
-    for rel in payload.paths:
-        if not _RENDER_SELECTION_PATH_RE.match(rel):
-            raise HTTPException(400, f"invalid_path: {rel}")
-        candidate = (catalog_dir / model.path / rel).resolve()
-        try:
-            candidate.relative_to(base)
-        except ValueError:
-            raise HTTPException(400, f"invalid_path: {rel}") from None
-        if not (candidate.is_file() and candidate.suffix.lower() == ".stl"):
-            raise HTTPException(400, f"file_not_found: {rel}")
-
-    repo = request.app.state.render_selection
-    current = set(repo.get(model_id))
-    new_set = set(payload.paths)
-
-    if current == new_set:
-        return  # no-op, no enqueue
-
-    if payload.paths:
-        repo.set(model_id=model_id, paths=payload.paths, user_id=user_id)
-        record_event(
-            get_engine(),
-            action="admin.render_selection.set",
-            entity_type="render_selection",
-            entity_id=None,
-            actor_user_id=user_id,
-            after={"model_id": model_id, "paths": payload.paths, "count": len(payload.paths)},
-        )
-    else:
-        repo.clear(model_id)
-        record_event(
-            get_engine(),
-            action="admin.render_selection.cleared",
-            entity_type="render_selection",
-            entity_id=None,
-            actor_user_id=user_id,
-            after={"model_id": model_id},
-        )
-
-    await request.app.state.arq.enqueue_job(
-        "render_model",
-        model_id,
-        selected_paths=payload.paths or None,
-    )

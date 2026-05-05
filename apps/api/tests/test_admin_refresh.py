@@ -115,33 +115,3 @@ def test_refresh_enqueues_nothing_when_all_renders_present(setup):
     assert r.status_code == 200
     assert r.json()["renders_enqueued"] == 0
     arq.enqueue_job.assert_not_called()
-
-
-def test_refresh_purges_orphan_render_selections(setup):
-    """A render selection pointing at a now-deleted file is dropped."""
-    client, token, _index, _renders, _arq = setup
-    headers = {"Authorization": f"Bearer {token}"}
-
-    # Seed a render selection that references a path we know does NOT exist on disk.
-    # Retrieve the admin user UUID for the repo call.
-    from sqlmodel import Session, select
-
-    from app.core.db.models import User
-    from app.core.db.session import get_engine
-
-    engine = get_engine()
-    with Session(engine) as s:
-        user = s.exec(select(User).where(User.email == "admin@localhost.localdomain")).first()
-        user_id = user.id
-
-    client.app.state.render_selection.set(
-        model_id="001",
-        paths=["files/this-stl-does-not-exist.stl"],
-        user_id=user_id,
-    )
-
-    r = client.post("/api/admin/refresh-catalog", headers=headers)
-    assert r.status_code == 200
-
-    # Selection row should be empty (or gone) — orphan purged.
-    assert client.app.state.render_selection.get("001") == []
