@@ -67,6 +67,7 @@ export interface ModelFileRead {
   sha256: string;
   size_bytes: number;
   mime_type: string;
+  position: number | null;
   created_at: string;
 }
 

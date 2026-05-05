@@ -17,6 +17,7 @@ const FILES: ModelFileRead[] = [
     sha256: "",
     size_bytes: 0,
     mime_type: "model/stl",
+    position: null,
     created_at: "",
   },
   {
@@ -28,6 +29,7 @@ const FILES: ModelFileRead[] = [
     sha256: "",
     size_bytes: 0,
     mime_type: "image/png",
+    position: null,
     created_at: "",
   },
   {
@@ -39,6 +41,7 @@ const FILES: ModelFileRead[] = [
     sha256: "",
     size_bytes: 0,
     mime_type: "image/jpeg",
+    position: null,
     created_at: "",
   },
 ];

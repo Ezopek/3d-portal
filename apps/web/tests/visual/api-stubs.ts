@@ -295,8 +295,8 @@ export async function stubSotDetail(page: Page) {
         ],
         category: { id: "c1", parent_id: null, slug: "decorations", name_en: "Decorations", name_pl: "Dekoracje" },
         files: [
-          { id: "f1", model_id: id, kind: "stl", original_name: "dragon.stl", storage_path: "", sha256: "", size_bytes: 1234567, mime_type: "model/stl", created_at: "" },
-          { id: "f2", model_id: id, kind: "image", original_name: "iso.png", storage_path: "", sha256: "", size_bytes: 1024, mime_type: "image/png", created_at: "" },
+          { id: "f1", model_id: id, kind: "stl", original_name: "dragon.stl", storage_path: "", sha256: "", size_bytes: 1234567, mime_type: "model/stl", position: null, created_at: "" },
+          { id: "f2", model_id: id, kind: "image", original_name: "iso.png", storage_path: "", sha256: "", size_bytes: 1024, mime_type: "image/png", position: null, created_at: "" },
         ],
         prints: [
           { id: "p1", model_id: id, photo_file_id: "f2", printed_at: "2026-04-30", note: "Printed in PETG 0.2mm", created_at: "", updated_at: "" },

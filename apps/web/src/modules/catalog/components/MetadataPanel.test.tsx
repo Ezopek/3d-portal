@@ -34,6 +34,7 @@ function makeDetail(over: Partial<ModelDetail> = {}): ModelDetail {
         sha256: "",
         size_bytes: 0,
         mime_type: "",
+        position: null,
         created_at: "",
       },
       {
@@ -45,6 +46,7 @@ function makeDetail(over: Partial<ModelDetail> = {}): ModelDetail {
         sha256: "",
         size_bytes: 0,
         mime_type: "",
+        position: null,
         created_at: "",
       },
     ],
