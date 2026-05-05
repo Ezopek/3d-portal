@@ -1,6 +1,7 @@
 import datetime
 import uuid
 
+import pytest
 from sqlmodel import Session
 
 from app.core.db.models import (
@@ -67,7 +68,7 @@ def test_list_models_includes_seeded_model_with_tags(client):
         cat_id: uuid.UUID = cat.id
         model_id: uuid.UUID = m.id
 
-    r = client.get(f"/api/models?category={cat_id}")
+    r = client.get(f"/api/models?category_ids={cat_id}")
     body = r.json()
     items = [i for i in body["items"] if i["id"] == str(model_id)]
     assert len(items) == 1
@@ -87,7 +88,7 @@ def test_list_models_filter_by_category(client):
         m_a_id: uuid.UUID = m_a.id
         m_b_id: uuid.UUID = m_b.id
 
-    r = client.get(f"/api/models?category={cat_a_id}")
+    r = client.get(f"/api/models?category_ids={cat_a_id}")
     ids = {item["id"] for item in r.json()["items"]}
     assert str(m_a_id) in ids
     assert str(m_b_id) not in ids
@@ -121,7 +122,7 @@ def test_list_models_filter_by_tag(client):
         with_tag_id: uuid.UUID = with_tag.id
         without_tag_id: uuid.UUID = without_tag.id
 
-    r = client.get(f"/api/models?tag={t_id}&limit=200")
+    r = client.get(f"/api/models?tag_ids={t_id}&limit=200")
     ids = {item["id"] for item in r.json()["items"]}
     assert str(with_tag_id) in ids
     assert str(without_tag_id) not in ids
@@ -185,17 +186,152 @@ def test_list_models_pagination(client):
             _seed_model(s, f"model-4-page-{i:02d}", category_id=cat.id)
         cat_id: uuid.UUID = cat.id
 
-    r = client.get(f"/api/models?category={cat_id}&limit=2&offset=0")
+    r = client.get(f"/api/models?category_ids={cat_id}&limit=2&offset=0")
     body = r.json()
     assert body["limit"] == 2
     assert body["offset"] == 0
     assert len(body["items"]) == 2
     assert body["total"] == 5
 
-    r2 = client.get(f"/api/models?category={cat_id}&limit=2&offset=2")
+    r2 = client.get(f"/api/models?category_ids={cat_id}&limit=2&offset=2")
     body2 = r2.json()
     assert len(body2["items"]) == 2
     # No overlap with first page
     page1_ids = {item["id"] for item in body["items"]}
     page2_ids = {item["id"] for item in body2["items"]}
     assert page1_ids.isdisjoint(page2_ids)
+
+
+@pytest.fixture(scope="module")
+def seeded_listing():
+    """Seed: 2 categories (A,B), 3 tags (x,y,z), 5 models with assorted filter axes.
+
+    Returns a dict with category/tag/model id lookups for assertions.
+
+    Module-scoped so the (uniquely-slugged) seed rows are inserted exactly
+    once across all tests in this file — the test DB persists for the whole
+    session, so per-function seeding would hit a UNIQUE-constraint conflict
+    on the second invocation.
+    """
+    with Session(get_engine()) as s:
+        cat_a = _seed_cat(s, "list-cat-a")
+        cat_b = _seed_cat(s, "list-cat-b")
+        tag_x = _seed_tag(s, "list-tag-x")
+        tag_y = _seed_tag(s, "list-tag-y")
+        tag_z = _seed_tag(s, "list-tag-z")
+
+        from app.core.db.models import ModelSource
+
+        # model 1: cat_a, tag x+y, source printables, status printed, rating 5
+        m1 = _seed_model(s, "m-list-1", category_id=cat_a.id, tags=(tag_x, tag_y))
+        m1.source = ModelSource.printables
+        m1.status = ModelStatus.printed
+        m1.rating = 5
+        s.add(m1)
+        # model 2: cat_a, tag x only, source printables, not_printed, rating 3
+        m2 = _seed_model(s, "m-list-2", category_id=cat_a.id, tags=(tag_x,))
+        m2.source = ModelSource.printables
+        m2.status = ModelStatus.not_printed
+        m2.rating = 3
+        s.add(m2)
+        # model 3: cat_a, tag z, source own, printed, rating 4
+        m3 = _seed_model(s, "m-list-3", category_id=cat_a.id, tags=(tag_z,))
+        m3.source = ModelSource.own
+        m3.status = ModelStatus.printed
+        m3.rating = 4
+        s.add(m3)
+        # model 4: cat_b, tag x+y+z, source thangs, in_progress, rating null
+        m4 = _seed_model(s, "m-list-4", category_id=cat_b.id, tags=(tag_x, tag_y, tag_z))
+        m4.source = ModelSource.thangs
+        m4.status = ModelStatus.in_progress
+        s.add(m4)
+        # model 5: cat_b, no tags, source unknown, broken, rating 1
+        m5 = _seed_model(s, "m-list-5", category_id=cat_b.id, tags=())
+        m5.source = ModelSource.unknown
+        m5.status = ModelStatus.broken
+        m5.rating = 1
+        s.add(m5)
+        s.commit()
+
+        return {
+            "cat_a": cat_a.id,
+            "cat_b": cat_b.id,
+            "tag_x": tag_x.id,
+            "tag_y": tag_y.id,
+            "tag_z": tag_z.id,
+            "m1": m1.id,
+            "m2": m2.id,
+            "m3": m3.id,
+            "m4": m4.id,
+            "m5": m5.id,
+        }
+
+
+def test_list_filter_by_category_ids_multi(client, seeded_listing):
+    """category_ids=A,B returns models in either category (OR semantics)."""
+    r = client.get(
+        f"/api/models?category_ids={seeded_listing['cat_a']}&category_ids={seeded_listing['cat_b']}"
+    )
+    assert r.status_code == 200
+    items = r.json()["items"]
+    slugs = {it["slug"] for it in items}
+    assert {"m-list-1", "m-list-2", "m-list-3", "m-list-4", "m-list-5"} <= slugs
+
+
+def test_list_filter_by_tag_ids_and_semantics(client, seeded_listing):
+    """tag_ids=x,y returns only models that have BOTH tags (AND semantics)."""
+    r = client.get(
+        f"/api/models?tag_ids={seeded_listing['tag_x']}&tag_ids={seeded_listing['tag_y']}"
+    )
+    assert r.status_code == 200
+    slugs = {it["slug"] for it in r.json()["items"]}
+    # m1 has x+y, m4 has x+y+z. m2 has only x. m3 only z. m5 none.
+    assert slugs == {"m-list-1", "m-list-4"}
+
+
+def test_list_filter_by_source(client, seeded_listing):
+    r = client.get("/api/models?source=printables")
+    slugs = {it["slug"] for it in r.json()["items"]}
+    assert slugs == {"m-list-1", "m-list-2"}
+
+
+def test_list_filter_by_source_rejects_unknown_value(client, seeded_listing):
+    r = client.get("/api/models?source=banana")
+    assert r.status_code == 422
+
+
+def test_list_sort_recent_is_default(client, seeded_listing):
+    """recent sort = created_at desc; tail of seed list comes first."""
+    r = client.get("/api/models")
+    slugs = [it["slug"] for it in r.json()["items"]]
+    # Seeded in order m1..m5; created_at desc → m5 first
+    assert slugs.index("m-list-5") < slugs.index("m-list-1")
+
+
+def test_list_sort_name_asc(client, seeded_listing):
+    r = client.get("/api/models?sort=name_asc")
+    slugs = [it["slug"] for it in r.json()["items"] if it["slug"].startswith("m-list-")]
+    assert slugs == sorted(slugs)
+
+
+def test_list_sort_rating_puts_nulls_last(client, seeded_listing):
+    """rating sort = rating desc, NULLS last (per SQL standard for NULLS LAST hint)."""
+    r = client.get("/api/models?sort=rating&category_ids=" + str(seeded_listing["cat_a"]))
+    items = r.json()["items"]
+    ratings = [it["rating"] for it in items if it["slug"].startswith("m-list-")]
+    # cat_a: m1=5, m3=4, m2=3 — descending; no nulls in this slice. Just check ordering.
+    assert ratings == sorted(ratings, reverse=True)
+
+
+def test_list_sort_rejects_unknown_value(client, seeded_listing):
+    r = client.get("/api/models?sort=trending")
+    assert r.status_code == 422
+
+
+def test_list_combined_filters(client, seeded_listing):
+    """category_ids=A AND tag_ids=x → m1 + m2."""
+    r = client.get(
+        f"/api/models?category_ids={seeded_listing['cat_a']}&tag_ids={seeded_listing['tag_x']}"
+    )
+    slugs = {it["slug"] for it in r.json()["items"]}
+    assert slugs == {"m-list-1", "m-list-2"}

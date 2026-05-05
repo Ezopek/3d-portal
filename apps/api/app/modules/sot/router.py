@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, Response
 from sqlmodel import Session, select
 
 from app.core.config import get_settings
-from app.core.db.models import ModelFile, ModelFileKind, ModelStatus
+from app.core.db.models import ModelFile, ModelFileKind, ModelSource, ModelStatus
 from app.core.db.session import get_session
 from app.core.etag import file_etag
 from app.modules.sot.schemas import (
@@ -24,6 +24,7 @@ from app.modules.sot.schemas import (
     TagRead,
 )
 from app.modules.sot.service import (
+    ModelListSort,
     get_model_detail,
     list_categories_tree,
     list_model_files,
@@ -53,20 +54,24 @@ def get_tags(
 @router.get("/models", response_model=ModelListResponse)
 def get_models(
     session: Annotated[Session, Depends(get_session)],
-    category: uuid.UUID | None = None,
+    category_ids: Annotated[list[uuid.UUID] | None, Query()] = None,
     status: ModelStatus | None = None,
-    tag: uuid.UUID | None = None,
+    tag_ids: Annotated[list[uuid.UUID] | None, Query()] = None,
+    source: ModelSource | None = None,
     q: str | None = None,
+    sort: ModelListSort = ModelListSort.recent,
     include_deleted: bool = False,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> ModelListResponse:
     return list_models(
         session,
-        category=category,
+        category_ids=category_ids,
         status=status,
-        tag=tag,
+        tag_ids=tag_ids,
+        source=source,
         q=q,
+        sort=sort,
         include_deleted=include_deleted,
         offset=offset,
         limit=limit,

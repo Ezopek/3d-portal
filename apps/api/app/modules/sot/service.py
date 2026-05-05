@@ -7,6 +7,7 @@ the raw query layer.
 
 import uuid
 from collections.abc import Sequence
+from enum import StrEnum
 
 from sqlalchemy import func, or_
 from sqlmodel import Session, select
@@ -19,6 +20,7 @@ from app.core.db.models import (
     ModelFileKind,
     ModelNote,
     ModelPrint,
+    ModelSource,
     ModelStatus,
     ModelTag,
     Tag,
@@ -37,6 +39,15 @@ from app.modules.sot.schemas import (
     PrintRead,
     TagRead,
 )
+
+
+class ModelListSort(StrEnum):
+    recent = "recent"
+    oldest = "oldest"
+    name_asc = "name_asc"
+    name_desc = "name_desc"
+    status = "status"
+    rating = "rating"
 
 
 def list_categories_tree(session: Session) -> CategoryTree:
@@ -103,24 +114,36 @@ def list_tags(
 def list_models(
     session: Session,
     *,
-    category: uuid.UUID | None = None,
+    category_ids: list[uuid.UUID] | None = None,
     status: ModelStatus | None = None,
-    tag: uuid.UUID | None = None,
+    tag_ids: list[uuid.UUID] | None = None,
+    source: ModelSource | None = None,
     q: str | None = None,
+    sort: ModelListSort = ModelListSort.recent,
     include_deleted: bool = False,
     offset: int = 0,
     limit: int = 50,
 ) -> ModelListResponse:
-    """List models with optional filters; tags eagerly attached per item."""
+    """List models with optional filters; tags eagerly attached per item.
+
+    - category_ids: OR filter (model is in any of the listed categories).
+    - tag_ids: AND filter (model has ALL listed tags).
+    - source: exact match.
+    - sort: ModelListSort enum; default = recent (created_at desc).
+    """
     base = select(Model)
     if not include_deleted:
         base = base.where(Model.deleted_at.is_(None))
-    if category is not None:
-        base = base.where(Model.category_id == category)
+    if category_ids:
+        base = base.where(Model.category_id.in_(category_ids))
     if status is not None:
         base = base.where(Model.status == status)
-    if tag is not None:
-        base = base.where(Model.id.in_(select(ModelTag.model_id).where(ModelTag.tag_id == tag)))
+    if tag_ids:
+        # AND semantics: model_id must appear in ModelTag for every tag_id given.
+        for tid in tag_ids:
+            base = base.where(Model.id.in_(select(ModelTag.model_id).where(ModelTag.tag_id == tid)))
+    if source is not None:
+        base = base.where(Model.source == source)
     if q:
         like = f"%{q.lower()}%"
         base = base.where(
@@ -135,7 +158,8 @@ def list_models(
     total_stmt = select(func.count()).select_from(base.subquery())
     total = session.exec(total_stmt).one()
 
-    base = base.order_by(Model.created_at.desc()).offset(offset).limit(limit)
+    base = _apply_sort(base, sort)
+    base = base.offset(offset).limit(limit)
     rows: Sequence[Model] = session.exec(base).all()
 
     # Eagerly fetch tags for the page
@@ -155,6 +179,26 @@ def list_models(
         for m in rows
     ]
     return ModelListResponse(items=items, total=total, offset=offset, limit=limit)
+
+
+def _apply_sort(stmt, sort: ModelListSort):
+    """Apply ORDER BY based on the sort key. Pure helper for testability."""
+    if sort == ModelListSort.recent:
+        return stmt.order_by(Model.created_at.desc())
+    if sort == ModelListSort.oldest:
+        return stmt.order_by(Model.created_at.asc())
+    if sort == ModelListSort.name_asc:
+        return stmt.order_by(func.lower(Model.name_en).asc())
+    if sort == ModelListSort.name_desc:
+        return stmt.order_by(func.lower(Model.name_en).desc())
+    if sort == ModelListSort.status:
+        return stmt.order_by(Model.status.asc(), Model.created_at.desc())
+    if sort == ModelListSort.rating:
+        # Rating desc, NULLs last; SQLAlchemy: nullslast(col.desc())
+        from sqlalchemy import nullslast
+
+        return stmt.order_by(nullslast(Model.rating.desc()), Model.created_at.desc())
+    return stmt.order_by(Model.created_at.desc())  # safety net
 
 
 def get_model_detail(
