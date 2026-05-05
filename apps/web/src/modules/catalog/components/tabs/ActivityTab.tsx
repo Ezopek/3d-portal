@@ -1,0 +1,43 @@
+import { useAuditLog } from "@/modules/catalog/hooks/useAuditLog";
+
+interface Props {
+  modelId: string;
+}
+
+export function ActivityTab({ modelId }: Props) {
+  const q = useAuditLog({ entity_type: "model", entity_id: modelId, limit: 50 });
+  if (q.isLoading) return <p className="p-4 text-sm text-muted-foreground">…</p>;
+  if (q.isError) {
+    return <p className="p-4 text-sm text-destructive">Failed to load audit log</p>;
+  }
+  const items = q.data?.items ?? [];
+  if (items.length === 0) {
+    return <p className="p-4 text-sm text-muted-foreground">no activity</p>;
+  }
+  return (
+    <ul className="space-y-2 p-3">
+      {items.map((entry) => (
+        <li
+          key={entry.id}
+          className="flex items-start gap-3 rounded border border-border bg-card p-3 text-xs"
+        >
+          <span
+            className={`rounded px-1.5 py-0.5 font-mono ${
+              entry.action.endsWith(".create")
+                ? "bg-green-500/20 text-green-700 dark:text-green-400"
+                : entry.action.endsWith(".delete")
+                  ? "bg-red-500/20 text-red-700 dark:text-red-400"
+                  : "bg-blue-500/20 text-blue-700 dark:text-blue-400"
+            }`}
+          >
+            {entry.action}
+          </span>
+          <span className="flex-1 truncate text-muted-foreground">{entry.entity_type}</span>
+          <span className="text-muted-foreground">
+            {entry.at.slice(0, 16).replace("T", " ")}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}

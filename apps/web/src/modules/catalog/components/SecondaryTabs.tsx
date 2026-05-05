@@ -2,6 +2,7 @@ import type { ModelDetail } from "@/lib/api-types";
 import { useAuth } from "@/shell/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 
+import { ActivityTab } from "./tabs/ActivityTab";
 import { FilesTab } from "./tabs/FilesTab";
 import { OperationalNotesTab } from "./tabs/OperationalNotesTab";
 import { PhotosTab } from "./tabs/PhotosTab";
@@ -23,6 +24,7 @@ export function SecondaryTabs({ detail }: { detail: ModelDetail }) {
         {isAdmin && <TabsTrigger value="photos">Photos ({photosCount}) ✏</TabsTrigger>}
         <TabsTrigger value="prints">Prints ({detail.prints.length})</TabsTrigger>
         <TabsTrigger value="ops">Operational notes ({opsCount})</TabsTrigger>
+        {isAdmin && <TabsTrigger value="activity">Activity ✏</TabsTrigger>}
       </TabsList>
       <TabsContent value="files">
         <FilesTab modelId={detail.id} files={detail.files} />
@@ -38,6 +40,11 @@ export function SecondaryTabs({ detail }: { detail: ModelDetail }) {
       <TabsContent value="ops">
         <OperationalNotesTab modelId={detail.id} notes={detail.notes} />
       </TabsContent>
+      {isAdmin && (
+        <TabsContent value="activity">
+          <ActivityTab modelId={detail.id} />
+        </TabsContent>
+      )}
     </Tabs>
   );
 }

@@ -163,3 +163,20 @@ export interface ModelListResponse {
   offset: number;
   limit: number;
 }
+
+// --- Audit log ---
+
+export interface AuditLogEntry {
+  id: string;
+  actor_user_id: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  before_json: Record<string, unknown> | null;
+  after_json: Record<string, unknown> | null;
+  at: string;
+}
+
+export interface AuditLogResponse {
+  items: AuditLogEntry[];
+}

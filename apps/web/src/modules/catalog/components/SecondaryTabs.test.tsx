@@ -98,9 +98,10 @@ describe("SecondaryTabs", () => {
     expect(screen.getByText("ok")).toBeTruthy();
   });
 
-  it("renders the Photos tab for admin users", () => {
+  it("renders the Photos and Activity tabs for admin users", () => {
     mockUseAuth.mockReturnValue({ isAdmin: true });
     render(<SecondaryTabs detail={makeDetail()} />, { wrapper: wrap() });
     expect(screen.getByRole("tab", { name: /photos/i })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /activity/i })).toBeTruthy();
   });
 });
