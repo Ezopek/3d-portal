@@ -18,8 +18,15 @@ export function SecondaryTabs({ detail }: { detail: ModelDetail }) {
   ).length;
   const opsCount = detail.notes.filter((n) => n.kind !== "description").length;
   return (
-    <Tabs defaultValue="files" className="w-full">
-      <div className="overflow-x-auto">
+    <Tabs defaultValue="files" className="w-full min-w-0">
+      {/*
+       * Mobile tabs row: the outer div MUST have `min-w-0` so it can shrink
+       * inside the parent flex/grid layout (otherwise the inline-grid TabsList
+       * grows to its intrinsic content width and forces the whole page to
+       * scroll horizontally on 375px viewports). Inner TabsList uses `w-max`
+       * so its own children render without wrapping, and the div scrolls.
+       */}
+      <div className="min-w-0 max-w-full overflow-x-auto">
         <TabsList className="flex w-max flex-nowrap">
           <TabsTrigger value="files">Files ({filesCount})</TabsTrigger>
           {isAdmin && <TabsTrigger value="photos">Photos ({photosCount}) ✏</TabsTrigger>}
