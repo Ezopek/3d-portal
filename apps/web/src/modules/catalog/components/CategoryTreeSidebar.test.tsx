@@ -45,30 +45,15 @@ const TREE: CategoryTree = {
   ],
 };
 
-const COUNTS = new Map<string | null, number>([
-  [null, 99], // total
-  ["a", 14],
-  ["a1", 5],
-  ["b", 23],
-]);
-
 describe("CategoryTreeSidebar", () => {
-  it("renders the All row with total count", () => {
-    render(
-      <CategoryTreeSidebar
-        tree={TREE}
-        counts={COUNTS}
-        selectedId={null}
-        onSelect={() => {}}
-      />,
-    );
-    expect(screen.getByText(/99/)).toBeTruthy();
+  it("renders the All row with total count (sum of root model_counts)", () => {
+    render(<CategoryTreeSidebar tree={TREE} selectedId={null} onSelect={() => {}} />);
+    // 14 (decorations) + 23 (tools) = 37
+    expect(screen.getByText(/37/)).toBeTruthy();
   });
 
-  it("renders root nodes with their counts", () => {
-    render(
-      <CategoryTreeSidebar tree={TREE} counts={COUNTS} selectedId={null} onSelect={() => {}} />,
-    );
+  it("renders root nodes with their counts from node.model_count", () => {
+    render(<CategoryTreeSidebar tree={TREE} selectedId={null} onSelect={() => {}} />);
     expect(screen.getByText(/Decorations/)).toBeTruthy();
     expect(screen.getByText(/14/)).toBeTruthy();
     expect(screen.getByText(/Tools/)).toBeTruthy();
@@ -76,16 +61,12 @@ describe("CategoryTreeSidebar", () => {
   });
 
   it("does not render children unless the parent is expanded", () => {
-    render(
-      <CategoryTreeSidebar tree={TREE} counts={COUNTS} selectedId={null} onSelect={() => {}} />,
-    );
+    render(<CategoryTreeSidebar tree={TREE} selectedId={null} onSelect={() => {}} />);
     expect(screen.queryByText(/Vases/)).toBeNull();
   });
 
   it("expands a parent on caret click and persists state", () => {
-    render(
-      <CategoryTreeSidebar tree={TREE} counts={COUNTS} selectedId={null} onSelect={() => {}} />,
-    );
+    render(<CategoryTreeSidebar tree={TREE} selectedId={null} onSelect={() => {}} />);
     const caret = screen.getByLabelText("expand decorations");
     fireEvent.click(caret);
     expect(screen.getByText(/Vases/)).toBeTruthy();
@@ -94,21 +75,14 @@ describe("CategoryTreeSidebar", () => {
 
   it("rehydrates expand state from sessionStorage on mount", () => {
     sessionStorage.setItem("catalog:tree-expand", JSON.stringify(["decorations"]));
-    render(
-      <CategoryTreeSidebar tree={TREE} counts={COUNTS} selectedId={null} onSelect={() => {}} />,
-    );
+    render(<CategoryTreeSidebar tree={TREE} selectedId={null} onSelect={() => {}} />);
     expect(screen.getByText(/Vases/)).toBeTruthy();
   });
 
   it("calls onSelect with category id when row clicked", () => {
     const calls: (string | null)[] = [];
     render(
-      <CategoryTreeSidebar
-        tree={TREE}
-        counts={COUNTS}
-        selectedId={null}
-        onSelect={(id) => calls.push(id)}
-      />,
+      <CategoryTreeSidebar tree={TREE} selectedId={null} onSelect={(id) => calls.push(id)} />,
     );
     fireEvent.click(screen.getByText(/Tools/));
     expect(calls).toEqual(["b"]);
@@ -117,12 +91,7 @@ describe("CategoryTreeSidebar", () => {
   it("calls onSelect(null) when All row clicked", () => {
     const calls: (string | null)[] = [];
     render(
-      <CategoryTreeSidebar
-        tree={TREE}
-        counts={COUNTS}
-        selectedId="a"
-        onSelect={(id) => calls.push(id)}
-      />,
+      <CategoryTreeSidebar tree={TREE} selectedId="a" onSelect={(id) => calls.push(id)} />,
     );
     fireEvent.click(screen.getByLabelText("select all categories"));
     expect(calls).toEqual([null]);

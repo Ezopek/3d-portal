@@ -8,7 +8,6 @@ const STORAGE_KEY = "catalog:tree-expand";
 
 interface Props {
   tree: CategoryTree;
-  counts: Map<string | null, number>; // null = total
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   /**
@@ -18,7 +17,11 @@ interface Props {
   mobile?: boolean;
 }
 
-export function CategoryTreeSidebar({ tree, counts, selectedId, onSelect, mobile = false }: Props) {
+function totalCount(tree: CategoryTree): number {
+  return tree.roots.reduce((acc, root) => acc + root.model_count, 0);
+}
+
+export function CategoryTreeSidebar({ tree, selectedId, onSelect, mobile = false }: Props) {
   const { t, i18n } = useTranslation();
   const [expanded, setExpanded] = useState<Set<string>>(() => loadExpanded());
 
@@ -54,7 +57,7 @@ export function CategoryTreeSidebar({ tree, counts, selectedId, onSelect, mobile
         )}
       >
         <span>{t("common.all")}</span>
-        <span className="text-xs">{counts.get(null) ?? 0}</span>
+        <span className="text-xs">{totalCount(tree)}</span>
       </button>
       <ul className="mt-1 space-y-0.5">
         {tree.roots.map((root) => (
@@ -64,7 +67,6 @@ export function CategoryTreeSidebar({ tree, counts, selectedId, onSelect, mobile
             depth={0}
             expanded={expanded}
             toggle={toggle}
-            counts={counts}
             selectedId={selectedId}
             onSelect={onSelect}
             preferPl={i18n.language.startsWith("pl")}
@@ -80,17 +82,16 @@ interface RowProps {
   depth: number;
   expanded: Set<string>;
   toggle: (slug: string) => void;
-  counts: Map<string | null, number>;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   preferPl: boolean;
 }
 
-function TreeRow({ node, depth, expanded, toggle, counts, selectedId, onSelect, preferPl }: RowProps) {
+function TreeRow({ node, depth, expanded, toggle, selectedId, onSelect, preferPl }: RowProps) {
   const isExpanded = expanded.has(node.slug);
   const hasChildren = node.children.length > 0;
   const label = preferPl && node.name_pl !== null ? node.name_pl : node.name_en;
-  const count = counts.get(node.id) ?? 0;
+  const count = node.model_count;
   return (
     <li>
       <div className="flex items-center gap-1" style={{ paddingLeft: depth * 12 }}>
@@ -129,7 +130,6 @@ function TreeRow({ node, depth, expanded, toggle, counts, selectedId, onSelect, 
               depth={depth + 1}
               expanded={expanded}
               toggle={toggle}
-              counts={counts}
               selectedId={selectedId}
               onSelect={onSelect}
               preferPl={preferPl}

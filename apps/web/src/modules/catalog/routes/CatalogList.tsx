@@ -90,15 +90,6 @@ export function CatalogList() {
     });
   }
 
-  // Counts map: cheap derivation from current `models.data`. Best-effort.
-  // For accurate per-category counts the backend would need to ship them
-  // alongside the tree; deferred until a later slice.
-  const counts = useMemo(() => {
-    const m = new Map<string | null, number>();
-    m.set(null, models.data?.total ?? 0);
-    return m;
-  }, [models.data?.total]);
-
   if (tree.isLoading || models.isLoading) {
     return <div className="p-4 text-sm text-muted-foreground">…</div>;
   }
@@ -125,7 +116,6 @@ export function CatalogList() {
       {tree.data !== undefined && (
         <CategoryTreeSidebar
           tree={tree.data}
-          counts={counts}
           selectedId={search.category_id ?? null}
           onSelect={setCategoryId}
         />
@@ -147,7 +137,6 @@ export function CatalogList() {
                 </SheetHeader>
                 <CategoryTreeSidebar
                   tree={tree.data}
-                  counts={counts}
                   selectedId={search.category_id ?? null}
                   onSelect={(id) => {
                     setCategoryId(id);

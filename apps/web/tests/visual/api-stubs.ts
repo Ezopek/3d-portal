@@ -21,8 +21,10 @@ export async function stubSotList(page: Page) {
                 name_en: "Vases",
                 name_pl: "Wazony",
                 children: [],
+                model_count: 1,
               },
             ],
+            model_count: 1,
           },
           {
             id: "22222222-2222-2222-2222-222222222222",
@@ -31,6 +33,7 @@ export async function stubSotList(page: Page) {
             name_en: "Tools",
             name_pl: "Narzędzia",
             children: [],
+            model_count: 1,
           },
         ],
       }),
