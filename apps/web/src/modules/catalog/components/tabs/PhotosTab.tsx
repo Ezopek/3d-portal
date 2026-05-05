@@ -76,7 +76,7 @@ export function PhotosTab({ detail }: Props) {
   const selected = photos.find((p) => p.id === selectedId) ?? photos[0] ?? null;
 
   return (
-    <div className="grid grid-cols-1 gap-4 p-3 md:grid-cols-[260px_1fr]">
+    <div className="grid grid-cols-1 gap-4 p-3 md:grid-cols-[520px_1fr]">
       <div className="space-y-2">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={photos.map((p) => p.id)} strategy={verticalListSortingStrategy}>
@@ -214,7 +214,7 @@ function PhotoDetail({
       <img
         src={`/api/models/${modelId}/files/${photo.id}/content`}
         alt={photo.original_name}
-        className="aspect-[4/3] w-full rounded bg-muted object-contain"
+        className="max-h-[600px] w-full rounded bg-muted object-contain"
       />
     </div>
   );
