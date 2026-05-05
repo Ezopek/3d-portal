@@ -75,15 +75,8 @@ describe("ModelCard (SoT)", () => {
     expect(labels).not.toContain("extra-tag"); // overflow not rendered
   });
 
-  it("emits a link to /catalog/<legacy_id> when legacy_id is set", async () => {
+  it("emits a link to /catalog/<uuid>", async () => {
     await renderWithRouter(<ModelCard model={makeSummary()} />);
-    await screen.findAllByText(/Dragon|Smok/);
-    const link = document.querySelector("a") as HTMLAnchorElement;
-    expect(link.getAttribute("href")).toBe("/catalog/001");
-  });
-
-  it("falls back to /catalog/<uuid> when legacy_id is null", async () => {
-    await renderWithRouter(<ModelCard model={makeSummary({ legacy_id: null })} />);
     await screen.findAllByText(/Dragon|Smok/);
     const link = document.querySelector("a") as HTMLAnchorElement;
     expect(link.getAttribute("href")).toBe("/catalog/11111111-1111-1111-1111-111111111111");

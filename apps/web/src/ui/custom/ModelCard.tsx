@@ -15,7 +15,7 @@ export function ModelCard({ model }: { model: ModelSummary }) {
   const secondary =
     i18n.language.startsWith("pl") ? model.name_en : (model.name_pl ?? "");
   const topTags = model.tags.slice(0, 2);
-  const linkId = model.legacy_id ?? model.id;
+  const linkId = model.id;
   const thumbUrl =
     model.thumbnail_file_id !== null
       ? `/api/models/${model.id}/files/${model.thumbnail_file_id}/content`
