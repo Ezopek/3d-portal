@@ -10,14 +10,33 @@ function srcFor(modelId: string, fileId: string): string {
   return `/api/models/${modelId}/files/${fileId}/content`;
 }
 
+/**
+ * Push the chosen catalog thumbnail to the front of the gallery so the
+ * default-active image matches what users see in the list view. Admin order
+ * (`position`) is preserved for the remainder.
+ */
+function withThumbnailFirst(
+  images: readonly ModelFileRead[],
+  thumbnailFileId: string | null,
+): readonly ModelFileRead[] {
+  if (thumbnailFileId === null) return images;
+  const idx = images.findIndex((i) => i.id === thumbnailFileId);
+  if (idx <= 0) return images;
+  const reordered = [...images];
+  const [thumb] = reordered.splice(idx, 1);
+  return thumb !== undefined ? [thumb, ...reordered] : images;
+}
+
 export function ModelGallery({
   modelId,
   files,
+  thumbnailFileId = null,
 }: {
   modelId: string;
   files: readonly ModelFileRead[];
+  thumbnailFileId?: string | null;
 }) {
-  const images = files.filter(isImage);
+  const images = withThumbnailFirst(files.filter(isImage), thumbnailFileId);
   const [activeId, setActiveId] = useState<string | null>(images[0]?.id ?? null);
   if (images.length === 0) {
     return (

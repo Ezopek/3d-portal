@@ -21,15 +21,25 @@ export function ModelCard({ model }: { model: ModelSummary }) {
     model.thumbnail_file_id !== null
       ? `/api/models/${model.id}/files/${model.thumbnail_file_id}/content`
       : null;
+  // Push the chosen thumbnail to the front of the carousel so the first card
+  // image matches what's used as the catalog thumbnail. Admin order is
+  // preserved for the rest of the gallery.
+  const carouselFileIds =
+    model.thumbnail_file_id !== null && model.gallery_file_ids.includes(model.thumbnail_file_id)
+      ? [
+          model.thumbnail_file_id,
+          ...model.gallery_file_ids.filter((id) => id !== model.thumbnail_file_id),
+        ]
+      : model.gallery_file_ids;
   const showCarousel =
-    model.image_count >= 2 && model.gallery_file_ids.length >= 2;
+    model.image_count >= 2 && carouselFileIds.length >= 2;
   return (
     <Link to="/catalog/$id" params={{ id: linkId }}>
       <Card className="overflow-hidden border-border bg-card transition-colors hover:border-ring">
         {showCarousel ? (
           <CardCarousel
             modelId={model.id}
-            fileIds={model.gallery_file_ids}
+            fileIds={carouselFileIds}
             alt={primary}
           />
         ) : (

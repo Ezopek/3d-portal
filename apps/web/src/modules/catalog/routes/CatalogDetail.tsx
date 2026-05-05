@@ -25,7 +25,11 @@ export function CatalogDetail() {
     <article className="space-y-4">
       <ModelHero detail={detail} />
       <div className="grid grid-cols-1 gap-4 px-4 md:grid-cols-[36%_1fr]">
-        <ModelGallery modelId={detail.id} files={detail.files} />
+        <ModelGallery
+          modelId={detail.id}
+          files={detail.files}
+          thumbnailFileId={detail.thumbnail_file_id}
+        />
         <div className="space-y-3">
           <DescriptionPanel detail={detail} />
           <ExternalLinksPanel links={detail.external_links} />
