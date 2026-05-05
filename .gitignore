@@ -65,3 +65,10 @@ tmp/
 
 # Brainstorming companion (local mockups + state)
 .superpowers/
+
+# Playwright MCP scratch screenshots from QA subagents (working dir leaks)
+.playwright-mcp/
+/*.png
+
+# Claude scheduled task locks (session-only)
+.claude/scheduled_tasks.lock
