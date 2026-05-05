@@ -1,15 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
+import type { FileListResponse, ModelFileKind } from "@/lib/api-types";
 
-interface FilesResponse { files: string[] }
+export type FilesKind = ModelFileKind | null;
 
-export type FilesKind = "all" | "printable";
-
-export function useFiles(id: string, opts?: { kind?: FilesKind }) {
-  const kind: FilesKind = opts?.kind ?? "all";
-  return useQuery<FilesResponse>({
-    queryKey: ["catalog", "models", id, "files", kind],
-    queryFn: () => api<FilesResponse>(`/catalog/models/${id}/files?kind=${kind}`),
+export function useFiles(modelId: string, opts?: { kind?: FilesKind }) {
+  const kind: FilesKind = opts?.kind === undefined ? "stl" : opts.kind;
+  const path =
+    kind === null ? `/models/${modelId}/files` : `/models/${modelId}/files?kind=${kind}`;
+  return useQuery<FileListResponse>({
+    queryKey: ["sot", "files", modelId, kind],
+    queryFn: () => api<FileListResponse>(path),
+    staleTime: 30 * 1000,
   });
 }

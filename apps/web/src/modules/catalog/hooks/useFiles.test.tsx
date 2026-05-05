@@ -8,50 +8,44 @@ import { useFiles } from "./useFiles";
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
 
-afterEach(() => {
-  fetchMock.mockReset();
-});
+afterEach(() => fetchMock.mockReset());
 
 function wrap() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  function Wrapper({ children }: { children: ReactNode }) {
+  return function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
-  }
-  return Wrapper;
+  };
 }
 
+const ID = "11111111-1111-1111-1111-111111111111";
+
 describe("useFiles", () => {
-  it("calls /files with kind=all by default (backward compat)", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ files: ["a.stl"] }), { status: 200 }),
-    );
-    const { result } = renderHook(() => useFiles("001"), { wrapper: wrap() });
-    await waitFor(() => expect(result.current.data).toBeDefined());
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/catalog/models/001/files?kind=all",
-      expect.any(Object),
-    );
+  it("defaults to kind=stl", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+    renderHook(() => useFiles(ID), { wrapper: wrap() });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`/api/models/${ID}/files?kind=stl`);
   });
 
-  it("calls /files with kind=printable when requested", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ files: ["a.stl"] }), { status: 200 }),
-    );
-    const { result } = renderHook(() => useFiles("001", { kind: "printable" }), {
-      wrapper: wrap(),
-    });
-    await waitFor(() => expect(result.current.data).toBeDefined());
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/catalog/models/001/files?kind=printable",
-      expect.any(Object),
-    );
+  it("accepts an explicit kind", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+    renderHook(() => useFiles(ID, { kind: "image" }), { wrapper: wrap() });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`/api/models/${ID}/files?kind=image`);
   });
 
-  it("uses different cache keys for different kinds", async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ files: [] }), { status: 200 }));
+  it("omits kind param when kind is null", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+    renderHook(() => useFiles(ID, { kind: null }), { wrapper: wrap() });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`/api/models/${ID}/files`);
+  });
+
+  it("uses different cache keys per kind", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ items: [] }), { status: 200 }));
     const wrapper = wrap();
-    renderHook(() => useFiles("001", { kind: "all" }), { wrapper });
-    renderHook(() => useFiles("001", { kind: "printable" }), { wrapper });
+    renderHook(() => useFiles(ID, { kind: "stl" }), { wrapper });
+    renderHook(() => useFiles(ID, { kind: "image" }), { wrapper });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 });
