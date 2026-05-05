@@ -1,11 +1,29 @@
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ModelDetail } from "@/lib/api-types";
 
 import { SecondaryTabs } from "./SecondaryTabs";
 
-afterEach(() => cleanup());
+const mockUseAuth = vi.fn();
+vi.mock("@/shell/AuthContext", () => ({
+  useAuth: () => mockUseAuth(),
+}));
+
+const fetchMock = vi.fn();
+vi.stubGlobal("fetch", fetchMock);
+
+beforeEach(() => {
+  fetchMock.mockReset();
+  fetchMock.mockResolvedValue(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+});
+
+afterEach(() => {
+  cleanup();
+  mockUseAuth.mockReset();
+});
 
 function makeDetail(over: Partial<ModelDetail> = {}): ModelDetail {
   return {
@@ -39,15 +57,25 @@ function makeDetail(over: Partial<ModelDetail> = {}): ModelDetail {
   };
 }
 
+function wrap() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+  };
+}
+
 describe("SecondaryTabs", () => {
-  it("renders the three read-only tabs", () => {
-    render(<SecondaryTabs detail={makeDetail()} />);
+  it("renders the three read-only tabs for non-admin (no Photos tab)", () => {
+    mockUseAuth.mockReturnValue({ isAdmin: false });
+    render(<SecondaryTabs detail={makeDetail()} />, { wrapper: wrap() });
     expect(screen.getByRole("tab", { name: /files/i })).toBeTruthy();
     expect(screen.getByRole("tab", { name: /prints/i })).toBeTruthy();
     expect(screen.getByRole("tab", { name: /operational/i })).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: /photos/i })).toBeNull();
   });
 
   it("activates Prints when its tab is clicked", () => {
+    mockUseAuth.mockReturnValue({ isAdmin: false });
     render(
       <SecondaryTabs
         detail={makeDetail({
@@ -64,8 +92,15 @@ describe("SecondaryTabs", () => {
           ],
         })}
       />,
+      { wrapper: wrap() },
     );
     fireEvent.click(screen.getByRole("tab", { name: /prints/i }));
     expect(screen.getByText("ok")).toBeTruthy();
+  });
+
+  it("renders the Photos tab for admin users", () => {
+    mockUseAuth.mockReturnValue({ isAdmin: true });
+    render(<SecondaryTabs detail={makeDetail()} />, { wrapper: wrap() });
+    expect(screen.getByRole("tab", { name: /photos/i })).toBeTruthy();
   });
 });
