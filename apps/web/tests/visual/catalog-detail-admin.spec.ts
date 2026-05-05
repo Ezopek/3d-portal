@@ -1,14 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { test } from "@playwright/test";
 
-import { stubCatalog } from "./api-stubs";
-import { loginAsAdmin, waitForReady } from "./helpers";
-
-test("catalog detail with admin thumbnail controls", async ({ page }) => {
-  await loginAsAdmin(page);
-  await stubCatalog(page);
-  await page.goto("/catalog/001");
-  await waitForReady(page);
-  await expect(page).toHaveScreenshot("catalog-detail-admin.png", {
-    fullPage: true,
-  });
+// Admin actions on catalog detail (thumbnail picker, render selection,
+// share button) were removed in Slice 3C and return in Slice 3E with
+// the new edit-pattern. Re-enable when 3E ships.
+test.describe.skip("catalog detail admin (deferred to Slice 3E)", () => {
+  test("placeholder", () => {});
 });
