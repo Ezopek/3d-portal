@@ -271,6 +271,10 @@ def list_model_files(
     Returns None if the model does not exist (so the caller can 404).
     Returns an empty envelope if the model exists but has no files.
     Filtering by kind is exact match.
+
+    For image/print kinds the list is ordered by (position NULLS LAST,
+    created_at) so admin-curated ordering takes precedence and unsorted
+    files fall back to upload-time order.
     """
     model_exists = session.exec(select(Model.id).where(Model.id == model_id)).first()
     if model_exists is None:
@@ -279,6 +283,11 @@ def list_model_files(
     stmt = select(ModelFile).where(ModelFile.model_id == model_id)
     if kind is not None:
         stmt = stmt.where(ModelFile.kind == kind)
-    stmt = stmt.order_by(ModelFile.created_at)
+    if kind in (ModelFileKind.image, ModelFileKind.print):
+        from sqlalchemy import nullslast
+
+        stmt = stmt.order_by(nullslast(ModelFile.position.asc()), ModelFile.created_at.asc())
+    else:
+        stmt = stmt.order_by(ModelFile.created_at.asc())
     rows = session.exec(stmt).all()
     return FileListResponse(items=[ModelFileRead.model_validate(r) for r in rows])

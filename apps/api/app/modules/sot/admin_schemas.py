@@ -40,6 +40,10 @@ class ThumbnailSet(BaseModel):
     file_id: uuid.UUID
 
 
+class PhotoReorderRequest(BaseModel):
+    ordered_ids: list[uuid.UUID]
+
+
 class ModelFilePatch(BaseModel):
     """Updateable fields for a ModelFile.  Content-tied fields (storage_path,
     sha256, size_bytes, mime_type) are intentionally excluded — replace the

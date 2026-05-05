@@ -15,6 +15,7 @@ from fastapi import (
     Form,
     HTTPException,
     Query,
+    Request,
     Response,
     UploadFile,
     status,
@@ -36,6 +37,7 @@ from app.modules.sot.admin_schemas import (
     ModelPatch,
     NoteCreate,
     NotePatch,
+    PhotoReorderRequest,
     PrintCreate,
     PrintPatch,
     TagAdd,
@@ -62,6 +64,7 @@ from app.modules.sot.admin_service import (
     hard_delete_model,
     merge_tags,
     remove_model_tag,
+    reorder_model_photos,
     replace_model_tags,
     restore_model,
     set_thumbnail,
@@ -255,6 +258,31 @@ def admin_set_thumbnail(
     if detail is None:
         raise HTTPException(500, "model disappeared after thumbnail update")
     return detail
+
+
+@router.post(
+    "/models/{model_id}/photos/reorder",
+    status_code=status.HTTP_200_OK,
+    response_model=dict,
+)
+def admin_reorder_photos(
+    model_id: uuid.UUID,
+    payload: PhotoReorderRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    user_id: uuid.UUID = _current_principal,
+) -> dict:
+    try:
+        reorder_model_photos(
+            session,
+            model_id=model_id,
+            ordered_ids=payload.ordered_ids,
+            actor_user_id=user_id,
+            request_id=request.headers.get("x-request-id"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

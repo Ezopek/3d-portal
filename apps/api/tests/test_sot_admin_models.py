@@ -692,3 +692,153 @@ def test_member_role_create_403(client):
         headers=_hdrs(_member_token(member_id)),
     )
     assert r.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# POST /api/admin/models/{model_id}/photos/reorder
+# ---------------------------------------------------------------------------
+
+
+def test_reorder_photos_assigns_sequential_positions(client):
+    """POST /api/admin/models/{id}/photos/reorder accepts ordered_ids list
+    and assigns position 0, 1, 2 ... in the order given."""
+    from app.core.db.models import ModelSource  # noqa: F401  (kept for parity with plan)
+
+    engine = get_engine()
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        cat = Category(slug=f"reorder-cat-{uuid.uuid4().hex[:6]}", name_en="x")
+        s.add(cat)
+        s.commit()
+        s.refresh(cat)
+        m = Model(slug=f"reorder-m-{uuid.uuid4().hex[:6]}", name_en="m", category_id=cat.id)
+        s.add(m)
+        s.commit()
+        s.refresh(m)
+        f1 = ModelFile(
+            model_id=m.id,
+            kind=ModelFileKind.image,
+            original_name="a.png",
+            storage_path=f"x/a-{uuid.uuid4().hex}.png",
+            sha256=f"aa{uuid.uuid4().hex}",
+            size_bytes=1,
+            mime_type="image/png",
+        )
+        f2 = ModelFile(
+            model_id=m.id,
+            kind=ModelFileKind.image,
+            original_name="b.png",
+            storage_path=f"x/b-{uuid.uuid4().hex}.png",
+            sha256=f"bb{uuid.uuid4().hex}",
+            size_bytes=1,
+            mime_type="image/png",
+        )
+        f3 = ModelFile(
+            model_id=m.id,
+            kind=ModelFileKind.print,
+            original_name="c.jpg",
+            storage_path=f"x/c-{uuid.uuid4().hex}.jpg",
+            sha256=f"cc{uuid.uuid4().hex}",
+            size_bytes=1,
+            mime_type="image/jpeg",
+        )
+        s.add_all([f1, f2, f3])
+        s.commit()
+        for f in (f1, f2, f3):
+            s.refresh(f)
+        m_id = str(m.id)
+        f_ids = [str(f3.id), str(f1.id), str(f2.id)]
+
+    r = client.post(
+        f"/api/admin/models/{m_id}/photos/reorder",
+        headers=_hdrs(_admin_token(admin_id)),
+        json={"ordered_ids": f_ids},
+    )
+    assert r.status_code == 200, r.text
+
+    # Verify positions in DB
+    with Session(engine) as s:
+        f_rows = {
+            str(row.id): row
+            for row in s.exec(select(ModelFile).where(ModelFile.model_id == uuid.UUID(m_id))).all()
+        }
+        assert f_rows[f_ids[0]].position == 0
+        assert f_rows[f_ids[1]].position == 1
+        assert f_rows[f_ids[2]].position == 2
+
+
+def test_reorder_photos_rejects_unknown_file(client):
+    """Reorder request with a file id not belonging to the model returns 400."""
+    engine = get_engine()
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        cat = Category(slug=f"reorder-bad-cat-{uuid.uuid4().hex[:6]}", name_en="x")
+        s.add(cat)
+        s.commit()
+        s.refresh(cat)
+        m = Model(slug=f"reorder-bad-m-{uuid.uuid4().hex[:6]}", name_en="m", category_id=cat.id)
+        s.add(m)
+        s.commit()
+        s.refresh(m)
+        m_id = str(m.id)
+
+    r = client.post(
+        f"/api/admin/models/{m_id}/photos/reorder",
+        headers=_hdrs(_admin_token(admin_id)),
+        json={"ordered_ids": [str(uuid.uuid4())]},
+    )
+    assert r.status_code == 400, r.text
+
+
+def test_list_files_returns_image_kinds_in_position_order(client):
+    """Once positions are set, GET /api/models/{id}/files?kind=image returns
+    files sorted by (position NULLS LAST, created_at)."""
+    engine = get_engine()
+    with Session(engine) as s:
+        cat = Category(slug=f"order-cat-{uuid.uuid4().hex[:6]}", name_en="x")
+        s.add(cat)
+        s.commit()
+        s.refresh(cat)
+        m = Model(slug=f"order-m-{uuid.uuid4().hex[:6]}", name_en="m", category_id=cat.id)
+        s.add(m)
+        s.commit()
+        s.refresh(m)
+        f1 = ModelFile(
+            model_id=m.id,
+            kind=ModelFileKind.image,
+            original_name="a.png",
+            storage_path=f"o/a-{uuid.uuid4().hex}.png",
+            sha256=f"oa{uuid.uuid4().hex}",
+            size_bytes=1,
+            mime_type="image/png",
+            position=2,
+        )
+        f2 = ModelFile(
+            model_id=m.id,
+            kind=ModelFileKind.image,
+            original_name="b.png",
+            storage_path=f"o/b-{uuid.uuid4().hex}.png",
+            sha256=f"ob{uuid.uuid4().hex}",
+            size_bytes=1,
+            mime_type="image/png",
+            position=0,
+        )
+        f3 = ModelFile(
+            model_id=m.id,
+            kind=ModelFileKind.image,
+            original_name="c.png",
+            storage_path=f"o/c-{uuid.uuid4().hex}.png",
+            sha256=f"oc{uuid.uuid4().hex}",
+            size_bytes=1,
+            mime_type="image/png",
+            position=1,
+        )
+        s.add_all([f1, f2, f3])
+        s.commit()
+        m_id = str(m.id)
+
+    r = client.get(f"/api/models/{m_id}/files?kind=image")
+    assert r.status_code == 200
+    items = r.json()["items"]
+    names = [it["original_name"] for it in items]
+    assert names == ["b.png", "c.png", "a.png"]  # positions 0, 1, 2

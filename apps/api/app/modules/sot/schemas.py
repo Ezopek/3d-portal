@@ -47,6 +47,7 @@ class ModelFileRead(_OrmBase):
     sha256: str
     size_bytes: int
     mime_type: str
+    position: int | None
     created_at: datetime.datetime
 
 

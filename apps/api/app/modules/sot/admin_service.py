@@ -22,6 +22,7 @@ from fastapi import HTTPException, UploadFile
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
+from app.core.audit import record_event
 from app.core.db.models import (
     AuditLog,
     Category,
@@ -34,6 +35,7 @@ from app.core.db.models import (
     ModelTag,
     Tag,
 )
+from app.core.db.session import get_engine
 from app.modules.sot.admin_schemas import (
     CategoryCreate,
     CategoryPatch,
@@ -1648,3 +1650,54 @@ def delete_external_link(
 
     session.delete(link)
     session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Photo reorder
+# ---------------------------------------------------------------------------
+
+
+def reorder_model_photos(
+    session: Session,
+    *,
+    model_id: uuid.UUID,
+    ordered_ids: list[uuid.UUID],
+    actor_user_id: uuid.UUID,
+    request_id: str | None,
+) -> None:
+    """Assign sequential positions (0..N-1) to the given files in order.
+
+    Validates that each file_id belongs to the model and is image/print kind.
+    Raises ValueError on any mismatch (router translates to 400).
+    """
+    rows = list(
+        session.exec(
+            select(ModelFile)
+            .where(ModelFile.model_id == model_id)
+            .where(ModelFile.id.in_(ordered_ids))
+        ).all()
+    )
+    by_id = {row.id: row for row in rows}
+    if len(by_id) != len(ordered_ids) or set(by_id.keys()) != set(ordered_ids):
+        raise ValueError("one or more file ids do not belong to this model")
+    for row in rows:
+        if row.kind not in (ModelFileKind.image, ModelFileKind.print):
+            raise ValueError(f"file {row.id} is not an image/print kind")
+
+    before = {str(fid): by_id[fid].position for fid in ordered_ids}
+    for pos, fid in enumerate(ordered_ids):
+        by_id[fid].position = pos
+        session.add(by_id[fid])
+    session.commit()
+    after = {str(fid): pos for pos, fid in enumerate(ordered_ids)}
+
+    record_event(
+        get_engine(),
+        action="model_photos.reorder",
+        entity_type="model",
+        entity_id=model_id,
+        actor_user_id=actor_user_id,
+        before={"positions": before},
+        after={"positions": after},
+        request_id=request_id,
+    )
