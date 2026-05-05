@@ -115,6 +115,28 @@ def test_create_print_201(client):
     assert "id" in body
 
 
+def test_create_print_flat_path_is_not_mounted(client):
+    """Locks the canonical URL: there is no top-level /api/admin/prints POST.
+
+    The frontend used to send to this path and got 404 in production. If that
+    ever silently starts working again, this test will fail and force an
+    intentional decision about which shape the API exposes.
+    """
+    engine = get_engine()
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        s.commit()
+
+    r = client.post(
+        "/api/admin/prints",
+        json={"model_id": str(model_id)},
+        headers=_hdrs(_admin_token(admin_id)),
+    )
+    assert r.status_code == 404
+
+
 def test_create_print_minimal(client):
     """Minimal payload — no printed_at, no note, no photo."""
     engine = get_engine()

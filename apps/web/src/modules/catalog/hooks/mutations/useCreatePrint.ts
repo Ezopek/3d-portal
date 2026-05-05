@@ -15,7 +15,7 @@ export function useCreatePrint(modelId: string) {
   return useMutation<PrintRead, Error, CreatePrintInput>({
     mutationFn: (input) =>
       api<PrintRead>(
-        "/admin/prints",
+        `/admin/models/${modelId}/prints`,
         { method: "POST", body: JSON.stringify(input) },
         { authenticated: true },
       ),
