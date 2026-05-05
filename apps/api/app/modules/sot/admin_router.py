@@ -5,6 +5,7 @@ Auth: all endpoints require admin OR agent JWT.
 Hard-delete (?hard=true) is restricted to admin role only.
 """
 
+import logging
 import uuid
 from typing import Annotated
 
@@ -65,6 +66,7 @@ from app.modules.sot.admin_service import (
     enqueue_render,
     hard_delete_model,
     merge_tags,
+    model_has_auto_renders,
     remove_model_tag,
     reorder_model_photos,
     replace_model_tags,
@@ -90,6 +92,8 @@ from app.modules.sot.schemas import (
     TagRead,
 )
 from app.modules.sot.service import get_model_detail
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin", tags=["sot-admin"])
 
@@ -346,6 +350,7 @@ async def admin_upload_file(
     response: Response,
     file: Annotated[UploadFile, File()],
     kind: Annotated[ModelFileKind, Form()],
+    request: Request,
     session: Annotated[Session, Depends(get_session)],
     actor_user_id: uuid.UUID = _current_principal,
 ) -> ModelFileRead:
@@ -360,6 +365,20 @@ async def admin_upload_file(
     )
     if was_existing:
         response.status_code = status.HTTP_200_OK
+
+    # Auto-enqueue render on first STL upload per model
+    if kind == ModelFileKind.stl and not model_has_auto_renders(session, model_id):
+        try:
+            await enqueue_render(
+                arq_pool=request.app.state.arq,
+                model_id=model_id,
+                selected_stl_file_ids=[],
+                actor_user_id=actor_user_id,
+                request_id=request.headers.get("x-request-id"),
+            )
+        except Exception as exc:  # don't fail the upload if redis is down
+            logger.warning("auto-render enqueue failed: %s", exc)
+
     return ModelFileRead.model_validate(file_row)
 
 

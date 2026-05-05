@@ -1708,6 +1708,27 @@ def reorder_model_photos(
 # Render trigger
 # ---------------------------------------------------------------------------
 
+AUTO_RENDER_NAMES: tuple[str, ...] = (
+    "iso-render.png",
+    "front-render.png",
+    "side-render.png",
+    "top-render.png",
+)
+
+
+def model_has_auto_renders(session: Session, model_id: uuid.UUID) -> bool:
+    """True if the model already has at least one auto-rendered ModelFile."""
+    return (
+        session.exec(
+            select(ModelFile)
+            .where(ModelFile.model_id == model_id)
+            .where(ModelFile.kind == ModelFileKind.image)
+            .where(ModelFile.original_name.in_(AUTO_RENDER_NAMES))
+            .limit(1)
+        ).first()
+        is not None
+    )
+
 
 async def enqueue_render(
     *,
