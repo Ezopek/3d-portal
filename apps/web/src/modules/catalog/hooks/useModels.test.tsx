@@ -1,0 +1,90 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { renderHook, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { useModels } from "./useModels";
+
+const fetchMock = vi.fn();
+vi.stubGlobal("fetch", fetchMock);
+
+afterEach(() => fetchMock.mockReset());
+
+function wrap() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+  };
+}
+
+const EMPTY = { items: [], total: 0, offset: 0, limit: 48 };
+
+describe("useModels", () => {
+  it("calls /api/models with default sort=recent and limit=48 when no filters", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EMPTY), { status: 200 }));
+    renderHook(() => useModels({}), { wrapper: wrap() });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const url = fetchMock.mock.calls[0]?.[0] as string;
+    expect(url).toBe("/api/models?sort=recent&offset=0&limit=48");
+  });
+
+  it("translates category to category_ids", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EMPTY), { status: 200 }));
+    renderHook(
+      () => useModels({ category_id: "abc" }),
+      { wrapper: wrap() },
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const url = fetchMock.mock.calls[0]?.[0] as string;
+    expect(url).toContain("category_ids=abc");
+  });
+
+  it("translates tag_ids array to repeated tag_ids params", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EMPTY), { status: 200 }));
+    renderHook(
+      () => useModels({ tag_ids: ["a", "b"] }),
+      { wrapper: wrap() },
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const url = fetchMock.mock.calls[0]?.[0] as string;
+    expect(url).toContain("tag_ids=a");
+    expect(url).toContain("tag_ids=b");
+  });
+
+  it("computes offset from page (1-indexed)", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EMPTY), { status: 200 }));
+    renderHook(() => useModels({ page: 3 }), { wrapper: wrap() });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const url = fetchMock.mock.calls[0]?.[0] as string;
+    // page 3 with limit 48 → offset 96
+    expect(url).toContain("offset=96");
+  });
+
+  it("includes status, source, q, sort when present", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EMPTY), { status: 200 }));
+    renderHook(
+      () =>
+        useModels({
+          status: "printed",
+          source: "printables",
+          q: "dragon",
+          sort: "name_asc",
+        }),
+      { wrapper: wrap() },
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const url = fetchMock.mock.calls[0]?.[0] as string;
+    expect(url).toContain("status=printed");
+    expect(url).toContain("source=printables");
+    expect(url).toContain("q=dragon");
+    expect(url).toContain("sort=name_asc");
+  });
+
+  it("uses different cache keys for different filter sets", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(EMPTY), { status: 200 }));
+    const wrapper = wrap();
+    renderHook(() => useModels({ q: "a" }), { wrapper });
+    renderHook(() => useModels({ q: "b" }), { wrapper });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  });
+});
