@@ -283,7 +283,9 @@ def get_model_detail(
     tags = [TagRead.model_validate(t) for t in tag_rows]
 
     file_rows = session.exec(
-        select(ModelFile).where(ModelFile.model_id == model_id).order_by(ModelFile.created_at)
+        select(ModelFile)
+        .where(ModelFile.model_id == model_id)
+        .order_by(nullslast(ModelFile.position.asc()), ModelFile.created_at.asc())
     ).all()
     files = [ModelFileRead.model_validate(f) for f in file_rows]
 

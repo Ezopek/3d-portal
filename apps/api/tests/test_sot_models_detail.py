@@ -126,3 +126,75 @@ def test_get_model_detail_include_deleted_returns_soft_deleted(client):
     r = client.get(f"/api/models/{model_id}?include_deleted=true")
     assert r.status_code == 200
     assert r.json()["slug"] == "model-5-incl"
+
+
+def test_get_model_detail_files_ordered_by_position(client):
+    engine = get_engine()
+    with Session(engine) as s:
+        cat = Category(slug="cat-5-pos-order", name_en="Pos")
+        s.add(cat)
+        s.commit()
+        s.refresh(cat)
+
+        m = Model(slug="model-5-pos-order", name_en="Pos", category_id=cat.id)
+        s.add(m)
+        s.commit()
+        s.refresh(m)
+        model_id = m.id
+
+        # Insert in upload-time (created_at) order: render first, then phone
+        # photos. Then assign positions so phone photos come first — this is
+        # what the admin Photos drag-and-drop produces.
+        render = ModelFile(
+            model_id=model_id,
+            kind=ModelFileKind.image,
+            original_name="iso-render.png",
+            storage_path=f"models/{model_id}/files/iso.png",
+            sha256="r" * 64,
+            size_bytes=1,
+            mime_type="image/png",
+            position=2,
+        )
+        s.add(render)
+        s.commit()
+        phone_a = ModelFile(
+            model_id=model_id,
+            kind=ModelFileKind.image,
+            original_name="phone-a.jpg",
+            storage_path=f"models/{model_id}/files/a.jpg",
+            sha256="a" * 64,
+            size_bytes=1,
+            mime_type="image/jpeg",
+            position=0,
+        )
+        s.add(phone_a)
+        s.commit()
+        phone_b = ModelFile(
+            model_id=model_id,
+            kind=ModelFileKind.image,
+            original_name="phone-b.jpg",
+            storage_path=f"models/{model_id}/files/b.jpg",
+            sha256="b" * 64,
+            size_bytes=1,
+            mime_type="image/jpeg",
+            position=1,
+        )
+        s.add(phone_b)
+        # An stl with NULL position must keep falling back to created_at order.
+        stl = ModelFile(
+            model_id=model_id,
+            kind=ModelFileKind.stl,
+            original_name="thing.stl",
+            storage_path=f"models/{model_id}/files/thing.stl",
+            sha256="c" * 64,
+            size_bytes=1,
+            mime_type="model/stl",
+        )
+        s.add(stl)
+        s.commit()
+
+    r = client.get(f"/api/models/{model_id}")
+    assert r.status_code == 200
+    names = [f["original_name"] for f in r.json()["files"]]
+    # Position-sorted images first (admin order), then NULL-position files.
+    assert names == ["phone-a.jpg", "phone-b.jpg", "iso-render.png", "thing.stl"]
