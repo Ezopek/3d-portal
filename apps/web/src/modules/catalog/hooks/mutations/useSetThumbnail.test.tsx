@@ -18,7 +18,7 @@ function wrap() {
 }
 
 describe("useSetThumbnail", () => {
-  it("PUTs thumbnail_file_id to admin thumbnail endpoint", async () => {
+  it("PUTs file_id to admin thumbnail endpoint (matches backend ThumbnailSet schema)", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({}), { status: 200 }),
     );
@@ -28,6 +28,6 @@ describe("useSetThumbnail", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/admin/models/m1/thumbnail");
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(init.method).toBe("PUT");
-    expect(init.body).toBe(JSON.stringify({ thumbnail_file_id: "f1" }));
+    expect(init.body).toBe(JSON.stringify({ file_id: "f1" }));
   });
 });

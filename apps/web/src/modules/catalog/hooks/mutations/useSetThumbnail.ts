@@ -9,7 +9,7 @@ export function useSetThumbnail(modelId: string) {
     mutationFn: (fileId) =>
       api<ModelDetail>(
         `/admin/models/${modelId}/thumbnail`,
-        { method: "PUT", body: JSON.stringify({ thumbnail_file_id: fileId }) },
+        { method: "PUT", body: JSON.stringify({ file_id: fileId }) },
         { authenticated: true },
       ),
     onSuccess: () => {
