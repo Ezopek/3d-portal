@@ -243,11 +243,23 @@ curl -s -b /tmp/gt-cookies.txt -H "X-CSRFTOKEN: $CSRF" -H "Referer: https://glit
 
 ## SoT migration — operational state (post Slice 2 series)
 
-**As of 2026-05-04**, the source-of-truth migration is complete through
-Slices 2A/2B/2C/2D plus reverse-sync. The portal database on `.190` now
+**As of 2026-05-05**, the SoT migration (Slices 2A-2D) is done AND the
+UI rewrite (Slices 3A-3F) is done. The portal database on `.190` now
 holds the canonical catalog: 89 models, 821 binary files (2.8 GB across
 `/mnt/raid/3d-portal-content/`), 243 deduplicated tags, 43 categories,
-62 external links, 31 notes, 26 print records.
+62 external links, 31 notes, 26 print records. The frontend at
+`https://3d.ezop.ddns.net/` consumes only `/api/*` (the SoT surface);
+the legacy `/api/catalog/*` router is still mounted but has zero
+non-test callers.
+
+### UI rewrite delivered (Slices 3A-3F)
+
+- **3A — Auth + API context.** `AuthContext` + `useAuth()` hook. `GET /api/auth/me` accepts any authenticated role. SoT TypeScript types in `apps/web/src/lib/api-types.ts`.
+- **3B — List view rebuild.** `CategoryTreeSidebar` (recursive expandable tree) + `FilterRibbon` (search, tag chips, status, source, sort). Server-side filters and offset/limit pagination. `/api/models` extended with `category_ids[]`, `tag_ids[]` (AND), `source`, `sort` enum.
+- **3C — Detail view rebuild.** Product-style layout: `ModelHero` + `ModelGallery` (4:3 ~36% width) + content rail (`DescriptionPanel`, `ExternalLinksPanel`, `MetadataPanel`) + `SecondaryTabs` (Files STL-primary / Prints / Operational notes).
+- **3D — Photos manager + DnD.** Admin-only `PhotosTab` (master-detail) with `@dnd-kit/sortable` reorder, set-thumbnail, delete, drag-drop upload. Backend `position` column on `model_file` + `POST /api/admin/models/{id}/photos/reorder`.
+- **3E — Edit affordances.** Status / rating popovers (atomic). Side-sheets: description, tags (with create-new), prints, notes. Delete-model confirmation modal (typed-name confirm). All ✏ icons wired on Hero/DescriptionPanel/PrintsTab/OperationalNotesTab.
+- **3F — Cleanup + ActivityTab.** Audit-log read endpoint `GET /api/admin/audit-log`. Admin-only `ActivityTab` showing per-model audit feed. Deleted orphan legacy frontend code (share view, gallery utilities, dead types, dead lib helpers).
 
 ### Active surfaces
 
@@ -280,16 +292,29 @@ incremental updates. Layout: `<category-slug>/<subcategory-slug>/<model-slug>-<l
 
 ### What remains
 
-- **Cutover (operational, not implementation):** when the UI is rewritten
-  to consume `/api/*` instead of `/api/catalog/*`, the legacy router can
-  be removed and the WSL `sync-data.sh` cron disabled. Until then both
-  paths coexist; the rsync from Windows is harmless because the new SoT
-  is the DB, not the file tree (the rsync target is read by the legacy
-  endpoints only).
-- **`audit_log.action` enum tightening** (Slice 2 polish) — currently the
-  column is free `text`. The closed-set `KNOWN_ENTITY_TYPES` runtime
-  guard prevents drift; future polish slice can convert to a strict
-  `AuditAction` enum once the API mutation catalog is finalized.
-- **3MF originals in production** — the migration imported the 3MF set
-  from `/mnt/raid/3d-portal-staging/3mf-originals/` (300 MB). The
-  staging dir can be removed once the migration is confirmed stable.
+- **Legacy `/api/catalog/*` router removal** — frontend no longer touches
+  it, but the backend route + tests still exist. Pull the trigger after
+  a short observation window (zero requests in logs); then disable the
+  WSL `sync-data.sh` cron.
+- **`audit_log.action` enum tightening** — currently the column is free
+  `text`. The `KNOWN_ENTITY_TYPES` runtime guard prevents drift; future
+  polish slice can convert to a strict `AuditAction` enum once the API
+  mutation catalog stops growing.
+- **3MF originals staging dir** — the migration imported from
+  `/mnt/raid/3d-portal-staging/3mf-originals/` (300 MB). Removable.
+
+### UI deferrals (post-3F follow-ups, not blocking)
+
+- **Full-page `/admin/models/new`** for creating a model from scratch.
+  Admin can use the API or the migration script in the meantime; the
+  agent does most creates anyway.
+- **`/admin/users` page** for member provisioning. Use direct SQL or
+  the bootstrap script until then.
+- **Side-sheets for ExternalLinks, Category picker, File metadata.**
+  These edit paths are low-frequency; the API supports them directly.
+- **Share view rebuild.** The share-create UI was deleted with the dead
+  `ShareDialog`; resurrect both when sharing becomes a real flow.
+- **Description "view source" toggle.** Source-original is currently
+  overwritten in place; storing it separately would require a DB
+  convention decision (column on `Model` or a flagged `ModelNote`).
+- **Backup for `portal-content/`** — restic schedule per spec section 7.1.
