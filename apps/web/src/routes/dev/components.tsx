@@ -5,7 +5,6 @@ import { Button } from "@/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { ComingSoonStub } from "@/ui/custom/ComingSoonStub";
 import { EmptyState } from "@/ui/custom/EmptyState";
-import { Gallery } from "@/ui/custom/Gallery";
 import { ModelCard } from "@/ui/custom/ModelCard";
 import { SourceBadge } from "@/ui/custom/SourceBadge";
 import { StatusBadge } from "@/ui/custom/StatusBadge";
@@ -105,9 +104,6 @@ function DevComponents() {
       </Section>
       <Section title="ComingSoonStub">
         <ComingSoonStub moduleKey="queue" />
-      </Section>
-      <Section title="Gallery">
-        <Gallery images={[]} />
       </Section>
     </div>
   );

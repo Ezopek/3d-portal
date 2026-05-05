@@ -16,7 +16,6 @@ import { Route as RequestsIndexRouteImport } from './routes/requests/index'
 import { Route as QueueIndexRouteImport } from './routes/queue/index'
 import { Route as PrinterIndexRouteImport } from './routes/printer/index'
 import { Route as CatalogIndexRouteImport } from './routes/catalog/index'
-import { Route as ShareTokenRouteImport } from './routes/share/$token'
 import { Route as DevComponentsRouteImport } from './routes/dev/components'
 import { Route as CatalogIdRouteImport } from './routes/catalog/$id'
 
@@ -55,11 +54,6 @@ const CatalogIndexRoute = CatalogIndexRouteImport.update({
   path: '/catalog/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ShareTokenRoute = ShareTokenRouteImport.update({
-  id: '/share/$token',
-  path: '/share/$token',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const DevComponentsRoute = DevComponentsRouteImport.update({
   id: '/dev/components',
   path: '/dev/components',
@@ -76,7 +70,6 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/catalog/$id': typeof CatalogIdRoute
   '/dev/components': typeof DevComponentsRoute
-  '/share/$token': typeof ShareTokenRoute
   '/catalog/': typeof CatalogIndexRoute
   '/printer/': typeof PrinterIndexRoute
   '/queue/': typeof QueueIndexRoute
@@ -88,7 +81,6 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/catalog/$id': typeof CatalogIdRoute
   '/dev/components': typeof DevComponentsRoute
-  '/share/$token': typeof ShareTokenRoute
   '/catalog': typeof CatalogIndexRoute
   '/printer': typeof PrinterIndexRoute
   '/queue': typeof QueueIndexRoute
@@ -101,7 +93,6 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/catalog/$id': typeof CatalogIdRoute
   '/dev/components': typeof DevComponentsRoute
-  '/share/$token': typeof ShareTokenRoute
   '/catalog/': typeof CatalogIndexRoute
   '/printer/': typeof PrinterIndexRoute
   '/queue/': typeof QueueIndexRoute
@@ -115,7 +106,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/catalog/$id'
     | '/dev/components'
-    | '/share/$token'
     | '/catalog/'
     | '/printer/'
     | '/queue/'
@@ -127,7 +117,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/catalog/$id'
     | '/dev/components'
-    | '/share/$token'
     | '/catalog'
     | '/printer'
     | '/queue'
@@ -139,7 +128,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/catalog/$id'
     | '/dev/components'
-    | '/share/$token'
     | '/catalog/'
     | '/printer/'
     | '/queue/'
@@ -152,7 +140,6 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   CatalogIdRoute: typeof CatalogIdRoute
   DevComponentsRoute: typeof DevComponentsRoute
-  ShareTokenRoute: typeof ShareTokenRoute
   CatalogIndexRoute: typeof CatalogIndexRoute
   PrinterIndexRoute: typeof PrinterIndexRoute
   QueueIndexRoute: typeof QueueIndexRoute
@@ -211,13 +198,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CatalogIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/share/$token': {
-      id: '/share/$token'
-      path: '/share/$token'
-      fullPath: '/share/$token'
-      preLoaderRoute: typeof ShareTokenRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/dev/components': {
       id: '/dev/components'
       path: '/dev/components'
@@ -240,7 +220,6 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   CatalogIdRoute: CatalogIdRoute,
   DevComponentsRoute: DevComponentsRoute,
-  ShareTokenRoute: ShareTokenRoute,
   CatalogIndexRoute: CatalogIndexRoute,
   PrinterIndexRoute: PrinterIndexRoute,
   QueueIndexRoute: QueueIndexRoute,

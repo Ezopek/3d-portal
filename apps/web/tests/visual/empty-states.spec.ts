@@ -50,12 +50,3 @@ test("catalog empty state hides clear-filters button without active filters", as
   // The clear-filters button should NOT exist when no filter is active.
   await expect(page.getByRole("button", { name: /clear filters|wyczyść/i })).toHaveCount(0);
 });
-
-test("share view error renders destructive-toned EmptyState with icon", async ({ page }) => {
-  await page.route("**/api/share/bad-token", (route) =>
-    route.fulfill({ status: 404, contentType: "application/json", body: '{"detail":"not found"}' }),
-  );
-  await page.goto("/share/bad-token");
-  await waitForReady(page);
-  await expect(page).toHaveScreenshot("share-error.png", { fullPage: true });
-});
