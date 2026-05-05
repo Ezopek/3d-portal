@@ -1,8 +1,24 @@
-import { test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-// Carousel was removed from ModelCard in Slice 3B (gallery-on-list deferred
-// to Slice 3D when photos become first-class). Re-enable these tests once
-// the carousel ships in the new ModelCard.
-test.describe.skip("catalog card carousel (deferred to Slice 3D)", () => {
-  test("placeholder", () => {});
+import { stubSotList } from "./api-stubs";
+import { waitForReady } from "./helpers";
+
+test.describe("catalog card carousel", () => {
+  test("renders dot indicators on multi-image cards", async ({ page }) => {
+    await stubSotList(page);
+    await page.goto("/catalog");
+    await waitForReady(page);
+    const dots = page.getByTestId("card-carousel-dots");
+    await expect(dots).toHaveCount(1);
+    await expect(dots.locator("button")).toHaveCount(3);
+  });
+
+  test("clicking a dot does not navigate to the detail page", async ({ page }) => {
+    await stubSotList(page);
+    await page.goto("/catalog");
+    await waitForReady(page);
+    const dots = page.getByTestId("card-carousel-dots").locator("button");
+    await dots.nth(1).click();
+    await expect(page).toHaveURL(/\/catalog$/);
+  });
 });

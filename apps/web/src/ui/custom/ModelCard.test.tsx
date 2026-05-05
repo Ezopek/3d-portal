@@ -99,4 +99,43 @@ describe("ModelCard (SoT)", () => {
       "/api/models/11111111-1111-1111-1111-111111111111/files/44444444-4444-4444-4444-444444444444/content",
     );
   });
+
+  it("renders CardCarousel when image_count >= 2 and gallery_file_ids has 2+ entries", async () => {
+    await renderWithRouter(
+      <ModelCard
+        model={makeSummary({
+          thumbnail_file_id: "55555555-5555-5555-5555-555555555555",
+          gallery_file_ids: [
+            "66666666-6666-6666-6666-666666666666",
+            "77777777-7777-7777-7777-777777777777",
+            "88888888-8888-8888-8888-888888888888",
+          ],
+          image_count: 3,
+        })}
+      />,
+    );
+    await screen.findAllByText(/Dragon|Smok/);
+    // CardCarousel renders dots inside the data-testid container.
+    const dotsContainer = await screen.findByTestId("card-carousel-dots");
+    expect(dotsContainer.querySelectorAll("button")).toHaveLength(3);
+    // First image is the first gallery file id, not the thumbnail_file_id.
+    const img = document.querySelector("img") as HTMLImageElement;
+    expect(img.getAttribute("src")).toBe(
+      "/api/models/11111111-1111-1111-1111-111111111111/files/66666666-6666-6666-6666-666666666666/content",
+    );
+  });
+
+  it("does not render CardCarousel when image_count < 2", async () => {
+    await renderWithRouter(
+      <ModelCard
+        model={makeSummary({
+          thumbnail_file_id: "55555555-5555-5555-5555-555555555555",
+          gallery_file_ids: ["66666666-6666-6666-6666-666666666666"],
+          image_count: 1,
+        })}
+      />,
+    );
+    await screen.findAllByText(/Dragon|Smok/);
+    expect(screen.queryByTestId("card-carousel-dots")).toBeNull();
+  });
 });

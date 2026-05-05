@@ -70,7 +70,7 @@ export async function stubSotList(page: Page) {
             source: "printables",
             status: "printed",
             rating: 5,
-            thumbnail_file_id: null,
+            thumbnail_file_id: "f1111111-1111-1111-1111-111111111111",
             date_added: "2026-04-12",
             deleted_at: null,
             created_at: "2026-04-12T00:00:00Z",
@@ -78,6 +78,12 @@ export async function stubSotList(page: Page) {
             tags: [
               { id: "tag-1", slug: "dragon", name_en: "Dragon", name_pl: "Smok" },
             ],
+            gallery_file_ids: [
+              "f1111111-1111-1111-1111-111111111111",
+              "f2222222-2222-2222-2222-222222222222",
+              "f3333333-3333-3333-3333-333333333333",
+            ],
+            image_count: 3,
           },
           {
             id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
@@ -95,9 +101,24 @@ export async function stubSotList(page: Page) {
             created_at: "2026-04-29T00:00:00Z",
             updated_at: "2026-04-29T00:00:00Z",
             tags: [],
+            gallery_file_ids: [],
+            image_count: 0,
           },
         ],
       }),
+    }),
+  );
+
+  // Stub the file content endpoint so carousel images on the catalog list
+  // resolve to a tiny valid PNG instead of failing/animating.
+  await page.route("**/api/models/**/files/**/content**", (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "image/png",
+      body: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+        "base64",
+      ),
     }),
   );
 }

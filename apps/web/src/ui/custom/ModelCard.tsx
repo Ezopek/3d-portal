@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import type { ModelSummary } from "@/lib/api-types";
 import { Card, CardContent } from "@/ui/card";
 
+import { CardCarousel } from "./CardCarousel";
 import { SourceBadge } from "./SourceBadge";
 import { StatusBadge } from "./StatusBadge";
 
@@ -20,28 +21,38 @@ export function ModelCard({ model }: { model: ModelSummary }) {
     model.thumbnail_file_id !== null
       ? `/api/models/${model.id}/files/${model.thumbnail_file_id}/content`
       : null;
+  const showCarousel =
+    model.image_count >= 2 && model.gallery_file_ids.length >= 2;
   return (
     <Link to="/catalog/$id" params={{ id: linkId }}>
       <Card className="overflow-hidden border-border bg-card transition-colors hover:border-ring">
-        <div
-          className={`aspect-square bg-muted ${
-            thumbUrl !== null && !imageLoaded ? "animate-pulse" : ""
-          }`}
-        >
-          {thumbUrl !== null ? (
-            <img
-              src={thumbUrl}
-              alt={primary}
-              className="h-full w-full object-cover"
-              loading="lazy"
-              onLoad={() => setImageLoaded(true)}
-            />
-          ) : (
-            <div className="grid h-full place-items-center text-muted-foreground">
-              <span className="text-xs">no preview</span>
-            </div>
-          )}
-        </div>
+        {showCarousel ? (
+          <CardCarousel
+            modelId={model.id}
+            fileIds={model.gallery_file_ids}
+            alt={primary}
+          />
+        ) : (
+          <div
+            className={`aspect-square bg-muted ${
+              thumbUrl !== null && !imageLoaded ? "animate-pulse" : ""
+            }`}
+          >
+            {thumbUrl !== null ? (
+              <img
+                src={thumbUrl}
+                alt={primary}
+                className="h-full w-full object-cover"
+                loading="lazy"
+                onLoad={() => setImageLoaded(true)}
+              />
+            ) : (
+              <div className="grid h-full place-items-center text-muted-foreground">
+                <span className="text-xs">no preview</span>
+              </div>
+            )}
+          </div>
+        )}
         <CardContent className="space-y-2 p-3">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <StatusBadge status={model.status} />
