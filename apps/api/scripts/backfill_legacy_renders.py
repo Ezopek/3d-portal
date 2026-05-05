@@ -80,18 +80,31 @@ class BackfillStats:
     no_render_found: int = 0
 
 
-def _first_png(renders_dir: Path, legacy_id: str) -> Path | None:
-    """Return the alphabetically first PNG in the legacy render directory.
+# Render-worker view names from `workers/render/render/trimesh_render.py`. Order
+# matters: ``iso`` is the most informative single angle so it gets first dibs on
+# the model thumbnail when none was set; the other three follow into the gallery.
+_PREFERRED_VIEW_ORDER: tuple[str, ...] = ("iso", "front", "side", "top")
 
-    Sorting is alphabetical on the filename to give a deterministic pick when
-    the legacy worker wrote multiple angles. Most directories have a single
-    ``iso.png`` so the choice is moot in practice.
+
+def _legacy_render_pngs(renders_dir: Path, legacy_id: str) -> list[Path]:
+    """Return all PNGs in the legacy render directory, ordered by preference.
+
+    The legacy render worker writes ``front.png``, ``iso.png``, ``side.png`` and
+    ``top.png`` per model. We want all of them imported so the gallery has the
+    full multi-angle set. Order: iso → front → side → top, then any extras
+    sorted alphabetically.
     """
     src_dir = renders_dir / legacy_id
     if not src_dir.is_dir():
-        return None
-    pngs = sorted(p for p in src_dir.iterdir() if p.is_file() and p.suffix.lower() == ".png")
-    return pngs[0] if pngs else None
+        return []
+    pngs = [p for p in src_dir.iterdir() if p.is_file() and p.suffix.lower() == ".png"]
+    by_stem = {p.stem.lower(): p for p in pngs}
+    ordered: list[Path] = []
+    for view in _PREFERRED_VIEW_ORDER:
+        if view in by_stem:
+            ordered.append(by_stem.pop(view))
+    ordered.extend(sorted(by_stem.values()))
+    return ordered
 
 
 def _sha256_of(path: Path) -> tuple[str, int]:
@@ -126,102 +139,107 @@ def backfill_legacy_renders(
 
     for m in models:
         assert m.legacy_id is not None  # narrow for the type-checker
-        png_src = _first_png(renders_dir, m.legacy_id)
-        if png_src is None:
+        png_sources = _legacy_render_pngs(renders_dir, m.legacy_id)
+        if not png_sources:
             stats.no_render_found += 1
             logger.info(
-                "no legacy render for model %s (legacy_id=%s) — skipping",
+                "no legacy renders for model %s (legacy_id=%s) — skipping",
                 m.slug,
                 m.legacy_id,
             )
             continue
 
-        sha256, size_bytes = _sha256_of(png_src)
+        for png_src in png_sources:
+            sha256, size_bytes = _sha256_of(png_src)
 
-        with Session(engine) as session:
-            # Re-fetch in this session so we don't operate on a detached row.
-            model = session.exec(select(Model).where(Model.id == m.id)).one()
+            with Session(engine) as session:
+                # Re-fetch in this session so we don't operate on a detached row.
+                model = session.exec(select(Model).where(Model.id == m.id)).one()
 
-            existing = session.exec(
-                select(ModelFile).where(
-                    ModelFile.model_id == model.id,
-                    ModelFile.sha256 == sha256,
-                    ModelFile.kind == ModelFileKind.image,
+                existing = session.exec(
+                    select(ModelFile).where(
+                        ModelFile.model_id == model.id,
+                        ModelFile.sha256 == sha256,
+                        ModelFile.kind == ModelFileKind.image,
+                    )
+                ).first()
+                if existing is not None:
+                    stats.skipped += 1
+                    logger.info(
+                        "legacy render %s for %s already imported as %s — skipping",
+                        png_src.name,
+                        model.slug,
+                        existing.id,
+                    )
+                    continue
+
+                file_uuid = uuid.uuid4()
+                storage_rel = f"models/{model.id}/files/{file_uuid}.png"
+                dst_path = content_dir / storage_rel
+                original_name = f"{png_src.stem}-render.png"
+
+                if dry_run:
+                    logger.info(
+                        "[dry-run] would import %s → %s for model %s",
+                        png_src,
+                        storage_rel,
+                        model.slug,
+                    )
+                    stats.imported += 1
+                    continue
+
+                dst_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(png_src, dst_path)
+
+                new_file = ModelFile(
+                    id=file_uuid,
+                    model_id=model.id,
+                    kind=ModelFileKind.image,
+                    original_name=original_name,
+                    storage_path=storage_rel,
+                    sha256=sha256,
+                    size_bytes=size_bytes,
+                    mime_type="image/png",
+                    position=None,
                 )
-            ).first()
-            if existing is not None:
-                stats.skipped += 1
-                logger.info(
-                    "legacy render for %s already imported as %s — skipping",
-                    model.slug,
-                    existing.id,
-                )
-                continue
+                session.add(new_file)
+                # Flush so the file row exists before the FK on Model.thumbnail_file_id
+                # is checked when we update the model below.
+                session.flush()
 
-            file_uuid = uuid.uuid4()
-            storage_rel = f"models/{model.id}/files/{file_uuid}.png"
-            dst_path = content_dir / storage_rel
+                before = {"thumbnail_file_id": None}
+                after_thumb: str | None = None
+                if model.thumbnail_file_id is None:
+                    model.thumbnail_file_id = file_uuid
+                    after_thumb = str(file_uuid)
+                    session.add(model)
 
-            if dry_run:
-                logger.info(
-                    "[dry-run] would import %s → %s for model %s",
-                    png_src,
-                    storage_rel,
-                    model.slug,
+                session.add(
+                    AuditLog(
+                        actor_user_id=None,
+                        action="model.legacy_render.import",
+                        entity_type="model",
+                        entity_id=model.id,
+                        before_json=json.dumps(before),
+                        after_json=json.dumps(
+                            {
+                                "model_file_id": str(file_uuid),
+                                "storage_path": storage_rel,
+                                "original_name": original_name,
+                                "thumbnail_file_id": after_thumb,
+                            }
+                        ),
+                    )
                 )
+                session.commit()
                 stats.imported += 1
-                continue
-
-            dst_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(png_src, dst_path)
-
-            new_file = ModelFile(
-                id=file_uuid,
-                model_id=model.id,
-                kind=ModelFileKind.image,
-                original_name="iso-render.png",
-                storage_path=storage_rel,
-                sha256=sha256,
-                size_bytes=size_bytes,
-                mime_type="image/png",
-                position=None,
-            )
-            session.add(new_file)
-            # Flush so the file row exists before the FK on Model.thumbnail_file_id
-            # is checked when we update the model below.
-            session.flush()
-
-            before = {"thumbnail_file_id": None}
-            after_thumb: str | None = None
-            if model.thumbnail_file_id is None:
-                model.thumbnail_file_id = file_uuid
-                after_thumb = str(file_uuid)
-                session.add(model)
-
-            session.add(
-                AuditLog(
-                    actor_user_id=None,
-                    action="model.legacy_render.import",
-                    entity_type="model",
-                    entity_id=model.id,
-                    before_json=json.dumps(before),
-                    after_json=json.dumps(
-                        {
-                            "model_file_id": str(file_uuid),
-                            "storage_path": storage_rel,
-                            "thumbnail_file_id": after_thumb,
-                        }
-                    ),
+                logger.info(
+                    "imported legacy render %s for %s (legacy_id=%s) → %s",
+                    png_src.name,
+                    model.slug,
+                    model.legacy_id,
+                    storage_rel,
                 )
-            )
-            session.commit()
-            stats.imported += 1
-            logger.info(
-                "imported legacy render for %s (legacy_id=%s) → %s",
-                model.slug,
-                model.legacy_id,
-                storage_rel,
-            )
 
     return stats
 
