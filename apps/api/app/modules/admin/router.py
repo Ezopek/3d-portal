@@ -1,3 +1,4 @@
+import datetime
 import json
 import re
 import uuid
@@ -144,6 +145,52 @@ def list_audit(
             for e in rows
         ],
     }
+
+
+class AuditLogEntry(BaseModel):
+    id: uuid.UUID
+    actor_user_id: uuid.UUID | None
+    action: str
+    entity_type: str
+    entity_id: uuid.UUID | None
+    before_json: dict | None
+    after_json: dict | None
+    at: datetime.datetime
+
+    @classmethod
+    def from_row(cls, row: AuditLog) -> "AuditLogEntry":
+        return cls(
+            id=row.id,
+            actor_user_id=row.actor_user_id,
+            action=row.action,
+            entity_type=row.entity_type,
+            entity_id=row.entity_id,
+            before_json=json.loads(row.before_json) if row.before_json else None,
+            after_json=json.loads(row.after_json) if row.after_json else None,
+            at=row.at,
+        )
+
+
+class AuditLogResponse(BaseModel):
+    items: list[AuditLogEntry]
+
+
+@router.get("/audit-log", response_model=AuditLogResponse)
+def admin_get_audit_log(
+    session: Annotated[Session, Depends(get_session)],
+    entity_type: str | None = None,
+    entity_id: uuid.UUID | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    _user_id: uuid.UUID = current_admin,
+) -> AuditLogResponse:
+    stmt = select(AuditLog)
+    if entity_type is not None:
+        stmt = stmt.where(AuditLog.entity_type == entity_type)
+    if entity_id is not None:
+        stmt = stmt.where(AuditLog.entity_id == entity_id)
+    stmt = stmt.order_by(AuditLog.at.desc()).limit(limit)
+    rows = session.exec(stmt).all()
+    return AuditLogResponse(items=[AuditLogEntry.from_row(r) for r in rows])
 
 
 _THUMBNAIL_PATH_RE = re.compile(

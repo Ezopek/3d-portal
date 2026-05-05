@@ -1,3 +1,4 @@
+import uuid
 from pathlib import Path
 
 import pytest
@@ -88,3 +89,75 @@ def test_audit_offset_paginates(client):
     page1 = c.get("/api/admin/audit?limit=2&offset=0", headers=headers).json()["events"]
     page2 = c.get("/api/admin/audit?limit=2&offset=2", headers=headers).json()["events"]
     assert {e["id"] for e in page1}.isdisjoint({e["id"] for e in page2})
+
+
+def test_audit_log_returns_entries_for_entity_id(client):
+    c, token, user_id = client
+    headers = {"Authorization": f"Bearer {token}"}
+    engine = get_engine()
+    target_id = uuid.uuid4()
+    other_id = uuid.uuid4()
+    record_event(
+        engine,
+        action="model.create",
+        entity_type="model",
+        entity_id=target_id,
+        actor_user_id=user_id,
+        after={"name": "x"},
+    )
+    record_event(
+        engine,
+        action="model.update",
+        entity_type="model",
+        entity_id=target_id,
+        actor_user_id=user_id,
+        after={"name": "y"},
+    )
+    record_event(
+        engine,
+        action="model.create",
+        entity_type="model",
+        entity_id=other_id,
+        actor_user_id=user_id,
+        after={"name": "z"},
+    )
+    r = c.get(
+        f"/api/admin/audit-log?entity_type=model&entity_id={target_id}",
+        headers=headers,
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["items"]) == 2
+    actions = [e["action"] for e in body["items"]]
+    # Newest first.
+    assert actions == ["model.update", "model.create"]
+    e0 = body["items"][0]
+    assert e0["entity_type"] == "model"
+    assert e0["entity_id"] == str(target_id)
+    assert e0["actor_user_id"] == str(user_id)
+    assert e0["before_json"] is None
+    assert e0["after_json"] == {"name": "y"}
+
+
+def test_audit_log_filters_by_entity_type(client):
+    c, token, user_id = client
+    headers = {"Authorization": f"Bearer {token}"}
+    engine = get_engine()
+    record_event(
+        engine,
+        action="file.create",
+        entity_type="model_file",
+        entity_id=None,
+        actor_user_id=user_id,
+        after={"k": 1},
+    )
+    r = c.get("/api/admin/audit-log?entity_type=model_file", headers=headers)
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["items"]) >= 1
+    assert all(e["entity_type"] == "model_file" for e in body["items"])
+
+
+def test_audit_log_requires_admin(client):
+    c, _, _uid = client
+    assert c.get("/api/admin/audit-log").status_code == 401
