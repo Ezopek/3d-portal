@@ -52,7 +52,7 @@ export function ModelGallery({
         data-testid="gallery-main"
         src={srcFor(modelId, active.id)}
         alt={active.original_name}
-        className="aspect-[4/3] w-full rounded bg-muted object-cover"
+        className="aspect-[4/3] w-full rounded bg-muted object-contain"
       />
       <div className="grid grid-cols-7 gap-1">
         {images.slice(0, 7).map((img) => (
