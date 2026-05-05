@@ -21,8 +21,17 @@ const TREE: CategoryTree = {
       name_en: "Decorations",
       name_pl: "Dekoracje",
       children: [
-        { id: "a1", parent_id: "a", slug: "vases", name_en: "Vases", name_pl: null, children: [] },
+        {
+          id: "a1",
+          parent_id: "a",
+          slug: "vases",
+          name_en: "Vases",
+          name_pl: null,
+          children: [],
+          model_count: 5,
+        },
       ],
+      model_count: 14,
     },
     {
       id: "b",
@@ -31,6 +40,7 @@ const TREE: CategoryTree = {
       name_en: "Tools",
       name_pl: "Narzędzia",
       children: [],
+      model_count: 23,
     },
   ],
 };

@@ -25,6 +25,7 @@ class CategorySummary(_OrmBase):
 
 class CategoryNode(CategorySummary):
     children: list["CategoryNode"]
+    model_count: int = 0
 
 
 class CategoryTree(BaseModel):

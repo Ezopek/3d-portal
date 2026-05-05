@@ -39,6 +39,8 @@ export interface CategorySummary {
 
 export interface CategoryNode extends CategorySummary {
   children: CategoryNode[];
+  /** Total non-deleted models in this subtree (self + all descendants). */
+  model_count: number;
 }
 
 export interface CategoryTree {

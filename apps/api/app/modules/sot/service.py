@@ -51,7 +51,11 @@ class ModelListSort(StrEnum):
 
 
 def list_categories_tree(session: Session) -> CategoryTree:
-    """Return the full category hierarchy as a nested tree."""
+    """Return the full category hierarchy as a nested tree.
+
+    Each node carries `model_count`, the total number of non-deleted models
+    in the subtree rooted at that node (i.e. self plus all descendants).
+    """
     rows: list[Category] = list(session.exec(select(Category)).all())
     by_id: dict[uuid.UUID, CategoryNode] = {
         row.id: CategoryNode(
@@ -61,6 +65,7 @@ def list_categories_tree(session: Session) -> CategoryTree:
             name_en=row.name_en,
             name_pl=row.name_pl,
             children=[],
+            model_count=0,
         )
         for row in rows
     }
@@ -84,6 +89,27 @@ def list_categories_tree(session: Session) -> CategoryTree:
     roots.sort(key=lambda r: r.slug)
     for r in roots:
         _sort_recursive(r)
+
+    # Count models directly attached to each category (excluding soft-deleted),
+    # then accumulate up the tree by recursive subtree summation.
+    direct_counts: dict[uuid.UUID, int] = {}
+    direct_rows = session.exec(
+        select(Model.category_id, func.count(Model.id))
+        .where(Model.deleted_at.is_(None))
+        .group_by(Model.category_id)
+    ).all()
+    for cat_id, n in direct_rows:
+        direct_counts[cat_id] = n
+
+    def _sum_subtree(node: CategoryNode) -> int:
+        total = direct_counts.get(node.id, 0)
+        for child in node.children:
+            total += _sum_subtree(child)
+        node.model_count = total
+        return total
+
+    for r in roots:
+        _sum_subtree(r)
 
     return CategoryTree(roots=roots)
 
