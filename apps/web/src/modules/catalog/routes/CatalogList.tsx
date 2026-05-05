@@ -96,7 +96,14 @@ export function CatalogList() {
     });
   }
 
-  if (tree.isLoading || models.isLoading) {
+  // Guard on data presence rather than `isLoading`: on the very first render
+  // TanStack Query has not yet mounted the queries, so `isLoading` is still
+  // false. Without this, CategoryTreeSidebar paints with empty subtree counts
+  // before `tree.data` resolves (QA round 2 issue 3).
+  if (tree.data === undefined || models.data === undefined) {
+    if (tree.isError || models.isError) {
+      return <div className="p-4 text-sm text-destructive">{t("errors.network")}</div>;
+    }
     return <div className="p-4 text-sm text-muted-foreground">…</div>;
   }
   if (tree.isError || models.isError) {
