@@ -592,3 +592,109 @@ def test_delete_file_clears_thumbnail_pointer(client):
         m = s.get(Model, model_id)
         assert m is not None
         assert m.thumbnail_file_id is None
+
+
+# ---------------------------------------------------------------------------
+# selected_for_render — admin-curated render selection
+# ---------------------------------------------------------------------------
+
+
+def test_upload_first_stl_is_selected_for_render(client):
+    """First STL on a model auto-selects so worker has something to render."""
+    engine = get_engine()
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        s.commit()
+
+    files, data = _multipart(b"first stl bytes", "first.stl", "stl")
+    r = client.post(
+        f"/api/admin/models/{model_id}/files",
+        files=files,
+        data=data,
+        headers=_hdrs(_admin_token(admin_id)),
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["selected_for_render"] is True
+
+
+def test_upload_second_stl_is_not_selected_for_render(client):
+    """Subsequent STLs stay unselected — admin opts them in explicitly."""
+    engine = get_engine()
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        s.commit()
+
+    f1, d1 = _multipart(b"first", "a.stl", "stl")
+    r1 = client.post(
+        f"/api/admin/models/{model_id}/files",
+        files=f1,
+        data=d1,
+        headers=_hdrs(_admin_token(admin_id)),
+    )
+    assert r1.status_code == 201
+    assert r1.json()["selected_for_render"] is True
+
+    f2, d2 = _multipart(b"second", "b.stl", "stl")
+    r2 = client.post(
+        f"/api/admin/models/{model_id}/files",
+        files=f2,
+        data=d2,
+        headers=_hdrs(_admin_token(admin_id)),
+    )
+    assert r2.status_code == 201
+    assert r2.json()["selected_for_render"] is False
+
+
+def test_patch_file_selected_for_render_toggle(client):
+    engine = get_engine()
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        file_id, _ = _seed_file(s, model_id, kind=ModelFileKind.stl)
+        s.commit()
+
+    r = client.patch(
+        f"/api/admin/models/{model_id}/files/{file_id}",
+        json={"selected_for_render": True},
+        headers=_hdrs(_admin_token(admin_id)),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["selected_for_render"] is True
+
+    r2 = client.patch(
+        f"/api/admin/models/{model_id}/files/{file_id}",
+        json={"selected_for_render": False},
+        headers=_hdrs(_admin_token(admin_id)),
+    )
+    assert r2.status_code == 200
+    assert r2.json()["selected_for_render"] is False
+
+
+def test_patch_file_selected_for_render_rejected_on_non_stl(client):
+    """Toggling the flag on a non-STL file returns 400 — flag is meaningless
+    for photos/sources."""
+    engine = get_engine()
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        file_id, _ = _seed_file(
+            s,
+            model_id,
+            kind=ModelFileKind.image,
+            content=b"png-bytes",
+            original_name="photo.png",
+        )
+        s.commit()
+
+    r = client.patch(
+        f"/api/admin/models/{model_id}/files/{file_id}",
+        json={"selected_for_render": True},
+        headers=_hdrs(_admin_token(admin_id)),
+    )
+    assert r.status_code == 400

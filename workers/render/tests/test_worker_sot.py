@@ -214,3 +214,110 @@ def test_render_model_replaces_old_auto_renders(tmp_db_engine):
         assert m.thumbnail_file_id == new_iso.id
     # Old PNG file removed from disk
     assert not (content_dir / old_rel).exists()
+
+
+def _seed_two_stls(engine, content_dir, *, flags: tuple[bool, bool]):
+    """Seed a model with two STL files; returns (model_id, file_a_id, file_b_id)."""
+    from app.core.db.models import Category, Model, ModelFile, ModelFileKind
+
+    valid_stl = (
+        "solid t\nfacet normal 0 0 1\nouter loop\n"
+        "vertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\n"
+        "endloop\nendfacet\nendsolid t\n"
+    )
+    with Session(engine) as s:
+        cat = Category(slug="x", name_en="x")
+        s.add(cat)
+        s.commit()
+        s.refresh(cat)
+        m = Model(slug="x", name_en="x", category_id=cat.id)
+        s.add(m)
+        s.commit()
+        s.refresh(m)
+        ids: list[uuid.UUID] = []
+        for label, flag in zip(["a", "b"], flags, strict=True):
+            stl_uuid = uuid.uuid4()
+            rel = f"models/{m.id}/files/{stl_uuid}.stl"
+            dst = content_dir / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text(valid_stl)
+            s.add(
+                ModelFile(
+                    id=stl_uuid,
+                    model_id=m.id,
+                    kind=ModelFileKind.stl,
+                    original_name=f"{label}.stl",
+                    storage_path=rel,
+                    sha256=f"x-{label}",
+                    size_bytes=10,
+                    mime_type="model/stl",
+                    selected_for_render=flag,
+                )
+            )
+            ids.append(stl_uuid)
+        s.commit()
+        return str(m.id), ids[0], ids[1]
+
+
+def test_render_model_honors_selected_for_render(tmp_db_engine):
+    """When selected_stl_file_ids is None the worker uses the persisted flag —
+    the unselected STL must not feed into render_views."""
+    engine, tmp_root = tmp_db_engine
+    content_dir = tmp_root / "content"
+    content_dir.mkdir()
+
+    model_id, sel_id, unsel_id = _seed_two_stls(engine, content_dir, flags=(True, False))
+
+    redis = MagicMock()
+    redis.set = AsyncMock(return_value=None)
+    captured: dict[str, list[Path]] = {}
+
+    def fake_render_views(*, stl_paths, output_dir, size):
+        captured["paths"] = list(stl_paths)
+        from render.trimesh_render import VIEW_NAMES
+
+        for view in VIEW_NAMES:
+            (Path(output_dir) / f"{view}.png").write_bytes(f"fake-{view}".encode())
+        return {v: Path(output_dir) / f"{v}.png" for v in VIEW_NAMES}
+
+    with patch("render.worker.render_views", fake_render_views):
+        from render.worker import render_model
+
+        ctx = {"redis": redis, "engine": engine, "content_dir": content_dir, "image_size": 256}
+        result = asyncio.run(render_model(ctx, model_id))
+
+    assert result["status"] == "done"
+    paths = captured["paths"]
+    assert any(str(sel_id) in str(p) for p in paths), "selected STL must be rendered"
+    assert not any(str(unsel_id) in str(p) for p in paths), "unselected STL must be skipped"
+
+
+def test_render_model_falls_back_to_first_stl_when_none_selected(tmp_db_engine):
+    """If admin cleared every flag, worker still renders the first STL alphabetically
+    so a model with STL files never produces zero renders."""
+    engine, tmp_root = tmp_db_engine
+    content_dir = tmp_root / "content"
+    content_dir.mkdir()
+
+    model_id, a_id, b_id = _seed_two_stls(engine, content_dir, flags=(False, False))
+
+    redis = MagicMock()
+    redis.set = AsyncMock(return_value=None)
+    captured: dict[str, list[Path]] = {}
+
+    def fake_render_views(*, stl_paths, output_dir, size):
+        captured["paths"] = list(stl_paths)
+        from render.trimesh_render import VIEW_NAMES
+
+        for view in VIEW_NAMES:
+            (Path(output_dir) / f"{view}.png").write_bytes(f"fake-{view}".encode())
+        return {v: Path(output_dir) / f"{v}.png" for v in VIEW_NAMES}
+
+    with patch("render.worker.render_views", fake_render_views):
+        from render.worker import render_model
+
+        ctx = {"redis": redis, "engine": engine, "content_dir": content_dir, "image_size": 256}
+        result = asyncio.run(render_model(ctx, model_id))
+
+    assert result["status"] == "done"
+    assert len(captured["paths"]) == 1, "fallback should render exactly one STL"

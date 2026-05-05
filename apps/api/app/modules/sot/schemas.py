@@ -49,6 +49,7 @@ class ModelFileRead(_OrmBase):
     size_bytes: int
     mime_type: str
     position: int | None
+    selected_for_render: bool
     created_at: datetime.datetime
 
 

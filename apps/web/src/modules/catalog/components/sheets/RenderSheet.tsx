@@ -14,9 +14,14 @@ interface Props {
 
 export function RenderSheet({ detail, open, onOpenChange }: Props) {
   const stls = detail.files.filter((f) => f.kind === "stl");
-  const [selected, setSelected] = useState<Set<string>>(
-    new Set(stls[0] ? [stls[0].id] : []),
-  );
+  // Pre-fill with the admin-curated render selection. Fall back to the
+  // first STL when the model has zero flagged STLs so the sheet is never
+  // unusable (the user can still uncheck before submitting).
+  const [selected, setSelected] = useState<Set<string>>(() => {
+    const flagged = stls.filter((f) => f.selected_for_render).map((f) => f.id);
+    if (flagged.length > 0) return new Set(flagged);
+    return new Set(stls[0] ? [stls[0].id] : []);
+  });
   const trigger = useTriggerRender(detail.id);
 
   function toggle(id: string) {

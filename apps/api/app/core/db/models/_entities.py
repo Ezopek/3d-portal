@@ -123,6 +123,7 @@ class ModelFile(SQLModel, table=True):
     size_bytes: int = Field(sa_column=Column(BigInteger(), nullable=False))
     mime_type: str
     position: int | None = Field(default=None, nullable=True, index=False)
+    selected_for_render: bool = Field(default=False, nullable=False)
     created_at: datetime.datetime = Field(default_factory=_now_utc)
 
 

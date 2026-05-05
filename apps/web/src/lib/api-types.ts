@@ -70,6 +70,7 @@ export interface ModelFileRead {
   size_bytes: number;
   mime_type: string;
   position: number | null;
+  selected_for_render: boolean;
   created_at: string;
 }
 

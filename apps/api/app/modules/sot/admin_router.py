@@ -409,6 +409,10 @@ def admin_patch_file(
             raise HTTPException(
                 409, "kind change would violate unique (model, sha256, kind)"
             ) from exc
+        if "selected_for_render_only_on_stl" in msg:
+            raise HTTPException(
+                400, "selected_for_render can only be toggled on STL files"
+            ) from exc
         raise HTTPException(422, msg) from exc
     return ModelFileRead.model_validate(f)
 

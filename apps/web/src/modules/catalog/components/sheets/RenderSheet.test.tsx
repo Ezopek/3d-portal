@@ -62,9 +62,10 @@ const STL_A = {
   size_bytes: 10,
   mime_type: "model/stl",
   position: null,
+  selected_for_render: true,
   created_at: "",
 };
-const STL_B = { ...STL_A, id: "fb", original_name: "b.stl" };
+const STL_B = { ...STL_A, id: "fb", original_name: "b.stl", selected_for_render: false };
 
 describe("RenderSheet", () => {
   it("renders one row per STL file", () => {
@@ -80,7 +81,7 @@ describe("RenderSheet", () => {
     expect(screen.getByText("b.stl")).toBeTruthy();
   });
 
-  it("preselects the first STL", () => {
+  it("preselects STLs flagged selected_for_render", () => {
     render(
       <RenderSheet
         detail={makeDetail([STL_A, STL_B])}
@@ -93,6 +94,23 @@ describe("RenderSheet", () => {
     const b = screen.getByLabelText("b.stl") as HTMLInputElement;
     expect(a.checked).toBe(true);
     expect(b.checked).toBe(false);
+  });
+
+  it("falls back to first STL when no file is flagged", () => {
+    const a = { ...STL_A, selected_for_render: false };
+    const b = { ...STL_B, selected_for_render: false };
+    render(
+      <RenderSheet
+        detail={makeDetail([a, b])}
+        open={true}
+        onOpenChange={() => {}}
+      />,
+      { wrapper: wrap() },
+    );
+    const aBox = screen.getByLabelText("a.stl") as HTMLInputElement;
+    const bBox = screen.getByLabelText("b.stl") as HTMLInputElement;
+    expect(aBox.checked).toBe(true);
+    expect(bBox.checked).toBe(false);
   });
 
   it("submits selected ids on Re-render click", async () => {

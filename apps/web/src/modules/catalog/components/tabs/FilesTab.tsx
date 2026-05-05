@@ -2,6 +2,8 @@ import { useState } from "react";
 
 import type { ModelFileKind, ModelFileRead } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
+import { useSetFileRenderSelection } from "@/modules/catalog/hooks/mutations/useSetFileRenderSelection";
+import { useAuth } from "@/shell/AuthContext";
 
 type Visible = "stl" | "source" | "archive_3mf";
 
@@ -29,6 +31,8 @@ export function FilesTab({
   files: readonly ModelFileRead[];
 }) {
   const [active, setActive] = useState<Visible>("stl");
+  const { isAdmin } = useAuth();
+  const setRenderSelection = useSetFileRenderSelection(modelId);
   const counts = new Map<Visible, number>();
   for (const f of files) {
     if (isVisible(f.kind)) counts.set(f.kind, (counts.get(f.kind) ?? 0) + 1);
@@ -53,12 +57,31 @@ export function FilesTab({
           </button>
         ))}
       </div>
+      {isAdmin && active === "stl" && visible.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Checked STLs feed the auto-render preview.
+        </p>
+      )}
       {visible.length === 0 ? (
         <p className="text-sm text-muted-foreground">no files</p>
       ) : (
         <ul className="divide-y divide-border rounded border border-border">
           {visible.map((f) => (
             <li key={f.id} className="flex items-center gap-3 p-2 text-sm">
+              {isAdmin && f.kind === "stl" && (
+                <input
+                  type="checkbox"
+                  aria-label={`include ${f.original_name} in renders`}
+                  checked={f.selected_for_render}
+                  disabled={setRenderSelection.isPending}
+                  onChange={(e) =>
+                    setRenderSelection.mutate({
+                      fileId: f.id,
+                      selected: e.currentTarget.checked,
+                    })
+                  }
+                />
+              )}
               <span className="font-mono text-xs">{f.kind}</span>
               <span className="flex-1 truncate">{f.original_name}</span>
               <span className="text-xs text-muted-foreground">

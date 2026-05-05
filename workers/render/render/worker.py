@@ -71,7 +71,12 @@ async def render_model(
                 if not chosen_rows:
                     chosen_rows = [stl_rows[0]]
             else:
-                chosen_rows = [stl_rows[0]]
+                # Use admin-persisted selection. Fall back to the first STL
+                # when no row is flagged so a model never produces zero
+                # renders just because the flag was cleared everywhere.
+                chosen_rows = [r for r in stl_rows if r.selected_for_render]
+                if not chosen_rows:
+                    chosen_rows = [stl_rows[0]]
 
             stl_paths_on_disk = [content_dir / r.storage_path for r in chosen_rows]
             for path in stl_paths_on_disk:

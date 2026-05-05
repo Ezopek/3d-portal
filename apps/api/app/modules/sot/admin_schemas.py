@@ -59,6 +59,7 @@ class ModelFilePatch(BaseModel):
 
     kind: ModelFileKind | None = None
     original_name: str | None = Field(default=None, min_length=1)
+    selected_for_render: bool | None = None
 
 
 # ---------------------------------------------------------------------------

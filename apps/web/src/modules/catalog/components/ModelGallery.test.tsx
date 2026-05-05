@@ -18,6 +18,7 @@ const FILES: ModelFileRead[] = [
     size_bytes: 0,
     mime_type: "model/stl",
     position: null,
+    selected_for_render: false,
     created_at: "",
   },
   {
@@ -30,6 +31,7 @@ const FILES: ModelFileRead[] = [
     size_bytes: 0,
     mime_type: "image/png",
     position: null,
+    selected_for_render: false,
     created_at: "",
   },
   {
@@ -42,6 +44,7 @@ const FILES: ModelFileRead[] = [
     size_bytes: 0,
     mime_type: "image/jpeg",
     position: null,
+    selected_for_render: false,
     created_at: "",
   },
 ];

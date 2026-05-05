@@ -35,6 +35,7 @@ function makeDetail(over: Partial<ModelDetail> = {}): ModelDetail {
         size_bytes: 0,
         mime_type: "",
         position: null,
+        selected_for_render: false,
         created_at: "",
       },
       {
@@ -47,6 +48,7 @@ function makeDetail(over: Partial<ModelDetail> = {}): ModelDetail {
         size_bytes: 0,
         mime_type: "",
         position: null,
+        selected_for_render: false,
         created_at: "",
       },
     ],

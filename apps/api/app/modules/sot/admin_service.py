@@ -455,6 +455,7 @@ def _file_snapshot(f: ModelFile) -> dict:
         "sha256_prefix": f.sha256[:16],
         "size_bytes": f.size_bytes,
         "storage_path": f.storage_path,
+        "selected_for_render": f.selected_for_render,
     }
 
 
@@ -541,6 +542,21 @@ async def upload_model_file(
 
     dst_rel = f"models/{model_id}/files/{file_uuid}{ext}"
 
+    # First STL on a model auto-selects for renders so worker still has
+    # something to render after a single upload. Subsequent STL uploads stay
+    # unselected — admin opts them in explicitly via the FilesTab checkbox.
+    selected_for_render = False
+    if kind == ModelFileKind.stl:
+        already_selected = session.exec(
+            select(ModelFile.id).where(
+                ModelFile.model_id == model_id,
+                ModelFile.kind == ModelFileKind.stl,
+                ModelFile.selected_for_render.is_(True),
+            )
+        ).first()
+        if already_selected is None:
+            selected_for_render = True
+
     file_row = ModelFile(
         model_id=model_id,
         kind=kind,
@@ -549,6 +565,7 @@ async def upload_model_file(
         sha256=sha256,
         size_bytes=size_bytes,
         mime_type=mime_type,
+        selected_for_render=selected_for_render,
     )
 
     try:
@@ -628,6 +645,14 @@ def update_model_file(
         ).first()
         if collision is not None:
             raise ValueError("kind_conflict")
+
+    if "selected_for_render" in data and data["selected_for_render"] is not None:
+        # The flag is meaningful only for STL files — worker filters STL by it.
+        # Reject the toggle on anything else so admin UIs don't silently set
+        # the bit on photos / sources where it would never be honored.
+        target_kind = data.get("kind") or f.kind
+        if target_kind != ModelFileKind.stl:
+            raise ValueError("selected_for_render_only_on_stl")
 
     for field, value in data.items():
         setattr(f, field, value)
