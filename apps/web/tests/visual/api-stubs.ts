@@ -168,3 +168,102 @@ export async function stubCatalogMultiStl(page: Page) {
     }),
   );
 }
+
+export async function stubSotList(page: Page) {
+  await page.route("**/api/categories", (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        roots: [
+          {
+            id: "11111111-1111-1111-1111-111111111111",
+            parent_id: null,
+            slug: "decorations",
+            name_en: "Decorations",
+            name_pl: "Dekoracje",
+            children: [
+              {
+                id: "11111111-1111-1111-1111-111111111112",
+                parent_id: "11111111-1111-1111-1111-111111111111",
+                slug: "vases",
+                name_en: "Vases",
+                name_pl: "Wazony",
+                children: [],
+              },
+            ],
+          },
+          {
+            id: "22222222-2222-2222-2222-222222222222",
+            parent_id: null,
+            slug: "tools",
+            name_en: "Tools",
+            name_pl: "Narzędzia",
+            children: [],
+          },
+        ],
+      }),
+    }),
+  );
+
+  await page.route("**/api/tags*", (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        { id: "tag-1", slug: "dragon", name_en: "Dragon", name_pl: "Smok" },
+        { id: "tag-2", slug: "articulated", name_en: "Articulated", name_pl: null },
+      ]),
+    }),
+  );
+
+  await page.route("**/api/models*", (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        total: 2,
+        offset: 0,
+        limit: 48,
+        items: [
+          {
+            id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            legacy_id: "001",
+            slug: "dragon",
+            name_en: "Dragon",
+            name_pl: "Smok",
+            category_id: "11111111-1111-1111-1111-111111111111",
+            source: "printables",
+            status: "printed",
+            rating: 5,
+            thumbnail_file_id: null,
+            date_added: "2026-04-12",
+            deleted_at: null,
+            created_at: "2026-04-12T00:00:00Z",
+            updated_at: "2026-04-12T00:00:00Z",
+            tags: [
+              { id: "tag-1", slug: "dragon", name_en: "Dragon", name_pl: "Smok" },
+            ],
+          },
+          {
+            id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+            legacy_id: "002",
+            slug: "vase",
+            name_en: "Vase",
+            name_pl: "Wazon",
+            category_id: "11111111-1111-1111-1111-111111111112",
+            source: "unknown",
+            status: "not_printed",
+            rating: null,
+            thumbnail_file_id: null,
+            date_added: "2026-04-29",
+            deleted_at: null,
+            created_at: "2026-04-29T00:00:00Z",
+            updated_at: "2026-04-29T00:00:00Z",
+            tags: [],
+          },
+        ],
+      }),
+    }),
+  );
+}

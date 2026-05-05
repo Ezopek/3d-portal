@@ -1,17 +1,17 @@
 import { expect, test } from "@playwright/test";
 
-import { stubCatalog } from "./api-stubs";
+import { stubSotList } from "./api-stubs";
 import { waitForReady } from "./helpers";
 
 test("catalog list matches baseline", async ({ page }) => {
-  await stubCatalog(page);
+  await stubSotList(page);
   await page.goto("/catalog");
   await waitForReady(page);
   await expect(page).toHaveScreenshot("catalog-list.png", { fullPage: true });
 });
 
 test("catalog list has no horizontal overflow", async ({ page, viewport }) => {
-  await stubCatalog(page);
+  await stubSotList(page);
   await page.goto("/catalog");
   await waitForReady(page);
   const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
@@ -19,7 +19,7 @@ test("catalog list has no horizontal overflow", async ({ page, viewport }) => {
 });
 
 test("tag chips meet WCAG AA contrast", async ({ page }) => {
-  await stubCatalog(page);
+  await stubSotList(page);
   await page.goto("/catalog");
   await waitForReady(page);
   const chip = page.locator('[data-testid="tag-chip"]').first();
