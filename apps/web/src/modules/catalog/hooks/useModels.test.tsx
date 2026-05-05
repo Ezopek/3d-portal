@@ -113,4 +113,39 @@ describe("useModels", () => {
     renderHook(() => useModels({ q: "b" }), { wrapper });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
+
+  // Regression: changing a filter (e.g. typing into the catalog search box)
+  // creates a new queryKey. Without `placeholderData: keepPreviousData` the
+  // hook returns `data: undefined` for the new key while the request is in
+  // flight, which causes CatalogList to render its loading branch and
+  // unmount the search input — losing focus on every keystroke.
+  it("keeps previous data while a new query is in flight", async () => {
+    const FIRST = { items: [{ id: "m1" }], total: 1, offset: 0, limit: 48 };
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(FIRST), { status: 200 }),
+    );
+    let resolveSecond!: (r: Response) => void;
+    fetchMock.mockImplementationOnce(
+      () => new Promise<Response>((res) => {
+        resolveSecond = res;
+      }),
+    );
+    const wrapper = wrap();
+    const { result, rerender } = renderHook(
+      ({ q }: { q: string }) => useModels({ q }),
+      { wrapper, initialProps: { q: "a" } },
+    );
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(result.current.data?.items).toEqual([{ id: "m1" }]);
+
+    rerender({ q: "ab" });
+
+    // While the second fetch is pending, data must still be the previous
+    // snapshot — not undefined.
+    expect(result.current.data).toBeDefined();
+    expect(result.current.data?.items).toEqual([{ id: "m1" }]);
+
+    resolveSecond(new Response(JSON.stringify(EMPTY), { status: 200 }));
+    await waitFor(() => expect(result.current.data?.items).toEqual([]));
+  });
 });

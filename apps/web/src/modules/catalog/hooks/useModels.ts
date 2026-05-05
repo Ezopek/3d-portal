@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import type { ModelListResponse, ModelSource, ModelStatus } from "@/lib/api-types";
@@ -30,6 +30,12 @@ export function useModels(filters: ModelsFilters) {
     queryKey: ["sot", "models", filters],
     queryFn: () => api<ModelListResponse>(path),
     staleTime: 30 * 1000,
+    // Hold onto the previous result while a new filter set is loading so
+    // CatalogList does not unmount its search input on every keystroke
+    // (the early-return loading branch renders only when `data` is
+    // undefined). Without this, typing into the search box loses focus
+    // after each character.
+    placeholderData: keepPreviousData,
   });
 }
 
