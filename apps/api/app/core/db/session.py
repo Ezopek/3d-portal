@@ -15,8 +15,15 @@ def create_engine_for_url(url: str) -> Engine:
     if url.startswith("sqlite"):
 
         @event.listens_for(engine, "connect")
-        def _enable_sqlite_foreign_keys(dbapi_conn, _connection_record):  # type: ignore[no-untyped-def]
+        def _enable_sqlite_pragmas(dbapi_conn, _connection_record):  # type: ignore[no-untyped-def]
             dbapi_conn.execute("PRAGMA foreign_keys = ON")
+            # WAL allows concurrent api + worker writers. Set per-connection
+            # because pysqlite resets pragmas on new connections.
+            dbapi_conn.execute("PRAGMA journal_mode = WAL")
+            # 5 s busy timeout — if the other writer holds the lock, wait
+            # rather than fail immediately. Render writes are short-lived
+            # (4 INSERTs + maybe an UPDATE) so 5 s is generous.
+            dbapi_conn.execute("PRAGMA busy_timeout = 5000")
 
     return engine
 
