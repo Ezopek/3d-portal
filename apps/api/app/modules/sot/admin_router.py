@@ -21,11 +21,11 @@ from fastapi import (
     status,
 )
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.core.auth.jwt import TokenError, decode_token
 from app.core.config import Settings, get_settings
-from app.core.db.models import ModelFileKind, User, UserRole
+from app.core.db.models import Model, ModelFile, ModelFileKind, User, UserRole
 from app.core.db.session import get_session
 from app.modules.sot.admin_schemas import (
     CategoryCreate,
@@ -40,6 +40,7 @@ from app.modules.sot.admin_schemas import (
     PhotoReorderRequest,
     PrintCreate,
     PrintPatch,
+    RenderRequest,
     TagAdd,
     TagCreate,
     TagMerge,
@@ -61,6 +62,7 @@ from app.modules.sot.admin_service import (
     delete_note,
     delete_print,
     delete_tag,
+    enqueue_render,
     hard_delete_model,
     merge_tags,
     remove_model_tag,
@@ -161,10 +163,6 @@ def admin_patch_model(
     session: Annotated[Session, Depends(get_session)],
     actor_user_id: uuid.UUID = _current_principal,
 ) -> ModelDetail:
-    from sqlmodel import select
-
-    from app.core.db.models import Model
-
     m = session.exec(select(Model).where(Model.id == model_id, Model.deleted_at.is_(None))).first()
     if m is None:
         raise HTTPException(404, "model not found")
@@ -283,6 +281,49 @@ def admin_reorder_photos(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"ok": True}
+
+
+@router.post(
+    "/models/{model_id}/render",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=dict,
+)
+async def admin_trigger_render(
+    model_id: uuid.UUID,
+    payload: RenderRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    user_id: uuid.UUID = _current_principal,
+) -> dict:
+    model = session.exec(select(Model).where(Model.id == model_id)).first()
+    if model is None:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    # Validate that any selected STL ids really belong to this model + are STL kind.
+    if payload.selected_stl_file_ids:
+        rows = list(
+            session.exec(
+                select(ModelFile)
+                .where(ModelFile.model_id == model_id)
+                .where(ModelFile.id.in_(payload.selected_stl_file_ids))
+                .where(ModelFile.kind == ModelFileKind.stl)
+            ).all()
+        )
+        if len(rows) != len(payload.selected_stl_file_ids):
+            raise HTTPException(
+                status_code=400,
+                detail="one or more selected_stl_file_ids do not belong to this model",
+            )
+
+    arq_pool = request.app.state.arq
+    status_key = await enqueue_render(
+        arq_pool=arq_pool,
+        model_id=model_id,
+        selected_stl_file_ids=payload.selected_stl_file_ids,
+        actor_user_id=user_id,
+        request_id=request.headers.get("x-request-id"),
+    )
+    return {"status": "queued", "status_key": status_key}
 
 
 # ---------------------------------------------------------------------------

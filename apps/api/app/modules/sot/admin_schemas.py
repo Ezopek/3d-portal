@@ -44,6 +44,12 @@ class PhotoReorderRequest(BaseModel):
     ordered_ids: list[uuid.UUID]
 
 
+class RenderRequest(BaseModel):
+    """Optional STL selection for the render job. Empty = worker picks the first STL."""
+
+    selected_stl_file_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
 class ModelFilePatch(BaseModel):
     """Updateable fields for a ModelFile.  Content-tied fields (storage_path,
     sha256, size_bytes, mime_type) are intentionally excluded — replace the

@@ -17,6 +17,7 @@ import os
 import re
 import uuid
 from pathlib import Path
+from typing import Any
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.exc import IntegrityError
@@ -1701,3 +1702,40 @@ def reorder_model_photos(
         after={"positions": after},
         request_id=request_id,
     )
+
+
+# ---------------------------------------------------------------------------
+# Render trigger
+# ---------------------------------------------------------------------------
+
+
+async def enqueue_render(
+    *,
+    arq_pool: Any,  # arq Pool — typed loosely to avoid hard dep
+    model_id: uuid.UUID,
+    selected_stl_file_ids: list[uuid.UUID],
+    actor_user_id: uuid.UUID,
+    request_id: str | None,
+) -> str:
+    """Enqueue a render_model arq job. Returns the redis status key."""
+    job = await arq_pool.enqueue_job(
+        "render_model",
+        str(model_id),
+        selected_stl_file_ids=[str(fid) for fid in selected_stl_file_ids],
+    )
+    job_id = job.job_id if job is not None else "no-job"
+
+    record_event(
+        get_engine(),
+        action="model.render.triggered",
+        entity_type="model",
+        entity_id=model_id,
+        actor_user_id=actor_user_id,
+        before=None,
+        after={
+            "job_id": job_id,
+            "selected_stl_file_ids": [str(fid) for fid in selected_stl_file_ids],
+        },
+        request_id=request_id,
+    )
+    return f"render:status:{model_id}"
