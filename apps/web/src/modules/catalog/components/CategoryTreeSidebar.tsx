@@ -11,9 +11,14 @@ interface Props {
   counts: Map<string | null, number>; // null = total
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  /**
+   * When true, the sidebar omits its desktop-only `hidden lg:block` wrapper and
+   * adapts layout for being slotted inside a Sheet/drawer on mobile.
+   */
+  mobile?: boolean;
 }
 
-export function CategoryTreeSidebar({ tree, counts, selectedId, onSelect }: Props) {
+export function CategoryTreeSidebar({ tree, counts, selectedId, onSelect, mobile = false }: Props) {
   const { t, i18n } = useTranslation();
   const [expanded, setExpanded] = useState<Set<string>>(() => loadExpanded());
 
@@ -30,8 +35,12 @@ export function CategoryTreeSidebar({ tree, counts, selectedId, onSelect }: Prop
     });
   }
 
+  const asideClassName = mobile
+    ? "w-full bg-card p-4"
+    : "hidden w-60 shrink-0 border-r border-border bg-card p-4 lg:block";
+
   return (
-    <aside className="hidden w-60 shrink-0 border-r border-border bg-card p-4 lg:block">
+    <aside className={asideClassName}>
       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         {t("catalog.filters.category")}
       </h3>

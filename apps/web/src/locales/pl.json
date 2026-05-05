@@ -29,6 +29,7 @@
   "catalog.filters.sort": "Sortowanie",
   "catalog.filters.anyStatus": "Każdy status",
   "catalog.filters.anySource": "Każde źródło",
+  "catalog.filters.openCategories": "Kategorie",
   "catalog.sort.recent": "Najnowsze",
   "catalog.sort.oldest": "Najstarsze",
   "catalog.sort.name_asc": "Nazwa A–Z",

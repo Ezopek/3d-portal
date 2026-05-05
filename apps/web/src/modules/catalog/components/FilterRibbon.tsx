@@ -97,7 +97,13 @@ export function FilterRibbon({ state, tagsById, onChange }: Props) {
         }
       >
         <SelectTrigger className="w-36" aria-label={t("catalog.filters.status")}>
-          <SelectValue />
+          <SelectValue>
+            {(value) =>
+              value === ANY_STATUS || value === null || value === undefined
+                ? t("catalog.filters.anyStatus")
+                : t(`catalog.status.${value as ModelStatus}`, { defaultValue: value as string })
+            }
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ANY_STATUS}>{t("catalog.filters.anyStatus")}</SelectItem>
@@ -115,7 +121,13 @@ export function FilterRibbon({ state, tagsById, onChange }: Props) {
         }
       >
         <SelectTrigger className="w-36" aria-label={t("catalog.filters.source")}>
-          <SelectValue />
+          <SelectValue>
+            {(value) =>
+              value === ANY_SOURCE || value === null || value === undefined
+                ? t("catalog.filters.anySource")
+                : (value as string)
+            }
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ANY_SOURCE}>{t("catalog.filters.anySource")}</SelectItem>
@@ -131,7 +143,13 @@ export function FilterRibbon({ state, tagsById, onChange }: Props) {
         onValueChange={(v) => onChange({ ...state, sort: v as ModelListSort })}
       >
         <SelectTrigger className="w-36" aria-label={t("catalog.filters.sort")}>
-          <SelectValue />
+          <SelectValue>
+            {(value) =>
+              value === null || value === undefined
+                ? t("catalog.sort.recent")
+                : t(`catalog.sort.${value as ModelListSort}`, { defaultValue: value as string })
+            }
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           {SORT_VALUES.map((s) => (

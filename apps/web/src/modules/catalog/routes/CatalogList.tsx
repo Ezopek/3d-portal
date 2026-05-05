@@ -1,5 +1,5 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { CategoryTreeSidebar } from "@/modules/catalog/components/CategoryTreeSidebar";
@@ -11,6 +11,13 @@ import type { CatalogSearch } from "@/routes/catalog/index";
 import { Button } from "@/ui/button";
 import { EmptyState } from "@/ui/custom/EmptyState";
 import { ModelCard } from "@/ui/custom/ModelCard";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/ui/sheet";
 
 const PAGE_SIZE = 48;
 
@@ -18,6 +25,7 @@ export function CatalogList() {
   const { t } = useTranslation();
   const search = useSearch({ from: "/catalog/" });
   const navigate = useNavigate({ from: "/catalog/" });
+  const [mobileCategoriesOpen, setMobileCategoriesOpen] = useState(false);
 
   const tree = useCategoriesTree();
   const tags = useTags();
@@ -123,6 +131,34 @@ export function CatalogList() {
         />
       )}
       <div className="min-w-0 flex-1">
+        {tree.data !== undefined && (
+          <div className="border-b border-border bg-background/95 px-3 pt-3 lg:hidden">
+            <Sheet open={mobileCategoriesOpen} onOpenChange={setMobileCategoriesOpen}>
+              <SheetTrigger
+                render={
+                  <Button variant="outline" size="sm" className="w-full justify-start">
+                    {t("catalog.filters.openCategories")}
+                  </Button>
+                }
+              />
+              <SheetContent side="left" className="w-80 max-w-[85vw] overflow-y-auto p-0">
+                <SheetHeader>
+                  <SheetTitle>{t("catalog.filters.openCategories")}</SheetTitle>
+                </SheetHeader>
+                <CategoryTreeSidebar
+                  tree={tree.data}
+                  counts={counts}
+                  selectedId={search.category_id ?? null}
+                  onSelect={(id) => {
+                    setCategoryId(id);
+                    setMobileCategoriesOpen(false);
+                  }}
+                  mobile
+                />
+              </SheetContent>
+            </Sheet>
+          </div>
+        )}
         <FilterRibbon state={filterState} tagsById={tagsById} onChange={setFilters} />
         {items.length === 0 ? (
           <EmptyState

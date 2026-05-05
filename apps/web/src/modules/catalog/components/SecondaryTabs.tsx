@@ -19,13 +19,15 @@ export function SecondaryTabs({ detail }: { detail: ModelDetail }) {
   const opsCount = detail.notes.filter((n) => n.kind !== "description").length;
   return (
     <Tabs defaultValue="files" className="w-full">
-      <TabsList>
-        <TabsTrigger value="files">Files ({filesCount})</TabsTrigger>
-        {isAdmin && <TabsTrigger value="photos">Photos ({photosCount}) ✏</TabsTrigger>}
-        <TabsTrigger value="prints">Prints ({detail.prints.length})</TabsTrigger>
-        <TabsTrigger value="ops">Operational notes ({opsCount})</TabsTrigger>
-        {isAdmin && <TabsTrigger value="activity">Activity ✏</TabsTrigger>}
-      </TabsList>
+      <div className="overflow-x-auto">
+        <TabsList className="flex w-max flex-nowrap">
+          <TabsTrigger value="files">Files ({filesCount})</TabsTrigger>
+          {isAdmin && <TabsTrigger value="photos">Photos ({photosCount}) ✏</TabsTrigger>}
+          <TabsTrigger value="prints">Prints ({detail.prints.length})</TabsTrigger>
+          <TabsTrigger value="ops">Operational notes ({opsCount})</TabsTrigger>
+          {isAdmin && <TabsTrigger value="activity">Activity ✏</TabsTrigger>}
+        </TabsList>
+      </div>
       <TabsContent value="files">
         <FilesTab modelId={detail.id} files={detail.files} />
       </TabsContent>

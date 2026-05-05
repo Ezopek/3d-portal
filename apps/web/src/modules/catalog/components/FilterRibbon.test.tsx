@@ -88,6 +88,25 @@ describe("FilterRibbon", () => {
     expect(screen.getByLabelText(/source/i)).toBeTruthy();
   });
 
+  it("renders localized placeholder labels in unset status/source triggers", () => {
+    render(
+      withQuery(
+        <FilterRibbon
+          state={{ q: "", tag_ids: [], status: undefined, source: undefined, sort: "recent" }}
+          tagsById={new Map()}
+          onChange={() => {}}
+        />,
+      ),
+    );
+    const statusTrigger = screen.getByLabelText(/status/i);
+    const sourceTrigger = screen.getByLabelText(/source/i);
+    expect(statusTrigger.textContent ?? "").toMatch(/Any status/i);
+    expect(sourceTrigger.textContent ?? "").toMatch(/Any source/i);
+    // The raw sentinel must NOT appear in the trigger.
+    expect(statusTrigger.textContent ?? "").not.toMatch(/__any_status__/);
+    expect(sourceTrigger.textContent ?? "").not.toMatch(/__any_source__/);
+  });
+
   it("shows the current sort value", () => {
     render(
       withQuery(

@@ -13,6 +13,11 @@ vi.mock("@/shell/AuthContext", () => ({
   useAuth: () => mockUseAuth(),
 }));
 
+const mockUseCategoriesTree = vi.fn();
+vi.mock("@/modules/catalog/hooks/useCategoriesTree", () => ({
+  useCategoriesTree: () => mockUseCategoriesTree(),
+}));
+
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
@@ -24,11 +29,13 @@ beforeEach(() => {
   fetchMock.mockReset();
   fetchMock.mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
   mockUseAuth.mockReturnValue({ isAdmin: false });
+  mockUseCategoriesTree.mockReturnValue({ data: undefined });
 });
 
 afterEach(() => {
   cleanup();
   mockUseAuth.mockReset();
+  mockUseCategoriesTree.mockReset();
 });
 
 function makeDetail(over: Partial<ModelDetail> = {}): ModelDetail {
@@ -82,6 +89,55 @@ describe("ModelHero", () => {
     render(<ModelHero detail={makeDetail()} />, { wrapper: wrap() });
     expect(screen.getByText("Decorations")).toBeTruthy();
     expect(screen.getByText("Dragon")).toBeTruthy();
+  });
+
+  it("renders the full ancestor chain when the category tree is available", () => {
+    // Tree: Practical → Cables. Detail's category points at "cables" (leaf).
+    const practical = {
+      id: "cat-practical",
+      parent_id: null,
+      slug: "practical",
+      name_en: "Practical",
+      name_pl: "Praktyczne",
+      children: [
+        {
+          id: "cat-cables",
+          parent_id: "cat-practical",
+          slug: "cables",
+          name_en: "Cables",
+          name_pl: "Kable",
+          children: [],
+        },
+      ],
+    };
+    mockUseCategoriesTree.mockReturnValue({ data: { roots: [practical] } });
+    const detail = makeDetail({
+      category_id: "cat-cables",
+      category: {
+        id: "cat-cables",
+        parent_id: "cat-practical",
+        slug: "cables",
+        name_en: "Cables",
+        name_pl: "Kable",
+      },
+    });
+    render(<ModelHero detail={detail} />, { wrapper: wrap() });
+    const breadcrumb = screen.getByTestId("model-breadcrumb");
+    // Both ancestor and leaf must appear, in order.
+    const text = breadcrumb.textContent ?? "";
+    const allIdx = text.indexOf("All");
+    const practicalIdx = text.indexOf("Practical");
+    const cablesIdx = text.indexOf("Cables");
+    expect(allIdx).toBeGreaterThanOrEqual(0);
+    expect(practicalIdx).toBeGreaterThan(allIdx);
+    expect(cablesIdx).toBeGreaterThan(practicalIdx);
+  });
+
+  it("falls back to the leaf category when the tree has not yet loaded", () => {
+    mockUseCategoriesTree.mockReturnValue({ data: undefined });
+    render(<ModelHero detail={makeDetail()} />, { wrapper: wrap() });
+    const breadcrumb = screen.getByTestId("model-breadcrumb");
+    expect(breadcrumb.textContent).toContain("Decorations");
   });
 
   it("renders status badge, rating, source, top tags", () => {
