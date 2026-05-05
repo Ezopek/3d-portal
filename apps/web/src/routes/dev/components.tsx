@@ -12,26 +12,34 @@ import { StatusBadge } from "@/ui/custom/StatusBadge";
 import { Input } from "@/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 
-import type { ModelListItem } from "@/modules/catalog/types";
+import type { ModelSummary } from "@/lib/api-types";
 
-const FAKE_MODEL: ModelListItem = {
-  id: "001",
+const FAKE_MODEL: ModelSummary = {
+  id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  legacy_id: "001",
+  slug: "dragon",
   name_en: "Dragon",
   name_pl: "Smok",
-  category: "decorations",
-  tags: ["dragon", "smok"],
+  category_id: "11111111-1111-1111-1111-111111111111",
   source: "printables",
   status: "printed",
   rating: 5,
-  thumbnail_url: null,
-  has_3d: true,
+  thumbnail_file_id: null,
   date_added: "2026-04-12",
-  image_count: 0,
+  deleted_at: null,
+  created_at: "2026-04-12T00:00:00Z",
+  updated_at: "2026-04-12T00:00:00Z",
+  tags: [
+    { id: "tag-1", slug: "dragon", name_en: "Dragon", name_pl: "Smok" },
+    { id: "tag-2", slug: "smok", name_en: "Smok", name_pl: null },
+  ],
 };
 
-const FAKE_MODEL_2: ModelListItem = {
+const FAKE_MODEL_2: ModelSummary = {
   ...FAKE_MODEL,
-  id: "002",
+  id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  legacy_id: "002",
+  slug: "vase",
   name_en: "Vase",
   name_pl: "Wazon",
   status: "not_printed",
@@ -60,7 +68,7 @@ function DevComponents() {
           <StatusBadge status="printed" />
           <StatusBadge status="not_printed" />
           <StatusBadge status="in_progress" />
-          <StatusBadge status="needs_revision" />
+          <StatusBadge status="broken" />
           <SourceBadge source="printables" />
           <SourceBadge source="thangs" />
         </div>

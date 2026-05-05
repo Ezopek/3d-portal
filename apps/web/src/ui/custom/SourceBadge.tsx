@@ -1,19 +1,19 @@
 import { Badge } from "@/ui/badge";
 
-import type { Source } from "@/modules/catalog/types";
+import type { ModelSource } from "@/lib/api-types";
 
-const LABEL: Record<Source, string> = {
+const LABEL: Record<ModelSource, string> = {
   printables: "Printables",
   thangs: "Thangs",
   thingiverse: "Thingi",
   makerworld: "MakerW",
-  creality_cloud: "Creality",
+  cults3d: "Cults3D",
   own: "Own",
-  premium: "Premium",
+  other: "Other",
   unknown: "",
 };
 
-export function SourceBadge({ source }: { source: Source }) {
+export function SourceBadge({ source }: { source: ModelSource }) {
   if (source === "unknown") return null;
   return (
     <Badge

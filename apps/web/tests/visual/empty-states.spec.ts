@@ -1,25 +1,48 @@
 import { expect, test } from "@playwright/test";
 
-import { stubCatalog } from "./api-stubs";
+import { stubSotList } from "./api-stubs";
 import { waitForReady } from "./helpers";
 
 test("catalog empty state offers a clear-filters action when filters active", async ({ page }) => {
-  await stubCatalog(page);
-  // The stub returns only `decorations` models; filtering by `premium` produces
-  // an empty result, exercising the EmptyState's action branch.
-  await page.goto("/catalog?category=premium");
+  await stubSotList(page);
+  // Override /api/models to return an empty list when filtering by a
+  // non-existent category UUID, exercising the EmptyState's action branch.
+  await page.route(
+    "**/api/models?**category_ids=00000000-0000-0000-0000-000000000000**",
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ total: 0, offset: 0, limit: 48, items: [] }),
+      }),
+  );
+  await page.goto("/catalog?category_id=00000000-0000-0000-0000-000000000000");
   await waitForReady(page);
   await expect(page).toHaveScreenshot("catalog-empty-with-action.png", { fullPage: true });
 });
 
 test("catalog empty state hides clear-filters button without active filters", async ({ page }) => {
-  // No stub — useModels returns isError, but we test the no-filter path.
-  // Faster path: stub catalog as empty.
-  await page.route("**/api/catalog/models", (route) =>
+  // Stub the SoT endpoints with empty results so the no-filter branch renders
+  // an EmptyState without a clear-filters action.
+  await page.route("**/api/categories", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ total: 0, models: [] }),
+      body: JSON.stringify({ roots: [] }),
+    }),
+  );
+  await page.route("**/api/tags*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([]),
+    }),
+  );
+  await page.route("**/api/models*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ total: 0, offset: 0, limit: 48, items: [] }),
     }),
   );
   await page.goto("/catalog");

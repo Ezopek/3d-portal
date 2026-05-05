@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-import { stubCatalog } from "./api-stubs";
+import { stubSotList } from "./api-stubs";
 import { waitForReady } from "./helpers";
 
 test("focus ring is visible on first nav link", async ({ page }) => {
-  await stubCatalog(page);
+  await stubSotList(page);
   await page.goto("/catalog");
   await waitForReady(page);
   // Tab once — first focusable is the first visible nav link (desktop rail
