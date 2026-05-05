@@ -94,9 +94,9 @@ def test_alembic_downgrade_one_removes_only_new_tables(alembic_env, api_dir, ale
     db_path, env = alembic_env
     r = _run_alembic(["upgrade", "head"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
     assert r.returncode == 0, r.stderr
-    # downgrade one revision (0005 -> 0004): audit_log and UUID user go away,
+    # downgrade to 0004: audit_log and UUID user go away,
     # auditevent + int-id user come back; entity tables introduced in 0004 remain.
-    r = _run_alembic(["downgrade", "-1"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
+    r = _run_alembic(["downgrade", "0004"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
     assert r.returncode == 0, r.stderr
 
     import sqlite3

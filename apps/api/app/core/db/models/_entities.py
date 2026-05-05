@@ -122,6 +122,7 @@ class ModelFile(SQLModel, table=True):
     sha256: str = Field(index=True)
     size_bytes: int = Field(sa_column=Column(BigInteger(), nullable=False))
     mime_type: str
+    position: int | None = Field(default=None, nullable=True, index=False)
     created_at: datetime.datetime = Field(default_factory=_now_utc)
 
 

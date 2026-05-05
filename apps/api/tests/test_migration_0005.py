@@ -70,7 +70,7 @@ def test_alembic_downgrade_one_restores_auditevent(alembic_env, api_dir, alembic
     db_path, env = alembic_env
     r = _run_alembic(["upgrade", "head"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
     assert r.returncode == 0, r.stderr
-    r = _run_alembic(["downgrade", "-1"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
+    r = _run_alembic(["downgrade", "0004"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
     assert r.returncode == 0, r.stderr
 
     import sqlite3
