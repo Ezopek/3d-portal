@@ -100,6 +100,34 @@ describe("PhotosTab", () => {
     expect(rows.length).toBe(2);
   });
 
+  it("dropping files on the upload zone POSTs them and toggles the dragging state", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ items: [] }), { status: 200 }),
+    );
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ id: "f-new", model_id: ID, kind: "image" }), { status: 201 }),
+    );
+    const { findByTestId } = render(<PhotosTab detail={makeDetail()} />, { wrapper: wrap() });
+    const zone = await findByTestId("photo-upload-zone");
+    expect(zone.getAttribute("data-dragging")).toBe("false");
+
+    // dragOver / dragEnter must flip the visual state — proves preventDefault
+    // is wired up (a missed preventDefault would let the browser open the file).
+    fireEvent.dragEnter(zone);
+    expect(zone.getAttribute("data-dragging")).toBe("true");
+
+    const file = new File(["x"], "drop.png", { type: "image/png" });
+    fireEvent.drop(zone, { dataTransfer: { files: [file] } });
+    expect(zone.getAttribute("data-dragging")).toBe("false");
+
+    await new Promise((r) => setTimeout(r, 0));
+    const uploadCall = fetchMock.mock.calls.find(
+      (c) => typeof c[0] === "string" && c[0].includes(`/api/admin/models/${ID}/files`),
+    );
+    expect(uploadCall).toBeTruthy();
+    expect((uploadCall?.[1] as RequestInit).method).toBe("POST");
+  });
+
   it("clicking 'Set as thumbnail' fires the mutation", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ items: PHOTOS }), { status: 200 }),

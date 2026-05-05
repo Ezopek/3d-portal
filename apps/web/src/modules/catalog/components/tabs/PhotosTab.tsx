@@ -227,8 +227,37 @@ function UploadZone({
   onFiles: (files: FileList | null) => void;
   inputRef: React.RefObject<HTMLInputElement | null>;
 }) {
+  const [isDragging, setIsDragging] = useState(false);
+
+  // The browser default for `drop` on a webpage is to navigate to the file —
+  // so a missed `preventDefault` makes the photo open in the tab instead of
+  // uploading. Stop the default on every step of the drag lifecycle.
   return (
-    <div className="rounded border-2 border-dashed border-border p-3 text-center text-xs text-muted-foreground">
+    <div
+      data-testid="photo-upload-zone"
+      data-dragging={isDragging ? "true" : "false"}
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (!isDragging) setIsDragging(true);
+      }}
+      onDragEnter={(e) => {
+        e.preventDefault();
+        setIsDragging(true);
+      }}
+      onDragLeave={(e) => {
+        e.preventDefault();
+        setIsDragging(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        onFiles(e.dataTransfer.files);
+      }}
+      className={cn(
+        "rounded border-2 border-dashed p-3 text-center text-xs text-muted-foreground transition-colors",
+        isDragging ? "border-accent bg-accent/10" : "border-border",
+      )}
+    >
       <input
         ref={inputRef}
         type="file"
