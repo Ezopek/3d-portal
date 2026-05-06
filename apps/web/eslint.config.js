@@ -78,6 +78,15 @@ export default tseslint.config(
     },
   },
   {
+    // React Three Fiber declares custom JSX intrinsic elements (e.g. <mesh>,
+    // <ambientLight>) with three.js property names that ESLint can't know
+    // about. Disable the unknown-property check for the viewer module only.
+    files: ["src/modules/catalog/components/viewer3d/**/*.{ts,tsx}"],
+    rules: {
+      "react/no-unknown-property": "off",
+    },
+  },
+  {
     files: ["tests/**/*.{ts,tsx}"],
     rules: {
       "react-refresh/only-export-components": "off",
