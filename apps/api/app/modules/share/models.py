@@ -6,14 +6,14 @@ from pydantic import BaseModel, Field
 
 class ShareToken(BaseModel):
     token: str
-    model_id: str
+    model_id: uuid.UUID
     expires_at: datetime
     created_by: uuid.UUID
     created_at: datetime
 
 
 class CreateShareRequest(BaseModel):
-    model_id: str
+    model_id: uuid.UUID
     expires_in_hours: int = Field(default=72, ge=1, le=24 * 30)
 
 
@@ -26,9 +26,9 @@ class CreateShareResponse(BaseModel):
 class ShareModelView(BaseModel):
     """Subset projection returned to anonymous share visitors."""
 
-    id: str
+    id: uuid.UUID
     name_en: str
-    name_pl: str
+    name_pl: str | None
     category: str
     tags: list[str]
     thumbnail_url: str | None

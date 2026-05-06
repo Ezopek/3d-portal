@@ -1,5 +1,18 @@
-from fastapi import APIRouter, HTTPException, Request
+from typing import Annotated
 
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import nullslast
+from sqlmodel import Session, select
+
+from app.core.db.models import (
+    Category,
+    Model,
+    ModelFile,
+    ModelFileKind,
+    ModelTag,
+    Tag,
+)
+from app.core.db.session import get_session
 from app.modules.share.models import ShareModelView
 from app.modules.share.service import ShareService
 
@@ -7,49 +20,70 @@ router = APIRouter(prefix="/api/share", tags=["share"])
 
 
 @router.get("/{token}", response_model=ShareModelView)
-async def resolve_share(token: str, request: Request) -> ShareModelView:
+async def resolve_share(
+    token: str,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+) -> ShareModelView:
     service = ShareService(redis=request.app.state.redis.get())
     record = await service.resolve(token)
     if record is None:
         raise HTTPException(404, "Share token not found or expired")
 
-    catalog = request.app.state.catalog_service
-    model = catalog.get_model(record.model_id)
+    model = session.exec(
+        select(Model).where(Model.id == record.model_id, Model.deleted_at.is_(None))
+    ).first()
     if model is None:
         raise HTTPException(404, "Model no longer exists")
 
-    images = []
-    images_dir = catalog._catalog_dir / model.path / "images"
-    if images_dir.is_dir():
-        for child in sorted(images_dir.iterdir()):
-            if child.is_file() and child.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
-                images.append(f"/api/files/{model.id}/images/{child.name}")
+    category = session.exec(select(Category).where(Category.id == model.category_id)).one()
 
-    has_3d = catalog._has_3d(model)
-    overrides = catalog._overrides.get_all()
-    thumbnail = catalog._resolve_thumbnail(model, overrides.get(model.id))
+    tag_rows = session.exec(
+        select(Tag.name_en)
+        .join(ModelTag, ModelTag.tag_id == Tag.id)
+        .where(ModelTag.model_id == model.id)
+        .order_by(Tag.slug)
+    ).all()
+    tags = list(tag_rows)
 
-    # Find first STL for the share view's download button
-    catalog_root = catalog._catalog_dir / model.path
-    stl_url = None
-    if catalog_root.is_dir():
-        stls = sorted(
-            p for p in catalog_root.rglob("*") if p.is_file() and p.suffix.lower() == ".stl"
+    image_files = session.exec(
+        select(ModelFile.id)
+        .where(ModelFile.model_id == model.id)
+        .where(ModelFile.kind.in_([ModelFileKind.image, ModelFileKind.print]))
+        .order_by(nullslast(ModelFile.position.asc()), ModelFile.created_at.asc())
+    ).all()
+    images = [f"/api/models/{model.id}/files/{fid}/content" for fid in image_files]
+
+    thumbnail_url = None
+    if model.thumbnail_file_id is not None:
+        thumbnail_url = (
+            f"/api/models/{model.id}/files/{model.thumbnail_file_id}/content"
         )
-        if stls:
-            rel = stls[0].relative_to(catalog_root).as_posix()
-            stl_url = f"/api/files/{model.id}/{rel}?download=1"
+    elif images:
+        thumbnail_url = images[0]
+
+    stl_row = session.exec(
+        select(ModelFile.id)
+        .where(ModelFile.model_id == model.id)
+        .where(ModelFile.kind == ModelFileKind.stl)
+        .order_by(ModelFile.created_at.asc())
+    ).first()
+    stl_url = (
+        f"/api/models/{model.id}/files/{stl_row}/content?download=1"
+        if stl_row is not None
+        else None
+    )
 
     return ShareModelView(
         id=model.id,
         name_en=model.name_en,
         name_pl=model.name_pl,
-        category=model.category.value,
-        tags=model.tags,
-        thumbnail_url=thumbnail,
-        has_3d=has_3d,
+        category=category.slug,
+        tags=tags,
+        thumbnail_url=thumbnail_url,
+        has_3d=stl_row is not None,
         images=images,
-        notes_en=model.notes,
-        notes_pl="",  # spec keeps notes English-only on the model; PL field reserved for future
+        notes_en="",
+        notes_pl="",
         stl_url=stl_url,
     )

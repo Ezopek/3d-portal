@@ -7,8 +7,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class RenderSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    catalog_data_dir: Path = Path("/data/catalog")
-    renders_dir: Path = Path("/data/renders")
     database_url: str = "sqlite:////data/state/portal.db"
     content_dir: Path = Path("/data/content")
     redis_url: str = "redis://redis:6379/0"

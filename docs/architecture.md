@@ -7,35 +7,31 @@ This document condenses the system architecture. For the full design specificati
 ```
 [Browser] ─https─▶ [nginx-180 (edge)] ─proxy─▶ [.190 docker-compose stack]
                          │                          │
-                         │                          ├─ web   (nginx + React build)
-                         │                          ├─ api   (FastAPI + Pydantic + SQLModel)
+                         │                          ├─ web    (nginx + React build)
+                         │                          ├─ api    (FastAPI + Pydantic + SQLModel)
                          │                          ├─ worker (arq render queue)
-                         │                          └─ redis (cache + queue + share tokens)
+                         │                          └─ redis  (queue + share tokens)
                          │
                   household basic auth
                   (bypass: /share/*)
 
-[catalog-data volume]    ←─rsync─── [Windows / Nextcloud-synced 3d_modelowanie repo]
-       (read-only)                    (source of truth, managed by Claude CLI)
-[portal-renders volume]
-       (worker writes, api reads)
-[portal-state volume]
-       SQLite + future uploads
+[portal-content volume]   (api + worker read/write — STL, photos, renders)
+[portal-state volume]     (SQLite — `portal.db`, the catalog source of truth)
 ```
 
 ## Container responsibilities
 
 **Web container** — nginx serving the built React SPA (`dist/`), static assets only. Exposes `127.0.0.1:8080` on `.190` and is reverse-proxied by nginx-180.
 
-**API container** — FastAPI on uvicorn. Reads catalog from read-only volume, serves files (STL/img with ETag), manages share tokens, JWT login, and audit log. Mounts catalog-data (ro), portal-renders (ro), and portal-state (rw). Talks to Redis.
+**API container** — FastAPI on uvicorn. Owns the SoT entity tables (model, model_file, tag, category, etc.), serves binary content from `portal-content` with ETag, manages share tokens, JWT login, and audit log. Mounts portal-content (rw) and portal-state (rw). Talks to Redis.
 
-**Worker container** — arq worker. Pre-renders thumbnails for models without `images/` using `trimesh` and matplotlib (4 views per model, written to the dedicated `portal-renders` volume). Mounts catalog-data (ro) and portal-renders (rw). Talks to Redis.
+**Worker container** — arq worker. Pre-renders thumbnails (4 views per model) on demand using `trimesh` + matplotlib, writing the resulting PNGs back as `ModelFile` rows under `portal-content`. Mounts portal-content (rw) and portal-state (rw). Talks to Redis.
 
-**Redis container** — share tokens with native TTL, render job queue, computed caches (facets, top-tag counts).
+**Redis container** — share tokens with native TTL, render job queue.
 
-## Data sync direction
+## Data flow
 
-One-way Windows → `.190` rsync via `infra/scripts/sync-data.sh`. The catalog repo on Windows stays the single source of truth; the portal never writes back. After each sync, the script POSTs `/api/admin/refresh-catalog` to invalidate in-memory caches.
+The SQLite database under `/data/state/portal.db` is the catalog source of truth. Models, files, tags, categories, notes, prints, and external links are created and edited via the admin API (`/api/admin/*`). Binary content (STL, photos, renders) lives under `portal-content` and is referenced by `model_file.storage_path`. Reverse-sync to WSL uses an `agent`-role JWT (see `scripts/hydrate_local_tree.py`).
 
 ## Future-proofing slots
 

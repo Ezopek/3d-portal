@@ -1,90 +1,24 @@
+"""Admin endpoints that are not tied to a single SoT entity.
+
+Holds the audit log readers and the GlitchTip self-test trigger. The
+SoT model/file/tag/category write endpoints live in
+`app.modules.sot.admin_router`.
+"""
+
 import datetime
 import json
-import re
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlmodel import Session, func, select
 
-from app.core.audit import record_event
 from app.core.auth.dependencies import current_admin
 from app.core.db.models import AuditLog
-from app.core.db.session import get_engine, get_session
+from app.core.db.session import get_session
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
-
-
-@router.post("/refresh-catalog")
-async def refresh_catalog(request: Request, user_id: uuid.UUID = current_admin) -> dict[str, int]:
-    service = request.app.state.catalog_service
-    overrides = request.app.state.thumbnail_overrides
-    service.refresh()
-    response = service.list_models()
-
-    purged = overrides.purge_orphans(exists=service.thumbnail_target_exists)
-    for model_id, relative_path in purged:
-        record_event(
-            get_engine(),
-            action="thumbnail.orphan_purged",
-            entity_type="thumbnail_override",
-            entity_id=None,
-            actor_user_id=user_id,
-            after={"model_id": model_id, "relative_path": relative_path},
-        )
-
-    missing = service.model_ids_missing_renders()
-    for model_id in missing:
-        await request.app.state.arq.enqueue_job("render_model", model_id)
-
-    record_event(
-        get_engine(),
-        action="admin.refresh_catalog",
-        entity_type="catalog",
-        entity_id=None,
-        actor_user_id=user_id,
-        after={
-            "total": response.total,
-            "thumbnails_purged": len(purged),
-            "renders_enqueued": len(missing),
-        },
-    )
-    return {"total": response.total, "renders_enqueued": len(missing)}
-
-
-@router.post("/render/{model_id}", status_code=202)
-async def trigger_render(
-    model_id: str,
-    request: Request,
-    user_id: uuid.UUID = current_admin,
-) -> dict[str, str]:
-    catalog = request.app.state.catalog_service
-    if catalog.get_model(model_id) is None:
-        raise HTTPException(404, f"Model {model_id} not found")
-    job = await request.app.state.arq.enqueue_job("render_model", model_id)
-    record_event(
-        get_engine(),
-        action="admin.render.triggered",
-        entity_type="model",
-        entity_id=None,
-        actor_user_id=user_id,
-        after={"model_id": model_id, "job_id": job.job_id},
-    )
-    return {"job_id": job.job_id, "model_id": model_id}
-
-
-@router.get("/jobs/{model_id}")
-async def render_status(
-    model_id: str,
-    request: Request,
-    _user_id: uuid.UUID = current_admin,
-) -> dict[str, str]:
-    redis = request.app.state.redis.get()
-    raw = await redis.get(f"render:status:{model_id}")
-    if raw is None:
-        return {"model_id": model_id, "status": "unknown"}
-    return {"model_id": model_id, "status": raw.decode()}
 
 
 @router.post("/sentry-test", status_code=204)
@@ -167,59 +101,3 @@ def admin_get_audit_log(
     stmt = stmt.order_by(AuditLog.at.desc()).limit(limit)
     rows = session.exec(stmt).all()
     return AuditLogResponse(items=[AuditLogEntry.from_row(r) for r in rows])
-
-
-_THUMBNAIL_PATH_RE = re.compile(
-    r"^(images|prints)/[^/]+\.(png|jpg|jpeg|webp)$|^(front|iso|side|top)\.png$"
-)
-
-
-class _ThumbnailPayload(BaseModel):
-    path: str
-
-
-@router.put("/models/{model_id}/thumbnail", status_code=204)
-def set_thumbnail(
-    model_id: str,
-    payload: _ThumbnailPayload,
-    request: Request,
-    user_id: uuid.UUID = current_admin,
-) -> None:
-    service = request.app.state.catalog_service
-    if service.get_model(model_id) is None:
-        raise HTTPException(404, f"Model {model_id} not found")
-    if not _THUMBNAIL_PATH_RE.match(payload.path):
-        raise HTTPException(400, "invalid_thumbnail_path")
-    if not service.thumbnail_target_exists(model_id, payload.path):
-        raise HTTPException(404, "thumbnail_file_not_found")
-    request.app.state.thumbnail_overrides.set(
-        model_id=model_id,
-        relative_path=payload.path,
-        user_id=user_id,
-    )
-    record_event(
-        get_engine(),
-        action="admin.thumbnail.set",
-        entity_type="thumbnail_override",
-        entity_id=None,
-        actor_user_id=user_id,
-        after={"model_id": model_id, "relative_path": payload.path},
-    )
-
-
-@router.delete("/models/{model_id}/thumbnail", status_code=204)
-def clear_thumbnail(
-    model_id: str,
-    request: Request,
-    user_id: uuid.UUID = current_admin,
-) -> None:
-    removed = request.app.state.thumbnail_overrides.clear(model_id)
-    if removed:
-        record_event(
-            get_engine(),
-            action="admin.thumbnail.cleared",
-            entity_type="thumbnail_override",
-            entity_id=None,
-            actor_user_id=user_id,
-            after={"model_id": model_id},
-        )

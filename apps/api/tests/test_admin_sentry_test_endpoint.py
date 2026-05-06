@@ -1,15 +1,10 @@
 """Tests for the /api/admin/sentry-test endpoint that deliberately raises."""
 
-from pathlib import Path
-
 import pytest
 from fastapi.testclient import TestClient
 
-from app.config_for_tests import override_catalog_paths
 from app.core.auth.jwt import encode_token
 from app.main import create_app
-
-FIXTURES = Path(__file__).parent / "fixtures"
 
 # A fixed UUID used for non-admin "wrong role" token tests (never looked up in DB).
 _NON_ADMIN_UUID = "00000000-0000-0000-0000-000000000042"
@@ -18,7 +13,6 @@ _NON_ADMIN_UUID = "00000000-0000-0000-0000-000000000042"
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/a.db")
-    monkeypatch.setenv("CATALOG_DATA_DIR", str(FIXTURES / "catalog"))
     monkeypatch.setenv("ADMIN_EMAIL", "admin@localhost.localdomain")
     monkeypatch.setenv("ADMIN_PASSWORD", "pw")
     monkeypatch.setenv("JWT_SECRET", "test")
@@ -32,7 +26,6 @@ def client(tmp_path, monkeypatch):
     # as an HTTP 500 (matching prod behaviour) instead of bubbling up into
     # the test runner.
     with TestClient(app, raise_server_exceptions=False) as c:
-        override_catalog_paths(app, index_path=FIXTURES / "index.json")
         # Retrieve the seeded admin user UUID for the token.
         from sqlmodel import Session, select
 

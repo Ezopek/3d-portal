@@ -25,7 +25,6 @@ from ._enums import (
     UserRole,
 )
 from ._helpers import _now_utc, sa_uuid_type, uuid_fk
-from ._legacy import RenderSelection, ThumbnailOverride
 from ._user import User
 
 __all__ = [
@@ -42,9 +41,7 @@ __all__ = [
     "ModelStatus",
     "ModelTag",
     "NoteKind",
-    "RenderSelection",
     "Tag",
-    "ThumbnailOverride",
     "User",
     "UserRole",
     "_now_utc",

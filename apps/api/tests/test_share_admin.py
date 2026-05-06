@@ -1,21 +1,19 @@
-from pathlib import Path
+import uuid
 from unittest.mock import MagicMock
 
 import fakeredis.aioredis
 import pytest
 from fastapi.testclient import TestClient
+from sqlmodel import Session
 
-from app.config_for_tests import override_catalog_paths
 from app.core.auth.jwt import encode_token
+from app.core.db.models import Category, Model
 from app.main import create_app
-
-FIXTURES = Path(__file__).parent / "fixtures"
 
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/s.db")
-    monkeypatch.setenv("CATALOG_DATA_DIR", str(FIXTURES / "catalog"))
     monkeypatch.setenv("ADMIN_EMAIL", "admin@localhost.localdomain")
     monkeypatch.setenv("ADMIN_PASSWORD", "pw")
     monkeypatch.setenv("JWT_SECRET", "test")
@@ -34,11 +32,10 @@ def client(tmp_path, monkeypatch):
 
     factory.aclose = _aclose
     with TestClient(app) as c:
-        override_catalog_paths(app, index_path=FIXTURES / "index.json")
         # Swap the lifespan-created factory for the fakeredis one.
         app.state.redis = factory
         # Retrieve the seeded admin user UUID for the token.
-        from sqlmodel import Session, select
+        from sqlmodel import select
 
         from app.core.db.models import User
 
@@ -46,23 +43,42 @@ def client(tmp_path, monkeypatch):
         with Session(engine) as s:
             user = s.exec(select(User).where(User.email == "admin@localhost.localdomain")).first()
             user_id = user.id
+            cat = Category(slug=f"share-cat-{uuid.uuid4().hex[:6]}", name_en="Cat")
+            s.add(cat)
+            s.flush()
+            m1 = Model(
+                slug=f"share-m1-{uuid.uuid4().hex[:6]}",
+                name_en="M1",
+                category_id=cat.id,
+            )
+            m2 = Model(
+                slug=f"share-m2-{uuid.uuid4().hex[:6]}",
+                name_en="M2",
+                category_id=cat.id,
+            )
+            s.add(m1)
+            s.add(m2)
+            s.commit()
+            ids = (m1.id, m2.id)
         token = encode_token(subject=str(user_id), role="admin", secret="test", ttl_minutes=30)
-        yield c, token
+        yield c, token, ids
     get_settings.cache_clear()
     get_engine.cache_clear()
 
 
 def test_create_share_requires_admin(client):
-    c, _ = client
-    r = c.post("/api/admin/share", json={"model_id": "001", "expires_in_hours": 24})
+    c, _, (mid, _) = client
+    r = c.post("/api/admin/share", json={"model_id": str(mid), "expires_in_hours": 24})
     assert r.status_code == 401
 
 
 def test_create_share_returns_token_and_url(client):
-    c, token = client
+    c, token, (mid, _) = client
     headers = {"Authorization": f"Bearer {token}"}
     r = c.post(
-        "/api/admin/share", json={"model_id": "001", "expires_in_hours": 24}, headers=headers
+        "/api/admin/share",
+        json={"model_id": str(mid), "expires_in_hours": 24},
+        headers=headers,
     )
     assert r.status_code == 201
     body = r.json()
@@ -71,20 +87,30 @@ def test_create_share_returns_token_and_url(client):
 
 
 def test_list_share_returns_active_tokens(client):
-    c, token = client
+    c, token, (mid1, mid2) = client
     headers = {"Authorization": f"Bearer {token}"}
-    c.post("/api/admin/share", json={"model_id": "001", "expires_in_hours": 24}, headers=headers)
-    c.post("/api/admin/share", json={"model_id": "002", "expires_in_hours": 24}, headers=headers)
+    c.post(
+        "/api/admin/share",
+        json={"model_id": str(mid1), "expires_in_hours": 24},
+        headers=headers,
+    )
+    c.post(
+        "/api/admin/share",
+        json={"model_id": str(mid2), "expires_in_hours": 24},
+        headers=headers,
+    )
     r = c.get("/api/admin/share", headers=headers)
     assert r.status_code == 200
     assert len(r.json()["tokens"]) == 2
 
 
 def test_revoke_share_removes_it(client):
-    c, token = client
+    c, token, (mid, _) = client
     headers = {"Authorization": f"Bearer {token}"}
     created = c.post(
-        "/api/admin/share", json={"model_id": "001", "expires_in_hours": 1}, headers=headers
+        "/api/admin/share",
+        json={"model_id": str(mid), "expires_in_hours": 1},
+        headers=headers,
     ).json()
     r = c.delete(f"/api/admin/share/{created['token']}", headers=headers)
     assert r.status_code == 204
@@ -93,7 +119,11 @@ def test_revoke_share_removes_it(client):
 
 
 def test_create_for_unknown_model_returns_404(client):
-    c, token = client
+    c, token, _ = client
     headers = {"Authorization": f"Bearer {token}"}
-    r = c.post("/api/admin/share", json={"model_id": "999", "expires_in_hours": 1}, headers=headers)
+    r = c.post(
+        "/api/admin/share",
+        json={"model_id": str(uuid.uuid4()), "expires_in_hours": 1},
+        headers=headers,
+    )
     assert r.status_code == 404

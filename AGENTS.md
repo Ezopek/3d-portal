@@ -69,8 +69,8 @@ Authoritative spec: `docs/design/2026-04-29-portal-design.md`. Current implement
 │   │   └── 3d-portal.conf         # to be deployed via configs/sync.sh
 │   ├── env.example
 │   └── scripts/
-│       ├── sync-data.sh           # rsync Windows → .190
-│       └── deploy.sh              # build + push + compose up
+│       ├── deploy.sh              # build + push + compose up
+│       └── render-all.sh          # bulk-enqueue renders for every SoT model
 └── .gitignore
 ```
 

@@ -1,23 +1,18 @@
 import uuid
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.config_for_tests import override_catalog_paths
 from app.core.audit import record_event
 from app.core.auth.jwt import encode_token
 from app.core.db.models import User
 from app.core.db.session import get_engine
 from app.main import create_app
 
-FIXTURES = Path(__file__).parent / "fixtures"
-
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/a.db")
-    monkeypatch.setenv("CATALOG_DATA_DIR", str(FIXTURES / "catalog"))
     monkeypatch.setenv("ADMIN_EMAIL", "admin@localhost.localdomain")
     monkeypatch.setenv("ADMIN_PASSWORD", "pw")
     monkeypatch.setenv("JWT_SECRET", "test")
@@ -30,7 +25,6 @@ def client(tmp_path, monkeypatch):
     ge.cache_clear()
     app = create_app()
     with TestClient(app) as c:
-        override_catalog_paths(app, index_path=FIXTURES / "index.json")
         # The admin user is created by lifespan seed_admin. Retrieve its UUID.
         engine = get_engine()
         with Session(engine) as s:

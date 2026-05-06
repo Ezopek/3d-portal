@@ -11,8 +11,6 @@ from app.core.logging import configure_logging
 from app.core.observability import init_observability, instrument_app
 from app.core.redis import RedisFactory
 from app.core.sentry import init_sentry
-from app.modules.catalog.service import CatalogService
-from app.modules.catalog.thumbnail_overrides import ThumbnailOverrideRepo
 from app.router import api_router
 
 
@@ -35,14 +33,6 @@ async def lifespan(app: FastAPI):
         email=settings.admin_email,
         password=settings.admin_password,
         display_name="Admin",
-    )
-    overrides = ThumbnailOverrideRepo(engine)
-    app.state.thumbnail_overrides = overrides
-    app.state.catalog_service = CatalogService(
-        catalog_dir=settings.catalog_data_dir,
-        renders_dir=settings.renders_dir,
-        index_path=settings.catalog_data_dir / "_index" / "index.json",
-        overrides=overrides,
     )
     app.state.redis = RedisFactory(url=settings.redis_url)
     app.state.arq = await create_pool(RedisSettings.from_dsn(settings.redis_url))

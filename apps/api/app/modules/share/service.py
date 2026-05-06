@@ -15,7 +15,7 @@ class ShareService:
         self._redis = redis
 
     async def create(
-        self, *, model_id: str, expires_in_hours: int, created_by: uuid.UUID
+        self, *, model_id: uuid.UUID, expires_in_hours: int, created_by: uuid.UUID
     ) -> ShareToken:
         if expires_in_hours < 1:
             raise ValueError("expires_in_hours must be >= 1")
@@ -34,7 +34,7 @@ class ShareService:
             record.model_dump_json(),
             ex=expires_in_hours * 3600,
         )
-        await self._redis.sadd(_BY_MODEL + model_id, token)
+        await self._redis.sadd(_BY_MODEL + str(model_id), token)
         return record
 
     async def resolve(self, token: str) -> ShareToken | None:
@@ -47,7 +47,7 @@ class ShareService:
         record = await self.resolve(token)
         await self._redis.delete(_KEY_PREFIX + token)
         if record is not None:
-            await self._redis.srem(_BY_MODEL + record.model_id, token)
+            await self._redis.srem(_BY_MODEL + str(record.model_id), token)
 
     async def list_active(self) -> list[ShareToken]:
         keys = []

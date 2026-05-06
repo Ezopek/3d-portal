@@ -1,10 +1,13 @@
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from sqlmodel import Session, select
 
 from app.core.audit import record_event
 from app.core.auth.dependencies import current_admin
-from app.core.db.session import get_engine
+from app.core.db.models import Model
+from app.core.db.session import get_engine, get_session
 from app.modules.share.models import (
     CreateShareRequest,
     CreateShareResponse,
@@ -23,10 +26,13 @@ def _service(request: Request) -> ShareService:
 async def create_share(
     payload: CreateShareRequest,
     request: Request,
+    session: Annotated[Session, Depends(get_session)],
     user_id: uuid.UUID = current_admin,
 ) -> CreateShareResponse:
-    catalog = request.app.state.catalog_service
-    if catalog.get_model(payload.model_id) is None:
+    model = session.exec(
+        select(Model).where(Model.id == payload.model_id, Model.deleted_at.is_(None))
+    ).first()
+    if model is None:
         raise HTTPException(404, f"Model {payload.model_id} not found")
     record = await _service(request).create(
         model_id=payload.model_id,
@@ -39,7 +45,7 @@ async def create_share(
         entity_type="share_token",
         entity_id=None,
         actor_user_id=user_id,
-        after={"token": record.token, "model_id": record.model_id},
+        after={"token": record.token, "model_id": str(record.model_id)},
     )
     return CreateShareResponse(
         token=record.token,

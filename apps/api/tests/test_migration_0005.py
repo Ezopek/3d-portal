@@ -62,8 +62,9 @@ def test_alembic_upgrade_head_creates_audit_log_and_drops_auditevent(
     assert "audit_log" in names
     assert "auditevent" not in names
     assert "user" in names
-    assert "thumbnailoverride" in names
-    assert "renderselection" in names
+    # 0008 drops the legacy thumbnailoverride + renderselection tables.
+    assert "thumbnailoverride" not in names
+    assert "renderselection" not in names
 
 
 def test_alembic_downgrade_one_restores_auditevent(alembic_env, api_dir, alembic_bin):

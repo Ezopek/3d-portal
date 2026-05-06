@@ -1,6 +1,6 @@
 # Operations Runbook
 
-> **Note:** Several scripts referenced in this runbook (`infra/scripts/deploy.sh`, `infra/scripts/sync-data.sh`, `infra/scripts/backup-sqlite.sh`, `infra/scripts/gen-htpasswd.sh`) and the production stack are introduced in Phase 12 of the implementation plan and may not exist yet. These instructions reflect the intended deployment workflow.
+> **Note:** Several scripts referenced in this runbook (`infra/scripts/deploy.sh`, `infra/scripts/backup-sqlite.sh`, `infra/scripts/gen-htpasswd.sh`) and the production stack are introduced in Phase 12 of the implementation plan and may not exist yet. These instructions reflect the intended deployment workflow.
 
 ## Deploy to `.190`
 
@@ -10,19 +10,9 @@ bash infra/scripts/deploy.sh
 
 This script builds images locally, ships them to `.190` via SSH, restarts the docker-compose stack, and runs alembic migrations to bring the schema in sync.
 
-## Sync catalog
+## Catalog (post-SoT)
 
-From WSL, after editing the catalog:
-
-```bash
-bash infra/scripts/sync-data.sh
-```
-
-This uses rsync over SSH to copy new/modified models from Windows to `.190`, then triggers the API to refresh its in-memory caches. For a safety net, add this to your WSL crontab to run every 15 minutes:
-
-```
-*/15 * * * * bash ~/repos/3d-portal/infra/scripts/sync-data.sh
-```
+The portal's source of truth is now the `portal.db` SQLite database on `.190` plus the `portal-content` volume. Models, files, tags, categories, notes, prints, and external links are managed through the admin API (`/api/admin/*`) and reverse-synced from WSL via the agent token + `scripts/hydrate_local_tree.py` (see SoT migration section below). The legacy one-way Windows → `.190` rsync is no longer used.
 
 ## First-time setup
 
@@ -71,7 +61,7 @@ Backups are stored in `/mnt/raid/3d-portal-state/backups/` with 30-day retention
 
 | Symptom | Check | Fix |
 |---|---|---|
-| `5xx on /api/catalog/models` | Check OpenSearch (OTel logs) `service.name=3d-portal-api` for trace | Likely `index.json` parse failure or volume not mounted; check docker-compose logs and volume mounts |
+| `5xx on /api/models` | Check OpenSearch (OTel logs) `service.name=3d-portal-api` for trace | Inspect `docker compose logs api`; database volume must be mounted at `/data/state/portal.db` |
 | Share link returns `401` | Confirm `/share/*` and `/api/share/*` bypass blocks present in `~/repos/configs/nginx/3d-portal.conf` | Re-deploy nginx config via `bash sync.sh` in configs repo |
 | Render stuck on "running" | Inspect arq worker logs with `docker compose logs worker` | Restart worker; status TTL is 1h so it self-clears |
 
@@ -93,29 +83,24 @@ curl -X DELETE https://3d.ezop.ddns.net/api/admin/share/{token} \
 **Retrigger a render**
 
 ```bash
-curl -X POST https://3d.ezop.ddns.net/api/admin/render/{model_id} \
-  -H "Authorization: Bearer $JWT_TOKEN"
+curl -X POST https://3d.ezop.ddns.net/api/admin/models/{model_uuid}/render \
+  -H "Authorization: Bearer $JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
 ```
 
-**Force catalog refresh**
-
-```bash
-curl -X POST https://3d.ezop.ddns.net/api/admin/refresh-catalog \
-  -H "Authorization: Bearer $JWT_TOKEN"
-```
-
-This is also called automatically by `infra/scripts/sync-data.sh` after an rsync completes.
+The optional body field `selected_stl_file_ids: []` lets you pin which STLs participate (defaults to `ModelFile.selected_for_render` rows, falling back to the first STL).
 
 **Bulk-enqueue renders for the whole catalog**
 
-When deploying to a fresh data volume (no pre-rendered PNGs), enqueue render jobs for every model in one shot:
+When deploying to a fresh content volume (no pre-rendered PNGs), enqueue render jobs for every model in one shot:
 
 ```bash
 # Get a fresh JWT (admin login via /api/auth/login). Then:
 bash infra/scripts/render-all.sh "<bearer-jwt>"
 ```
 
-The script lists `/api/catalog/models`, then `POST /api/admin/render/{id}` for each. arq processes jobs serially in the worker container; wall time depends on STL complexity (~5–30 s per model on .190). Watch progress with `docker compose logs -f worker` on the host.
+The script lists `/api/models`, then `POST /api/admin/models/{uuid}/render` for each. arq processes jobs serially in the worker container; wall time depends on STL complexity (~5–30 s per model on .190). Watch progress with `docker compose logs -f worker` on the host.
 
 ## GlitchTip error tracking
 
@@ -175,7 +160,7 @@ curl -i -X POST http://192.168.2.190:8090/api/admin/sentry-test \
 
 Returns 500. The event lands in GlitchTip within ~5 s tagged `service=api`, `release=$PORTAL_VERSION`, `environment=production`. The `Authorization` header is scrubbed to `[Filtered]` (verify by clicking into the issue).
 
-Worker: enqueue a render for any model after temporarily renaming `/mnt/raid/3d-portal-data/_index/index.json` on `.190`. The catch-all `except Exception` in `render_model` calls `sentry_sdk.capture_exception` once per failure. **Restore the index immediately** (the api will start failing reads otherwise).
+Worker: enqueue a render for a model whose STL file is missing on disk (e.g. the row exists in `model_file` but the file under `portal-content/` was deleted out-of-band). The catch-all `except Exception` in `render_model` calls `sentry_sdk.capture_exception` once per failure.
 
 Frontend: open `http://192.168.2.190:8090` in a browser, open DevTools console, run `throw new Error("frontend-test")`. Visible in the panel within seconds tagged `service=web`.
 
@@ -248,9 +233,18 @@ UI rewrite (Slices 3A-3F) is done. The portal database on `.190` now
 holds the canonical catalog: 89 models, 821 binary files (2.8 GB across
 `/mnt/raid/3d-portal-content/`), 243 deduplicated tags, 43 categories,
 62 external links, 31 notes, 26 print records. The frontend at
-`https://3d.ezop.ddns.net/` consumes only `/api/*` (the SoT surface);
-the legacy `/api/catalog/*` router is still mounted but has zero
-non-test callers.
+`https://3d.ezop.ddns.net/` consumes only `/api/*` (the SoT surface).
+
+**Legacy cleanup completed on 2026-05-06**: `/api/catalog/*`,
+`/api/files/*`, `/api/admin/refresh-catalog`,
+`/api/admin/render/{string-id}`, the legacy thumbnail-override
+endpoints, `CatalogService`, the `thumbnailoverride` and
+`renderselection` tables, and the WSL `sync-data.sh` script were all
+removed once log inspection confirmed zero non-test callers. Migration
+script (`scripts/migrate_from_index_json.py`,
+`scripts/backfill_legacy_renders.py`) reads still expect the legacy
+filesystem layout and `Model.legacy_id` mapping, so those one-shots
+remain runnable from a backup snapshot if ever needed.
 
 ### UI rewrite delivered (Slices 3A-3F)
 
@@ -270,10 +264,9 @@ non-test callers.
   notes, prints, external_links) — JWT-protected; admin role plus the
   newly-enabled `agent` role can both call most endpoints.
   Hard-delete (`?hard=true`) is admin-only.
-- **Legacy file-based** (`/api/catalog/*`, `/api/files/*`) — left in
-  place for the existing UI to continue working. Reads from
-  `/mnt/raid/3d-portal-data/` (rsync target). Will be removed when the
-  UI is rewritten to call the new endpoints.
+- **Share** (`/api/share/{token}` public; `/api/admin/share` admin
+  CRUD) — UUID-based, reads from SoT entity tables; no legacy
+  file-based path remains.
 
 ### Agent service account
 
@@ -292,10 +285,6 @@ incremental updates. Layout: `<category-slug>/<subcategory-slug>/<model-slug>-<l
 
 ### What remains
 
-- **Legacy `/api/catalog/*` router removal** — frontend no longer touches
-  it, but the backend route + tests still exist. Pull the trigger after
-  a short observation window (zero requests in logs); then disable the
-  WSL `sync-data.sh` cron.
 - **`audit_log.action` enum tightening** — currently the column is free
   `text`. The `KNOWN_ENTITY_TYPES` runtime guard prevents drift; future
   polish slice can convert to a strict `AuditAction` enum once the API
