@@ -47,6 +47,7 @@ function ToolbarButton({
       <TooltipTrigger
         render={(props) => (
           <Button
+            {...props}
             type="button"
             variant="ghost"
             size="icon"
@@ -57,7 +58,6 @@ function ToolbarButton({
               "h-8 w-8",
               active === true && "bg-accent text-accent-foreground",
             )}
-            {...props}
           >
             {children}
           </Button>

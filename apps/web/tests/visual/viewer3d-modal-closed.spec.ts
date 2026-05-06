@@ -1,0 +1,33 @@
+import { expect, test } from "@playwright/test";
+
+import { stubSotList, stubViewerModelDetail, stubViewerStl } from "./api-stubs";
+import { waitForReady } from "./helpers";
+
+const MODEL_ID = "33333333-3333-3333-3333-333333333333";
+const STL_ID = "44444444-4444-4444-4444-444444444444";
+
+test.describe("viewer3d — modal closed selector", () => {
+  test("Expand opens the modal with file pill closed and canvas centred", async ({
+    page,
+  }) => {
+    await stubSotList(page);
+    await stubViewerModelDetail(page, {
+      modelId: MODEL_ID,
+      stlFileId: STL_ID,
+      thumbnailFileId: null,
+    });
+    await stubViewerStl(page, MODEL_ID, STL_ID);
+    await page.goto(`/catalog/${MODEL_ID}`);
+    await waitForReady(page);
+    await page.getByRole("tab", { name: /^files\b/i }).click();
+    await page.locator("canvas").first().waitFor({ state: "visible" });
+    await page.getByRole("button", { name: /expand|powiększ/i }).click();
+    // Wait for the dialog and its inner canvas to mount.
+    await page.getByRole("dialog").waitFor({ state: "visible" });
+    await page.locator("[role=dialog] canvas").waitFor({ state: "visible" });
+    await page.waitForTimeout(500);
+    await expect(page).toHaveScreenshot("viewer3d-modal-closed.png", {
+      maxDiffPixelRatio: 0.05,
+    });
+  });
+});
