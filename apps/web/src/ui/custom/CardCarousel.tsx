@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -18,45 +18,82 @@ interface Props {
  * handlers must call both `preventDefault` and `stopPropagation` to avoid
  * navigating to the detail page when the user just wants to switch image.
  */
+// Held minimum so the blur is perceivable even when the next image is in
+// the browser cache and `load` fires near-instantly. Without this the
+// transition flickers: blur → unblur on the OLD image, then a hard swap
+// to the new one.
+const MIN_BLUR_VISIBLE_MS = 220;
+
 export function CardCarousel({ modelId, fileIds, alt }: Props) {
   const [active, setActive] = useState(0);
-  // Start in loading state so the first paint shows the blur skeleton —
-  // not just transitions between images.
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const total = fileIds.length;
   const activeId = fileIds[active] ?? fileIds[0];
+  const blurStartRef = useRef(0);
+  const unblurTimerRef = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (unblurTimerRef.current !== null) clearTimeout(unblurTimerRef.current);
+    },
+    [],
+  );
+
+  function trigger(nextIndex: number) {
+    if (nextIndex === active) return;
+    if (unblurTimerRef.current !== null) {
+      clearTimeout(unblurTimerRef.current);
+      unblurTimerRef.current = null;
+    }
+    blurStartRef.current = performance.now();
+    setIsLoading(true);
+    setActive(nextIndex);
+  }
 
   function step(delta: number, e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    setIsLoading(true);
-    setActive((prev) => (prev + delta + total) % total);
+    trigger((((active + delta) % total) + total) % total);
+  }
+
+  function handleLoaded() {
+    if (!isLoading) return;
+    const elapsed = performance.now() - blurStartRef.current;
+    const remaining = Math.max(0, MIN_BLUR_VISIBLE_MS - elapsed);
+    if (remaining === 0) {
+      setIsLoading(false);
+    } else {
+      unblurTimerRef.current = window.setTimeout(() => {
+        setIsLoading(false);
+        unblurTimerRef.current = null;
+      }, remaining);
+    }
   }
 
   return (
-    <div
-      className={cn(
-        "group relative aspect-square overflow-hidden bg-muted",
-        isLoading && "animate-pulse",
-      )}
-    >
-      {/* No `key` on src changes: keep the previous image visible while the
-          next one decodes, otherwise React unmounts the <img> and we see a
-          flash of bg-muted (and a blurred alt-text) before the new image
-          arrives. The browser fires `load` on src changes, so onLoad still
-          drops the blur as expected. */}
-      <img
-        src={`/api/models/${modelId}/files/${activeId}/content`}
-        alt={alt}
-        loading="lazy"
-        decoding="async"
-        onLoad={() => setIsLoading(false)}
-        onError={() => setIsLoading(false)}
+    <div className="group relative aspect-square overflow-hidden bg-muted">
+      {/* The blur lives on a wrapper around the <img>, so the whole image
+          window is visibly out-of-focus during a switch. The browser keeps
+          the old bitmap painted while the new one decodes (no `key` on the
+          img), so the swap happens silently behind the blur. We hold the
+          blur for at least MIN_BLUR_VISIBLE_MS to mask the swap even when
+          the new image is already cached. */}
+      <div
         className={cn(
-          "h-full w-full object-cover transition-[filter] duration-150",
-          isLoading ? "blur-[4px]" : "blur-0",
+          "absolute inset-0 transition-[filter,transform] duration-200 will-change-[filter]",
+          isLoading ? "scale-105 blur-[8px]" : "scale-100 blur-0",
         )}
-      />
+      >
+        <img
+          src={`/api/models/${modelId}/files/${activeId}/content`}
+          alt={alt}
+          loading="lazy"
+          decoding="async"
+          onLoad={handleLoaded}
+          onError={handleLoaded}
+          className="h-full w-full object-cover"
+        />
+      </div>
       {total > 1 && (
         <>
           <button
@@ -89,8 +126,7 @@ export function CardCarousel({ modelId, fileIds, alt }: Props) {
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (i !== active) setIsLoading(true);
-                  setActive(i);
+                  trigger(i);
                 }}
                 className={cn(
                   "h-1.5 w-1.5 rounded-full transition-colors",
