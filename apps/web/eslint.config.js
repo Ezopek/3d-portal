@@ -53,6 +53,19 @@ export default tseslint.config(
         "error",
         { ignore: ["camera-controls", "auto-rotate", "shadow-intensity", "exposure", "tone-mapping", "environment-image", "skybox-image", "ar", "ar-modes", "ios-src"] },
       ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "Literal[value=/^\\/api\\/(files|catalog)\\//]",
+          message:
+            "Legacy API surface /api/files/* and /api/catalog/* was removed in commit d92e551. Use the SoT API: /api/models/{id}/files/{file_id}/content.",
+        },
+        {
+          selector: "TemplateElement[value.raw=/\\/api\\/(files|catalog)\\//]",
+          message:
+            "Legacy API surface /api/files/* and /api/catalog/* was removed in commit d92e551. Use the SoT API: /api/models/{id}/files/{file_id}/content.",
+        },
+      ],
     },
   },
   {
