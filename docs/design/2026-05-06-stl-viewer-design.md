@@ -38,10 +38,11 @@ The viewer fetches STL files exclusively through the **SoT API**:
   with ETag and Range support (already consumed by `FilesTab`,
   `ModelGallery`, `CardCarousel`)
 
-The legacy path-based endpoint `/api/files/{model_id}/{relative}` is not used
-anywhere in this feature. Cleanup of that legacy surface is a prerequisite
-slice owned by a separate spec/agent and is expected to land before viewer
-implementation begins.
+The legacy path-based endpoint `/api/files/{model_id}/{relative}` and the
+legacy `/api/catalog/*` surface were removed entirely in commit `d92e551`
+(see `docs/migration-reports/2026-05-06-legacy-sot-cleanup.md`). The
+viewer is built greenfield against the SoT API only; there is no legacy
+surface to fall back to.
 
 ## 3. UX layout
 
@@ -74,9 +75,11 @@ are independent component instances.
 Auto-loading every STL on tab open is bad UX on slow connections / phones.
 The actual policy:
 
-1. If the model has an existing offline render PNG (`renders/{id}/iso.png`,
-   typically present), show it as a static placeholder image on inline
-   open.
+1. If the model has `thumbnail_file_id` set (typical — the render worker
+   populates it with the iso PNG it generates from the model's STLs), show
+   `/api/models/{model_id}/files/{thumbnail_file_id}/content` as a static
+   placeholder image on inline open. Otherwise pick the first
+   `kind=image` file as a fallback placeholder.
 2. The user clicks `[ Load 3D ]` (overlayed on the placeholder) to actually
    fetch and render the STL.
 3. **Exception:** if the selected STL is < 5 MB and the offline render is
@@ -539,8 +542,10 @@ resolve in v1.1 spec:
   file. We collapse them into a single `BufferGeometry` and treat them as
   one mesh in v1. This may surprise a user who exports multi-part STL —
   out of scope to fix.
-- **Legacy API cleanup is a prerequisite.** The viewer assumes the legacy
-  `/api/files/{model_id}/{relative}` endpoint is gone (or at least no
-  longer used by frontend). If cleanup is delayed, the viewer
-  implementation must not regress to legacy URLs (enforce via
-  `eslint-no-restricted-syntax` rule on the legacy URL pattern).
+- **Regression guard against re-introducing legacy URLs.** Legacy
+  `/api/files/...` and `/api/catalog/...` were removed in commit
+  `d92e551`, so the backend cannot serve them. To prevent agents or future
+  contributors from accidentally typing them back into frontend code,
+  recommend adding an `eslint-no-restricted-syntax` rule that flags string
+  literals matching `/api/files/` or `/api/catalog/` outside of
+  `docs/migration-reports/`. Cheap, catches the regression at lint time.
