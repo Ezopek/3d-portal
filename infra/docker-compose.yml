@@ -45,7 +45,7 @@ services:
       dockerfile: workers/render/Dockerfile
     environment:
       REDIS_URL: redis://redis:6379/0
-      DATABASE_URL: sqlite:////data/cache/portal.db
+      DATABASE_URL: sqlite:////data/state/portal.db
       CONTENT_DIR: /data/content
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
       OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS}
@@ -53,7 +53,7 @@ services:
       PORTAL_VERSION: ${PORTAL_VERSION}
       ENVIRONMENT: ${ENVIRONMENT}
     volumes:
-      - ${CACHE_HOST_DIR}:/data/cache
+      - ${STATE_HOST_DIR}:/data/state
       - ${CONTENT_HOST_DIR}:/data/content
     depends_on: [redis]
     restart: unless-stopped
