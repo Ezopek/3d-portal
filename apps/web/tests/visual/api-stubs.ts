@@ -1,4 +1,116 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import type { Page, Route } from "@playwright/test";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Intercept the STL content endpoint for a specific {modelId, fileId} and
+ * serve a deterministic 12-triangle cube fixture so the WebGL render is
+ * stable across machines (within Playwright's pixel-ratio tolerance).
+ */
+export async function stubViewerStl(page: Page, modelId: string, fileId: string) {
+  const cube = readFileSync(join(__dirname, "fixtures", "cube.stl"));
+  await page.route(
+    `**/api/models/${modelId}/files/${fileId}/content**`,
+    (route: Route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "model/stl",
+        body: cube,
+      }),
+  );
+}
+
+/**
+ * Stub the SoT model-detail endpoint with one STL file and one image file,
+ * tailored for the viewer3d visual regression suite. `withThumbnail`
+ * controls whether the inline pane shows the offline-render placeholder
+ * (true) or auto-loads the STL into the canvas (false).
+ */
+export async function stubViewerModelDetail(
+  page: Page,
+  opts: { modelId: string; stlFileId: string; thumbnailFileId?: string | null },
+) {
+  const { modelId, stlFileId } = opts;
+  const thumb = opts.thumbnailFileId ?? null;
+  await page.route(`**/api/models/${modelId}`, (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: modelId,
+        legacy_id: null,
+        slug: "cube",
+        name_en: "Cube",
+        name_pl: "Sześcian",
+        category_id: "c1",
+        source: "own",
+        status: "not_printed",
+        rating: null,
+        thumbnail_file_id: thumb,
+        date_added: "2026-05-06",
+        deleted_at: null,
+        created_at: "2026-05-06T00:00:00Z",
+        updated_at: "2026-05-06T00:00:00Z",
+        tags: [],
+        gallery_file_ids: [],
+        image_count: 0,
+        category: {
+          id: "c1",
+          parent_id: null,
+          slug: "tools",
+          name_en: "Tools",
+          name_pl: "Narzędzia",
+        },
+        files: [
+          {
+            id: stlFileId,
+            model_id: modelId,
+            kind: "stl",
+            original_name: "cube.stl",
+            storage_path: "",
+            sha256: "",
+            size_bytes: 684,
+            mime_type: "model/stl",
+            position: 1,
+            selected_for_render: true,
+            created_at: "2026-05-06T00:00:00Z",
+          },
+          {
+            id: "thumb-1",
+            model_id: modelId,
+            kind: "image",
+            original_name: "iso.png",
+            storage_path: "",
+            sha256: "",
+            size_bytes: 1024,
+            mime_type: "image/png",
+            position: 2,
+            selected_for_render: false,
+            created_at: "2026-05-06T00:00:00Z",
+          },
+        ],
+        prints: [],
+        notes: [],
+        external_links: [],
+      }),
+    }),
+  );
+  // Generic image fallback (thumbnail PNG, gallery, etc.).
+  await page.route("**/api/models/**/files/**/content**", (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "image/png",
+      body: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+        "base64",
+      ),
+    }),
+  );
+}
 
 export async function stubSotList(page: Page) {
   await page.route("**/api/categories", (route: Route) =>
