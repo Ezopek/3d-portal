@@ -1,10 +1,16 @@
-import { useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import type { ModelFileKind, ModelFileRead } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
 import { useSetFileRenderSelection } from "@/modules/catalog/hooks/mutations/useSetFileRenderSelection";
 import { useTriggerRender } from "@/modules/catalog/hooks/mutations/useTriggerRender";
+import {
+  Viewer3DInline,
+  Viewer3DModal,
+  type StlFile,
+} from "@/modules/catalog/components/viewer3d";
+import { useFileIndex } from "@/modules/catalog/components/viewer3d/hooks/useFileIndex";
 import { useAuth } from "@/shell/AuthContext";
 import { Button } from "@/ui/button";
 
@@ -29,19 +35,45 @@ function isVisible(kind: ModelFileKind): kind is Visible {
 export function FilesTab({
   modelId,
   files,
+  thumbnailFileId,
 }: {
   modelId: string;
   files: readonly ModelFileRead[];
+  thumbnailFileId?: string | null;
 }) {
   const [active, setActive] = useState<Visible>("stl");
   const { isAdmin } = useAuth();
   const setRenderSelection = useSetFileRenderSelection(modelId);
   const triggerRender = useTriggerRender(modelId);
+
+  const stlFiles: StlFile[] = useMemo(
+    () =>
+      files
+        .filter((f) => f.kind === "stl")
+        .map((f) => ({
+          id: f.id,
+          modelId,
+          name: f.original_name,
+          size: f.size_bytes,
+        })),
+    [files, modelId],
+  );
+  const stlIndex = useFileIndex(stlFiles);
+  const thumbnailUrl =
+    thumbnailFileId !== undefined && thumbnailFileId !== null
+      ? `/api/models/${modelId}/files/${thumbnailFileId}/content`
+      : undefined;
+
   const counts = new Map<Visible, number>();
   for (const f of files) {
     if (isVisible(f.kind)) counts.set(f.kind, (counts.get(f.kind) ?? 0) + 1);
   }
   const visible = files.filter((f) => f.kind === active);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalInitialId, setModalInitialId] = useState<string | undefined>(
+    undefined,
+  );
+
   return (
     <div className="space-y-3 p-3">
       <div className="flex flex-wrap gap-2">
@@ -61,6 +93,29 @@ export function FilesTab({
           </button>
         ))}
       </div>
+
+      {active === "stl" && stlFiles.length > 0 && (
+        <Suspense fallback={<div className="text-xs">Loading viewer…</div>}>
+          <Viewer3DInline
+            files={stlFiles}
+            thumbnailUrl={thumbnailUrl}
+            onExpand={(id) => {
+              setModalInitialId(id);
+              setModalOpen(true);
+            }}
+          />
+        </Suspense>
+      )}
+      {modalOpen && (
+        <Suspense fallback={null}>
+          <Viewer3DModal
+            files={stlFiles}
+            initialFileId={modalInitialId}
+            onClose={() => setModalOpen(false)}
+          />
+        </Suspense>
+      )}
+
       {isAdmin && active === "stl" && visible.length > 0 && (
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">
@@ -104,6 +159,11 @@ export function FilesTab({
                     })
                   }
                 />
+              )}
+              {f.kind === "stl" && (
+                <span className="w-6 shrink-0 font-mono text-xs text-muted-foreground">
+                  {stlIndex.positionOf(f.id)}
+                </span>
               )}
               <span className="font-mono text-xs">{f.kind}</span>
               <span className="flex-1 truncate">{f.original_name}</span>
