@@ -30,6 +30,8 @@ type Props = {
   measureMode: MeasureMode;
   state: MeasureState;
   dispatch: (action: MeasureAction) => void;
+  /** Disable OrbitControls damping (saves CPU on huge meshes). */
+  damping?: boolean;
   onCanvasReady?: (handle: CanvasHandle) => void;
 };
 
@@ -68,6 +70,7 @@ export function Viewer3DCanvas({
   measureMode,
   state,
   dispatch,
+  damping = true,
   onCanvasReady,
 }: Props) {
   const tokens = useMemo(() => readMeshTokens(), []);
@@ -122,7 +125,11 @@ export function Viewer3DCanvas({
         material={material}
         onClick={handleMeshClick}
       />
-      <OrbitControls makeDefault enableDamping dampingFactor={0.05} />
+      <OrbitControls
+        makeDefault
+        enableDamping={damping}
+        dampingFactor={damping ? 0.05 : 0}
+      />
       <FrameAndControls geometry={geometry} preset={preset} />
       <MeasureOverlay
         measurements={state.completed}

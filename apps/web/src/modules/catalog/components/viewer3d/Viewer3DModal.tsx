@@ -1,6 +1,7 @@
 import { useReducer, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Button } from "@/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/ui/dialog";
 
 import { Viewer3DCanvas, type CanvasHandle } from "./Viewer3DCanvas";
@@ -8,6 +9,7 @@ import { ViewToolbar, type ToolMode } from "./controls/ViewToolbar";
 import { FileSelector } from "./controls/FileSelector";
 import { MeasureSummary } from "./controls/MeasureSummary";
 import { useFileIndex } from "./hooks/useFileIndex";
+import { usePerfGuard } from "./hooks/usePerfGuard";
 import { useStlGeometry } from "./hooks/useStlGeometry";
 import type { ViewPreset } from "./lib/camera";
 import {
@@ -20,13 +22,25 @@ import type { Viewer3DProps } from "./types";
 export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3DProps) {
   const { t } = useTranslation();
   const idx = useFileIndex(files);
+  const perf = usePerfGuard();
   const firstId = idx.sorted[0]?.id ?? "";
   const [activeId, setActiveId] = useState<string>(initialFileId ?? firstId);
   const file = idx.sorted.find((f) => f.id === activeId);
+  const needsConfirm = perf.needsConfirmForSize(file?.size);
+  const [confirmed, setConfirmed] = useState(false);
+  // Reset confirmation when the user navigates to a different file.
+  const lastSeenId = useRef(activeId);
+  if (lastSeenId.current !== activeId) {
+    lastSeenId.current = activeId;
+    if (confirmed) setConfirmed(false);
+  }
+  const allowLoad = !needsConfirm || confirmed;
   const { geometry, error, isLoading } = useStlGeometry({
-    modelId: file?.modelId ?? "",
-    fileId: activeId,
+    modelId: allowLoad ? (file?.modelId ?? "") : "",
+    fileId: allowLoad ? activeId : "",
   });
+  const isLargeMesh = perf.isLargeMesh(geometry);
+  const triangleCount = perf.triangleCount(geometry);
 
   const [preset, setPreset] = useState<ViewPreset>("iso");
   const [wireframe, setWireframe] = useState(false);
@@ -71,7 +85,36 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
               onSelect={setActiveId}
             />
           </div>
-          {error !== null ? (
+          {needsConfirm && !confirmed ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+              <p className="text-base font-medium">
+                {t("viewer3d.confirm_large.title")}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {t("viewer3d.confirm_large.body", {
+                  size: Math.round((file?.size ?? 0) / (1024 * 1024)),
+                })}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onClose?.()}
+                >
+                  {t("common.cancel")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  onClick={() => setConfirmed(true)}
+                >
+                  {t("viewer3d.confirm_large.continue")}
+                </Button>
+              </div>
+            </div>
+          ) : error !== null ? (
             <div
               className="flex h-full items-center justify-center text-destructive"
               role="alert"
@@ -83,17 +126,30 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
               {t("viewer3d.loading")}
             </div>
           ) : (
-            <Viewer3DCanvas
-              geometry={geometry}
-              preset={preset}
-              wireframe={wireframe}
-              measureMode={state.mode}
-              state={state}
-              dispatch={dispatch as (a: MeasureAction) => void}
-              onCanvasReady={(h) => {
-                handleRef.current = h;
-              }}
-            />
+            <>
+              {isLargeMesh && (
+                <div
+                  role="status"
+                  className="absolute right-3 top-3 z-10 rounded bg-warning/20 px-2 py-1 text-xs text-warning"
+                >
+                  {t("viewer3d.large_mesh_warning", {
+                    formatted: triangleCount.toLocaleString(),
+                  })}
+                </div>
+              )}
+              <Viewer3DCanvas
+                geometry={geometry}
+                preset={preset}
+                wireframe={wireframe}
+                measureMode={state.mode}
+                state={state}
+                dispatch={dispatch as (a: MeasureAction) => void}
+                damping={!isLargeMesh}
+                onCanvasReady={(h) => {
+                  handleRef.current = h;
+                }}
+              />
+            </>
           )}
           <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2">
             <ViewToolbar

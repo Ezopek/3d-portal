@@ -7,6 +7,7 @@ import { Viewer3DCanvas, type CanvasHandle } from "./Viewer3DCanvas";
 import { ViewToolbar, type ToolMode } from "./controls/ViewToolbar";
 import { FileSelector } from "./controls/FileSelector";
 import { useFileIndex } from "./hooks/useFileIndex";
+import { usePerfGuard } from "./hooks/usePerfGuard";
 import { useStlGeometry } from "./hooks/useStlGeometry";
 import type { ViewPreset } from "./lib/camera";
 import {
@@ -30,18 +31,26 @@ export default function Viewer3DInline({
 }: Props) {
   const { t } = useTranslation();
   const idx = useFileIndex(files);
+  const perf = usePerfGuard();
   const firstId = idx.sorted[0]?.id ?? "";
   const [activeId, setActiveId] = useState<string>(initialFileId ?? firstId);
   const activeFile = idx.sorted.find((f) => f.id === activeId);
   const shouldAutoLoad =
-    thumbnailUrl === undefined && (activeFile?.size ?? 0) < AUTO_LOAD_BYTES;
+    thumbnailUrl === undefined &&
+    (activeFile?.size ?? 0) < AUTO_LOAD_BYTES &&
+    !perf.needsConfirmForSize(activeFile?.size);
   const [loaded, setLoaded] = useState<boolean>(shouldAutoLoad);
+  const needsConfirm = loaded && perf.needsConfirmForSize(activeFile?.size);
+  const [confirmed, setConfirmed] = useState(false);
+
+  const sizeMb =
+    activeFile === undefined ? 0 : Math.round(activeFile.size / (1024 * 1024));
 
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       <FileSelector files={idx.sorted} activeId={activeId} onSelect={setActiveId} />
       <div className="relative aspect-square overflow-hidden rounded border border-border bg-muted/30 md:aspect-auto md:min-h-[280px]">
-        {loaded ? (
+        {loaded && (!needsConfirm || confirmed) ? (
           <Suspense
             fallback={<div className="p-3 text-xs">{t("viewer3d.loading")}</div>}
           >
@@ -51,6 +60,33 @@ export default function Viewer3DInline({
               onExpand={() => onExpand(activeId)}
             />
           </Suspense>
+        ) : loaded && needsConfirm ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3 text-center">
+            <p className="text-sm font-medium">
+              {t("viewer3d.confirm_large.title")}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {t("viewer3d.confirm_large.body", { size: sizeMb })}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setLoaded(false)}
+              >
+                {t("common.cancel")}
+              </Button>
+              <Button
+                type="button"
+                variant="default"
+                size="sm"
+                onClick={() => setConfirmed(true)}
+              >
+                {t("viewer3d.confirm_large.continue")}
+              </Button>
+            </div>
+          </div>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center">
             {thumbnailUrl !== undefined && (
@@ -64,7 +100,10 @@ export default function Viewer3DInline({
               type="button"
               variant="default"
               size="sm"
-              onClick={() => setLoaded(true)}
+              onClick={() => {
+                setLoaded(true);
+                setConfirmed(false);
+              }}
               className="relative z-10"
             >
               {t("viewer3d.open_3d")}
@@ -91,6 +130,9 @@ function CanvasLoader({
     modelId: file?.modelId ?? "",
     fileId,
   });
+  const perf = usePerfGuard();
+  const isLargeMesh = perf.isLargeMesh(geometry);
+  const triangleCount = perf.triangleCount(geometry);
   const [preset, setPreset] = useState<ViewPreset>("iso");
   const [wireframe, setWireframe] = useState(false);
   const [mode, setMode] = useState<ToolMode>("orbit");
@@ -124,6 +166,16 @@ function CanvasLoader({
           {t("viewer3d.tooltip.expand")}
         </Button>
       </div>
+      {isLargeMesh && (
+        <div
+          role="status"
+          className="absolute left-2 top-2 z-10 rounded bg-warning/20 px-2 py-1 text-[10px] text-warning"
+        >
+          {t("viewer3d.large_mesh_warning", {
+            formatted: triangleCount.toLocaleString(),
+          })}
+        </div>
+      )}
       <div className="flex-1">
         <Viewer3DCanvas
           geometry={geometry}
@@ -132,6 +184,7 @@ function CanvasLoader({
           measureMode={state.mode}
           state={state}
           dispatch={dispatch as (a: MeasureAction) => void}
+          damping={!isLargeMesh}
           onCanvasReady={(h) => {
             handleRef.current = h;
           }}

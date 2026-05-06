@@ -120,5 +120,5 @@
   "viewer3d.file_selector.position": "{{n}} / {{total}}",
   "viewer3d.stats.triangles": "{{count}} trójkątów",
   "viewer3d.stats.size": "{{w}} × {{h}} × {{d}} mm",
-  "viewer3d.large_mesh_warning": "{{count}} trójkątów — wydajność może być niska"
+  "viewer3d.large_mesh_warning": "{{formatted}} trójkątów — wydajność może być niska"
 }
