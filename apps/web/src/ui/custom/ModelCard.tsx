@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ModelSummary } from "@/lib/api-types";
+import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/ui/card";
 
 import { CardCarousel } from "./CardCarousel";
@@ -43,19 +44,26 @@ export function ModelCard({ model }: { model: ModelSummary }) {
             alt={primary}
           />
         ) : (
-          <div
-            className={`aspect-square bg-muted ${
-              thumbUrl !== null && !imageLoaded ? "animate-pulse" : ""
-            }`}
-          >
+          <div className="relative aspect-square overflow-hidden bg-muted">
             {thumbUrl !== null ? (
-              <img
-                src={thumbUrl}
-                alt={primary}
-                className="h-full w-full object-cover"
-                loading="lazy"
-                onLoad={() => setImageLoaded(true)}
-              />
+              <div
+                className={cn(
+                  "absolute inset-0 transition duration-150 will-change-[filter,opacity]",
+                  imageLoaded
+                    ? "scale-100 blur-0 opacity-100"
+                    : "scale-105 blur-[8px] opacity-25",
+                )}
+              >
+                <img
+                  src={thumbUrl}
+                  alt={primary}
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                  decoding="async"
+                  onLoad={() => setImageLoaded(true)}
+                  onError={() => setImageLoaded(true)}
+                />
+              </div>
             ) : (
               <div className="grid h-full place-items-center text-muted-foreground">
                 <span className="text-xs">no preview</span>

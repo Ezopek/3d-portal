@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -14,9 +14,7 @@ interface Props {
 // Sized to slightly exceed the 150 ms blur transition so the swap
 // happens while the picture is fully out-of-focus — even when the next
 // image is already in the browser cache and `decode()` would otherwise
-// resolve in a few ms. Without this, cached switches show the OLD image
-// half-blurred, then a hard cut to the NEW image, then a redundant
-// blur-and-unblur of the new image.
+// resolve in a few ms.
 const HOLD_BEFORE_SWAP_MS = 170;
 
 function urlFor(modelId: string, fileId: string): string {
@@ -27,19 +25,24 @@ function urlFor(modelId: string, fileId: string): string {
  * Mini-carousel rendered on catalog list cards when a model has multiple
  * gallery images. Consumes `gallery_file_ids` directly — no file-list fetch.
  *
- * Transition design (decode-before-swap):
- *   1. click → setActive(target). The dot UI updates immediately, the
- *      visible image stays on `displayed` (= last fully-rendered src).
- *   2. effect on [active] kicks in: setIsTransitioning(true) → blur fades
- *      in over the still-mounted OLD bitmap.
- *   3. in parallel: `new Image().decode()` pre-decodes the next bitmap
- *      off-DOM, and a `HOLD_BEFORE_SWAP_MS` timer ensures we never swap
- *      before the blur is fully on.
- *   4. once both resolve: setDisplayed(active) — the DOM <img> swaps src
- *      under the fully-blurred wrapper (visually invisible).
- *   5. two RAF ticks later (one for React commit, one for the paint of
- *      the new bitmap), setIsTransitioning(false) → blur fades out and
- *      reveals the NEW image cleanly.
+ * Two visual paths share the same wrapper transition (blur + scale +
+ * opacity to 25 %):
+ *
+ *   1. First paint: `isTransitioning` starts true so the still-loading
+ *      img fades in instead of popping over the muted background. The
+ *      DOM <img>'s onLoad clears the blur once the bitmap is painted.
+ *
+ *   2. User-initiated switch (decode-before-swap):
+ *      - click → `active` updates immediately (drives the dot UI)
+ *      - effect on [active] flips `isTransitioning` on, pre-decodes the
+ *        next bitmap off-DOM via `new Image().decode()`, and waits a
+ *        minimum hold so the blur is always perceivable.
+ *      - both done: `displayed` is advanced, the DOM <img> swaps src
+ *        beneath the now-fully-on blur.
+ *      - two RAFs later (commit + paint) the unblur fires.
+ *      - `inTransitionRef` gates the <img>'s onLoad: a stale load event
+ *        for the in-flight or just-replaced image must not race the
+ *        controlled fade-out.
  *
  * The card itself is wrapped in a `<Link>`, so arrow- and dot-button
  * handlers must call both `preventDefault` and `stopPropagation` to avoid
@@ -48,7 +51,8 @@ function urlFor(modelId: string, fileId: string): string {
 export function CardCarousel({ modelId, fileIds, alt }: Props) {
   const [active, setActive] = useState(0);
   const [displayed, setDisplayed] = useState(0);
-  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(true);
+  const inTransitionRef = useRef(false);
   const total = fileIds.length;
 
   useEffect(() => {
@@ -57,14 +61,12 @@ export function CardCarousel({ modelId, fileIds, alt }: Props) {
     if (targetId === undefined) return;
 
     let cancelled = false;
+    inTransitionRef.current = true;
     setIsTransitioning(true);
 
     const decoded = (() => {
       const img = new Image();
       img.src = urlFor(modelId, targetId);
-      // .decode() resolves once the image is fully decoded into a
-      // displayable bitmap; on reject (404, decode error) we still
-      // proceed so the user isn't visually trapped on a stale image.
       return img.decode().catch(() => undefined);
     })();
     const held = new Promise<void>((resolve) =>
@@ -74,14 +76,14 @@ export function CardCarousel({ modelId, fileIds, alt }: Props) {
     Promise.all([decoded, held]).then(() => {
       if (cancelled) return;
       setDisplayed(active);
-      // First RAF: React commits the new src to the DOM <img>.
-      // Second RAF: the browser has painted the new bitmap (cache-hit
-      // from the off-DOM decode means paint is essentially free). Only
-      // now do we kick off the unblur, so the transition runs against
-      // the stable, already-painted target.
+      // Two RAFs: first lets React commit the new src to the DOM, second
+      // runs after the browser has painted the new bitmap. Only then do
+      // we kick off the unblur.
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          if (!cancelled) setIsTransitioning(false);
+          if (cancelled) return;
+          inTransitionRef.current = false;
+          setIsTransitioning(false);
         });
       });
     });
@@ -89,17 +91,25 @@ export function CardCarousel({ modelId, fileIds, alt }: Props) {
     return () => {
       cancelled = true;
     };
-    // The effect intentionally re-runs only when `active` changes (= the
-    // user picked a different image). Including `displayed` here would
-    // cancel the in-flight transition the moment we successfully swap the
-    // src — `setDisplayed(active)` would re-trigger the effect, run the
-    // cleanup, and flip `cancelled` to true before the queued RAFs can
-    // fire `setIsTransitioning(false)`, leaving the blur pinned on
-    // forever. `fileIds` and `modelId` are read once via closure at the
-    // start of the transition; rapid prop-reference churn from the
-    // parent must not interrupt an in-progress fade.
+    // The effect re-runs only on `active` changes (= the user picked a
+    // different image). Including `displayed` here would cancel the
+    // in-flight transition the moment we successfully swap the src and
+    // pin the blur on forever. `fileIds` and `modelId` are read once via
+    // closure at the start of the transition; rapid prop-reference
+    // churn from the parent must not interrupt an in-progress fade.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
+
+  function handleImageLoaded() {
+    // Ignore <img> load events while a user-initiated transition is in
+    // flight: that path drops `isTransitioning` itself once the swap is
+    // committed and painted. Honouring stale onLoads here would either
+    // clear the blur before the swap (showing the OLD image sharp) or
+    // duplicate the unblur trigger. For the very first paint and any
+    // standalone re-render, this is the path that releases the skeleton.
+    if (inTransitionRef.current) return;
+    setIsTransitioning(false);
+  }
 
   function move(target: number, e: React.MouseEvent) {
     e.preventDefault();
@@ -116,13 +126,12 @@ export function CardCarousel({ modelId, fileIds, alt }: Props) {
 
   return (
     <div className="group relative aspect-square overflow-hidden bg-muted">
-      {/* The blur lives on a wrapper around the <img>, so the whole image
-          window goes out-of-focus during a switch. scale-105 hides the
-          soft halo blur would otherwise leak past the rounded corners. */}
       <div
         className={cn(
-          "absolute inset-0 transition-[filter,transform] duration-150 will-change-[filter]",
-          isTransitioning ? "scale-105 blur-[8px]" : "scale-100 blur-0",
+          "absolute inset-0 transition duration-150 will-change-[filter,opacity]",
+          isTransitioning
+            ? "scale-105 blur-[8px] opacity-25"
+            : "scale-100 blur-0 opacity-100",
         )}
       >
         <img
@@ -130,6 +139,8 @@ export function CardCarousel({ modelId, fileIds, alt }: Props) {
           alt={alt}
           loading="lazy"
           decoding="async"
+          onLoad={handleImageLoaded}
+          onError={handleImageLoaded}
           className="h-full w-full object-cover"
         />
       </div>
