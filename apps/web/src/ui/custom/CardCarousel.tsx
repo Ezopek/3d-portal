@@ -40,11 +40,16 @@ export function CardCarousel({ modelId, fileIds, alt }: Props) {
         isLoading && "animate-pulse",
       )}
     >
+      {/* No `key` on src changes: keep the previous image visible while the
+          next one decodes, otherwise React unmounts the <img> and we see a
+          flash of bg-muted (and a blurred alt-text) before the new image
+          arrives. The browser fires `load` on src changes, so onLoad still
+          drops the blur as expected. */}
       <img
-        key={activeId}
         src={`/api/models/${modelId}/files/${activeId}/content`}
         alt={alt}
         loading="lazy"
+        decoding="async"
         onLoad={() => setIsLoading(false)}
         onError={() => setIsLoading(false)}
         className={cn(
