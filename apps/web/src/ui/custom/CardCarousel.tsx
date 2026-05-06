@@ -11,13 +11,13 @@ interface Props {
 }
 
 // Time the next image is held under full blur before the bitmap swap.
-// Sized to comfortably exceed the 200 ms blur transition so the swap
+// Sized to slightly exceed the 150 ms blur transition so the swap
 // happens while the picture is fully out-of-focus — even when the next
 // image is already in the browser cache and `decode()` would otherwise
 // resolve in a few ms. Without this, cached switches show the OLD image
 // half-blurred, then a hard cut to the NEW image, then a redundant
 // blur-and-unblur of the new image.
-const HOLD_BEFORE_SWAP_MS = 260;
+const HOLD_BEFORE_SWAP_MS = 170;
 
 function urlFor(modelId: string, fileId: string): string {
   return `/api/models/${modelId}/files/${fileId}/content`;
@@ -89,7 +89,17 @@ export function CardCarousel({ modelId, fileIds, alt }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [active, displayed, fileIds, modelId]);
+    // The effect intentionally re-runs only when `active` changes (= the
+    // user picked a different image). Including `displayed` here would
+    // cancel the in-flight transition the moment we successfully swap the
+    // src — `setDisplayed(active)` would re-trigger the effect, run the
+    // cleanup, and flip `cancelled` to true before the queued RAFs can
+    // fire `setIsTransitioning(false)`, leaving the blur pinned on
+    // forever. `fileIds` and `modelId` are read once via closure at the
+    // start of the transition; rapid prop-reference churn from the
+    // parent must not interrupt an in-progress fade.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
   function move(target: number, e: React.MouseEvent) {
     e.preventDefault();
@@ -111,7 +121,7 @@ export function CardCarousel({ modelId, fileIds, alt }: Props) {
           soft halo blur would otherwise leak past the rounded corners. */}
       <div
         className={cn(
-          "absolute inset-0 transition-[filter,transform] duration-200 will-change-[filter]",
+          "absolute inset-0 transition-[filter,transform] duration-150 will-change-[filter]",
           isTransitioning ? "scale-105 blur-[8px]" : "scale-100 blur-0",
         )}
       >
