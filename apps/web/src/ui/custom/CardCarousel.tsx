@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -10,87 +10,116 @@ interface Props {
   alt: string;
 }
 
+// Time the next image is held under full blur before the bitmap swap.
+// Sized to comfortably exceed the 200 ms blur transition so the swap
+// happens while the picture is fully out-of-focus — even when the next
+// image is already in the browser cache and `decode()` would otherwise
+// resolve in a few ms. Without this, cached switches show the OLD image
+// half-blurred, then a hard cut to the NEW image, then a redundant
+// blur-and-unblur of the new image.
+const HOLD_BEFORE_SWAP_MS = 260;
+
+function urlFor(modelId: string, fileId: string): string {
+  return `/api/models/${modelId}/files/${fileId}/content`;
+}
+
 /**
  * Mini-carousel rendered on catalog list cards when a model has multiple
  * gallery images. Consumes `gallery_file_ids` directly — no file-list fetch.
+ *
+ * Transition design (decode-before-swap):
+ *   1. click → setActive(target). The dot UI updates immediately, the
+ *      visible image stays on `displayed` (= last fully-rendered src).
+ *   2. effect on [active] kicks in: setIsTransitioning(true) → blur fades
+ *      in over the still-mounted OLD bitmap.
+ *   3. in parallel: `new Image().decode()` pre-decodes the next bitmap
+ *      off-DOM, and a `HOLD_BEFORE_SWAP_MS` timer ensures we never swap
+ *      before the blur is fully on.
+ *   4. once both resolve: setDisplayed(active) — the DOM <img> swaps src
+ *      under the fully-blurred wrapper (visually invisible).
+ *   5. two RAF ticks later (one for React commit, one for the paint of
+ *      the new bitmap), setIsTransitioning(false) → blur fades out and
+ *      reveals the NEW image cleanly.
  *
  * The card itself is wrapped in a `<Link>`, so arrow- and dot-button
  * handlers must call both `preventDefault` and `stopPropagation` to avoid
  * navigating to the detail page when the user just wants to switch image.
  */
-// Held minimum so the blur is perceivable even when the next image is in
-// the browser cache and `load` fires near-instantly. Without this the
-// transition flickers: blur → unblur on the OLD image, then a hard swap
-// to the new one.
-const MIN_BLUR_VISIBLE_MS = 220;
-
 export function CardCarousel({ modelId, fileIds, alt }: Props) {
   const [active, setActive] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
+  const [displayed, setDisplayed] = useState(0);
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const total = fileIds.length;
-  const activeId = fileIds[active] ?? fileIds[0];
-  const blurStartRef = useRef(0);
-  const unblurTimerRef = useRef<number | null>(null);
 
-  useEffect(
-    () => () => {
-      if (unblurTimerRef.current !== null) clearTimeout(unblurTimerRef.current);
-    },
-    [],
-  );
+  useEffect(() => {
+    if (active === displayed) return;
+    const targetId = fileIds[active];
+    if (targetId === undefined) return;
 
-  function trigger(nextIndex: number) {
-    if (nextIndex === active) return;
-    if (unblurTimerRef.current !== null) {
-      clearTimeout(unblurTimerRef.current);
-      unblurTimerRef.current = null;
-    }
-    blurStartRef.current = performance.now();
-    setIsLoading(true);
-    setActive(nextIndex);
+    let cancelled = false;
+    setIsTransitioning(true);
+
+    const decoded = (() => {
+      const img = new Image();
+      img.src = urlFor(modelId, targetId);
+      // .decode() resolves once the image is fully decoded into a
+      // displayable bitmap; on reject (404, decode error) we still
+      // proceed so the user isn't visually trapped on a stale image.
+      return img.decode().catch(() => undefined);
+    })();
+    const held = new Promise<void>((resolve) =>
+      setTimeout(resolve, HOLD_BEFORE_SWAP_MS),
+    );
+
+    Promise.all([decoded, held]).then(() => {
+      if (cancelled) return;
+      setDisplayed(active);
+      // First RAF: React commits the new src to the DOM <img>.
+      // Second RAF: the browser has painted the new bitmap (cache-hit
+      // from the off-DOM decode means paint is essentially free). Only
+      // now do we kick off the unblur, so the transition runs against
+      // the stable, already-painted target.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (!cancelled) setIsTransitioning(false);
+        });
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [active, displayed, fileIds, modelId]);
+
+  function move(target: number, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (target === active) return;
+    setActive(target);
   }
 
   function step(delta: number, e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    trigger((((active + delta) % total) + total) % total);
+    move((((active + delta) % total) + total) % total, e);
   }
 
-  function handleLoaded() {
-    if (!isLoading) return;
-    const elapsed = performance.now() - blurStartRef.current;
-    const remaining = Math.max(0, MIN_BLUR_VISIBLE_MS - elapsed);
-    if (remaining === 0) {
-      setIsLoading(false);
-    } else {
-      unblurTimerRef.current = window.setTimeout(() => {
-        setIsLoading(false);
-        unblurTimerRef.current = null;
-      }, remaining);
-    }
-  }
+  const displayedId = fileIds[displayed] ?? fileIds[0]!;
 
   return (
     <div className="group relative aspect-square overflow-hidden bg-muted">
       {/* The blur lives on a wrapper around the <img>, so the whole image
-          window is visibly out-of-focus during a switch. The browser keeps
-          the old bitmap painted while the new one decodes (no `key` on the
-          img), so the swap happens silently behind the blur. We hold the
-          blur for at least MIN_BLUR_VISIBLE_MS to mask the swap even when
-          the new image is already cached. */}
+          window goes out-of-focus during a switch. scale-105 hides the
+          soft halo blur would otherwise leak past the rounded corners. */}
       <div
         className={cn(
           "absolute inset-0 transition-[filter,transform] duration-200 will-change-[filter]",
-          isLoading ? "scale-105 blur-[8px]" : "scale-100 blur-0",
+          isTransitioning ? "scale-105 blur-[8px]" : "scale-100 blur-0",
         )}
       >
         <img
-          src={`/api/models/${modelId}/files/${activeId}/content`}
+          src={urlFor(modelId, displayedId)}
           alt={alt}
           loading="lazy"
           decoding="async"
-          onLoad={handleLoaded}
-          onError={handleLoaded}
           className="h-full w-full object-cover"
         />
       </div>
@@ -123,11 +152,7 @@ export function CardCarousel({ modelId, fileIds, alt }: Props) {
                 key={id}
                 type="button"
                 aria-label={`go to image ${i + 1}`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  trigger(i);
-                }}
+                onClick={(e) => move(i, e)}
                 className={cn(
                   "h-1.5 w-1.5 rounded-full transition-colors",
                   i === active ? "bg-white" : "bg-white/40 hover:bg-white/70",
