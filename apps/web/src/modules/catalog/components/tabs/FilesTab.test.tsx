@@ -159,4 +159,34 @@ describe("FilesTab", () => {
     expect(init.method).toBe("PATCH");
     expect(init.body).toBe(JSON.stringify({ selected_for_render: true }));
   });
+
+  it("admin sees a Re-render preview button when STLs are present", () => {
+    mockUseAuth.mockReturnValue({ isAdmin: true });
+    render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
+    expect(screen.getByRole("button", { name: /re-render preview/i })).toBeTruthy();
+  });
+
+  it("non-admin does not see the Re-render button", () => {
+    mockUseAuth.mockReturnValue({ isAdmin: false });
+    render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
+    expect(screen.queryByRole("button", { name: /re-render preview/i })).toBeNull();
+  });
+
+  it("clicking Re-render posts an empty selection so the worker uses persisted flags", async () => {
+    mockUseAuth.mockReturnValue({ isAdmin: true });
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ status: "queued", status_key: `render:status:${MODEL_ID}` }),
+        { status: 202 },
+      ),
+    );
+    render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
+    fireEvent.click(screen.getByRole("button", { name: /re-render preview/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const url = fetchMock.mock.calls[0]?.[0] as string;
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(url).toBe(`/api/admin/models/${MODEL_ID}/render`);
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(JSON.stringify({ selected_stl_file_ids: [] }));
+  });
 });

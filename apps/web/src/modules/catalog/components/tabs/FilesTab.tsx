@@ -1,9 +1,12 @@
 import { useState } from "react";
+import { toast } from "sonner";
 
 import type { ModelFileKind, ModelFileRead } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
 import { useSetFileRenderSelection } from "@/modules/catalog/hooks/mutations/useSetFileRenderSelection";
+import { useTriggerRender } from "@/modules/catalog/hooks/mutations/useTriggerRender";
 import { useAuth } from "@/shell/AuthContext";
+import { Button } from "@/ui/button";
 
 type Visible = "stl" | "source" | "archive_3mf";
 
@@ -33,6 +36,7 @@ export function FilesTab({
   const [active, setActive] = useState<Visible>("stl");
   const { isAdmin } = useAuth();
   const setRenderSelection = useSetFileRenderSelection(modelId);
+  const triggerRender = useTriggerRender(modelId);
   const counts = new Map<Visible, number>();
   for (const f of files) {
     if (isVisible(f.kind)) counts.set(f.kind, (counts.get(f.kind) ?? 0) + 1);
@@ -58,9 +62,28 @@ export function FilesTab({
         ))}
       </div>
       {isAdmin && active === "stl" && visible.length > 0 && (
-        <p className="text-xs text-muted-foreground">
-          Checked STLs feed the auto-render preview.
-        </p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">
+            Checked STLs feed Re-render. Click to regenerate the preview now.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={triggerRender.isPending || setRenderSelection.isPending}
+            onClick={() =>
+              triggerRender.mutate(
+                { selected_stl_file_ids: [] },
+                {
+                  onSuccess: () => toast.success("Render queued"),
+                  onError: (e) => toast.error(e.message),
+                },
+              )
+            }
+          >
+            {triggerRender.isPending ? "Queuing…" : "Re-render preview"}
+          </Button>
+        </div>
       )}
       {visible.length === 0 ? (
         <p className="text-sm text-muted-foreground">no files</p>
