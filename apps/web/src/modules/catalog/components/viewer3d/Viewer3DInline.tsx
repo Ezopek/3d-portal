@@ -4,8 +4,9 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/ui/button";
 
 import { Viewer3DCanvas, type CanvasHandle } from "./Viewer3DCanvas";
-import { ViewToolbar, type ToolMode } from "./controls/ViewToolbar";
+import { ViewToolbar } from "./controls/ViewToolbar";
 import { FileSelector } from "./controls/FileSelector";
+import { MeasureSummary } from "./controls/MeasureSummary";
 import { useFileIndex } from "./hooks/useFileIndex";
 import { usePerfGuard } from "./hooks/usePerfGuard";
 import { useStlGeometry } from "./hooks/useStlGeometry";
@@ -15,7 +16,7 @@ import {
   measureReducer,
   type MeasureAction,
 } from "./measure/measureReducer";
-import type { StlFile, Viewer3DProps } from "./types";
+import type { StlFile, ToolMode, Viewer3DProps } from "./types";
 
 const AUTO_LOAD_BYTES = 5 * 1024 * 1024;
 
@@ -42,6 +43,14 @@ export default function Viewer3DInline({
   const [loaded, setLoaded] = useState<boolean>(shouldAutoLoad);
   const needsConfirm = loaded && perf.needsConfirmForSize(activeFile?.size);
   const [confirmed, setConfirmed] = useState(false);
+  // Reset confirmation when the user switches files via the selector — same
+  // pattern used in Viewer3DModal so a confirmed >50 MB file does not let a
+  // sibling >50 MB file skip the gate.
+  const lastSeenId = useRef(activeId);
+  if (lastSeenId.current !== activeId) {
+    lastSeenId.current = activeId;
+    if (confirmed) setConfirmed(false);
+  }
 
   const sizeMb =
     activeFile === undefined ? 0 : Math.round(activeFile.size / (1024 * 1024));
@@ -159,8 +168,15 @@ function CanvasLoader({
     URL.revokeObjectURL(url);
   };
 
+  const onKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape" && state.active.points.length > 0) {
+      e.preventDefault();
+      dispatch({ type: "cancel-active" });
+    }
+  };
+
   return (
-    <div className="absolute inset-0 flex flex-col">
+    <div className="absolute inset-0 flex flex-col" onKeyDown={onKey} tabIndex={-1}>
       <div className="absolute right-2 top-2 z-10">
         <Button type="button" size="sm" variant="secondary" onClick={onExpand}>
           {t("viewer3d.tooltip.expand")}
@@ -181,6 +197,7 @@ function CanvasLoader({
           geometry={geometry}
           preset={preset}
           wireframe={wireframe}
+          toolMode={mode}
           measureMode={state.mode}
           state={state}
           dispatch={dispatch as (a: MeasureAction) => void}
@@ -190,7 +207,7 @@ function CanvasLoader({
           }}
         />
       </div>
-      <div className="border-t border-border p-2">
+      <div className="border-t border-border p-2 space-y-2">
         <ViewToolbar
           mode={mode}
           onMode={setMode}
@@ -209,6 +226,20 @@ function CanvasLoader({
             })
           }
         />
+        {/* Off-canvas measurement summary (a11y) — collapsed by default to
+            keep the inline pane compact; expand to read the values without
+            relying on the 3D overlay labels. */}
+        <details className="text-xs">
+          <summary className="cursor-pointer text-muted-foreground">
+            {t("viewer3d.measure.summary_title")} ({state.completed.length})
+          </summary>
+          <div className="mt-1">
+            <MeasureSummary
+              measurements={state.completed}
+              onClear={() => dispatch({ type: "clear" })}
+            />
+          </div>
+        </details>
       </div>
     </div>
   );

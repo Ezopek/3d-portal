@@ -25,6 +25,7 @@
   --color-viewer-mesh-paint: hsl(220 9% 60%);
   --color-viewer-mesh-edge: hsl(220 14% 28%);
   --color-viewer-grid: hsl(220 14% 80%);
+  --color-viewer-measure: hsl(217 91% 60%);
 
   --radius-sm: 0.25rem;
   --radius-md: 0.5rem;
@@ -51,6 +52,7 @@
   --color-viewer-mesh-paint: hsl(220 9% 65%);
   --color-viewer-mesh-edge: hsl(220 14% 18%);
   --color-viewer-grid: hsl(220 14% 22%);
+  --color-viewer-measure: hsl(217 91% 65%);
 }
 
 @layer base {

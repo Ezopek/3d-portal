@@ -15,8 +15,9 @@ import { Button } from "@/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 
 import type { ViewPreset } from "../lib/camera";
+import type { ToolMode } from "../types";
 
-export type ToolMode = "orbit" | "pan";
+export type { ToolMode };
 
 type Props = {
   mode: ToolMode;
@@ -86,7 +87,7 @@ export function ViewToolbar({
   return (
     <div
       role="toolbar"
-      aria-label="3D view toolbar"
+      aria-label={t("viewer3d.toolbar_aria_label")}
       className="flex items-center gap-1 rounded-lg border border-border bg-card/85 px-1 py-1 backdrop-blur-md"
     >
       <ToolbarButton label={t("viewer3d.tooltip.reset")} onClick={onReset}>

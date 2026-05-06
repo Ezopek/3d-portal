@@ -5,7 +5,7 @@ import { Button } from "@/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/ui/dialog";
 
 import { Viewer3DCanvas, type CanvasHandle } from "./Viewer3DCanvas";
-import { ViewToolbar, type ToolMode } from "./controls/ViewToolbar";
+import { ViewToolbar } from "./controls/ViewToolbar";
 import { FileSelector } from "./controls/FileSelector";
 import { MeasureSummary } from "./controls/MeasureSummary";
 import { useFileIndex } from "./hooks/useFileIndex";
@@ -17,7 +17,7 @@ import {
   measureReducer,
   type MeasureAction,
 } from "./measure/measureReducer";
-import type { Viewer3DProps } from "./types";
+import type { ToolMode, Viewer3DProps } from "./types";
 
 export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3DProps) {
   const { t } = useTranslation();
@@ -49,6 +49,15 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
   const handleRef = useRef<CanvasHandle | null>(null);
 
   const onKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Cancel an in-progress measurement before letting Dialog catch Esc and
+    // close the modal — user expectation is "Esc backs out of the smallest
+    // operation in flight first".
+    if (e.key === "Escape" && state.active.points.length > 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      dispatch({ type: "cancel-active" });
+      return;
+    }
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     const i = idx.sorted.findIndex((f) => f.id === activeId);
     if (i < 0) return;
@@ -76,7 +85,9 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
         className="h-[90vh] w-[95vw] max-w-[1400px] p-0 outline-none"
         onKeyDown={onKey}
       >
-        <DialogTitle className="sr-only">{file?.name ?? "3D viewer"}</DialogTitle>
+        <DialogTitle className="sr-only">
+          {file?.name ?? t("viewer3d.dialog_title_fallback")}
+        </DialogTitle>
         <div className="relative h-full">
           <div className="absolute left-1/2 top-3 z-10 -translate-x-1/2">
             <FileSelector
@@ -141,6 +152,7 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
                 geometry={geometry}
                 preset={preset}
                 wireframe={wireframe}
+                toolMode={mode}
                 measureMode={state.mode}
                 state={state}
                 dispatch={dispatch as (a: MeasureAction) => void}

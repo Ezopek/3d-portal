@@ -62,16 +62,28 @@ export function useStlGeometry({
   modelId,
   fileId,
 }: UseStlGeometryArgs): UseStlGeometryResult {
-  const url = `/api/models/${modelId}/files/${fileId}/content`;
+  // When ids are empty (caller is gating fetch — e.g. waiting on a confirm
+  // dialog) skip the network entirely. Returning the same shape keeps the
+  // hook drop-in.
+  const skip = modelId === "" || fileId === "";
+  const url = skip ? "" : `/api/models/${modelId}/files/${fileId}/content`;
   const [geometry, setGeometry] = useState<BufferGeometry | null>(() => {
+    if (skip) return null;
     const cached = stlCache.peek(url);
     return cached ?? null;
   });
   const [error, setError] = useState<Error | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(geometry === null);
+  const [isLoading, setIsLoading] = useState<boolean>(
+    !skip && geometry === null,
+  );
   const subscribed = useRef<string | null>(null);
 
   useEffect(() => {
+    if (skip) {
+      setIsLoading(false);
+      setGeometry(null);
+      return;
+    }
     let cancelled = false;
     setError(null);
 
@@ -116,7 +128,7 @@ export function useStlGeometry({
         subscribed.current = null;
       }
     };
-  }, [url]);
+  }, [url, skip]);
 
   return { geometry, error, isLoading };
 }

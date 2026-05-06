@@ -1,4 +1,5 @@
 import { Html, Line } from "@react-three/drei";
+import type { Color } from "three";
 import { useTranslation } from "react-i18next";
 
 import type { Measurement } from "../types";
@@ -8,9 +9,16 @@ type Props = {
   measurements: readonly Measurement[];
   partialPoint?: { x: number; y: number; z: number } | null;
   showAssumed?: boolean;
+  /** Tint for the line + label background; sourced from --color-viewer-measure. */
+  color: Color;
 };
 
-export function MeasureOverlay({ measurements, partialPoint, showAssumed }: Props) {
+export function MeasureOverlay({
+  measurements,
+  partialPoint,
+  showAssumed,
+  color,
+}: Props) {
   const { t } = useTranslation();
   return (
     <>
@@ -24,7 +32,7 @@ export function MeasureOverlay({ measurements, partialPoint, showAssumed }: Prop
           <group key={m.id}>
             <Line
               points={[m.a.toArray(), m.b.toArray()]}
-              color="#3b82f6"
+              color={color}
               lineWidth={2}
             />
             <Html position={[mp.x, mp.y, mp.z]} center>
@@ -38,7 +46,7 @@ export function MeasureOverlay({ measurements, partialPoint, showAssumed }: Prop
       {partialPoint && (
         <mesh position={[partialPoint.x, partialPoint.y, partialPoint.z]}>
           <sphereGeometry args={[0.5, 12, 12]} />
-          <meshBasicMaterial color="#3b82f6" />
+          <meshBasicMaterial color={color} />
         </mesh>
       )}
     </>

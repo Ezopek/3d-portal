@@ -120,5 +120,7 @@
   "viewer3d.file_selector.position": "{{n}} / {{total}}",
   "viewer3d.stats.triangles": "{{count}} triangles",
   "viewer3d.stats.size": "{{w}} × {{h}} × {{d}} mm",
-  "viewer3d.large_mesh_warning": "{{formatted}} triangles — performance may suffer"
+  "viewer3d.large_mesh_warning": "{{formatted}} triangles — performance may suffer",
+  "viewer3d.dialog_title_fallback": "3D viewer",
+  "viewer3d.toolbar_aria_label": "3D view toolbar"
 }

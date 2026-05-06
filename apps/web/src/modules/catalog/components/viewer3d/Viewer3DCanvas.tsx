@@ -14,7 +14,7 @@ import { framingDistance, viewPresets, type ViewPreset } from "./lib/camera";
 import { readMeshTokens } from "./lib/readMeshTokens";
 import { MeasureOverlay } from "./measure/MeasureOverlay";
 import type { MeasureAction } from "./measure/measureReducer";
-import type { MeasureMode, MeasureState } from "./types";
+import type { MeasureMode, MeasureState, ToolMode } from "./types";
 
 const FOV_DEG = 50;
 const MARGIN = 1.15;
@@ -27,6 +27,8 @@ type Props = {
   geometry: BufferGeometry;
   preset: ViewPreset;
   wireframe: boolean;
+  /** Active drag mode; "orbit" disables pan, "pan" disables rotate. */
+  toolMode: ToolMode;
   measureMode: MeasureMode;
   state: MeasureState;
   dispatch: (action: MeasureAction) => void;
@@ -67,6 +69,7 @@ export function Viewer3DCanvas({
   geometry,
   preset,
   wireframe,
+  toolMode,
   measureMode,
   state,
   dispatch,
@@ -129,12 +132,15 @@ export function Viewer3DCanvas({
         makeDefault
         enableDamping={damping}
         dampingFactor={damping ? 0.05 : 0}
+        enableRotate={toolMode === "orbit"}
+        enablePan={toolMode === "pan"}
       />
       <FrameAndControls geometry={geometry} preset={preset} />
       <MeasureOverlay
         measurements={state.completed}
         partialPoint={partial}
         showAssumed
+        color={tokens.measure}
       />
     </Canvas>
   );

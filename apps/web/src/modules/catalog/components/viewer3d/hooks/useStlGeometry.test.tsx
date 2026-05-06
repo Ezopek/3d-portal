@@ -62,6 +62,17 @@ describe("useStlGeometry", () => {
     expect(result.current.geometry).toBeNull();
   });
 
+  it("skips network fetch when modelId or fileId is empty", async () => {
+    const { result } = renderHook(() =>
+      useStlGeometry({ modelId: "", fileId: f }),
+    );
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.current.geometry).toBeNull();
+    expect(result.current.error).toBeNull();
+    expect(result.current.isLoading).toBe(false);
+  });
+
   it("releases the cache subscription on unmount", async () => {
     fetchMock.mockResolvedValueOnce(new Response(makeStlBuffer(), { status: 200 }));
     const { result, unmount } = renderHook(() =>
