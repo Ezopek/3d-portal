@@ -338,7 +338,7 @@ def test_list_combined_filters(client, seeded_listing):
 
 
 def test_list_models_exposes_gallery_hints(client):
-    """Each ModelSummary carries gallery_file_ids (top 4) and total image_count.
+    """Each ModelSummary carries the full gallery_file_ids list and total image_count.
 
     A model with image + print files reports both, ordered by
     (position NULLS LAST, created_at). A model with no image/print files

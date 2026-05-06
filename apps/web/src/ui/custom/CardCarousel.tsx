@@ -20,22 +20,37 @@ interface Props {
  */
 export function CardCarousel({ modelId, fileIds, alt }: Props) {
   const [active, setActive] = useState(0);
+  // Start in loading state so the first paint shows the blur skeleton —
+  // not just transitions between images.
+  const [isLoading, setIsLoading] = useState(true);
   const total = fileIds.length;
   const activeId = fileIds[active] ?? fileIds[0];
 
   function step(delta: number, e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
+    setIsLoading(true);
     setActive((prev) => (prev + delta + total) % total);
   }
 
   return (
-    <div className="group relative aspect-square overflow-hidden bg-muted">
+    <div
+      className={cn(
+        "group relative aspect-square overflow-hidden bg-muted",
+        isLoading && "animate-pulse",
+      )}
+    >
       <img
+        key={activeId}
         src={`/api/models/${modelId}/files/${activeId}/content`}
         alt={alt}
         loading="lazy"
-        className="h-full w-full object-cover"
+        onLoad={() => setIsLoading(false)}
+        onError={() => setIsLoading(false)}
+        className={cn(
+          "h-full w-full object-cover transition-[filter] duration-150",
+          isLoading ? "blur-[4px]" : "blur-0",
+        )}
       />
       {total > 1 && (
         <>
@@ -69,6 +84,7 @@ export function CardCarousel({ modelId, fileIds, alt }: Props) {
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
+                  if (i !== active) setIsLoading(true);
                   setActive(i);
                 }}
                 className={cn(

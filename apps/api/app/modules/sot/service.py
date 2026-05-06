@@ -200,9 +200,10 @@ def list_models(
         for model_id, tag_row in session.exec(join_stmt).all():
             tags_by_model[model_id].append(TagRead.model_validate(tag_row))
 
-    # Eagerly fetch gallery hints (top 4 image/print file ids per model + total
-    # image/print count) so list cards can render a mini-carousel without a
-    # separate fetch per row. Ordering matches list_model_files: position
+    # Eagerly fetch all image/print file ids per model + total count so list
+    # cards can render the full mini-carousel without a separate fetch per
+    # row. Lazy-loading on the <img> tag means only the active image is
+    # actually fetched. Ordering matches list_model_files: position
     # NULLS LAST, then created_at ascending.
     gallery_by_model: dict[uuid.UUID, list[uuid.UUID]] = {mid: [] for mid in model_ids}
     image_counts: dict[uuid.UUID, int] = {mid: 0 for mid in model_ids}
@@ -223,8 +224,7 @@ def list_models(
             mid = row[0]
             fid = row[1]
             image_counts[mid] = image_counts.get(mid, 0) + 1
-            if len(gallery_by_model[mid]) < 4:
-                gallery_by_model[mid].append(fid)
+            gallery_by_model[mid].append(fid)
 
     items = [
         ModelSummary.model_validate(
@@ -318,7 +318,7 @@ def get_model_detail(
         {
             **m.model_dump(),
             "tags": tags,
-            "gallery_file_ids": gallery_file_ids[:4],
+            "gallery_file_ids": gallery_file_ids,
             "image_count": len(gallery_file_ids),
             "category": CategorySummary.model_validate(cat),
             "files": files,

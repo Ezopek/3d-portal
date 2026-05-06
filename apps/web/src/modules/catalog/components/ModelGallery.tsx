@@ -1,3 +1,4 @@
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
 import type { ModelFileRead } from "@/lib/api-types";
@@ -45,17 +46,55 @@ export function ModelGallery({
       </div>
     );
   }
-  const active = images.find((i) => i.id === activeId) ?? images[0]!;
+  const activeIdx = Math.max(
+    0,
+    images.findIndex((i) => i.id === activeId),
+  );
+  const active = images[activeIdx] ?? images[0]!;
+  const total = images.length;
+
+  function step(delta: number) {
+    const next = images[(activeIdx + delta + total) % total];
+    if (next !== undefined) setActiveId(next.id);
+  }
+
   return (
     <div className="space-y-2">
-      <img
-        data-testid="gallery-main"
-        src={srcFor(modelId, active.id)}
-        alt={active.original_name}
-        className="aspect-[4/3] w-full rounded bg-muted object-contain"
-      />
+      <div className="group relative">
+        <img
+          data-testid="gallery-main"
+          src={srcFor(modelId, active.id)}
+          alt={active.original_name}
+          className="aspect-[4/3] w-full rounded bg-muted object-contain"
+        />
+        {total > 1 && (
+          <>
+            <button
+              type="button"
+              aria-label="previous image"
+              data-testid="gallery-prev"
+              onClick={() => step(-1)}
+              className="absolute left-2 top-1/2 -translate-y-1/2 grid h-9 w-9 place-items-center rounded-full bg-black/40 text-white opacity-0 transition-opacity hover:bg-black/60 focus-visible:opacity-100 group-hover:opacity-100"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              aria-label="next image"
+              data-testid="gallery-next"
+              onClick={() => step(1)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 grid h-9 w-9 place-items-center rounded-full bg-black/40 text-white opacity-0 transition-opacity hover:bg-black/60 focus-visible:opacity-100 group-hover:opacity-100"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
+            <div className="pointer-events-none absolute right-2 top-2 rounded bg-black/50 px-1.5 py-0.5 text-xs text-white">
+              {activeIdx + 1} / {total}
+            </div>
+          </>
+        )}
+      </div>
       <div className="grid grid-cols-7 gap-1">
-        {images.slice(0, 7).map((img) => (
+        {images.map((img) => (
           <button
             key={img.id}
             type="button"
@@ -68,6 +107,7 @@ export function ModelGallery({
             <img
               src={srcFor(modelId, img.id)}
               alt={img.original_name}
+              loading="lazy"
               className="h-full w-full object-cover"
             />
           </button>
