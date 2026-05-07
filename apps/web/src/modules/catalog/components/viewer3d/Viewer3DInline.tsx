@@ -93,7 +93,9 @@ function CanvasLoader({
 
   const needsWelding =
     state.mode === "point-to-plane" || state.mode === "plane-to-plane";
-  const cacheKey = `${file.modelId}/${file.id}`;
+  // Key by geometry instance — see Viewer3DModal for the rationale (avoids
+  // weldCache poisoning when activeId changes before useStlGeometry refreshes).
+  const cacheKey = geometry?.uuid ?? "";
   const prep = usePlanePrep(geometry, cacheKey, needsWelding);
   const tokens = useMemo(() => readMeshTokens(), []);
 

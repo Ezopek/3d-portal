@@ -63,7 +63,14 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
 
   const needsWelding =
     state.mode === "point-to-plane" || state.mode === "plane-to-plane";
-  const cacheKey = file !== undefined ? `${file.modelId}/${file.id}` : "";
+  // Key by geometry instance, not by file id. useStlGeometry briefly returns
+  // the stale geometry on the render where activeId just changed; if we keyed
+  // by `${modelId}/${fileId}` we would weld the stale positions under the new
+  // file's cache key, poisoning weldCache. geometry.uuid advances together
+  // with the geometry object, so the two never get out of sync. The same
+  // BufferGeometry instance is shared across mounts via stlCache, so cache
+  // sharing between Modal and Inline still works.
+  const cacheKey = geometry?.uuid ?? "";
   const prep = usePlanePrep(geometry, cacheKey, needsWelding);
   const tokens = useMemo(() => readMeshTokens(), []);
 
