@@ -168,20 +168,17 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
               onReset={() => {
                 setPreset("iso");
                 setResetSignal((n) => n + 1);
-                dispatch({ type: "clear" });
+                dispatch({ type: "cancel-active" });
               }}
               wireframe={wireframe}
               onWireframe={setWireframe}
               onScreenshot={() => {
                 void screenshot();
               }}
-              measureOn={state.mode === "point-to-point"}
-              onMeasureToggle={() =>
-                dispatch({
-                  type: "set-mode",
-                  mode: state.mode === "off" ? "point-to-point" : "off",
-                })
-              }
+              mode={state.mode}
+              onMode={(m) => dispatch({ type: "set-mode", mode: m })}
+              toleranceDeg={state.toleranceDeg}
+              onTolerance={(v) => dispatch({ type: "set-tolerance", value: v })}
             />
           </div>
           <div className="pointer-events-none absolute left-3 top-3 z-10 max-h-[40vh] max-w-[280px] overflow-y-auto">

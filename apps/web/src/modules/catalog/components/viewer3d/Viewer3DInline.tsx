@@ -148,20 +148,17 @@ function CanvasLoader({
           onReset={() => {
             setPreset("iso");
             setResetSignal((n) => n + 1);
-            dispatch({ type: "clear" });
+            dispatch({ type: "cancel-active" });
           }}
           wireframe={wireframe}
           onWireframe={setWireframe}
           onScreenshot={() => {
             void screenshot();
           }}
-          measureOn={state.mode === "point-to-point"}
-          onMeasureToggle={() =>
-            dispatch({
-              type: "set-mode",
-              mode: state.mode === "off" ? "point-to-point" : "off",
-            })
-          }
+          mode={state.mode}
+          onMode={(m) => dispatch({ type: "set-mode", mode: m })}
+          toleranceDeg={state.toleranceDeg}
+          onTolerance={(v) => dispatch({ type: "set-tolerance", value: v })}
         />
         <details className="text-xs">
           <summary className="cursor-pointer text-muted-foreground">
