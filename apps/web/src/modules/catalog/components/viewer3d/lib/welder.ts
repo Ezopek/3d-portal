@@ -14,6 +14,13 @@ export type WeldedMesh = {
 const MIN_GRANULARITY_MM = 1e-5;
 const BOUNDARY = 0xffffffff;
 
+/**
+ * Vertex count below which welding runs synchronously on main thread.
+ * Worker spawn + transfer overhead (~30ms) outweighs welding time below
+ * this threshold.
+ */
+export const WELD_SYNC_VERTEX_THRESHOLD = 5000;
+
 export function weld(
   positions: Float32Array,
   bboxDiagonal: number,

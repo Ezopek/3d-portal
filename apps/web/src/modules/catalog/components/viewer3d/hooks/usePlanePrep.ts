@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Box3, type BufferGeometry, Vector3 } from "three";
 
-import { weld, type WeldedMesh } from "../lib/welder";
+import { weld, WELD_SYNC_VERTEX_THRESHOLD, type WeldedMesh } from "../lib/welder";
 import { weldCache } from "../lib/weldCache";
-
-const SYNC_VERTEX_THRESHOLD = 5000;
 
 type Status =
   | { state: "idle" }
@@ -59,7 +57,7 @@ export function usePlanePrep(
     const positions = (geometry.getAttribute("position").array as Float32Array).slice();
     const diag = bboxDiagonal(geometry);
 
-    if (positions.length / 3 < SYNC_VERTEX_THRESHOLD) {
+    if (positions.length / 3 < WELD_SYNC_VERTEX_THRESHOLD) {
       try {
         const welded = weld(positions, diag);
         weldCache.put(cacheKey, welded);
@@ -146,6 +144,10 @@ export function usePlanePrep(
     if (workerRef.current !== null) {
       workerRef.current.terminate();
       workerRef.current = null;
+    }
+    if (acquiredKey.current !== null) {
+      weldCache.release(acquiredKey.current);
+      acquiredKey.current = null;
     }
     setStatus({ state: "idle" });
   };

@@ -40,3 +40,39 @@ describe("weldCache", () => {
     expect(weldCache.acquire("k1")).toBe(w);
   });
 });
+
+describe("weldCache — LRU + detached lifecycle", () => {
+  beforeEach(() => {
+    _resetWeldCacheForTests();
+  });
+
+  it("evicts oldest entry past capacity", () => {
+    weldCache.setCapacityForTests(1);
+    weldCache.put("k1", fakeWelded());
+    weldCache.put("k2", fakeWelded());
+    expect(weldCache.has("k1")).toBe(false);
+    expect(weldCache.has("k2")).toBe(true);
+  });
+
+  it("evicted entry with active refcount survives in detached", () => {
+    weldCache.setCapacityForTests(1);
+    const w1 = fakeWelded();
+    weldCache.put("k1", w1);
+    expect(weldCache.acquire("k1")).toBe(w1); // ref=1
+    weldCache.put("k2", fakeWelded()); // evicts k1 from live
+    // k1 still retrievable while ref-held
+    expect(weldCache.has("k1")).toBe(true);
+    weldCache.release("k1"); // ref=0 → detached cleanup
+    expect(weldCache.has("k1")).toBe(false);
+  });
+
+  it("put over an acquired key keeps old entry in detached for active holders", () => {
+    const w1 = fakeWelded();
+    weldCache.put("k1", w1);
+    const acquired = weldCache.acquire("k1");
+    expect(acquired).toBe(w1);
+    weldCache.put("k1", fakeWelded()); // new data
+    // The previously-acquired ref is still release-able without throwing
+    expect(() => weldCache.release("k1")).not.toThrow();
+  });
+});

@@ -31,6 +31,11 @@ export const weldCache = {
     if (existing !== undefined) {
       live.delete(key);
       detached.delete(key);
+      if (existing.refcount > 0) {
+        existing.evicted = true;
+        detached.set(key, existing); // keep for active holders
+      }
+      // No GPU dispose needed: WeldedMesh is plain typed arrays.
     }
     const entry: Entry = { welded, refcount: 0, evicted: false };
     live.set(key, entry);
