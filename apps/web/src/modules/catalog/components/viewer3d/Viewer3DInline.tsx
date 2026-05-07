@@ -1,20 +1,33 @@
-import { useReducer, useRef, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/ui/button";
 
 import { Viewer3DCanvas, type CanvasHandle } from "./Viewer3DCanvas";
-import { ViewToolbar } from "./controls/ViewToolbar";
 import { MeasureSummary } from "./controls/MeasureSummary";
+import { StepBanner } from "./controls/StepBanner";
+import { ViewToolbar } from "./controls/ViewToolbar";
 import { usePerfGuard } from "./hooks/usePerfGuard";
+import { usePlanePrep } from "./hooks/usePlanePrep";
 import { useStlGeometry } from "./hooks/useStlGeometry";
 import type { ViewPreset } from "./lib/camera";
+import { readMeshTokens } from "./lib/readMeshTokens";
+import { ClusterOverlay } from "./measure/ClusterOverlay";
+import { uniqueClusterVerts } from "./measure/clusterVerts";
+import { fitPlane } from "./measure/fitting";
+import { floodFill } from "./measure/floodFill";
+import {
+  anglePlanes,
+  distancePointToPlane,
+  minVertexPairDistance,
+  perpendicularPlaneDistance,
+} from "./measure/geometry";
 import {
   initialMeasureState,
   measureReducer,
   type MeasureAction,
 } from "./measure/measureReducer";
-import type { StlFile } from "./types";
+import type { Plane, StlFile } from "./types";
 
 export type Viewer3DInlineProps = {
   /** Single STL file scoped to this inline mount (one per expanded row). */
@@ -78,12 +91,99 @@ function CanvasLoader({
   const [state, dispatch] = useReducer(measureReducer, initialMeasureState);
   const handleRef = useRef<CanvasHandle | null>(null);
 
+  const needsWelding =
+    state.mode === "point-to-plane" || state.mode === "plane-to-plane";
+  const cacheKey = `${file.modelId}/${file.id}`;
+  const prep = usePlanePrep(geometry, cacheKey, needsWelding);
+  const tokens = useMemo(() => readMeshTokens(), []);
+
+  // Live tolerance update — see Modal for the dep-array rationale.
+  useEffect(() => {
+    if (state.active.stage !== "have-plane" || prep.welded === null) return;
+    const seed = state.active.plane.seedTriangleId;
+    const cluster = floodFill(prep.welded, seed, state.toleranceDeg);
+    const plane = fitPlane(prep.welded, [...cluster], seed);
+    dispatch({ type: "replace-active-plane", plane });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.toleranceDeg, prep.welded]);
+
+  // p2pl second-click completion patch.
+  const lastCompletedLength = useRef(state.completed.length);
+  useEffect(() => {
+    if (state.completed.length === lastCompletedLength.current) return;
+    lastCompletedLength.current = state.completed.length;
+    const last = state.completed[state.completed.length - 1];
+    if (last === undefined) return;
+    if (last.kind === "p2pl" && last.distanceMm === 0) {
+      const d = distancePointToPlane(
+        last.point,
+        last.plane.centroid,
+        last.plane.normal,
+      );
+      dispatch({ type: "patch-last-p2pl", distanceMm: d });
+    }
+  }, [state.completed.length, state.completed]);
+
+  const onPickPlane = (plane: Plane) => {
+    if (state.mode === "off") return;
+    if (state.active.stage !== "have-plane") {
+      dispatch({ type: "click-plane", plane });
+      return;
+    }
+    if (state.mode !== "plane-to-plane" || prep.welded === null) return;
+    const planeA = state.active.plane;
+    const planeB = plane;
+    const angleDeg = anglePlanes(planeA.normal, planeB.normal);
+    let distanceMm: number;
+    let pl2plKind: "parallel" | "closest";
+    let approximate = false;
+    if (angleDeg <= 5) {
+      distanceMm = perpendicularPlaneDistance(
+        planeA.centroid,
+        planeA.normal,
+        planeB.centroid,
+      );
+      pl2plKind = "parallel";
+    } else {
+      pl2plKind = "closest";
+      const aVerts = uniqueClusterVerts(prep.welded, planeA.triangleIds);
+      const bVerts = uniqueClusterVerts(prep.welded, planeB.triangleIds);
+      if (aVerts.length * bVerts.length <= 1_000_000) {
+        distanceMm = minVertexPairDistance(aVerts, bVerts);
+      } else {
+        distanceMm = planeA.centroid.distanceTo(planeB.centroid);
+        approximate = true;
+      }
+    }
+    dispatch({ type: "click-plane", plane });
+    dispatch({
+      type: "patch-last-pl2pl",
+      distanceMm,
+      angleDeg,
+      pl2plKind,
+      approximate,
+    });
+  };
+
   const onKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "Escape" && state.active.stage !== "empty") {
+    if (e.key !== "Escape") return;
+    if (prep.loading) {
+      e.preventDefault();
+      e.stopPropagation();
+      prep.cancel();
+      dispatch({ type: "set-mode", mode: "off" });
+      return;
+    }
+    if (state.active.stage !== "empty") {
       e.preventDefault();
       e.stopPropagation();
       dispatch({ type: "cancel-active" });
       return;
+    }
+    if (state.mode !== "off") {
+      e.preventDefault();
+      e.stopPropagation();
+      dispatch({ type: "set-mode", mode: "off" });
     }
   };
 
@@ -128,7 +228,15 @@ function CanvasLoader({
           })}
         </div>
       )}
-      <div className="flex-1">
+      <div className="flex-1 relative">
+        <StepBanner
+          mode={state.mode}
+          stage={state.active.stage}
+          loading={prep.loading}
+          error={prep.error}
+          onDismissError={() => prep.cancel()}
+          position="inline"
+        />
         <Viewer3DCanvas
           geometry={geometry}
           preset={preset}
@@ -141,7 +249,43 @@ function CanvasLoader({
           onCanvasReady={(h) => {
             handleRef.current = h;
           }}
-        />
+          welded={prep.welded}
+          toleranceDeg={state.toleranceDeg}
+          onPickPlane={onPickPlane}
+        >
+          {prep.welded !== null && state.active.stage === "have-plane" && (
+            <ClusterOverlay
+              welded={prep.welded}
+              triangleIds={state.active.plane.triangleIds}
+              color={tokens.cluster}
+              opacity={0.45}
+            />
+          )}
+          {prep.welded !== null &&
+            state.completed.map((m) => {
+              if (m.kind === "p2p") return null;
+              const planeA = m.kind === "p2pl" ? m.plane : m.planeA;
+              const planeB = m.kind === "pl2pl" ? m.planeB : null;
+              return (
+                <group key={m.id}>
+                  <ClusterOverlay
+                    welded={prep.welded!}
+                    triangleIds={planeA.triangleIds}
+                    color={tokens.cluster}
+                    opacity={0.3}
+                  />
+                  {planeB !== null && (
+                    <ClusterOverlay
+                      welded={prep.welded!}
+                      triangleIds={planeB.triangleIds}
+                      color={tokens.cluster}
+                      opacity={0.3}
+                    />
+                  )}
+                </group>
+              );
+            })}
+        </Viewer3DCanvas>
       </div>
       <div className="space-y-2 border-t border-border p-2">
         <ViewToolbar

@@ -176,4 +176,64 @@ describe("measureReducer — plane modes", () => {
     expect(s1.mode).toBe("plane-to-plane");
     expect(s1.toleranceDeg).toBe(7);
   });
+
+  it("patch-last-pl2pl updates the most recent pl2pl measurement", () => {
+    const planeA = fakePlane(1, [1, 2]);
+    const planeB = fakePlane(5, [5, 6]);
+    let s = measureReducer(
+      { ...initialMeasureState, mode: "plane-to-plane" },
+      { type: "click-plane", plane: planeA },
+    );
+    s = measureReducer(s, { type: "click-plane", plane: planeB });
+    s = measureReducer(s, {
+      type: "patch-last-pl2pl",
+      distanceMm: 12.4,
+      angleDeg: 47,
+      pl2plKind: "closest",
+      approximate: false,
+    });
+    const last = s.completed[s.completed.length - 1];
+    expect(last?.kind).toBe("pl2pl");
+    if (last?.kind === "pl2pl") {
+      expect(last.distanceMm).toBeCloseTo(12.4);
+      expect(last.angleDeg).toBeCloseTo(47);
+      expect(last.pl2plKind).toBe("closest");
+    }
+  });
+
+  it("patch-last-p2pl updates the most recent p2pl measurement", () => {
+    const plane = fakePlane(1, [1, 2]);
+    let s = measureReducer(
+      { ...initialMeasureState, mode: "point-to-plane" },
+      { type: "click-plane", plane },
+    );
+    s = measureReducer(s, { type: "click-mesh", point: new Vector3(0, 0, 5) });
+    s = measureReducer(s, { type: "patch-last-p2pl", distanceMm: 12.4 });
+    const last = s.completed[s.completed.length - 1];
+    expect(last?.kind).toBe("p2pl");
+    if (last?.kind === "p2pl") expect(last.distanceMm).toBeCloseTo(12.4);
+  });
+
+  it("patch actions no-op when last completed has wrong kind", () => {
+    const s0 = {
+      ...initialMeasureState,
+      completed: [
+        {
+          kind: "p2p" as const,
+          id: "x",
+          a: new Vector3(),
+          b: new Vector3(),
+          distanceMm: 1,
+        },
+      ],
+    };
+    const s1 = measureReducer(s0, {
+      type: "patch-last-pl2pl",
+      distanceMm: 5,
+      angleDeg: 0,
+      pl2plKind: "parallel",
+      approximate: false,
+    });
+    expect(s1).toBe(s0); // exact reference equality (returned unchanged state)
+  });
 });

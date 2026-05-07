@@ -14,7 +14,15 @@ export type MeasureAction =
   | { type: "set-tolerance"; value: number }
   | { type: "replace-active-plane"; plane: Plane }
   | { type: "clear" }
-  | { type: "cancel-active" };
+  | { type: "cancel-active" }
+  | {
+      type: "patch-last-pl2pl";
+      distanceMm: number;
+      angleDeg: number;
+      pl2plKind: "parallel" | "closest";
+      approximate: boolean;
+    }
+  | { type: "patch-last-p2pl"; distanceMm: number };
 
 export const initialMeasureState: MeasureState = {
   mode: "off",
@@ -135,6 +143,29 @@ export function measureReducer(
 
     case "cancel-active":
       return { ...state, active: { stage: "empty" } };
+
+    case "patch-last-pl2pl": {
+      const last = state.completed[state.completed.length - 1];
+      if (last === undefined || last.kind !== "pl2pl") return state;
+      const patched: Measurement = {
+        ...last,
+        distanceMm: action.distanceMm,
+        angleDeg: action.angleDeg,
+        pl2plKind: action.pl2plKind,
+        approximate: action.approximate,
+      };
+      return {
+        ...state,
+        completed: [...state.completed.slice(0, -1), patched],
+      };
+    }
+
+    case "patch-last-p2pl": {
+      const last = state.completed[state.completed.length - 1];
+      if (last === undefined || last.kind !== "p2pl") return state;
+      const patched: Measurement = { ...last, distanceMm: action.distanceMm };
+      return { ...state, completed: [...state.completed.slice(0, -1), patched] };
+    }
 
     default: {
       const _exhaustive: never = action;

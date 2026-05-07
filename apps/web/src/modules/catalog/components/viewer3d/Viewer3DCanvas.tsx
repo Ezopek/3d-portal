@@ -1,6 +1,6 @@
 import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import type { BufferGeometry, Mesh } from "three";
 import {
   Box3,
@@ -13,9 +13,12 @@ import {
 
 import { framingDistance, viewPresets, type ViewPreset } from "./lib/camera";
 import { readMeshTokens } from "./lib/readMeshTokens";
+import type { WeldedMesh } from "./lib/welder";
+import { fitPlane } from "./measure/fitting";
+import { floodFill } from "./measure/floodFill";
 import { MeasureOverlay } from "./measure/MeasureOverlay";
 import type { MeasureAction } from "./measure/measureReducer";
-import type { MeasureMode, MeasureState } from "./types";
+import type { MeasureMode, MeasureState, Plane } from "./types";
 
 const FOV_DEG = 50;
 const MARGIN = 1.15;
@@ -37,6 +40,10 @@ type Props = {
   /** Disable OrbitControls damping (saves CPU on huge meshes). */
   damping?: boolean;
   onCanvasReady?: (handle: CanvasHandle) => void;
+  welded?: WeldedMesh | null;
+  toleranceDeg?: number;
+  onPickPlane?: (plane: Plane) => void;
+  children?: ReactNode;
 };
 
 // Three.js OrbitControls mouse mapping — left rotates, right pans, middle
@@ -92,6 +99,10 @@ export function Viewer3DCanvas({
   dispatch,
   damping = true,
   onCanvasReady,
+  welded = null,
+  toleranceDeg = 1,
+  onPickPlane,
+  children,
 }: Props) {
   const tokens = useMemo(() => readMeshTokens(), []);
   const material = useMemo(
@@ -107,9 +118,32 @@ export function Viewer3DCanvas({
   const meshRef = useRef<Mesh>(null);
 
   const handleMeshClick = (e: ThreeEvent<MouseEvent>) => {
-    if (measureMode !== "point-to-point") return;
+    if (state.mode === "off") return;
     e.stopPropagation();
-    dispatch({ type: "click-mesh", point: e.point.clone() });
+    if (state.mode === "point-to-point") {
+      dispatch({ type: "click-mesh", point: e.point.clone() });
+      return;
+    }
+    if (
+      state.mode === "point-to-plane" &&
+      state.active.stage === "have-plane"
+    ) {
+      // Second click in p2pl = a point on geometry. Parent computes the
+      // distance and dispatches the patch.
+      dispatch({ type: "click-mesh", point: e.point.clone() });
+      return;
+    }
+    // First plane click (p2pl empty stage) or any pl2pl click = plane pick.
+    if (welded === null || welded === undefined) return;
+    if (typeof e.faceIndex !== "number") return;
+    const weldedTri = welded.sourceToWelded[e.faceIndex];
+    if (weldedTri === undefined || weldedTri === 0xffffffff) return;
+    const cluster = floodFill(welded, weldedTri, toleranceDeg);
+    const plane = fitPlane(welded, [...cluster], weldedTri);
+    onPickPlane?.(plane);
+    // measureMode is consumed via the state alias above; keep referenced so
+    // the prop stays part of the public Canvas API.
+    void measureMode;
   };
 
   const partial =
@@ -162,6 +196,7 @@ export function Viewer3DCanvas({
         showAssumed
         color={tokens.measure}
       />
+      {children}
     </Canvas>
   );
 }
