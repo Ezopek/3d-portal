@@ -145,7 +145,6 @@ function CanvasLoader({
       </div>
       <div className="space-y-2 border-t border-border p-2">
         <ViewToolbar
-          onPreset={setPreset}
           onReset={() => {
             setPreset("iso");
             setResetSignal((n) => n + 1);

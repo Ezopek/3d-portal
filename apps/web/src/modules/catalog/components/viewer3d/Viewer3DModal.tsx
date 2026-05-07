@@ -165,7 +165,6 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
           )}
           <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2">
             <ViewToolbar
-              onPreset={setPreset}
               onReset={() => {
                 setPreset("iso");
                 setResetSignal((n) => n + 1);
