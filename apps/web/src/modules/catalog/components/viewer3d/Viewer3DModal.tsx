@@ -207,7 +207,7 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
           {file?.name ?? t("viewer3d.dialog_title_fallback")}
         </DialogTitle>
         <div className="relative h-full">
-          <div className="absolute left-1/2 top-3 z-10 -translate-x-1/2">
+          <div className="absolute left-3 right-14 top-3 z-10 flex justify-center">
             <FileSelector
               files={idx.sorted}
               activeId={activeId}

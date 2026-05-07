@@ -1,6 +1,6 @@
 import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { BufferGeometry, Mesh } from "three";
 import {
   Box3,
@@ -14,6 +14,7 @@ import {
 import { framingDistance, viewPresets, type ViewPreset } from "./lib/camera";
 import { readMeshTokens } from "./lib/readMeshTokens";
 import type { WeldedMesh } from "./lib/welder";
+import { ClusterOverlay } from "./measure/ClusterOverlay";
 import { fitPlane } from "./measure/fitting";
 import { floodFill } from "./measure/floodFill";
 import { MeasureOverlay } from "./measure/MeasureOverlay";
@@ -117,6 +118,17 @@ export function Viewer3DCanvas({
   );
   const meshRef = useRef<Mesh>(null);
 
+  // Hover preview: show a faint cluster overlay under the cursor in plane
+  // modes so the user sees which face flood-fill would grab BEFORE clicking.
+  // Only active when the next click is a plane pick — for p2pl have-plane
+  // (next click = point), suppress the preview to avoid misleading users.
+  const [hoveredPlane, setHoveredPlane] = useState<Plane | null>(null);
+  const hoveredTriRef = useRef<number | null>(null);
+  const hoverRafRef = useRef<number | null>(null);
+  const expectsPlaneClick =
+    state.mode === "plane-to-plane" ||
+    (state.mode === "point-to-plane" && state.active.stage === "empty");
+
   const handleMeshClick = (e: ThreeEvent<MouseEvent>) => {
     if (state.mode === "off") return;
     e.stopPropagation();
@@ -141,10 +153,50 @@ export function Viewer3DCanvas({
     const cluster = floodFill(welded, weldedTri, toleranceDeg);
     const plane = fitPlane(welded, [...cluster], weldedTri);
     onPickPlane?.(plane);
+    // Clear hover preview after a click — the active overlay (0.45) takes
+    // over visually; leaving the 0.20 preview around looks like a stale
+    // ghost until the next pointer move.
+    setHoveredPlane(null);
+    hoveredTriRef.current = null;
     // measureMode is consumed via the state alias above; keep referenced so
     // the prop stays part of the public Canvas API.
     void measureMode;
   };
+
+  const handleMeshPointerMove = (e: ThreeEvent<PointerEvent>) => {
+    if (!expectsPlaneClick) return;
+    if (welded === null || welded === undefined) return;
+    if (typeof e.faceIndex !== "number") return;
+    const weldedTri = welded.sourceToWelded[e.faceIndex];
+    if (weldedTri === undefined || weldedTri === 0xffffffff) return;
+    if (hoveredTriRef.current === weldedTri) return;
+    hoveredTriRef.current = weldedTri;
+    if (hoverRafRef.current !== null) cancelAnimationFrame(hoverRafRef.current);
+    hoverRafRef.current = requestAnimationFrame(() => {
+      hoverRafRef.current = null;
+      const cluster = floodFill(welded, weldedTri, toleranceDeg);
+      const plane = fitPlane(welded, [...cluster], weldedTri);
+      setHoveredPlane(plane);
+    });
+  };
+
+  const handleMeshPointerOut = () => {
+    if (hoverRafRef.current !== null) {
+      cancelAnimationFrame(hoverRafRef.current);
+      hoverRafRef.current = null;
+    }
+    hoveredTriRef.current = null;
+    setHoveredPlane(null);
+  };
+
+  // Drop the preview whenever the gate flips off — e.g. mode → off, or
+  // p2pl moves into have-plane. Avoids a stale ghost cluster lingering.
+  useEffect(() => {
+    if (!expectsPlaneClick && hoveredPlane !== null) {
+      hoveredTriRef.current = null;
+      setHoveredPlane(null);
+    }
+  }, [expectsPlaneClick, hoveredPlane]);
 
   const partial =
     state.active.stage === "have-point"
@@ -178,6 +230,8 @@ export function Viewer3DCanvas({
         geometry={geometry}
         material={material}
         onClick={handleMeshClick}
+        onPointerMove={handleMeshPointerMove}
+        onPointerOut={handleMeshPointerOut}
       />
       <OrbitControls
         makeDefault
@@ -197,6 +251,14 @@ export function Viewer3DCanvas({
         color={tokens.measure}
       />
       {children}
+      {welded !== null && hoveredPlane !== null && expectsPlaneClick && (
+        <ClusterOverlay
+          welded={welded}
+          triangleIds={hoveredPlane.triangleIds}
+          color={tokens.cluster}
+          opacity={0.2}
+        />
+      )}
     </Canvas>
   );
 }

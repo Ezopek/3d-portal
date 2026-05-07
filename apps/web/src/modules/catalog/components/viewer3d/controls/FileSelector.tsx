@@ -33,7 +33,7 @@ export function FileSelector({ files, activeId, onSelect }: Props) {
   }, [idx.sorted, query]);
 
   return (
-    <div className="rounded-lg border border-border bg-card/85 backdrop-blur-md min-w-[260px]">
+    <div className="w-full max-w-full rounded-lg border border-border bg-card/85 backdrop-blur-md sm:min-w-[260px]">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
