@@ -4,12 +4,29 @@
 **Author:** Michał + Claude
 **Date:** 2026-05-07
 **Supersedes:** Extends `2026-05-06-stl-viewer-design.md` §12.1 (deferred plane-aware modes)
-**Revision:** v2 (post Codex design review — see review file in same directory)
+**Revision:** v3 (post second-round review)
 
 ## Revision history
 
 - **v1 (initial)** — first draft from brainstorm decisions.
-- **v2 (this)** — addresses Codex review:
+- **v2** — addresses Codex review (P1+P2 findings, see review file in
+  same directory).
+- **v3 (this)** — addresses second-round review:
+  - `pl2pl` parallel-distance algorithm projects onto `nA` instead of
+    `(nA + nB)/2`, fixing NaN for opposing cube faces where `nA + nB ≈ 0`
+    despite `angleDeg = 0` (anti-parallel normals classified as parallel
+    via `acos(|nA · nB|)`).
+  - Banner state table now uses explicit priority ordering: error row
+    takes precedence over `mode = off`, resolving the previous
+    contradiction. Error banner gains an explicit dismiss button and
+    auto-clears on next successful weld or file switch.
+  - Toolbar mode buttons specified as lucide-first (custom SVG only as
+    a fallback for slots where lucide composition doesn't read), 40 × 40
+    hit target (was 32 × 32).
+  - p2p `MeasureSummary` row reuses the existing
+    `viewer3d.measure.label` key — no duplicate `row.p2p` key.
+
+- **v2 baseline** — addresses Codex review:
   - `plane→plane` distance is now asymmetric (perpendicular for parallel,
     closest-clearance for non-parallel) with explicit labels (P1-1).
   - Welder produces a `sourceFaceIndex → weldedTriangleId` mapping so
@@ -93,15 +110,28 @@ in §11.6.
 
 - All three mode buttons highlight when active. Click on the active
   mode button cancels into `off`.
-- Each button is a 32 × 32 hit target (touch-friendly), rendered as a
-  custom 16 × 16 inline SVG. The plan slice will fix the exact glyph;
-  required attributes:
+- **Hit target: 40 × 40** (`size-10` in Tailwind). 32 × 32 was too
+  compact for touch — bumping to 40 × 40 keeps comfortable mobile tap
+  targets while staying tight on desktop. WCAG 2.5.5 minimum (24 × 24)
+  is comfortably exceeded.
+- **Glyphs: lucide-react first.** The plan slice picks final glyphs
+  from lucide; reasonable starting candidates:
+  - `point→point`: `Ruler` (already used in v1)
+  - `point→plane`: `RulerDimensionLine` (or `Anchor` / `MoveDownRight`
+    composed with a small plane badge)
+  - `plane→plane`: `Layers` (or `Square` × 2 stacked)
+
+  If no single lucide icon reads cleanly for `point→plane` or
+  `plane→plane`, the implementation falls back to a custom inline SVG
+  for that one slot only — but lucide is the default, never invent
+  glyphs that overlap with existing ones.
+- Required attributes regardless of glyph source:
   - `aria-pressed` reflects active state
   - `aria-label` from `viewer3d.measure.mode.{p2p,p2pl,pl2pl}`
   - Tooltip from the same key
 - The `1°` badge is a small text-only button (font 0.7 rem, padding
-  0.25 rem 0.4 rem) showing current tolerance. Disabled when mode is
-  `off` or `point-to-point`. Click opens `TolerancePopover`.
+  0.25 rem 0.4 rem; hit area still 40 × 40 via padding). Disabled when
+  mode is `off` or `point-to-point`. Click opens `TolerancePopover`.
 
 ### 3.2 Click flow
 
@@ -122,17 +152,30 @@ below the FileSelector in the modal; `top-3` in the inline view where
 there is no FileSelector). Banner has `role="status"`,
 `aria-live="polite"`. Visibility follows this state table:
 
-| `state.mode` | `state.active.stage` | `usePlanePrep.loading` | `usePlanePrep.error` | Banner |
-|---|---|---|---|---|
-| `off` | — | — | — | hidden |
-| any plane mode | — | `true` | — | `step.preparing` |
-| any plane mode | — | — | non-null | `welding_failed` |
-| `point-to-point` | `empty` | — | — | `step.p2p_a` |
-| `point-to-point` | `have-point` | — | — | `step.p2p_b` |
-| `point-to-plane` | `empty` | `false` | null | `step.p2pl_plane` |
-| `point-to-plane` | `have-plane` | — | — | `step.p2pl_point` |
-| `plane-to-plane` | `empty` | `false` | null | `step.pl2pl_a` |
-| `plane-to-plane` | `have-plane` | — | — | `step.pl2pl_b` |
+Rules are checked top-down; the first matching row wins.
+
+| Priority | `usePlanePrep.error` | `usePlanePrep.loading` | `state.mode` | `state.active.stage` | Banner |
+|---|---|---|---|---|---|
+| 1 | non-null | — | — | — | `welding_failed` (with explicit dismiss button — see below) |
+| 2 | null | `true` | any plane mode | — | `step.preparing` |
+| 3 | null | `false` | `off` | — | hidden |
+| 4 | null | `false` | `point-to-point` | `empty` | `step.p2p_a` |
+| 5 | null | `false` | `point-to-point` | `have-point` | `step.p2p_b` |
+| 6 | null | `false` | `point-to-plane` | `empty` | `step.p2pl_plane` |
+| 7 | null | `false` | `point-to-plane` | `have-plane` | `step.p2pl_point` |
+| 8 | null | `false` | `plane-to-plane` | `empty` | `step.pl2pl_a` |
+| 9 | null | `false` | `plane-to-plane` | `have-plane` | `step.pl2pl_b` |
+
+**Error precedence (P1 from review v3):** an error survives a `mode → off`
+revert, so the user sees *why* the plane mode dropped them out. The error
+banner has an X dismiss button (`viewer3d.welding_failed.dismiss`,
+`aria-label="Dismiss"`). It also clears automatically when:
+
+- the user enters a plane mode that successfully completes welding (fresh
+  `ready=true`), or
+- the file is switched (`usePlanePrep.releaseAndReset`).
+
+This makes the banner the single status surface — no separate toast layer.
 
 i18n keys (PL + EN):
 
@@ -208,7 +251,9 @@ Weak-cluster suffix `(weak)` from §3.4 chains after either label.
 
 i18n keys:
 
-- `viewer3d.measure.row.p2p` — `"{{value}} mm"`
+- p2p row reuses the **existing** `viewer3d.measure.label`
+  (`"{{value}} mm"`) — no new key needed. The first p2p still uses
+  `viewer3d.measure.assumed` for the "assumed" suffix as in v1.
 - `viewer3d.measure.row.p2pl` — EN/PL: `"{{value}} mm (point → plane)"` / `"{{value}} mm (punkt → płaszczyzna)"`
 - `viewer3d.measure.row.pl2pl_parallel` — EN: `"{{value}} mm @ {{angle}}° (plane → plane, parallel)"`; PL: `"{{value}} mm @ {{angle}}° (płaszczyzna → płaszczyzna, równoległe)"`
 - `viewer3d.measure.row.pl2pl_closest` — EN: `"{{value}} mm @ {{angle}}° (plane → plane, closest)"`; PL: `"{{value}} mm @ {{angle}}° (płaszczyzna → płaszczyzna, najbliższe)"`
@@ -540,9 +585,14 @@ On the second valid click:
 ```
 const angleDeg = acos(|nA · nB|) × 180/π;            // 0–90
 if (angleDeg ≤ 5) {
-  // parallel — wall thickness
-  const avgNormal = ((nA + nB) / 2).normalize();
-  const distance = |(centroidA − centroidB) · avgNormal|;
+  // parallel — wall thickness.
+  // CAUTION: opposing cube faces give nA and nB pointing in OPPOSITE
+  // directions even though they represent the same plane orientation
+  // (angleDeg = 0 because we used acos(|nA · nB|)). If we naïvely averaged
+  // them, (nA + nB) ≈ 0 and normalize() would return NaN/zero.
+  // We therefore project onto nA only — for parallel planes the absolute
+  // projection is identical along either normal.
+  const distance = |(centroidA − centroidB) · nA|;
   emit { kind: "pl2pl", pl2plKind: "parallel", distance, angleDeg, approximate: false };
 } else {
   // non-parallel — closest clearance between selected patches
