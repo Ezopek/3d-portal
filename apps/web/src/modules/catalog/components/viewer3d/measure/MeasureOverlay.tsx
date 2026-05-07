@@ -80,7 +80,7 @@ export function MeasureOverlay({
             <Line points={[a.toArray(), b.toArray()]} color={color} lineWidth={2} />
             <Html position={[mp.x, mp.y, mp.z]} center>
               <span className="rounded bg-primary px-2 py-0.5 text-xs text-primary-foreground shadow">
-                {`${m.distanceMm.toFixed(1)} mm @ ${angle}°`}
+                {`${formatMm(m.distanceMm)} @ ${angle}°`}
               </span>
             </Html>
           </group>

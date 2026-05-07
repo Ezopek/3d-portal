@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import {
   BufferAttribute,
   BufferGeometry,
@@ -53,6 +53,14 @@ export function ClusterOverlay({ welded, triangleIds, color, opacity }: Props) {
       }),
     [color, opacity],
   );
+
+  useEffect(() => {
+    return () => geometry.dispose();
+  }, [geometry]);
+
+  useEffect(() => {
+    return () => material.dispose();
+  }, [material]);
 
   return <mesh geometry={geometry} material={material} />;
 }
