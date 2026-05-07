@@ -4,14 +4,26 @@
 **Author:** Michał + Claude
 **Date:** 2026-05-07
 **Supersedes:** Extends `2026-05-06-stl-viewer-design.md` §12.1 (deferred plane-aware modes)
-**Revision:** v3 (post second-round review)
+**Revision:** v4 (final consistency cleanup before plan handoff)
 
 ## Revision history
 
 - **v1 (initial)** — first draft from brainstorm decisions.
 - **v2** — addresses Codex review (P1+P2 findings, see review file in
   same directory).
-- **v3 (this)** — addresses second-round review:
+- **v4 (this)** — final consistency cleanup before plan handoff:
+  - §1 goal wording aligned with §6.4 algorithm: distance is "projected
+    along one fitted normal (`nA`)", no longer "averaged normal".
+  - Accessibility section §9 hit target updated 32 × 32 → 40 × 40 to
+    match §3.1.
+  - WCAG citation corrected: 24 × 24 is the **2.5.8 minimum** target
+    size (the previous draft mislabelled it as 2.5.5, which is actually
+    Enhanced 44 × 44).
+  - `viewer3d.welding_failed.dismiss` added to both EN and PL i18n
+    blocks ("Dismiss" / "Zamknij"), and the §3.3 reference now states
+    that both `aria-label` and tooltip read from this key (no literal
+    English in source).
+- **v3** — addresses second-round review:
   - `pl2pl` parallel-distance algorithm projects onto `nA` instead of
     `(nA + nB)/2`, fixing NaN for opposing cube faces where `nA + nB ≈ 0`
     despite `angleDeg = 0` (anti-parallel normals classified as parallel
@@ -66,7 +78,9 @@ beside `point→point`:
   distance value and the angle between fitted normals. The **distance
   semantics depend on the angle** (§6.4):
   - parallel-ish (angle ≤ 5°): perpendicular separation between the
-    two centroids along the averaged normal — i.e. wall thickness;
+    two centroids projected along one fitted normal (`nA`) — i.e. wall
+    thickness; see §6.4 for why we project onto `nA` instead of an
+    averaged normal;
   - non-parallel (angle > 5°): minimum vertex-pair distance between
     the two clusters — i.e. closest clearance between the selected
     surface patches.
@@ -112,8 +126,8 @@ in §11.6.
   mode button cancels into `off`.
 - **Hit target: 40 × 40** (`size-10` in Tailwind). 32 × 32 was too
   compact for touch — bumping to 40 × 40 keeps comfortable mobile tap
-  targets while staying tight on desktop. WCAG 2.5.5 minimum (24 × 24)
-  is comfortably exceeded.
+  targets while staying tight on desktop. Comfortably exceeds the
+  WCAG 2.5.8 minimum target size (24 × 24).
 - **Glyphs: lucide-react first.** The plan slice picks final glyphs
   from lucide; reasonable starting candidates:
   - `point→point`: `Ruler` (already used in v1)
@@ -168,8 +182,9 @@ Rules are checked top-down; the first matching row wins.
 
 **Error precedence (P1 from review v3):** an error survives a `mode → off`
 revert, so the user sees *why* the plane mode dropped them out. The error
-banner has an X dismiss button (`viewer3d.welding_failed.dismiss`,
-`aria-label="Dismiss"`). It also clears automatically when:
+banner has an X dismiss button whose `aria-label` and tooltip both come
+from `viewer3d.welding_failed.dismiss` (no literal English / Polish
+strings in source). It also clears automatically when:
 
 - the user enters a plane mode that successfully completes welding (fresh
   `ready=true`), or
@@ -682,6 +697,7 @@ coordinating):
   "viewer3d.measure.step.pl2pl_b": "Click second flat surface (2/2)",
   "viewer3d.measure.step.preparing": "Preparing planes…",
   "viewer3d.welding_failed": "Could not analyse mesh for plane selection.",
+  "viewer3d.welding_failed.dismiss": "Dismiss",
 
   "viewer3d.measure.row.p2pl": "{{value}} mm (point → plane)",
   "viewer3d.measure.row.pl2pl_parallel": "{{value}} mm @ {{angle}}° (plane → plane, parallel)",
@@ -712,6 +728,7 @@ PL counterparts (in `pl.json`):
   "viewer3d.measure.step.pl2pl_b": "Kliknij drugą płaszczyznę (2/2)",
   "viewer3d.measure.step.preparing": "Przygotowuję płaszczyzny…",
   "viewer3d.welding_failed": "Nie udało się przygotować mesha do wyboru płaszczyzn.",
+  "viewer3d.welding_failed.dismiss": "Zamknij",
 
   "viewer3d.measure.row.p2pl": "{{value}} mm (punkt → płaszczyzna)",
   "viewer3d.measure.row.pl2pl_parallel": "{{value}} mm @ {{angle}}° (płaszczyzna → płaszczyzna, równoległe)",
@@ -762,7 +779,7 @@ opacities (active: 0.45, completed: 0.30) — see §3.6.
   - `aria-label` from `viewer3d.measure.mode.{p2p,p2pl,pl2pl}`.
   - Tooltip uses the same string (base-ui `Tooltip` wrapping the icon
     button).
-  - 32 × 32 hit target, focus ring follows the project's `:focus-visible`
+  - 40 × 40 hit target, focus ring follows the project's `:focus-visible`
     convention.
 - Esc cancel ladder (§3.7) keeps the v1 "back out of the smallest
   in-flight operation" feel and now also handles welding cancellation.
