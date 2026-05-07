@@ -116,6 +116,22 @@ describe("measureReducer — plane modes", () => {
     expect(s1.completed[0]?.kind).toBe("pl2pl");
   });
 
+  it("pl2pl ids increment per measurement", () => {
+    const planeA = fakePlane(1, [1, 2]);
+    const planeB = fakePlane(5, [5, 6]);
+    let s: MeasureState = { ...initialMeasureState, mode: "plane-to-plane" as const };
+    s = measureReducer(s, { type: "click-plane", plane: planeA });
+    s = measureReducer(s, { type: "click-plane", plane: planeB });
+    s = measureReducer(s, { type: "click-plane", plane: planeA });
+    s = measureReducer(s, { type: "click-plane", plane: planeB });
+    expect(s.completed).toHaveLength(2);
+    const id1 = s.completed[0]?.id;
+    const id2 = s.completed[1]?.id;
+    expect(id1).not.toBe(id2);
+    expect(id1).toMatch(/^pl2pl-1-/);
+    expect(id2).toMatch(/^pl2pl-2-/);
+  });
+
   it("set-tolerance clamps below 0.5", () => {
     const s = measureReducer(initialMeasureState, {
       type: "set-tolerance",

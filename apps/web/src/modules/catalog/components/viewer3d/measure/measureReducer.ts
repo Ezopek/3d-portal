@@ -32,13 +32,13 @@ function newId(prefix: string, completed: Measurement[]): string {
   return `${prefix}-${completed.length + 1}-${Date.now()}`;
 }
 
-function pl2plPlaceholder(planeA: Plane, planeB: Plane): Measurement {
+function pl2plPlaceholder(planeA: Plane, planeB: Plane, completed: Measurement[]): Measurement {
   // Distance + angle math lands in Task 6. For now Task 1 only needs the
   // reducer to *create* a Measurement of kind "pl2pl"; values are filled by
   // the canvas integration once geometry helpers exist.
   return {
     kind: "pl2pl",
-    id: newId("pl2pl", []),
+    id: newId("pl2pl", completed),
     planeA,
     planeB,
     distanceMm: 0,
@@ -113,7 +113,7 @@ export function measureReducer(
         state.mode === "plane-to-plane" &&
         state.active.stage === "have-plane"
       ) {
-        const m = pl2plPlaceholder(state.active.plane, action.plane);
+        const m = pl2plPlaceholder(state.active.plane, action.plane, state.completed);
         return {
           ...state,
           active: { stage: "empty" },
