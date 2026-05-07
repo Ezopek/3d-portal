@@ -27,10 +27,10 @@ export function TolerancePopover({ toleranceDeg, onChange, disabled }: Props) {
         {toleranceDeg.toFixed(1)}°
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Positioner sideOffset={8}>
+        <Popover.Positioner sideOffset={8} className="z-[60]">
           <Popover.Popup
             className={cn(
-              "z-50 w-64 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-lg",
+              "z-[60] w-64 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-lg",
               "data-starting-style:opacity-0 data-ending-style:opacity-0",
             )}
           >
