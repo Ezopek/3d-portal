@@ -347,7 +347,7 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
               onTolerance={(v) => dispatch({ type: "set-tolerance", value: v })}
             />
           </div>
-          <div className="pointer-events-none absolute left-3 top-3 z-10 max-h-[40vh] max-w-[280px] overflow-y-auto">
+          <div className="pointer-events-none absolute left-3 top-16 z-10 max-h-[40vh] max-w-[280px] overflow-y-auto">
             <MeasureSummary
               measurements={state.completed}
               onClear={() => dispatch({ type: "clear" })}
