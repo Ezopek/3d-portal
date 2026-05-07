@@ -185,7 +185,7 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
               }
             />
           </div>
-          <div className="pointer-events-none absolute bottom-3 right-3 z-10 max-w-[280px]">
+          <div className="pointer-events-none absolute left-3 top-3 z-10 max-h-[40vh] max-w-[280px] overflow-y-auto">
             <MeasureSummary
               measurements={state.completed}
               onClear={() => dispatch({ type: "clear" })}
