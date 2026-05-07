@@ -49,9 +49,14 @@ This design covers *app-level* authentication, but the portal sits behind nginx 
 
 | Surface | App auth | Perimeter auth | Notes |
 |---|---|---|---|
-| `/api/admin/*` | required | required | All admin reads + writes. |
-| `/api/auth/*` (login, refresh, me, sessions) | mostly required (login is the entry point) | required | Login endpoint authenticates itself; everything else needs an active access cookie. |
-| SoT writes (model/file/tag/category mutations) | required | required | Live in `/api/admin/*` already. |
+| `/api/admin/*` | required (access cookie) | required | All admin reads + writes. |
+| `POST /api/auth/login` | not required | required | Entry point — verifies password directly. |
+| `POST /api/auth/refresh` | not required (uses **refresh** cookie, not access) | required | Decodes refresh cookie via the rotation algorithm; access cookie is irrelevant here. |
+| `POST /api/auth/logout` | tolerant — no cookie ⇒ 204 + clear | required | Idempotent; never errors so users can always leave. |
+| `POST /api/auth/logout-all`, `POST /api/auth/logout-others` | required (access cookie) | required | Need to identify the user. |
+| `GET /api/auth/me` | required (access cookie) | required | Returns the role/identity used by the SPA. |
+| `GET /api/auth/sessions`, `DELETE /api/auth/sessions/{family_id}` | required (access cookie) | required | Per-family management. |
+| SoT writes (model/file/tag/category mutations) | required (access cookie) | required | Live in `/api/admin/*` already. |
 | SoT reads — `/api/categories`, `/api/tags`, `/api/models`, `/api/models/{id}`, `/api/models/{id}/files`, `/api/models/{id}/files/{file_id}/content` | **NOT required** | required | Anonymous at the app layer; only nginx Basic auth gates them. Verified: `apps/api/app/modules/sot/router.py` does not import `current_user`/`current_admin`. |
 | `/api/share/*` and `/share/*` | not required | **NOT required** | Anonymous by design — share-link tokens authorize access; nginx exempts these paths from Basic auth. |
 
@@ -74,14 +79,14 @@ Three explicit choices:
 
 ### `Secure` flag in dev and the HTTPS-only consequence
 
-`Secure` cookies are not transmitted over plain HTTP, which breaks the local Vite (`localhost:5173`) ↔ FastAPI (`localhost:8090`) flow. Resolution:
+`Secure` cookies are not transmitted over plain HTTP, which breaks the local browser-to-Vite flow (the SPA lives at `http://localhost:5173`, Vite proxies `/api` to FastAPI on `http://localhost:8000`). Resolution:
 
 - New setting `cookie_secure: bool = True` in `app/core/config.py`.
 - Local dev `.env` sets `COOKIE_SECURE=false`. Production `.env` keeps the default.
 - `set_cookie(...)` calls pass `secure=settings.cookie_secure`.
-- `SameSite=Strict` works in both: dev is same-site between Vite and FastAPI on `localhost`; prod is same-site under `3d.ezop.ddns.net`.
+- `SameSite=Strict` works in both: dev is same-site between Vite (`localhost:5173`) and FastAPI on `localhost` — Vite proxies `/api → http://localhost:8000` per `apps/web/vite.config.ts`, so the browser sees a single origin (`localhost:5173`). Prod is same-site under `3d.ezop.ddns.net`.
 
-**Operational consequence:** the production `docker-compose.yml` exposes the web container on host port `8090` for direct LAN access. After this change, browser sessions over `http://192.168.2.190:8090` no longer work — `Secure` cookies are dropped on plain HTTP. Direct-port access becomes a *backend-only* path, valid for `curl`/integration tests but not for interactive browsing. Documented in `AGENTS.md` "Operational notes". User-facing access is `https://3d.ezop.ddns.net` only.
+**Operational consequence:** the production `docker-compose.yml` exposes the web container (nginx serving the SPA + proxying `/api/*` to the API container) on host port `8090` for direct LAN access. The API container itself is not directly exposed; clients always reach the API through the web/nginx proxy. After this change, **interactive browser sessions over `http://192.168.2.190:8090` no longer work** — `Secure` cookies are dropped on plain HTTP regardless of which container terminates the connection. The port stays useful for `curl` against the API path and for integration tests that do not need browser-set cookies. Documented in `AGENTS.md` "Operational notes". User-facing access is `https://3d.ezop.ddns.net` only.
 
 `TestClient` (`fastapi.testclient`, ASGI transport) bypasses the `Secure` flag because it does not enforce HTTP-vs-HTTPS — tests can run with `cookie_secure=true` without setup, but the test fixture sets `COOKIE_SECURE=false` to keep behavior aligned with explicit env state.
 
@@ -137,12 +142,15 @@ Cleanup: a daily worker job `cleanup_refresh_tokens` (arq scheduled task) delete
      - If no active descendant exists (first rotation already revoked again, e.g. logout) → 401 `{"detail": "force_relogin"}`.
    - Else:
      - **Reuse detected.** Update all rows in the family to `revoked_at = now(), revoke_reason = 'reuse_detected'`. Emit `auth.refresh.reuse_detected` audit event with `user_id`, `family_id`, `ip`, `user_agent`. Return 401 `{"detail": "force_relogin"}`.
-5. Happy path:
+5. Happy path (statement order **matters** because of `ux_refresh_tokens_family_active`):
    - Generate `new_secret = secrets.token_urlsafe(32)`.
-   - Insert new row with same `family_id`, `token_hash = sha256(new_secret)`, `expires_at = now() + 30 d`, `last_used_at = now()`, `ip`, `user_agent`.
-   - Update old row: `revoked_at = now(), revoke_reason = 'rotated', replaced_at = now(), replaced_by_id = new.id`.
-   - Issue new access JWT (`exp = now + 10 m`).
-   - Set both cookies. Emit `auth.refresh.success`. Return `200 {"user": MeResponse}`.
+   - **Step 1 — UPDATE old row:** `revoked_at = now(), revoke_reason = 'rotated', replaced_at = now()`. Do **not** touch `replaced_by_id` yet (the new row does not exist, and the FK would fail with SQLite's default immediate FK checking). After this step the family has zero active rows, so the next INSERT will not collide with the partial UNIQUE index.
+   - **Step 2 — INSERT new row:** same `family_id`, same `family_issued_at` (copied from the old row), `token_hash = sha256(new_secret)`, `issued_at = now()`, `expires_at = now() + 30 d`, `last_used_at = now()`, `ip`, `user_agent`.
+   - **Step 3 — UPDATE old row again:** `replaced_by_id = new.id`. The new row now exists, so the FK is satisfied.
+   - **Step 4 — Issue new access JWT** (`exp = now + 10 m`).
+   - Set both cookies. Emit `auth.refresh.success` structured log. Return `200 {"user": MeResponse}`.
+
+   The two-step UPDATE on the old row is the explicit cost of enforcing the partial-active-family invariant in the schema. It is one extra round-trip per rotation (10/h per active user worst case) — negligible vs. the correctness it buys.
 
 **Concurrency.** All read+update steps run inside a single transaction. We rely on three layers, in this order:
 
@@ -159,7 +167,8 @@ This avoids per-engine `isolation_level` tweaks (SQLAlchemy's SQLite dialect doe
 | `POST /api/auth/login` | changed | Verifies password. Creates a new family with one fresh refresh row. Sets both cookies. Returns `{user: MeResponse}`. No tokens in body. |
 | `POST /api/auth/refresh` | new | Algorithm above. |
 | `POST /api/auth/logout` | changed | Revokes current refresh's family with `reason='logout'`. Clears both cookies (`Max-Age=0`). 204. |
-| `POST /api/auth/logout-all` | new | Revokes all of the user's families with `reason='logout_all'`. Clears cookies. 204. |
+| `POST /api/auth/logout-all` | new | Revokes **every** family for the user (including the current one) with `reason='logout_all'`. Clears both cookies on the calling response. 204. UI: "Logout everywhere". |
+| `POST /api/auth/logout-others` | new | Revokes every family for the user **except** the calling family with `reason='logout_all'`. Does **not** clear cookies — the calling session continues. 204. UI: "Logout from all other devices" — used by the sessions screen. |
 | `GET /api/auth/me` | changed | Reads access from cookie. Same response shape as today. |
 | `GET /api/auth/sessions` | new | Returns `[{family_id, last_used_at, ip, user_agent, is_current}]` — one entry per family (not per token in the chain). |
 | `DELETE /api/auth/sessions/{family_id}` | new | Revokes the named family with `reason='manual'`. 403 if the family does not belong to the calling user. If the family is the current one, the response also clears cookies. |
@@ -173,7 +182,9 @@ Granularity choice: sessions UI is per-family because users think "the tablet in
 | `POST /auth/logout` with valid access cookie but no refresh cookie | 204; clear `portal_access` cookie. No DB write. |
 | `POST /auth/logout` after another tab already revoked the family | 204; clear both cookies; do not write a second `auth.logout` audit event (idempotent). |
 | `POST /auth/logout` with no auth at all | 204; clear cookies. The endpoint exempts itself from the auth dependency. |
-| `GET /auth/sessions` when current refresh cookie is absent or stale | 200 with the list, but `is_current` is `false` for every entry. UI shows "Logout from all" button only. |
+| `POST /auth/logout-others` when no other families exist | 204; no DB write; `revoked_count=0`. Calling session unchanged. |
+| `POST /auth/logout-others` when calling refresh cookie does not match any family | 401 — caller is anonymous; sessions screen would not have rendered the button. |
+| `GET /auth/sessions` when current refresh cookie is absent or stale | 200 with the list, but `is_current` is `false` for every entry. UI shows "Logout everywhere" button only (no "logout from others" target). |
 | `DELETE /auth/sessions/{family_id}` revoking the current family | 204 + clear both cookies + structured log; client treats as logout (redirect to `/login`). |
 | `DELETE /auth/sessions/{family_id}` for an already-revoked family | 204 (idempotent); no second audit event. |
 | `DELETE /auth/sessions/{family_id}` for a family that is not the user's | 403 (per spec), regardless of revoke state. |
@@ -236,7 +247,7 @@ Active users with a 10-minute access TTL emit many `auth.refresh.success` events
 | `auth.login.fail` | existing | unchanged |
 | `auth.refresh.reuse_detected` | new | `actor_user_id=user`, `after={family_id, ip, user_agent}` — security incident, must persist |
 | `auth.logout` | changed | `actor_user_id`, `after={family_id}` |
-| `auth.logout_all` | new | `actor_user_id`, `after={revoked_count}` |
+| `auth.logout_all` | new | `actor_user_id`, `after={scope: "all" \| "others", revoked_count}` — same action string for both `logout-all` and `logout-others`; the `scope` field disambiguates. |
 | `auth.session.revoked` | new | manual revoke from `/settings/sessions`; `after={family_id}` |
 
 **Structured logs only (high-volume, hot-path):**
@@ -351,7 +362,7 @@ Consequence: `isAdmin` is asynchronous on first paint. The implementation plan m
 #### Sessions screen (`/settings/sessions`)
 
 - Lazy-loaded route. Link from `UserMenu.tsx` next to "Logout".
-- Hooks: `useSessions()` (`GET /auth/sessions`), `useRevokeSession(family_id)` (`DELETE /auth/sessions/{id}`), `useLogoutAll()` (`POST /auth/logout-all`).
+- Hooks: `useSessions()` (`GET /auth/sessions`), `useRevokeSession(family_id)` (`DELETE /auth/sessions/{id}`), `useLogoutOthers()` (`POST /auth/logout-others`, used by the "Logout from all other devices" button — keeps current session), `useLogoutAll()` (`POST /auth/logout-all`, used by the global "Logout everywhere" affordance in `UserMenu`).
 - Layout: a table with `Last used` (relative time, with absolute timestamp as `title` tooltip), `Device` (parsed user-agent — use existing `ua-parser-js` if already a dep, otherwise raw string truncated to 50 chars; the implementation plan resolves this), `IP`, `is_current` badge, `Revoke` button. Above the table: `Logout from all other devices` button (disabled when there is no "other").
 - **Mobile layout** — at `<sm` breakpoint the table collapses into stacked cards (one per session) so the action button stays reachable on a phone; matches existing mobile-first patterns elsewhere in the SPA.
 - **Current-session protection** — the `Revoke` action on the row marked `is_current` shows a confirmation dialog ("This will log you out of this device — continue?") before firing. Other rows revoke immediately with a small toast.
@@ -402,7 +413,8 @@ Running locally requires `COOKIE_SECURE=false` in the dev API env (Vite → Fast
 | CSRF on a mutating endpoint | `SameSite=Strict` cookies do not leave the SPA; custom `X-Portal-Client` header check on every mutating endpoint blocks any cross-origin POST, even from a hostile subdomain. |
 | Stolen refresh replay | Rotation invalidates the previous refresh on every use. Reuse of a revoked refresh outside the 30-s grace burns the entire family and emits `auth.refresh.reuse_detected`. Inside the grace window, UA-mismatch denies the replay without burning the family (legitimate user keeps working). |
 | Multi-tab / multi-device benign race | 30-s server-side grace + matching `user_agent` returns the current family token instead of treating concurrent refresh as theft. |
-| Stolen refresh used inside grace by same UA | **Conscious tradeoff:** within the 30-s grace window, an attacker on the same UA fingerprint can obtain a session that survives until the next legit rotation — at which point the original detection mechanism still fires (one party will present a revoked token, family burns). The attack window is bounded by the next refresh, typically ≤10 minutes. We accept this in exchange for clean multi-tab UX. Removing grace entirely is the alternative; rejected per design decision 6. |
+| Stolen refresh used inside grace by same UA | **Conscious tradeoff (honestly described):** an attacker who (a) has stolen the previous-generation refresh secret AND (b) presents it within the 30-s grace window AND (c) matches the legitimate descendant's `User-Agent` will obtain the current active token. From that point the attacker holds a valid session and can keep rotating it indefinitely. Detection happens **only when the legitimate browser next presents *its* now-stale refresh** — at which point the family is burned. If the legitimate user closes the tab, lets the device sleep, or simply does not return for hours/days, the attacker's session persists for that entire window. The bound is "until the legitimate client refreshes again", not "≤10 min" — that earlier framing was wrong. |
+| Mitigations available if this tradeoff is unacceptable | (a) drop the server-side grace and rely on the client-side `BroadcastChannel` cross-tab pattern instead — same multi-tab UX, no server-side window for replay; (b) pin grace branch to a short window like 5 s and accept occasional tab relogin; (c) tie grace to refresh-cookie-bound IP bucket as additional fingerprint. None implemented in this slice — the current design accepts the tradeoff for its UX simplicity. The schema and frontend retain the option to switch to (a) later without migration: remove the grace branch in the algorithm, add `BroadcastChannel("portal-auth")` to the singleton, and roll forward. |
 | DB dump | Refresh tokens stored as `SHA-256(secret)`; raw values not recoverable from a dump. JWT secret is operational config, not in DB. |
 | Long-lived JWT after compromise | JWT lives 10 minutes. There is no per-`jti` blocklist (acceptable given 10-min ceiling); a forced global revoke is done by rotating `JWT_SECRET`. |
 
@@ -429,6 +441,7 @@ Running locally requires `COOKIE_SECURE=false` in the dev API env (Vite → Fast
   - Grace window: capture refresh, rotate, present old refresh inside 30 s → 200 with current family token.
   - Per-session logout revokes only the current family; other family still works.
   - `logout-all` revokes every family; subsequent `/refresh` from any returns 401.
+  - `logout-others` revokes every family except the calling family; calling session's next `/refresh` still succeeds; revoked families' refresh attempts return 401.
   - `GET /sessions` returns one entry per family with `is_current` set correctly.
   - `DELETE /sessions/{family_id}` rejects 403 when family belongs to another user.
   - CSRF middleware: POST to `/api/admin/...` without `X-Portal-Client` → 403.
