@@ -7,7 +7,7 @@ def test_login_with_valid_credentials_returns_jwt(client):
     body = r.json()
     assert "access_token" in body
     assert body["token_type"] == "bearer"
-    assert body["expires_in"] == 30 * 60
+    assert body["expires_in"] == 10 * 60
 
 
 def test_login_with_wrong_password_returns_401(client):
