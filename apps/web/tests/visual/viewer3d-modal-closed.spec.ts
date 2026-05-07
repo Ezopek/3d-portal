@@ -7,7 +7,7 @@ const MODEL_ID = "33333333-3333-3333-3333-333333333333";
 const STL_ID = "44444444-4444-4444-4444-444444444444";
 
 test.describe("viewer3d — modal closed selector", () => {
-  test("Expand opens the modal with file pill closed and canvas centred", async ({
+  test("Expand opens the modal at full width with file pill closed", async ({
     page,
   }) => {
     await stubSotList(page);
@@ -20,9 +20,11 @@ test.describe("viewer3d — modal closed selector", () => {
     await page.goto(`/catalog/${MODEL_ID}`);
     await waitForReady(page);
     await page.getByRole("tab", { name: /^files\b/i }).click();
+    await page
+      .getByRole("button", { name: /toggle 3d preview for cube\.stl/i })
+      .click();
     await page.locator("canvas").first().waitFor({ state: "visible" });
     await page.getByRole("button", { name: /expand|powiększ/i }).click();
-    // Wait for the dialog and its inner canvas to mount.
     await page.getByRole("dialog").waitFor({ state: "visible" });
     await page.locator("[role=dialog] canvas").waitFor({ state: "visible" });
     await page.waitForTimeout(500);

@@ -14,7 +14,11 @@ export type FramingOpts = { fovDeg: number; margin: number };
 export function framingDistance(box: Box3, opts: FramingOpts): number {
   const size = new Vector3();
   box.getSize(size);
-  const radius = Math.max(size.x, size.y, size.z) * 0.5;
+  // Use the bounding sphere radius (= half the box diagonal). For an iso
+  // (or any oblique) view the silhouette can be up to sqrt(3) wider than
+  // the longest axis-aligned extent — using max(x,y,z)/2 underframes and
+  // the model spills out of the canvas.
+  const radius = size.length() * 0.5;
   const halfFov = (opts.fovDeg * Math.PI) / 360;
   return (radius / Math.tan(halfFov)) * opts.margin;
 }

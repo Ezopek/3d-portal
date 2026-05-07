@@ -20,11 +20,12 @@ test.describe("viewer3d — modal open selector", () => {
     await page.goto(`/catalog/${MODEL_ID}`);
     await waitForReady(page);
     await page.getByRole("tab", { name: /^files\b/i }).click();
+    await page
+      .getByRole("button", { name: /toggle 3d preview for cube\.stl/i })
+      .click();
     await page.locator("canvas").first().waitFor({ state: "visible" });
     await page.getByRole("button", { name: /expand|powiększ/i }).click();
     await page.getByRole("dialog").waitFor({ state: "visible" });
-    // The selector trigger inside the dialog has aria-label "Plik: cube.stl"
-    // (or "File: cube.stl" for en-US). Click it to open the dropdown.
     await page
       .getByRole("dialog")
       .getByRole("button", { name: /^(plik|file):\s*cube\.stl$/i })

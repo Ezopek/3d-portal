@@ -82,7 +82,7 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
   return (
     <Dialog open onOpenChange={(open) => !open && onClose?.()}>
       <DialogContent
-        className="h-[90vh] w-[95vw] max-w-[1400px] p-0 outline-none"
+        className="h-[90vh] w-[95vw] max-w-[95vw] sm:max-w-[1400px] p-0 outline-none"
         onKeyDown={onKey}
       >
         <DialogTitle className="sr-only">

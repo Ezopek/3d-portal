@@ -18,13 +18,13 @@ test.describe("viewer3d — point-to-point measurement", () => {
     await page.goto(`/catalog/${MODEL_ID}`);
     await waitForReady(page);
     await page.getByRole("tab", { name: /^files\b/i }).click();
+    await page
+      .getByRole("button", { name: /toggle 3d preview for cube\.stl/i })
+      .click();
     await page.locator("canvas").first().waitFor({ state: "visible" });
     await page.getByRole("button", { name: /expand|powiększ/i }).click();
     await page.getByRole("dialog").waitFor({ state: "visible" });
 
-    // Enable measure mode (Ruler icon — tooltip text is "Pomiar (punkt do
-    // punktu)" / "Measure (point-to-point)"). Verify aria-pressed flipped
-    // to confirm the click actually wired through.
     const ruler = page
       .getByRole("dialog")
       .getByRole("button", { name: /pomiar|measure/i });
@@ -32,9 +32,6 @@ test.describe("viewer3d — point-to-point measurement", () => {
     await expect(ruler).toHaveAttribute("aria-pressed", "true");
     await page.waitForTimeout(300);
 
-    // Click on the canvas via Locator.click(position) — Playwright issues a
-    // proper pointer-down/move/up sequence at the given offset relative to
-    // the canvas, which is what R3F's raycaster listens for.
     const canvas = page.locator("[role=dialog] canvas").first();
     const box = await canvas.boundingBox();
     if (box === null) throw new Error("canvas not laid out");
@@ -47,9 +44,6 @@ test.describe("viewer3d — point-to-point measurement", () => {
     });
     await page.waitForTimeout(500);
 
-    // Functional assertion: the off-canvas summary should now show one
-    // measurement formatted as `#1 — X.X mm`. This is the part we trust to
-    // be stable; the WebGL canvas pixels are not.
     await expect(
       page.locator("[role=dialog]").getByText(/#1\s*[—-]\s*\d+\.\d\s*mm/i),
     ).toBeVisible();

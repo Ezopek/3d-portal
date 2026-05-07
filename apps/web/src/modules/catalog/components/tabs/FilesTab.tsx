@@ -1,3 +1,4 @@
+import { Box, ChevronDown, ChevronRight } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -59,6 +60,11 @@ export function FilesTab({
     [files, modelId],
   );
   const stlIndex = useFileIndex(stlFiles);
+  const stlById = useMemo(() => {
+    const m = new Map<string, StlFile>();
+    for (const f of stlFiles) m.set(f.id, f);
+    return m;
+  }, [stlFiles]);
   const thumbnailUrl =
     thumbnailFileId !== undefined && thumbnailFileId !== null
       ? `/api/models/${modelId}/files/${thumbnailFileId}/content`
@@ -69,6 +75,7 @@ export function FilesTab({
     if (isVisible(f.kind)) counts.set(f.kind, (counts.get(f.kind) ?? 0) + 1);
   }
   const visible = files.filter((f) => f.kind === active);
+  const [expandedFileId, setExpandedFileId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalInitialId, setModalInitialId] = useState<string | undefined>(
     undefined,
@@ -94,18 +101,6 @@ export function FilesTab({
         ))}
       </div>
 
-      {active === "stl" && stlFiles.length > 0 && (
-        <Suspense fallback={<div className="text-xs">Loading viewer…</div>}>
-          <Viewer3DInline
-            files={stlFiles}
-            thumbnailUrl={thumbnailUrl}
-            onExpand={(id) => {
-              setModalInitialId(id);
-              setModalOpen(true);
-            }}
-          />
-        </Suspense>
-      )}
       {modalOpen && (
         <Suspense fallback={null}>
           <Viewer3DModal
@@ -144,40 +139,85 @@ export function FilesTab({
         <p className="text-sm text-muted-foreground">no files</p>
       ) : (
         <ul className="divide-y divide-border rounded border border-border">
-          {visible.map((f) => (
-            <li key={f.id} className="flex items-center gap-3 p-2 text-sm">
-              {isAdmin && f.kind === "stl" && (
-                <input
-                  type="checkbox"
-                  aria-label={`include ${f.original_name} in renders`}
-                  checked={f.selected_for_render}
-                  disabled={setRenderSelection.isPending}
-                  onChange={(e) =>
-                    setRenderSelection.mutate({
-                      fileId: f.id,
-                      selected: e.currentTarget.checked,
-                    })
-                  }
-                />
-              )}
-              {f.kind === "stl" && (
-                <span className="w-6 shrink-0 font-mono text-xs text-muted-foreground">
-                  {stlIndex.positionOf(f.id)}
-                </span>
-              )}
-              <span className="font-mono text-xs">{f.kind}</span>
-              <span className="flex-1 truncate">{f.original_name}</span>
-              <span className="text-xs text-muted-foreground">
-                {fmtSize(f.size_bytes)}
-              </span>
-              <a
-                href={`/api/models/${modelId}/files/${f.id}/content?download=1`}
-                className="rounded px-2 py-1 text-xs text-foreground hover:bg-accent"
-              >
-                ⬇
-              </a>
-            </li>
-          ))}
+          {visible.map((f) => {
+            const isStl = f.kind === "stl";
+            const isExpanded = isStl && expandedFileId === f.id;
+            const stlFile = stlById.get(f.id);
+            return (
+              <li key={f.id} className="text-sm">
+                <div className="flex items-center gap-3 p-2">
+                  {isAdmin && isStl && (
+                    <input
+                      type="checkbox"
+                      aria-label={`include ${f.original_name} in renders`}
+                      checked={f.selected_for_render}
+                      disabled={setRenderSelection.isPending}
+                      onChange={(e) =>
+                        setRenderSelection.mutate({
+                          fileId: f.id,
+                          selected: e.currentTarget.checked,
+                        })
+                      }
+                    />
+                  )}
+                  {isStl && (
+                    <span className="w-6 shrink-0 font-mono text-xs text-muted-foreground">
+                      {stlIndex.positionOf(f.id)}
+                    </span>
+                  )}
+                  <span className="font-mono text-xs">{f.kind}</span>
+                  <span className="flex-1 truncate">{f.original_name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {fmtSize(f.size_bytes)}
+                  </span>
+                  {isStl && stlFile !== undefined && (
+                    <button
+                      type="button"
+                      aria-expanded={isExpanded}
+                      aria-controls={`viewer-row-${f.id}`}
+                      aria-label={`Toggle 3D preview for ${f.original_name}`}
+                      onClick={() =>
+                        setExpandedFileId(isExpanded ? null : f.id)
+                      }
+                      className="flex items-center gap-1 rounded px-2 py-1 text-xs text-foreground hover:bg-accent"
+                    >
+                      {isExpanded ? (
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      ) : (
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      )}
+                      <Box className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  <a
+                    href={`/api/models/${modelId}/files/${f.id}/content?download=1`}
+                    className="rounded px-2 py-1 text-xs text-foreground hover:bg-accent"
+                  >
+                    ⬇
+                  </a>
+                </div>
+                {isExpanded && stlFile !== undefined && (
+                  <div
+                    id={`viewer-row-${f.id}`}
+                    className="border-t border-border bg-muted/10 p-3"
+                  >
+                    <Suspense
+                      fallback={<div className="text-xs">Loading viewer…</div>}
+                    >
+                      <Viewer3DInline
+                        file={stlFile}
+                        thumbnailUrl={thumbnailUrl}
+                        onExpand={() => {
+                          setModalInitialId(f.id);
+                          setModalOpen(true);
+                        }}
+                      />
+                    </Suspense>
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

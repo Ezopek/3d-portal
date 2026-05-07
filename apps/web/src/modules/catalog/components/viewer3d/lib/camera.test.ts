@@ -4,11 +4,12 @@ import { Box3, Vector3 } from "three";
 import { framingDistance, viewPresets } from "./camera";
 
 describe("framingDistance", () => {
-  it("returns a distance proportional to the largest extent + margin", () => {
+  it("returns a distance proportional to the bounding sphere + margin", () => {
     const box = new Box3(new Vector3(-10, -10, -10), new Vector3(10, 10, 10));
     const d = framingDistance(box, { fovDeg: 50, margin: 1.15 });
-    expect(d).toBeGreaterThan(20);
-    expect(d).toBeLessThan(60);
+    // Bounding sphere radius = sqrt(3) * 10 ≈ 17.3, distance ≈ 17.3 / tan(25°) * 1.15 ≈ 42.7.
+    expect(d).toBeGreaterThan(35);
+    expect(d).toBeLessThan(50);
   });
 
   it("scales with extent", () => {

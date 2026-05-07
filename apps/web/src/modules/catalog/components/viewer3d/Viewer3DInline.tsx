@@ -1,13 +1,11 @@
-import { Suspense, useReducer, useRef, useState } from "react";
+import { useReducer, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/ui/button";
 
 import { Viewer3DCanvas, type CanvasHandle } from "./Viewer3DCanvas";
 import { ViewToolbar } from "./controls/ViewToolbar";
-import { FileSelector } from "./controls/FileSelector";
 import { MeasureSummary } from "./controls/MeasureSummary";
-import { useFileIndex } from "./hooks/useFileIndex";
 import { usePerfGuard } from "./hooks/usePerfGuard";
 import { useStlGeometry } from "./hooks/useStlGeometry";
 import type { ViewPreset } from "./lib/camera";
@@ -16,128 +14,104 @@ import {
   measureReducer,
   type MeasureAction,
 } from "./measure/measureReducer";
-import type { StlFile, ToolMode, Viewer3DProps } from "./types";
+import type { StlFile, ToolMode } from "./types";
 
 const AUTO_LOAD_BYTES = 5 * 1024 * 1024;
 
-type Props = Viewer3DProps & {
-  onExpand: (activeFileId: string) => void;
+export type Viewer3DInlineProps = {
+  /** Single STL file scoped to this inline mount (one per expanded row). */
+  file: StlFile;
+  /** When set, shown as a placeholder behind an "Open 3D" button until the
+   * user clicks. Without it, files smaller than AUTO_LOAD_BYTES auto-load. */
+  thumbnailUrl?: string;
+  onExpand: () => void;
 };
 
 export default function Viewer3DInline({
-  files,
-  initialFileId,
+  file,
   thumbnailUrl,
   onExpand,
-}: Props) {
+}: Viewer3DInlineProps) {
   const { t } = useTranslation();
-  const idx = useFileIndex(files);
   const perf = usePerfGuard();
-  const firstId = idx.sorted[0]?.id ?? "";
-  const [activeId, setActiveId] = useState<string>(initialFileId ?? firstId);
-  const activeFile = idx.sorted.find((f) => f.id === activeId);
   const shouldAutoLoad =
     thumbnailUrl === undefined &&
-    (activeFile?.size ?? 0) < AUTO_LOAD_BYTES &&
-    !perf.needsConfirmForSize(activeFile?.size);
+    file.size < AUTO_LOAD_BYTES &&
+    !perf.needsConfirmForSize(file.size);
   const [loaded, setLoaded] = useState<boolean>(shouldAutoLoad);
-  const needsConfirm = loaded && perf.needsConfirmForSize(activeFile?.size);
+  const needsConfirm = loaded && perf.needsConfirmForSize(file.size);
   const [confirmed, setConfirmed] = useState(false);
-  // Reset confirmation when the user switches files via the selector — same
-  // pattern used in Viewer3DModal so a confirmed >50 MB file does not let a
-  // sibling >50 MB file skip the gate.
-  const lastSeenId = useRef(activeId);
-  if (lastSeenId.current !== activeId) {
-    lastSeenId.current = activeId;
-    if (confirmed) setConfirmed(false);
-  }
-
-  const sizeMb =
-    activeFile === undefined ? 0 : Math.round(activeFile.size / (1024 * 1024));
+  const sizeMb = Math.round(file.size / (1024 * 1024));
 
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-      <FileSelector files={idx.sorted} activeId={activeId} onSelect={setActiveId} />
-      <div className="relative aspect-square overflow-hidden rounded border border-border bg-muted/30 md:aspect-auto md:min-h-[280px]">
-        {loaded && (!needsConfirm || confirmed) ? (
-          <Suspense
-            fallback={<div className="p-3 text-xs">{t("viewer3d.loading")}</div>}
-          >
-            <CanvasLoader
-              files={idx.sorted}
-              fileId={activeId}
-              onExpand={() => onExpand(activeId)}
-            />
-          </Suspense>
-        ) : loaded && needsConfirm ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3 text-center">
-            <p className="text-sm font-medium">
-              {t("viewer3d.confirm_large.title")}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {t("viewer3d.confirm_large.body", { size: sizeMb })}
-            </p>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setLoaded(false)}
-              >
-                {t("common.cancel")}
-              </Button>
-              <Button
-                type="button"
-                variant="default"
-                size="sm"
-                onClick={() => setConfirmed(true)}
-              >
-                {t("viewer3d.confirm_large.continue")}
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            {thumbnailUrl !== undefined && (
-              <img
-                src={thumbnailUrl}
-                alt={t("viewer3d.placeholder_alt")}
-                className="absolute inset-0 h-full w-full object-contain opacity-60"
-              />
-            )}
+    <div className="relative aspect-square w-full overflow-hidden rounded border border-border bg-muted/30 md:aspect-auto md:min-h-[280px]">
+      {loaded && (!needsConfirm || confirmed) ? (
+        <CanvasLoader file={file} onExpand={onExpand} />
+      ) : loaded && needsConfirm ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3 text-center">
+          <p className="text-sm font-medium">
+            {t("viewer3d.confirm_large.title")}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {t("viewer3d.confirm_large.body", { size: sizeMb })}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setLoaded(false)}
+            >
+              {t("common.cancel")}
+            </Button>
             <Button
               type="button"
               variant="default"
               size="sm"
-              onClick={() => {
-                setLoaded(true);
-                setConfirmed(false);
-              }}
-              className="relative z-10"
+              onClick={() => setConfirmed(true)}
             >
-              {t("viewer3d.open_3d")}
+              {t("viewer3d.confirm_large.continue")}
             </Button>
           </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center">
+          {thumbnailUrl !== undefined && (
+            <img
+              src={thumbnailUrl}
+              alt={t("viewer3d.placeholder_alt")}
+              className="absolute inset-0 h-full w-full object-contain opacity-60"
+            />
+          )}
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            onClick={() => {
+              setLoaded(true);
+              setConfirmed(false);
+            }}
+            className="relative z-10"
+          >
+            {t("viewer3d.open_3d")}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
 
 function CanvasLoader({
-  files,
-  fileId,
+  file,
   onExpand,
 }: {
-  files: readonly StlFile[];
-  fileId: string;
+  file: StlFile;
   onExpand: () => void;
 }) {
   const { t } = useTranslation();
-  const file = files.find((f) => f.id === fileId);
   const { geometry, error, isLoading } = useStlGeometry({
-    modelId: file?.modelId ?? "",
-    fileId,
+    modelId: file.modelId,
+    fileId: file.id,
   });
   const perf = usePerfGuard();
   const isLargeMesh = perf.isLargeMesh(geometry);
@@ -147,6 +121,13 @@ function CanvasLoader({
   const [mode, setMode] = useState<ToolMode>("orbit");
   const [state, dispatch] = useReducer(measureReducer, initialMeasureState);
   const handleRef = useRef<CanvasHandle | null>(null);
+
+  const onKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape" && state.active.points.length > 0) {
+      e.preventDefault();
+      dispatch({ type: "cancel-active" });
+    }
+  };
 
   if (error !== null)
     return (
@@ -163,20 +144,17 @@ function CanvasLoader({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${file?.modelId ?? "model"}-${fileId}.png`;
+    a.download = `${file.modelId}-${file.id}.png`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const onKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "Escape" && state.active.points.length > 0) {
-      e.preventDefault();
-      dispatch({ type: "cancel-active" });
-    }
-  };
-
   return (
-    <div className="absolute inset-0 flex flex-col" onKeyDown={onKey} tabIndex={-1}>
+    <div
+      className="absolute inset-0 flex flex-col"
+      onKeyDown={onKey}
+      tabIndex={-1}
+    >
       <div className="absolute right-2 top-2 z-10">
         <Button type="button" size="sm" variant="secondary" onClick={onExpand}>
           {t("viewer3d.tooltip.expand")}
@@ -207,7 +185,7 @@ function CanvasLoader({
           }}
         />
       </div>
-      <div className="border-t border-border p-2 space-y-2">
+      <div className="space-y-2 border-t border-border p-2">
         <ViewToolbar
           mode={mode}
           onMode={setMode}
@@ -226,9 +204,6 @@ function CanvasLoader({
             })
           }
         />
-        {/* Off-canvas measurement summary (a11y) — collapsed by default to
-            keep the inline pane compact; expand to read the values without
-            relying on the 3D overlay labels. */}
         <details className="text-xs">
           <summary className="cursor-pointer text-muted-foreground">
             {t("viewer3d.measure.summary_title")} ({state.completed.length})
