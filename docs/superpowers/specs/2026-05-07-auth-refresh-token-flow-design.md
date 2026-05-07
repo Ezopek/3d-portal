@@ -29,10 +29,10 @@ We want the strongest practical model for a household portal behind nginx auth_b
 | 3 | Refresh TTL | 30 days, sliding (resets on rotation) |
 | 4 | Refresh rotation | Yes, every refresh issues a new opaque secret |
 | 5 | Reuse detection | Yes — presenting a revoked-and-not-rotated refresh burns the whole family |
-| 6 | Multi-tab grace window | 30 s server-side; presenting a token revoked with `reason=rotated` within 30 s returns the current family token |
+| 6 | Multi-tab grace window | 30 s server-side, gated by matching `user_agent`; presenting a token revoked with `reason=rotated` within 30 s on the same UA returns the current family token. UA mismatch denies without burning the family. |
 | 7 | CSRF strategy | `SameSite=Strict` cookies + custom header `X-Portal-Client: web` checked by middleware on all mutating endpoints |
 | 8 | Logout scope | Per-session by default, plus explicit "logout everywhere", plus `/settings/sessions` UI for granular revoke |
-| 9 | Refresh trigger on client | Pure reactive — fetch wrapper detects 401 + body `detail: "access_expired"`, calls `/auth/refresh`, retries original |
+| 9 | Refresh trigger on client | Pure reactive — fetch wrapper detects 401 + body `detail: "access_expired"` OR `"missing_access"`, calls `/auth/refresh`, retries original once (one-shot guard prevents loops) |
 
 ## Non-goals (out of scope for this project)
 
@@ -189,7 +189,7 @@ Granularity choice: sessions UI is per-family because users think "the tablet in
 | `DELETE /auth/sessions/{family_id}` for an already-revoked family | 204 (idempotent); no second audit event. |
 | `DELETE /auth/sessions/{family_id}` for a family that is not the user's | 403 (per spec), regardless of revoke state. |
 
-`POST /auth/logout-all` is exempt from the CSRF middleware's "must have access cookie" precondition: a stale tab calling `logout-all` should still complete the cleanup. The endpoint does require a valid access cookie to identify the user, but is tolerant of missing refresh cookie.
+CSRF middleware checks the `X-Portal-Client` header, not session state — `logout-all` is not exempt from CSRF (the SPA wrapper sets the header on every call). What `logout-all` IS exempt from is the auth dependency's stricter checks: the endpoint accepts a missing refresh cookie (a stale tab can still complete cleanup) but does require a valid access cookie to identify the user. If the access cookie is also missing/expired, the call returns 401 like any other authenticated endpoint and the client is expected to redirect to login.
 
 ### Auth dependency rewrite (`app/core/auth/dependencies.py`)
 
@@ -226,10 +226,10 @@ async def csrf_guard(request, call_next):
 
 **Standing assumption (CORS).** The custom-header CSRF defense relies on no cross-origin browser being able to set `X-Portal-Client` on a credentialed request without triggering a CORS preflight that we deliberately do not respond to. The FastAPI app **does not** install `CORSMiddleware` today and must not start permitting cross-origin credentialed requests without revisiting this CSRF model. Adding CORS for any non-same-origin caller would weaken this defense and require a token-based CSRF (double-submit-cookie) instead.
 
-**Direct-fetch callsites — must be migrated.** Two callsites bypass the `api()` wrapper and need to be updated to pass `X-Portal-Client: web` and follow the credentials/refresh contract:
+**Direct-fetch callsites — must be audited; one must be migrated.** Two callsites bypass the `api()` wrapper. Each gets a different verdict:
 
-- `apps/web/src/modules/catalog/hooks/mutations/useUploadFile.ts` — multipart upload to `/api/admin/models/{id}/files`. After this change, missing the header → CSRF middleware returns 403. Refactor: keep direct `fetch` (so the multipart `FormData` body is not double-handled), but add `headers: {"X-Portal-Client": "web"}`, `credentials: "include"`, and reuse `refreshAccessToken()` on a 401 with `access_expired`/`missing_access`. `FormData` is a snapshot, so retry with the same instance is safe.
-- `apps/web/src/modules/catalog/components/viewer3d/hooks/useStlGeometry.ts` — fetches STL file content. STL endpoints stay perimeter-protected (anonymous at app layer), so this does not need `X-Portal-Client` for CSRF reasons (it is a `GET`), but it does need to be aware that adding `credentials: "include"` is unnecessary and may even be undesirable here. Decision: leave this fetch untouched. Documented to confirm we audited it.
+- `apps/web/src/modules/catalog/hooks/mutations/useUploadFile.ts` — multipart upload to `/api/admin/models/{id}/files`. **Must be migrated.** It is a mutating `POST` to an admin path; after this change, missing the header → CSRF middleware returns 403. Refactor: keep direct `fetch` (so the multipart `FormData` body is not double-handled), but add `headers: {"X-Portal-Client": "web"}`, `credentials: "include"`, and reuse `refreshAccessToken()` on a 401 with `access_expired`/`missing_access`. `FormData` is a snapshot, so retry with the same instance is safe.
+- `apps/web/src/modules/catalog/components/viewer3d/hooks/useStlGeometry.ts` — fetches STL file content via `GET`. STL endpoints stay perimeter-protected (anonymous at the app layer per the auth-boundary table), so this `GET` is exempt from the CSRF middleware and does not need `X-Portal-Client`. **Audited and intentionally untouched** — leaving it as a plain `fetch(url)` keeps it free of unnecessary cookie surface.
 
 A grep audit (`grep -rn "fetch(" apps/web/src --include="*.ts" --include="*.tsx" | grep -v "lib/api.ts" | grep -v "\.test\."`) is part of the implementation plan to confirm no third callsite slips in.
 
@@ -254,8 +254,13 @@ Active users with a 10-minute access TTL emit many `auth.refresh.success` events
 
 | Action | Notes |
 |---|---|
-| `auth.refresh.success` | `user_id`, `family_id`, `ip`, `user_agent` — emitted via `app.core.logging` to the OTLP/Glitchtip pipeline; not in `audit_log`. |
-| `auth.refresh.grace_ua_mismatch` | new structured warning when grace branch denies a refresh because of UA mismatch (see algorithm step 4). Useful signal without spamming `audit_log`. |
+| `auth.refresh.success` | emitted via `app.core.logging` to the OTLP/Glitchtip pipeline; not in `audit_log`. |
+| `auth.refresh.grace_ua_mismatch` | new structured warning when grace branch denies a refresh because of UA mismatch (see algorithm step 4). |
+
+**Field naming for structured logs.** The current `JsonFormatter` (`apps/api/app/core/logging.py`) only forwards a small allowlist (`http.*`, `url.*`, `client.address`, `user.name`) plus anything prefixed with `labels.` or `event.`. The auth-specific fields used by these logs (`user_id`, `family_id`, `ip`, `user_agent`) therefore must be emitted under one of the recognized prefixes. The plan picks the form before implementation; two viable shapes:
+
+- **Path A (use existing `labels.*` contract):** emit `labels.user_id`, `labels.family_id`, `labels.ip`, `labels.user_agent`, plus `event.action = "auth.refresh.success"` (or `…grace_ua_mismatch`). Zero changes to `logging.py`. Recommended default.
+- **Path B (extend the passthrough allowlist):** add `user.id`, `client.ip`, `user_agent.original` to the `passthrough_keys` set in `logging.py` to align with ECS standard names. Slightly more invasive but produces nicer queries downstream. Decide during planning.
 
 If we later need rate analysis on successful refreshes, the structured log pipeline already feeds Loki/Glitchtip — querying there is cheaper than scanning `audit_log`.
 
@@ -460,5 +465,5 @@ Running locally requires `COOKIE_SECURE=false` in the dev API env (Vite → Fast
 - `UserMenu` displays `display_name` from `meQuery.data`, not a hardcoded role label.
 - Session-expired flow preserves `?next=` and routes back to the original page after re-login.
 - `useUploadFile.ts` migrated: includes `X-Portal-Client`, `credentials: include`, retries multipart upload once on `access_expired`/`missing_access` reusing the same `FormData`.
-- Sessions screen renders the list (desktop + mobile), revokes a session (with current-session confirmation), triggers `logout-all`, and translates strings via `apps/web/src/locales/{en,pl}.json`.
+- Sessions screen renders the list (desktop + mobile), revokes a session (with current-session confirmation), triggers `logout-others` for the "Logout from all other devices" button (current session continues), and translates strings via `apps/web/src/locales/{en,pl}.json`. The global `logout-all` ("Logout everywhere") is exercised separately via `UserMenu`.
 - Visual regression for `/settings/sessions` per project standard — desktop (1280) and mobile (375) viewports.
