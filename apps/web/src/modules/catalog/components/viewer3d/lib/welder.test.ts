@@ -98,4 +98,19 @@ describe("welder.weld", () => {
     const welded = weld(positions, Math.sqrt(2));
     expect(welded.positions.length / 3).toBe(3);
   });
+
+  it("degenerate source triangles get BOUNDARY sentinel, do not contribute indices", () => {
+    const BOUNDARY = 0xffffffff;
+    const positions = new Float32Array([
+      // valid triangle
+      0, 0, 0,  1, 0, 0,  0, 1, 0,
+      // degenerate: all three vertices weld to same point at origin
+      0, 0, 0,  1e-8, 0, 0,  2e-8, 0, 0,
+    ]);
+    const welded = weld(positions, Math.sqrt(2));
+    expect(welded.indices.length / 3).toBe(1); // only the valid triangle
+    expect(welded.sourceToWelded.length).toBe(2);
+    expect(welded.sourceToWelded[0]).toBe(0); // valid triangle → welded id 0
+    expect(welded.sourceToWelded[1]).toBe(BOUNDARY); // degenerate → sentinel
+  });
 });

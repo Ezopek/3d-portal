@@ -46,6 +46,12 @@ export function weld(
   const dedupedPositionsArr = new Float32Array(dedupedPositions);
 
   // 2. Build indices and dedupe degenerate / duplicate triangles.
+  // Triangle dedupe: sorting the three vertex indices means triangles ABC
+  // and ACB (same vertices, opposite winding) merge into one welded triangle.
+  // This is intentional — physically the same surface, and the rendered
+  // geometry's vertex normals are recomputed in parseStl.worker.ts. Cluster
+  // normals downstream are area-weighted from welded face normals, so a
+  // single welded representative gives a consistent normal.
   const triangleKey = (a: number, b: number, c: number) => {
     const sorted = [a, b, c].sort((x, y) => x - y);
     return `${sorted[0]}-${sorted[1]}-${sorted[2]}`;
@@ -60,9 +66,10 @@ export function weld(
     const b = sourceVertexToWelded[3 * t + 1]!;
     const c = sourceVertexToWelded[3 * t + 2]!;
     if (a === b || b === c || a === c) {
-      // Degenerate: still record a mapping so downstream raycasts don't crash;
-      // point at the first welded triangle (or 0 if none yet) — defensive only.
-      sourceToWelded[t] = 0;
+      // Degenerate (all three corners weld to same vertex). Use BOUNDARY
+      // sentinel so downstream consumers (raycast → faceIndex) can detect
+      // and skip rather than aliasing to triangle 0.
+      sourceToWelded[t] = BOUNDARY;
       continue;
     }
     const key = triangleKey(a, b, c);
