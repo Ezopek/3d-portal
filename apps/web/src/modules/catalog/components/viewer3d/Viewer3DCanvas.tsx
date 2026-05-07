@@ -223,8 +223,10 @@ export function Viewer3DCanvas({
         }
       }}
     >
-      <ambientLight intensity={0.4} />
-      <directionalLight intensity={0.8} position={[1, 1, 1]} />
+      <ambientLight intensity={0.25} />
+      <hemisphereLight args={[0xffffff, 0x404040, 0.35]} />
+      <directionalLight intensity={1.0} position={[4, 8, 5]} />
+      <directionalLight intensity={0.25} position={[-3, 2, -4]} />
       <mesh
         ref={meshRef}
         geometry={geometry}
