@@ -6,6 +6,7 @@
     "moduleResolution": "bundler",
     "skipLibCheck": true,
     "composite": true,
+    "emitDeclarationOnly": true,
     "allowSyntheticDefaultImports": true
   },
   "include": ["vite.config.ts", "tests/visual/playwright.config.ts"]
