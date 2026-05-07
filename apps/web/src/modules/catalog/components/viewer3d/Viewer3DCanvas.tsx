@@ -27,6 +27,9 @@ export type CanvasHandle = {
 type Props = {
   geometry: BufferGeometry;
   preset: ViewPreset;
+  /** Increment to force a re-frame even when preset has not changed
+   * (e.g. user dragged the camera around and clicks "Reset view"). */
+  resetSignal: number;
   wireframe: boolean;
   measureMode: MeasureMode;
   state: MeasureState;
@@ -48,9 +51,11 @@ const MOUSE_BUTTONS = {
 function FrameAndControls({
   geometry,
   preset,
+  resetSignal,
 }: {
   geometry: BufferGeometry;
   preset: ViewPreset;
+  resetSignal: number;
 }) {
   const { camera, controls } = useThree() as unknown as {
     camera: PerspectiveCamera;
@@ -69,13 +74,18 @@ function FrameAndControls({
       controls.target.copy(center);
       controls.update();
     }
-  }, [geometry, preset, camera, controls]);
+    // resetSignal is read so a Reset click forces re-frame even when the
+    // preset value hasn't changed (e.g. user is already on iso, drags the
+    // camera around, then clicks Reset).
+    void resetSignal;
+  }, [geometry, preset, resetSignal, camera, controls]);
   return null;
 }
 
 export function Viewer3DCanvas({
   geometry,
   preset,
+  resetSignal,
   wireframe,
   measureMode,
   state,
@@ -141,7 +151,11 @@ export function Viewer3DCanvas({
         dampingFactor={damping ? 0.05 : 0}
         mouseButtons={MOUSE_BUTTONS}
       />
-      <FrameAndControls geometry={geometry} preset={preset} />
+      <FrameAndControls
+        geometry={geometry}
+        preset={preset}
+        resetSignal={resetSignal}
+      />
       <MeasureOverlay
         measurements={state.completed}
         partialPoint={partial}

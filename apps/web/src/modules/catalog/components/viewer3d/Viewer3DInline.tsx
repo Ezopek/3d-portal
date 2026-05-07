@@ -73,6 +73,7 @@ function CanvasLoader({
   const isLargeMesh = perf.isLargeMesh(geometry);
   const triangleCount = perf.triangleCount(geometry);
   const [preset, setPreset] = useState<ViewPreset>("iso");
+  const [resetSignal, setResetSignal] = useState(0);
   const [wireframe, setWireframe] = useState(false);
   const [state, dispatch] = useReducer(measureReducer, initialMeasureState);
   const handleRef = useRef<CanvasHandle | null>(null);
@@ -129,6 +130,7 @@ function CanvasLoader({
         <Viewer3DCanvas
           geometry={geometry}
           preset={preset}
+          resetSignal={resetSignal}
           wireframe={wireframe}
           measureMode={state.mode}
           state={state}
@@ -142,7 +144,10 @@ function CanvasLoader({
       <div className="space-y-2 border-t border-border p-2">
         <ViewToolbar
           onPreset={setPreset}
-          onReset={() => setPreset("iso")}
+          onReset={() => {
+            setPreset("iso");
+            setResetSignal((n) => n + 1);
+          }}
           wireframe={wireframe}
           onWireframe={setWireframe}
           onScreenshot={() => {

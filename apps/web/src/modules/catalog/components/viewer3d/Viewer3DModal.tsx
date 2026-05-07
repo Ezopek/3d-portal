@@ -43,6 +43,7 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
   const triangleCount = perf.triangleCount(geometry);
 
   const [preset, setPreset] = useState<ViewPreset>("iso");
+  const [resetSignal, setResetSignal] = useState(0);
   const [wireframe, setWireframe] = useState(false);
   const [state, dispatch] = useReducer(measureReducer, initialMeasureState);
   const handleRef = useRef<CanvasHandle | null>(null);
@@ -150,6 +151,7 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
               <Viewer3DCanvas
                 geometry={geometry}
                 preset={preset}
+                resetSignal={resetSignal}
                 wireframe={wireframe}
                 measureMode={state.mode}
                 state={state}
@@ -164,7 +166,10 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
           <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2">
             <ViewToolbar
               onPreset={setPreset}
-              onReset={() => setPreset("iso")}
+              onReset={() => {
+                setPreset("iso");
+                setResetSignal((n) => n + 1);
+              }}
               wireframe={wireframe}
               onWireframe={setWireframe}
               onScreenshot={() => {
