@@ -1,4 +1,5 @@
 import { Trash2 } from "lucide-react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/ui/button";
@@ -10,13 +11,34 @@ type Props = {
   onClear: () => void;
 };
 
+function formatRow(m: Measurement, t: TFunction): string {
+  const value = m.distanceMm.toFixed(1);
+  let base: string;
+  if (m.kind === "p2p") {
+    base = t("viewer3d.measure.label", { value });
+  } else if (m.kind === "p2pl") {
+    base = t("viewer3d.measure.row.p2pl", { value });
+  } else {
+    const angle = m.angleDeg.toFixed(1);
+    base =
+      m.pl2plKind === "parallel"
+        ? t("viewer3d.measure.row.pl2pl_parallel", { value, angle })
+        : t("viewer3d.measure.row.pl2pl_closest", { value, angle });
+  }
+  if (m.kind === "pl2pl" && m.approximate) {
+    base += t("viewer3d.measure.row.approximate_suffix");
+  }
+  const weak =
+    (m.kind === "p2pl" && m.weakA) ||
+    (m.kind === "pl2pl" && (m.weakA || m.weakB));
+  if (weak) base += t("viewer3d.measure.row.weak_suffix");
+  return base;
+}
+
 export function MeasureSummary({ measurements, onClear }: Props) {
   const { t } = useTranslation();
   const last = measurements.at(-1);
 
-  // While there are no measurements yet, render only the live region —
-  // the visible panel would otherwise sit on top of the bottom toolbar
-  // on small viewports and intercept pointer events.
   if (measurements.length === 0) {
     return (
       <div role="status" aria-live="polite" className="sr-only">
@@ -45,7 +67,7 @@ export function MeasureSummary({ measurements, onClear }: Props) {
       <ul className="mt-1 space-y-0.5 text-xs font-mono text-foreground">
         {measurements.map((m, i) => (
           <li key={m.id}>
-            #{i + 1} — {m.distanceMm.toFixed(1)} mm
+            #{i + 1} — {formatRow(m, t)}
           </li>
         ))}
       </ul>
