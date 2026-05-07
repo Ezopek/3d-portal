@@ -34,7 +34,8 @@ class Settings(BaseSettings):
     # Auth
     jwt_secret: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
-    jwt_ttl_minutes: int = 30
+    jwt_ttl_minutes: int = 10
+    cookie_secure: bool = True
     admin_email: str = "admin@local"
     admin_password: str = "change-me"
 
