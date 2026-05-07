@@ -77,11 +77,36 @@ export function MeasureOverlay({
             </group>
           );
         }
-        // pl2pl: line between centroids as a visual reference
-        const a = m.planeA.centroid;
-        const b = m.planeB.centroid;
-        const mp = midpoint(a, b);
+        // pl2pl visualization:
+        //   parallel — draw a perpendicular segment from planeA.centroid along
+        //     nA with length = distanceMm. This matches what we measure (wall
+        //     thickness along the normal) instead of the misleading diagonal
+        //     centroid↔centroid line that suggests a point-to-point distance.
+        //   closest  — keep centroid↔centroid as a coarse visual reference;
+        //     we don't store the actual nearest vertex pair, so the true
+        //     min-distance segment isn't recoverable here.
         const angle = m.angleDeg.toFixed(1);
+        let a: Vector3;
+        let b: Vector3;
+        if (m.pl2plKind === "parallel") {
+          const cA = m.planeA.centroid;
+          const cB = m.planeB.centroid;
+          const nA = m.planeA.normal;
+          const signed =
+            (cB.x - cA.x) * nA.x +
+            (cB.y - cA.y) * nA.y +
+            (cB.z - cA.z) * nA.z;
+          a = cA;
+          b = new Vector3(
+            cA.x + nA.x * signed,
+            cA.y + nA.y * signed,
+            cA.z + nA.z * signed,
+          );
+        } else {
+          a = m.planeA.centroid;
+          b = m.planeB.centroid;
+        }
+        const mp = midpoint(a, b);
         return (
           <group key={m.id}>
             <Line points={[a.toArray(), b.toArray()]} color={color} lineWidth={2} />
