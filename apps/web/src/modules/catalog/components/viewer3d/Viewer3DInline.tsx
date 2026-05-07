@@ -14,40 +14,26 @@ import {
   measureReducer,
   type MeasureAction,
 } from "./measure/measureReducer";
-import type { StlFile, ToolMode } from "./types";
-
-const AUTO_LOAD_BYTES = 5 * 1024 * 1024;
+import type { StlFile } from "./types";
 
 export type Viewer3DInlineProps = {
   /** Single STL file scoped to this inline mount (one per expanded row). */
   file: StlFile;
-  /** When set, shown as a placeholder behind an "Open 3D" button until the
-   * user clicks. Without it, files smaller than AUTO_LOAD_BYTES auto-load. */
-  thumbnailUrl?: string;
   onExpand: () => void;
 };
 
-export default function Viewer3DInline({
-  file,
-  thumbnailUrl,
-  onExpand,
-}: Viewer3DInlineProps) {
+export default function Viewer3DInline({ file, onExpand }: Viewer3DInlineProps) {
   const { t } = useTranslation();
   const perf = usePerfGuard();
-  const shouldAutoLoad =
-    thumbnailUrl === undefined &&
-    file.size < AUTO_LOAD_BYTES &&
-    !perf.needsConfirmForSize(file.size);
-  const [loaded, setLoaded] = useState<boolean>(shouldAutoLoad);
-  const needsConfirm = loaded && perf.needsConfirmForSize(file.size);
+  // Expanding the row IS the user's "load this STL" gesture, so the canvas
+  // mounts immediately. The only gate left is the >50 MB confirm dialog.
+  const needsConfirm = perf.needsConfirmForSize(file.size);
   const [confirmed, setConfirmed] = useState(false);
   const sizeMb = Math.round(file.size / (1024 * 1024));
 
   return (
     <div className="relative aspect-square w-full overflow-hidden rounded border border-border bg-muted/30 md:aspect-auto md:min-h-[280px]">
-      {loaded && (!needsConfirm || confirmed) ? (
-        <CanvasLoader file={file} onExpand={onExpand} />
-      ) : loaded && needsConfirm ? (
+      {needsConfirm && !confirmed ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3 text-center">
           <p className="text-sm font-medium">
             {t("viewer3d.confirm_large.title")}
@@ -55,47 +41,17 @@ export default function Viewer3DInline({
           <p className="text-xs text-muted-foreground">
             {t("viewer3d.confirm_large.body", { size: sizeMb })}
           </p>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setLoaded(false)}
-            >
-              {t("common.cancel")}
-            </Button>
-            <Button
-              type="button"
-              variant="default"
-              size="sm"
-              onClick={() => setConfirmed(true)}
-            >
-              {t("viewer3d.confirm_large.continue")}
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="absolute inset-0 flex items-center justify-center">
-          {thumbnailUrl !== undefined && (
-            <img
-              src={thumbnailUrl}
-              alt={t("viewer3d.placeholder_alt")}
-              className="absolute inset-0 h-full w-full object-contain opacity-60"
-            />
-          )}
           <Button
             type="button"
             variant="default"
             size="sm"
-            onClick={() => {
-              setLoaded(true);
-              setConfirmed(false);
-            }}
-            className="relative z-10"
+            onClick={() => setConfirmed(true)}
           >
-            {t("viewer3d.open_3d")}
+            {t("viewer3d.confirm_large.continue")}
           </Button>
         </div>
+      ) : (
+        <CanvasLoader file={file} onExpand={onExpand} />
       )}
     </div>
   );
@@ -118,7 +74,6 @@ function CanvasLoader({
   const triangleCount = perf.triangleCount(geometry);
   const [preset, setPreset] = useState<ViewPreset>("iso");
   const [wireframe, setWireframe] = useState(false);
-  const [mode, setMode] = useState<ToolMode>("orbit");
   const [state, dispatch] = useReducer(measureReducer, initialMeasureState);
   const handleRef = useRef<CanvasHandle | null>(null);
 
@@ -175,7 +130,6 @@ function CanvasLoader({
           geometry={geometry}
           preset={preset}
           wireframe={wireframe}
-          toolMode={mode}
           measureMode={state.mode}
           state={state}
           dispatch={dispatch as (a: MeasureAction) => void}
@@ -187,8 +141,6 @@ function CanvasLoader({
       </div>
       <div className="space-y-2 border-t border-border p-2">
         <ViewToolbar
-          mode={mode}
-          onMode={setMode}
           onPreset={setPreset}
           onReset={() => setPreset("iso")}
           wireframe={wireframe}

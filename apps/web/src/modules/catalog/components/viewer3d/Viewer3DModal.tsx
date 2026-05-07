@@ -17,7 +17,7 @@ import {
   measureReducer,
   type MeasureAction,
 } from "./measure/measureReducer";
-import type { ToolMode, Viewer3DProps } from "./types";
+import type { Viewer3DProps } from "./types";
 
 export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3DProps) {
   const { t } = useTranslation();
@@ -44,7 +44,6 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
 
   const [preset, setPreset] = useState<ViewPreset>("iso");
   const [wireframe, setWireframe] = useState(false);
-  const [mode, setMode] = useState<ToolMode>("orbit");
   const [state, dispatch] = useReducer(measureReducer, initialMeasureState);
   const handleRef = useRef<CanvasHandle | null>(null);
 
@@ -152,7 +151,6 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
                 geometry={geometry}
                 preset={preset}
                 wireframe={wireframe}
-                toolMode={mode}
                 measureMode={state.mode}
                 state={state}
                 dispatch={dispatch as (a: MeasureAction) => void}
@@ -165,8 +163,6 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
           )}
           <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2">
             <ViewToolbar
-              mode={mode}
-              onMode={setMode}
               onPreset={setPreset}
               onReset={() => setPreset("iso")}
               wireframe={wireframe}
@@ -183,7 +179,7 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
               }
             />
           </div>
-          <div className="absolute bottom-3 right-3 z-10 max-w-[280px]">
+          <div className="pointer-events-none absolute bottom-3 right-3 z-10 max-w-[280px]">
             <MeasureSummary
               measurements={state.completed}
               onClear={() => dispatch({ type: "clear" })}

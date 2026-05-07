@@ -1,8 +1,6 @@
 import {
   Camera,
   Maximize2,
-  Move,
-  MousePointer2,
   RotateCcw,
   Ruler,
   Box as BoxIcon,
@@ -15,13 +13,8 @@ import { Button } from "@/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 
 import type { ViewPreset } from "../lib/camera";
-import type { ToolMode } from "../types";
-
-export type { ToolMode };
 
 type Props = {
-  mode: ToolMode;
-  onMode: (m: ToolMode) => void;
   onPreset: (p: ViewPreset) => void;
   onReset: () => void;
   wireframe: boolean;
@@ -72,8 +65,6 @@ function ToolbarButton({
 const PRESETS: ViewPreset[] = ["front", "side", "top", "iso"];
 
 export function ViewToolbar({
-  mode,
-  onMode,
   onPreset,
   onReset,
   wireframe,
@@ -92,21 +83,6 @@ export function ViewToolbar({
     >
       <ToolbarButton label={t("viewer3d.tooltip.reset")} onClick={onReset}>
         <RotateCcw className="h-4 w-4" />
-      </ToolbarButton>
-      <span className="mx-1 h-5 w-px bg-border" />
-      <ToolbarButton
-        label={t("viewer3d.tooltip.orbit")}
-        active={mode === "orbit"}
-        onClick={() => onMode("orbit")}
-      >
-        <MousePointer2 className="h-4 w-4" />
-      </ToolbarButton>
-      <ToolbarButton
-        label={t("viewer3d.tooltip.pan")}
-        active={mode === "pan"}
-        onClick={() => onMode("pan")}
-      >
-        <Move className="h-4 w-4" />
       </ToolbarButton>
       <span className="mx-1 h-5 w-px bg-border" />
       {PRESETS.map((p) => (

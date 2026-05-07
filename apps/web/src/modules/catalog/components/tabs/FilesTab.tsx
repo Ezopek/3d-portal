@@ -36,11 +36,9 @@ function isVisible(kind: ModelFileKind): kind is Visible {
 export function FilesTab({
   modelId,
   files,
-  thumbnailFileId,
 }: {
   modelId: string;
   files: readonly ModelFileRead[];
-  thumbnailFileId?: string | null;
 }) {
   const [active, setActive] = useState<Visible>("stl");
   const { isAdmin } = useAuth();
@@ -65,10 +63,6 @@ export function FilesTab({
     for (const f of stlFiles) m.set(f.id, f);
     return m;
   }, [stlFiles]);
-  const thumbnailUrl =
-    thumbnailFileId !== undefined && thumbnailFileId !== null
-      ? `/api/models/${modelId}/files/${thumbnailFileId}/content`
-      : undefined;
 
   const counts = new Map<Visible, number>();
   for (const f of files) {
@@ -206,7 +200,6 @@ export function FilesTab({
                     >
                       <Viewer3DInline
                         file={stlFile}
-                        thumbnailUrl={thumbnailUrl}
                         onExpand={() => {
                           setModalInitialId(f.id);
                           setModalOpen(true);

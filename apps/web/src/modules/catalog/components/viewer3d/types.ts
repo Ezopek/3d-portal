@@ -9,8 +9,6 @@ export type StlFile = {
 
 export type MeasureMode = "off" | "point-to-point";
 
-export type ToolMode = "orbit" | "pan";
-
 export type Measurement = {
   id: string;
   a: Vector3;
@@ -27,6 +25,5 @@ export type MeasureState = {
 export type Viewer3DProps = {
   files: readonly StlFile[];
   initialFileId?: string;
-  thumbnailUrl?: string;
   onClose?: () => void;
 };

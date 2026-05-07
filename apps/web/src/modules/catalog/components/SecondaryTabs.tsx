@@ -36,11 +36,7 @@ export function SecondaryTabs({ detail }: { detail: ModelDetail }) {
         </TabsList>
       </div>
       <TabsContent value="files">
-        <FilesTab
-          modelId={detail.id}
-          files={detail.files}
-          thumbnailFileId={detail.thumbnail_file_id}
-        />
+        <FilesTab modelId={detail.id} files={detail.files} />
       </TabsContent>
       {isAdmin && (
         <TabsContent value="photos">
