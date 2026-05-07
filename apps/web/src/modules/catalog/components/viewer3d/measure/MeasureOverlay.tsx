@@ -13,6 +13,12 @@ type Props = {
   color: Color;
 };
 
+// Solid dark badge with white text — readable on both light and dark scenes
+// regardless of the user's theme. The translucent "bg-primary/text-primary-
+// foreground" pair we used in v1 washed out into the dark scene background.
+const LABEL_CLASS =
+  "whitespace-nowrap rounded bg-zinc-900/95 px-2 py-0.5 text-xs font-medium text-white shadow-md ring-1 ring-white/15";
+
 function projectPointToPlane(
   point: Vector3,
   centroid: Vector3,
@@ -39,9 +45,10 @@ export function MeasureOverlay({
   return (
     <>
       {measurements.map((m, i) => {
+        const num = `#${i + 1}`;
         if (m.kind === "p2p") {
           const mp = midpoint(m.a, m.b);
-          const label =
+          const value =
             showAssumed === true && i === 0
               ? t("viewer3d.measure.assumed", { value: m.distanceMm.toFixed(1) })
               : formatMm(m.distanceMm);
@@ -49,8 +56,8 @@ export function MeasureOverlay({
             <group key={m.id}>
               <Line points={[m.a.toArray(), m.b.toArray()]} color={color} lineWidth={2} />
               <Html position={[mp.x, mp.y, mp.z]} center>
-                <span className="rounded bg-primary px-2 py-0.5 text-xs text-primary-foreground shadow">
-                  {label}
+                <span className={LABEL_CLASS}>
+                  {num} {value}
                 </span>
               </Html>
             </group>
@@ -63,8 +70,8 @@ export function MeasureOverlay({
             <group key={m.id}>
               <Line points={[m.point.toArray(), foot.toArray()]} color={color} lineWidth={2} />
               <Html position={[mp.x, mp.y, mp.z]} center>
-                <span className="rounded bg-primary px-2 py-0.5 text-xs text-primary-foreground shadow">
-                  {formatMm(m.distanceMm)}
+                <span className={LABEL_CLASS}>
+                  {num} {formatMm(m.distanceMm)}
                 </span>
               </Html>
             </group>
@@ -79,8 +86,8 @@ export function MeasureOverlay({
           <group key={m.id}>
             <Line points={[a.toArray(), b.toArray()]} color={color} lineWidth={2} />
             <Html position={[mp.x, mp.y, mp.z]} center>
-              <span className="rounded bg-primary px-2 py-0.5 text-xs text-primary-foreground shadow">
-                {`${formatMm(m.distanceMm)} @ ${angle}°`}
+              <span className={LABEL_CLASS}>
+                {num} {`${formatMm(m.distanceMm)} @ ${angle}°`}
               </span>
             </Html>
           </group>

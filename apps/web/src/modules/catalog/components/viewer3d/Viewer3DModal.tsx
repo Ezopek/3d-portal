@@ -351,6 +351,7 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
             <MeasureSummary
               measurements={state.completed}
               onClear={() => dispatch({ type: "clear" })}
+              onDelete={(id) => dispatch({ type: "delete-measurement", id })}
             />
           </div>
         </div>

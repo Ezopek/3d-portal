@@ -1,4 +1,4 @@
-import { Trash2 } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
@@ -9,6 +9,7 @@ import type { Measurement } from "../types";
 type Props = {
   measurements: readonly Measurement[];
   onClear: () => void;
+  onDelete?: (id: string) => void;
 };
 
 function formatRow(m: Measurement, t: TFunction): string {
@@ -35,7 +36,7 @@ function formatRow(m: Measurement, t: TFunction): string {
   return base;
 }
 
-export function MeasureSummary({ measurements, onClear }: Props) {
+export function MeasureSummary({ measurements, onClear, onDelete }: Props) {
   const { t } = useTranslation();
   const last = measurements.at(-1);
 
@@ -66,8 +67,24 @@ export function MeasureSummary({ measurements, onClear }: Props) {
       </div>
       <ul className="mt-1 space-y-0.5 text-xs font-mono text-foreground">
         {measurements.map((m, i) => (
-          <li key={m.id}>
-            #{i + 1} — {formatRow(m, t)}
+          <li key={m.id} className="flex items-center gap-1">
+            <span className="flex-1">
+              #{i + 1} — {formatRow(m, t)}
+            </span>
+            {onDelete !== undefined && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={t("viewer3d.measure.delete_one", {
+                  n: i + 1,
+                })}
+                onClick={() => onDelete(m.id)}
+                className="h-5 w-5 shrink-0 opacity-60 hover:opacity-100"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            )}
           </li>
         ))}
       </ul>

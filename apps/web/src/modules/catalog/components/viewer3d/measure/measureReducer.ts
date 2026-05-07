@@ -15,6 +15,7 @@ export type MeasureAction =
   | { type: "replace-active-plane"; plane: Plane }
   | { type: "clear" }
   | { type: "cancel-active" }
+  | { type: "delete-measurement"; id: string }
   | {
       type: "patch-last-pl2pl";
       distanceMm: number;
@@ -143,6 +144,18 @@ export function measureReducer(
 
     case "cancel-active":
       return { ...state, active: { stage: "empty" } };
+
+    case "delete-measurement": {
+      const idx = state.completed.findIndex((m) => m.id === action.id);
+      if (idx === -1) return state;
+      return {
+        ...state,
+        completed: [
+          ...state.completed.slice(0, idx),
+          ...state.completed.slice(idx + 1),
+        ],
+      };
+    }
 
     case "patch-last-pl2pl": {
       const last = state.completed[state.completed.length - 1];

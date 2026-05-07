@@ -315,6 +315,7 @@ function CanvasLoader({
             <MeasureSummary
               measurements={state.completed}
               onClear={() => dispatch({ type: "clear" })}
+              onDelete={(id) => dispatch({ type: "delete-measurement", id })}
             />
           </div>
         </details>

@@ -112,6 +112,7 @@
   "viewer3d.measure.assumed": "{{value}} mm (assumed)",
   "viewer3d.measure.label": "{{value}} mm",
   "viewer3d.measure.clear": "Clear measurements",
+  "viewer3d.measure.delete_one": "Delete measurement #{{n}}",
   "viewer3d.measure.summary_title": "Measurements",
   "viewer3d.measure.summary_empty": "No measurements yet. Click two points on the model.",
   "viewer3d.measure.live": "Measurement: {{value}} millimetres",
