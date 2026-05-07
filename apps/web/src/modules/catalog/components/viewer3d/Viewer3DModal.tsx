@@ -52,7 +52,7 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
     // Cancel an in-progress measurement before letting Dialog catch Esc and
     // close the modal — user expectation is "Esc backs out of the smallest
     // operation in flight first".
-    if (e.key === "Escape" && state.active.points.length > 0) {
+    if (e.key === "Escape" && state.active.stage !== "empty") {
       e.preventDefault();
       e.stopPropagation();
       dispatch({ type: "cancel-active" });

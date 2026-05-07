@@ -113,11 +113,11 @@ export function Viewer3DCanvas({
   };
 
   const partial =
-    state.active.points.length === 1 && state.active.points[0] !== undefined
+    state.active.stage === "have-point"
       ? {
-          x: state.active.points[0].x,
-          y: state.active.points[0].y,
-          z: state.active.points[0].z,
+          x: state.active.point.x,
+          y: state.active.point.y,
+          z: state.active.point.z,
         }
       : null;
 

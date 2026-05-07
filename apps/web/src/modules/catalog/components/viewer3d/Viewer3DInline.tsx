@@ -79,9 +79,11 @@ function CanvasLoader({
   const handleRef = useRef<CanvasHandle | null>(null);
 
   const onKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "Escape" && state.active.points.length > 0) {
+    if (e.key === "Escape" && state.active.stage !== "empty") {
       e.preventDefault();
+      e.stopPropagation();
       dispatch({ type: "cancel-active" });
+      return;
     }
   };
 

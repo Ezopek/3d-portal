@@ -23,6 +23,9 @@ export function MeasureOverlay({
   return (
     <>
       {measurements.map((m, i) => {
+        // Only p2p measurements have a line drawn in 3D space for now;
+        // p2pl and pl2pl overlays will be added in later tasks.
+        if (m.kind !== "p2p") return null;
         const mp = midpoint(m.a, m.b);
         const label =
           showAssumed === true && i === 0
