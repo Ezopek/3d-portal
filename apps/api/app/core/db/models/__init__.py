@@ -5,6 +5,7 @@ Re-exports every public symbol so imports of the historical form
 without changes at call sites.
 """
 
+from ._auth import RefreshToken
 from ._audit import AuditLog
 from ._entities import (
     Category,
@@ -41,6 +42,7 @@ __all__ = [
     "ModelStatus",
     "ModelTag",
     "NoteKind",
+    "RefreshToken",
     "Tag",
     "User",
     "UserRole",
