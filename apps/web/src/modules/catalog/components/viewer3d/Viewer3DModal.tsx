@@ -271,7 +271,10 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
                 stage={state.active.stage}
                 loading={prep.loading}
                 error={prep.error}
-                onDismissError={() => prep.cancel()}
+                onDismissError={() => {
+                  prep.cancel();
+                  dispatch({ type: "set-mode", mode: "off" });
+                }}
                 position="modal"
               />
               <Viewer3DCanvas

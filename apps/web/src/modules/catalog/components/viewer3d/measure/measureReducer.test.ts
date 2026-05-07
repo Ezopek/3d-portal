@@ -235,5 +235,7 @@ describe("measureReducer — plane modes", () => {
       approximate: false,
     });
     expect(s1).toBe(s0); // exact reference equality (returned unchanged state)
+    const s2 = measureReducer(s0, { type: "patch-last-p2pl", distanceMm: 5 });
+    expect(s2).toBe(s0); // exact reference equality
   });
 });

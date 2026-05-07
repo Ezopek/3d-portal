@@ -234,7 +234,10 @@ function CanvasLoader({
           stage={state.active.stage}
           loading={prep.loading}
           error={prep.error}
-          onDismissError={() => prep.cancel()}
+          onDismissError={() => {
+            prep.cancel();
+            dispatch({ type: "set-mode", mode: "off" });
+          }}
           position="inline"
         />
         <Viewer3DCanvas
