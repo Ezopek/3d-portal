@@ -147,6 +147,7 @@ function CanvasLoader({
           onReset={() => {
             setPreset("iso");
             setResetSignal((n) => n + 1);
+            dispatch({ type: "clear" });
           }}
           wireframe={wireframe}
           onWireframe={setWireframe}

@@ -169,6 +169,7 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
               onReset={() => {
                 setPreset("iso");
                 setResetSignal((n) => n + 1);
+                dispatch({ type: "clear" });
               }}
               wireframe={wireframe}
               onWireframe={setWireframe}
