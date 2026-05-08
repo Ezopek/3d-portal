@@ -58,6 +58,9 @@ workers/render/.local-renders/
 # Implementation plans — kept local-only on purpose (may reference internal hosts/paths)
 docs/plans/
 
+# BMAD planning + implementation artifacts — local-only (may reference internal hosts/paths)
+_bmad-output/
+
 tmp/
 
 # Orchestration logs (local-only operational state)

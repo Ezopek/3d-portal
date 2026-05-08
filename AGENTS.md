@@ -6,7 +6,7 @@ Vendor-neutral source of truth for AI agents working in this repo. Per-platform 
 
 Self-hosted 3D printing portal for Michał's homelab. v1 implements a catalog browser for the model collection at `/mnt/c/Users/ezope/Nextcloud/3d_modelowanie/`. Future modules (print queue, filament inventory, printer status, print requests) have architectural slots but no implementation in v1.
 
-Authoritative spec: `docs/design/2026-04-29-portal-design.md`. Current implementation plan: `docs/plans/2026-04-29-portal-v1-implementation.md`.
+Authoritative spec: `docs/design/2026-04-29-portal-design.md`. Current implementation plan: `docs/plans/2026-04-29-portal-v1-implementation.md`. AI-agent execution rules and unobvious gotchas: `_bmad-output/project-context.md` (regenerated via the BMAD `bmad-generate-project-context` skill).
 
 ## Repository layout
 
