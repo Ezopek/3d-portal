@@ -17,6 +17,8 @@
   "common.next": "Następna",
   "auth.login": "Zaloguj się",
   "auth.logout": "Wyloguj",
+  "auth.logout_everywhere": "Wyloguj wszędzie",
+  "auth.sessions.menu_link": "Aktywne sesje",
   "auth.email": "E-mail",
   "auth.password": "Hasło",
   "catalog.title": "Katalog modeli",
