@@ -106,3 +106,63 @@ The `.190` host is the dev/working environment. After every code or infra
 commit to `main`, run `infra/scripts/deploy.sh` immediately, without asking.
 Doc-only commits (changes confined to `docs/`, `*.md`, `AGENTS.md`,
 `CLAUDE.md`, etc.) skip the deploy.
+
+## Operational notes — auth cookies
+
+The portal uses **cookie-based auth** (no Bearer token in localStorage).
+Key facts for agents working on auth, ops, or debugging:
+
+### Access modes
+
+- **Production:** `https://3d.ezop.ddns.net` only. The `Secure` flag on both
+  auth cookies means browser sessions over plain HTTP (e.g.
+  `http://192.168.2.190:8090`) will not work — the browser will drop the
+  cookies. Port 8090 remains useful for `curl` API calls that pass credentials
+  explicitly, but interactive browser use requires HTTPS.
+- **Local dev:** API runs on `http://localhost:8000`; Vite proxies `/api` to
+  it. Set `COOKIE_SECURE=false` in the API environment so the cookies are
+  issued without the `Secure` flag. The test suite already sets this in
+  `apps/api/tests/conftest.py`; for a running dev server ensure `.env` or the
+  shell environment contains `COOKIE_SECURE=false`.
+
+### Cookies
+
+Two cookies are set on every successful login / token refresh:
+
+| Cookie | Content | Path | Max-Age |
+|---|---|---|---|
+| `portal_access` | signed JWT | `/api` | 10 min |
+| `portal_refresh` | opaque 32-byte token | `/api/auth` | 30 days |
+
+Both are `httpOnly`, `Secure` (unless overridden), `SameSite=Strict`. The
+refresh token is rotated on every use (refresh-token rotation). Reuse of an
+already-rotated token triggers family invalidation — all sessions for that
+user are revoked.
+
+### CSRF requirement
+
+All mutating requests to `/api/*` (except the public `/api/share/*` routes)
+require the custom header:
+
+```
+X-Portal-Client: web
+```
+
+Non-browser clients (scripts, `curl`, integration tests) hitting mutating
+endpoints must include this header. The frontend `apiFetch` wrapper in
+`apps/web/src/lib/api.ts` adds it automatically.
+
+### Sessions UI
+
+Authenticated users can view all active devices and revoke individual sessions
+at `/settings/sessions`. The backend endpoint is `GET /api/auth/sessions` /
+`DELETE /api/auth/sessions/{token_id}`.
+
+### arq worker (cleanup cron)
+
+Expired and revoked refresh-token rows are cleaned up by a daily arq cron job
+at **03:15 UTC**. The cron definition lives in
+`apps/api/app/workers/__init__.py` (`WorkerSettings`). It runs in a dedicated
+`arq-worker` Docker container (see `infra/docker-compose.yml`) that shares
+the same image, environment, and volumes as the `api` service but overrides
+the command to `arq app.workers.WorkerSettings` and exposes no HTTP port.
