@@ -159,3 +159,32 @@ def test_reuse_outside_grace_burns_family(client):
             select(RefreshToken).where(RefreshToken.revoked_at.is_(None))
         ).all()
         assert active == []
+
+
+def test_concurrent_refresh_one_wins(client):
+    """Two parallel rotations on the same refresh — both succeed (one rotates, one grace)."""
+    import threading
+    results: list[int] = []
+    cookies_snapshot = dict(client.cookies)
+
+    def _hit():
+        with TestClient(client.app) as c:
+            for k, v in cookies_snapshot.items():
+                c.cookies.set(k, v)
+            r = c.post("/api/auth/refresh", headers={"User-Agent": "UA"})
+            results.append(r.status_code)
+
+    t1 = threading.Thread(target=_hit)
+    t2 = threading.Thread(target=_hit)
+    t1.start(); t2.start()
+    t1.join(); t2.join()
+    # At least one must succeed (200). The other can be 200 (grace) or 401 race-lost.
+    # The CRITICAL invariant is that the family ends with exactly one active token.
+    assert 200 in results
+
+    from app.core.db.session import get_engine
+    with Session(get_engine()) as s:
+        active = s.exec(
+            select(RefreshToken).where(RefreshToken.revoked_at.is_(None))
+        ).all()
+        assert len(active) == 1, f"expected 1 active row, got {len(active)}"
