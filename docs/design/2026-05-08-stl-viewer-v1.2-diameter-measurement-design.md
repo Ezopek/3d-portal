@@ -1,15 +1,45 @@
 # STL Viewer v1.2 — Diameter (rim) measurement + per-measurement palette
 
-**Status:** Design — not yet implemented
+**Status:** Implemented (v4 reflects post-smoke calibration)
 **Author:** Michał + Claude
 **Date:** 2026-05-08
 **Supersedes:** Extends `2026-05-06-stl-viewer-design.md` §12.2 (deferred
 "diameter / hole / circle measurement") and `2026-05-07-stl-viewer-v1.1-plane-measurement-design.md`
-**Revision:** v3 (second-round Codex review)
+**Revision:** v4 (post-implementation smoke calibration)
 
 ## Revision history
 
-- **v3 (this)** — second Codex review pass.
+- **v4 (this)** — calibration fixes from manual smoke testing on real
+  catalog STLs (drying-rack-with-holes, Handle, Snaptor) after the
+  implementation landed.
+  - **Dedupe near-coincident consecutive loop verts (0.1 mm).** Some
+    STL exporters split each rim vertex into micro-offset
+    sub-tolerance duplicates the welder can't merge under its
+    bbox-relative threshold. Result: hole rims returned 2N verts in
+    pairs, breaking the angular-gap test. Added a dedup pass at the
+    start of `fitCircle` that collapses consecutive points within
+    0.1 mm. The threshold sits well below typical tessellation
+    segment length (~0.4 mm at r=4.5 mm with 73 segments) so it
+    can't merge legitimate vertex spacing.
+  - **`MAX_ANGULAR_GAP_RATIO` 2.0 → 3.0.** Even after dedup, real
+    catalog meshes show angular variance in the 2.0–2.5 range. The
+    spec's 2.0 was calibrated against synthetic uniform polygons.
+    Bumped to 3.0 — still rejects squares/rectangles (caught by
+    `MIN_LOOP_VERTICES` first), pentagons (same), and ellipses
+    (sagitta gate fires first). Real-world rims pass; if angular
+    variance > 1.5 × mean, the rim still gets the `weak` flag.
+  - **`StepBanner` Diameter case + diameter in mesh-prep loading
+    branch.** `pickKey()` fell through to pl2pl default in Diameter
+    mode, showing "Click first flat surface (1/2)". Added explicit
+    `mode === "diameter"` → `viewer3d.measure.diameter.help` branch.
+    Loading branch extended to cover diameter (it joined
+    `needsWelding` in v1.2).
+  - **Cosmetic: drop double "mm mm" in diameter labels.** Both the
+    `viewer3d.measure.diameter.format` template ("Ø {{value}} mm")
+    and the `formatMm()` helper add "mm" — passing
+    `formatMm(diameterMm)` as `{{value}}` produced "Ø 9.0 mm mm".
+    Fixed by passing `m.diameterMm.toFixed(1)` (raw number string).
+- **v3** — second Codex review pass.
   - **Sagitta gate calibrated for hex.** v2 had `SAGITTA_MULTIPLIER =
     2.0` which rejected even `weak` hex holes at moderate radii (e.g.,
     R=5 mm: hex sagitta 0.67 mm > 0.5 mm threshold). Bumped to
@@ -673,7 +703,8 @@ export const RESIDUUM_RATIO = 0.05;       // 5% of radius
 export const SAGITTA_MULTIPLIER = 3.0;    // midpoint tolerance = SAGITTA_MULTIPLIER × vertex tolerance — bumped from 2.0 in v3 so hex (sagitta ≈ 0.134R) survives as `weak`
 export const MIN_LOOP_VERTICES = 6;       // reject anything below this — no fit attempted
 export const WEAK_LOOP_VERTICES = 12;     // [6, 12) loops are at best weak
-export const MAX_ANGULAR_GAP_RATIO = 2.0; // largest vertex angular gap / mean ≤ this
+export const MAX_ANGULAR_GAP_RATIO = 3.0; // largest vertex angular gap / mean ≤ this — bumped from 2.0 in v4 after smoke testing real STLs
+export const CONSECUTIVE_DEDUP_MM = 0.1;  // v4: collapse near-coincident consecutive verts (STL exporter pair-split artifact)
 
 export function fitCircle(
   loopVerts: number[],
@@ -690,9 +721,15 @@ Pipeline (each step `null` is hard reject, no fit returned):
    loop, 4 vertices). Remember the cube case — 4 corners that lie exactly on
    a circle still pass any algebraic circle fit; only "we don't accept loops
    this short" stops it.
-2. **Snapshot positions.** Copy `Vector3`s for each `loopVerts[i]` into a
-   `Vector3[]` (we'll keep this in `Rim.loopPoints` so the rim survives
-   weld-cache eviction).
+2. **Snapshot positions + dedupe near-coincident consecutive verts (v4).**
+   Copy `Vector3`s for each `loopVerts[i]` into a `Vector3[]` (we'll keep
+   this in `Rim.loopPoints` so the rim survives weld-cache eviction). Then
+   collapse consecutive points within `CONSECUTIVE_DEDUP_MM` (0.1 mm) into
+   one. Some STL exporters split each rim vertex into micro-offset
+   sub-tolerance duplicates the welder can't merge — without dedup the hole
+   rim returns 2N verts in clusters of pairs and the angular-gap check
+   rejects legitimate circular rims. Also handle wrap-around (last point
+   close to first). After dedup, re-check `MIN_LOOP_VERTICES`.
 3. **Plane fit (PCA).** Centroid + 3×3 covariance matrix (over `loopPoints`).
    Eigenvectors via Jacobi rotation (small constant matrix; ~50 lines).
    Smallest eigenvalue → plane normal. **Reject** if `λ_min / λ_avg >
