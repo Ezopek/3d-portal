@@ -1,5 +1,6 @@
 import {
   Camera,
+  Circle,
   Grid3x3,
   Layers,
   PencilRuler,
@@ -112,10 +113,17 @@ export function ViewToolbar({
       >
         <Layers className="h-4 w-4" />
       </ToolbarButton>
+      <ToolbarButton
+        label={t("viewer3d.measure.mode.diameter")}
+        active={mode === "diameter"}
+        onClick={() => toggle("diameter")}
+      >
+        <Circle className="h-4 w-4" />
+      </ToolbarButton>
       <TolerancePopover
         toleranceDeg={toleranceDeg}
         onChange={onTolerance}
-        disabled={mode === "off" || mode === "point-to-point"}
+        disabled={mode !== "point-to-plane" && mode !== "plane-to-plane"}
       />
     </div>
   );
