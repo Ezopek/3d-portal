@@ -351,3 +351,73 @@ def revoke_session(
             clear_session_cookies(response)
     response.status_code = status.HTTP_204_NO_CONTENT
     return response
+
+
+@router.post("/logout-all", status_code=204)
+def logout_all(
+    response: Response,
+    session: Annotated[Session, Depends(get_session)],
+    user_id: uuid.UUID = current_user,
+) -> Response:
+    rows = session.exec(
+        select(RefreshToken)
+        .where(RefreshToken.user_id == user_id)
+        .where(RefreshToken.revoked_at.is_(None))
+    ).all()
+    now = datetime.datetime.now(datetime.UTC)
+    for r in rows:
+        r.revoked_at = now
+        r.revoke_reason = "logout_all"
+        session.add(r)
+    session.commit()
+    record_event(
+        get_engine(),
+        action="auth.logout_all",
+        entity_type="user",
+        entity_id=user_id,
+        actor_user_id=user_id,
+        after={"scope": "all", "revoked_count": len(rows)},
+    )
+    clear_session_cookies(response)
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
+
+
+@router.post("/logout-others", status_code=204)
+def logout_others(
+    request: Request,
+    response: Response,
+    session: Annotated[Session, Depends(get_session)],
+    user_id: uuid.UUID = current_user,
+) -> Response:
+    current_secret = request.cookies.get(REFRESH_COOKIE)
+    current_family: uuid.UUID | None = None
+    if current_secret:
+        cur = find_by_secret(session, current_secret)
+        if cur is not None and cur.user_id == user_id:
+            current_family = cur.family_id
+
+    stmt = (
+        select(RefreshToken)
+        .where(RefreshToken.user_id == user_id)
+        .where(RefreshToken.revoked_at.is_(None))
+    )
+    if current_family is not None:
+        stmt = stmt.where(RefreshToken.family_id != current_family)
+    rows = session.exec(stmt).all()
+    now = datetime.datetime.now(datetime.UTC)
+    for r in rows:
+        r.revoked_at = now
+        r.revoke_reason = "logout_all"
+        session.add(r)
+    session.commit()
+    record_event(
+        get_engine(),
+        action="auth.logout_all",
+        entity_type="user",
+        entity_id=user_id,
+        actor_user_id=user_id,
+        after={"scope": "others", "revoked_count": len(rows)},
+    )
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response

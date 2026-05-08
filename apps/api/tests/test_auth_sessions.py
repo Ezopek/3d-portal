@@ -96,3 +96,35 @@ def test_sessions_delete_current_clears_cookies(client):
     assert r2.status_code == 401
 
 
+def test_logout_all_revokes_every_family(client):
+    _login_other_device(client.app)
+    r = client.post("/api/auth/logout-all")
+    assert r.status_code == 204
+    # Both families gone.
+    from app.core.db.session import get_engine
+    with Session(get_engine()) as s:
+        active = s.exec(select(RefreshToken).where(RefreshToken.revoked_at.is_(None))).all()
+        assert active == []
+    # Subsequent /me on this client 401.
+    assert client.get("/api/auth/me").status_code == 401
+
+
+def test_logout_others_keeps_current_family(client):
+    sub, other_refresh = _login_other_device(client.app)
+    r = client.post("/api/auth/logout-others")
+    assert r.status_code == 204
+    # Current session still works.
+    assert client.get("/api/auth/me").status_code == 200
+    # Other refresh now invalid.
+    sub.cookies.set(REFRESH_COOKIE, other_refresh, path="/api/auth")
+    r2 = sub.post("/api/auth/refresh")
+    assert r2.status_code == 401
+
+
+def test_logout_others_with_no_other_returns_204(client):
+    """Single-session user calling logout-others is a no-op success."""
+    r = client.post("/api/auth/logout-others")
+    assert r.status_code == 204
+    assert client.get("/api/auth/me").status_code == 200
+
+
