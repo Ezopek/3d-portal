@@ -12,7 +12,7 @@ export type WeldedMesh = {
 };
 
 const MIN_GRANULARITY_MM = 1e-5;
-const BOUNDARY = 0xffffffff;
+export const BOUNDARY = 0xffffffff;
 
 /**
  * Vertex count below which welding runs synchronously on main thread.
