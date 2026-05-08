@@ -31,6 +31,8 @@ from app.modules.auth.models import (
     LoginRequest,
     LoginResponse,
     MeResponse,
+    SessionRow,
+    SessionsResponse,
 )
 
 _LOG = logging.getLogger("app.auth.refresh")
@@ -268,3 +270,84 @@ def refresh(
             role=user.role.value,
         )
     )
+
+
+@router.get("/sessions", response_model=SessionsResponse)
+def list_sessions(
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    user_id: uuid.UUID = current_user,
+) -> SessionsResponse:
+    current_secret = request.cookies.get(REFRESH_COOKIE)
+    current_family: uuid.UUID | None = None
+    if current_secret:
+        cur = find_by_secret(session, current_secret)
+        if cur is not None and cur.user_id == user_id:
+            current_family = cur.family_id
+
+    rows = session.exec(
+        select(RefreshToken)
+        .where(RefreshToken.user_id == user_id)
+        .where(RefreshToken.revoked_at.is_(None))
+    ).all()
+    # Group by family_id, keep one row per family (the active leaf).
+    by_family: dict[uuid.UUID, RefreshToken] = {}
+    for r in rows:
+        by_family[r.family_id] = r
+
+    items = [
+        SessionRow(
+            family_id=r.family_id,
+            last_used_at=r.last_used_at,
+            family_issued_at=r.family_issued_at,
+            ip=r.ip,
+            user_agent=r.user_agent,
+            is_current=(r.family_id == current_family),
+        )
+        for r in by_family.values()
+    ]
+    items.sort(key=lambda i: i.last_used_at or i.family_issued_at, reverse=True)
+    return SessionsResponse(items=items)
+
+
+@router.delete("/sessions/{family_id}", status_code=204)
+def revoke_session(
+    family_id: uuid.UUID,
+    request: Request,
+    response: Response,
+    session: Annotated[Session, Depends(get_session)],
+    user_id: uuid.UUID = current_user,
+) -> Response:
+    rows = session.exec(
+        select(RefreshToken).where(RefreshToken.family_id == family_id)
+    ).all()
+    if not rows:
+        response.status_code = status.HTTP_204_NO_CONTENT
+        return response  # idempotent
+    if any(r.user_id != user_id for r in rows):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "forbidden_family")
+
+    now = datetime.datetime.now(datetime.UTC)
+    for r in rows:
+        if r.revoked_at is None:
+            r.revoked_at = now
+            r.revoke_reason = "manual"
+            session.add(r)
+    session.commit()
+    record_event(
+        get_engine(),
+        action="auth.session.revoked",
+        entity_type="user",
+        entity_id=user_id,
+        actor_user_id=user_id,
+        after={"family_id": str(family_id)},
+    )
+
+    # If revoking current family, clear cookies.
+    current_secret = request.cookies.get(REFRESH_COOKIE)
+    if current_secret:
+        cur = find_by_secret(session, current_secret)
+        if cur is not None and cur.family_id == family_id:
+            clear_session_cookies(response)
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
