@@ -11,7 +11,8 @@ export type MeasureMode =
   | "off"
   | "point-to-point"
   | "point-to-plane"
-  | "plane-to-plane";
+  | "plane-to-plane"
+  | "diameter";
 
 export type Plane = {
   centroid: Vector3;
@@ -21,13 +22,35 @@ export type Plane = {
   weak: boolean;
 };
 
+export type Rim = {
+  /** Center of the fitted circle in mesh-local frame. */
+  center: Vector3;
+  /** Plane normal (unit). */
+  axis: Vector3;
+  /** mm. */
+  radius: number;
+  /** Absolute coordinates of loop vertices, snapshotted from welded.positions
+   *  at fit time. After commit the rim does not depend on the welded mesh. */
+  loopPoints: Vector3[];
+  /** Any of weakV / weakM / weakA / weakN signals (see circleFit.ts). */
+  weak: boolean;
+};
+
 export type Pl2plKind = "parallel" | "closest";
 
 export type Measurement =
-  | { kind: "p2p"; id: string; a: Vector3; b: Vector3; distanceMm: number }
+  | {
+      kind: "p2p";
+      id: string;
+      colorIndex: number;
+      a: Vector3;
+      b: Vector3;
+      distanceMm: number;
+    }
   | {
       kind: "p2pl";
       id: string;
+      colorIndex: number;
       point: Vector3;
       plane: Plane;
       distanceMm: number;
@@ -36,6 +59,7 @@ export type Measurement =
   | {
       kind: "pl2pl";
       id: string;
+      colorIndex: number;
       planeA: Plane;
       planeB: Plane;
       distanceMm: number;
@@ -44,6 +68,14 @@ export type Measurement =
       approximate: boolean;
       weakA: boolean;
       weakB: boolean;
+    }
+  | {
+      kind: "diameter";
+      id: string;
+      colorIndex: number;
+      rim: Rim;
+      diameterMm: number;
+      weak: boolean;
     };
 
 export type MeasureActiveStage =
