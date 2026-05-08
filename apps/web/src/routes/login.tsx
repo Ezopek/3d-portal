@@ -1,15 +1,14 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
-import { writeToken } from "@/lib/auth";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 
-interface LoginResponse {
-  access_token: string;
-  expires_in: number;
+interface LoginSearch {
+  next?: string;
 }
 
 function Login() {
@@ -17,21 +16,21 @@ function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const search = useSearch({ from: "/login" });
+  const qc = useQueryClient();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     try {
-      const r = await api<LoginResponse>("/auth/login", {
+      await api("/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
-      writeToken(r.access_token, r.expires_in);
-      // Full page navigation: AuthProvider reads localStorage synchronously at
-      // its top-level render, so soft-nav (TanStack Router) leaves the auth
-      // context stale until a reload. Router-aware refresh lands in a later
-      // slice; for now hard-load is the minimal correct behavior.
-      window.location.assign("/");
+      await qc.invalidateQueries({ queryKey: ["auth", "me"] });
+      const next = search.next ? decodeURIComponent(search.next) : "/";
+      await navigate({ to: next as "/" });
     } catch {
       setError(t("errors.not_found"));
     }
@@ -48,4 +47,11 @@ function Login() {
   );
 }
 
-export const Route = createFileRoute("/login")({ component: Login });
+export const Route = createFileRoute("/login")({
+  component: Login,
+  validateSearch: (raw: Record<string, unknown>): LoginSearch => {
+    return typeof raw.next === "string" && raw.next.length > 0
+      ? { next: raw.next }
+      : {};
+  },
+});

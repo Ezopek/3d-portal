@@ -1,18 +1,34 @@
+import { useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
-import { clearToken } from "@/lib/auth";
+import { api } from "@/lib/api";
 import { useAuth } from "@/shell/AuthContext";
 import { Button } from "@/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
 
 export function UserMenu() {
   const { t } = useTranslation();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+
+  async function logout(endpoint: "/auth/logout" | "/auth/logout-all") {
+    try {
+      await api(endpoint, { method: "POST" });
+    } catch {
+      /* ignore network errors — session is gone either way */
+    }
+    await qc.invalidateQueries({ queryKey: ["auth", "me"] });
+    await navigate({ to: "/login" });
+  }
+
   if (!isAuthenticated) {
     return (
       <Button variant="outline" size="sm" render={<a href="/login" />}>
@@ -20,19 +36,24 @@ export function UserMenu() {
       </Button>
     );
   }
+
+  const label = user?.display_name ?? user?.email ?? "Account";
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
-        Admin
+        {label}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem
-          onClick={() => {
-            clearToken();
-            window.location.reload();
-          }}
-        >
+        <DropdownMenuItem render={<a href="/settings/sessions" />}>
+          {t("auth.sessions.menu_link")}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => void logout("/auth/logout")}>
           {t("auth.logout")}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => void logout("/auth/logout-all")}>
+          {t("auth.logout_everywhere")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

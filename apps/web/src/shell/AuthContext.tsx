@@ -1,10 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
 
-import { ApiError, api } from "@/lib/api";
+import { api } from "@/lib/api";
 import type { MeResponse, Role } from "@/lib/api-types";
-import { clearToken, readToken } from "@/lib/auth";
-import { decodeJwtRole } from "@/lib/jwt";
 
 interface AuthState {
   user: MeResponse | null;
@@ -29,38 +27,27 @@ const ANONYMOUS: AuthState = {
 const AuthCtx = createContext<AuthState>(ANONYMOUS);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const stored = readToken();
-  const role = stored === null ? null : decodeJwtRole(stored.token);
-  const isAuthenticated = stored !== null && role !== null;
-
-  const meQuery = useQuery<MeResponse, ApiError>({
-    queryKey: ["auth", "me", stored?.token ?? null],
+  const meQuery = useQuery<MeResponse>({
+    queryKey: ["auth", "me"],
     queryFn: () => api<MeResponse>("/auth/me"),
-    enabled: isAuthenticated,
+    retry: false,
     staleTime: 5 * 60 * 1000,
   });
 
-  // If /me responds 401, the token is no good — clear it. Reload so the
-  // synchronous reads pick up the cleared state. (No router dep here.)
-  useEffect(() => {
-    if (meQuery.isError && meQuery.error instanceof ApiError && meQuery.error.status === 401) {
-      clearToken();
-      window.location.reload();
-    }
-  }, [meQuery.isError, meQuery.error]);
-
   const value = useMemo<AuthState>(() => {
-    if (!isAuthenticated) return ANONYMOUS;
+    if (meQuery.isPending) return { ...ANONYMOUS, isLoading: true };
+    if (meQuery.isError) return ANONYMOUS;
+    const u = meQuery.data!;
     return {
-      user: meQuery.data ?? null,
-      role,
-      isAdmin: role === "admin",
-      isMember: role === "member",
-      isAdminOrAgent: role === "admin" || role === "agent",
+      user: u,
+      role: u.role,
+      isAdmin: u.role === "admin",
+      isMember: u.role === "member",
+      isAdminOrAgent: u.role === "admin" || u.role === "agent",
       isAuthenticated: true,
-      isLoading: meQuery.isLoading,
+      isLoading: false,
     };
-  }, [isAuthenticated, role, meQuery.data, meQuery.isLoading]);
+  }, [meQuery.isPending, meQuery.isError, meQuery.data]);
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
