@@ -53,3 +53,45 @@ def test_login_bad_password_rejects(client):
     r = client.post("/api/auth/login",
                     json={"email": "admin@example.com", "password": "wrong"})
     assert r.status_code == 401
+
+
+def test_me_returns_current_user_via_cookie(client):
+    client.post("/api/auth/login",
+                json={"email": "admin@example.com", "password": "pw"})
+    r = client.get("/api/auth/me")
+    assert r.status_code == 200
+    assert r.json()["email"] == "admin@example.com"
+
+
+def test_me_no_cookie_returns_missing_access(client):
+    r = client.get("/api/auth/me")
+    assert r.status_code == 401
+    assert r.json()["detail"] == "missing_access"
+
+
+def test_logout_revokes_family_and_clears_cookies(client):
+    client.post("/api/auth/login",
+                json={"email": "admin@example.com", "password": "pw"})
+    r = client.post("/api/auth/logout")
+    assert r.status_code == 204
+    set_cookies = r.headers.get_list("set-cookie") if hasattr(r.headers, "get_list") else [
+        v for k, v in r.headers.items() if k.lower() == "set-cookie"
+    ]
+    assert any(("portal_access" in c) and ("Max-Age=0" in c or 'expires=' in c.lower()) for c in set_cookies)
+    assert any(("portal_refresh" in c) and ("Max-Age=0" in c or 'expires=' in c.lower()) for c in set_cookies)
+    r2 = client.get("/api/auth/me")
+    assert r2.status_code == 401
+
+
+def test_logout_with_no_cookies_returns_204(client):
+    r = client.post("/api/auth/logout")
+    assert r.status_code == 204
+
+
+def test_logout_idempotent_double_call(client):
+    client.post("/api/auth/login",
+                json={"email": "admin@example.com", "password": "pw"})
+    a = client.post("/api/auth/logout")
+    b = client.post("/api/auth/logout")
+    assert a.status_code == 204
+    assert b.status_code == 204

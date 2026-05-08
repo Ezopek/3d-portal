@@ -89,3 +89,55 @@ def login(
             role=user.role.value,
         )
     )
+
+
+@router.get("/me", response_model=MeResponse)
+def me(
+    session: Annotated[Session, Depends(get_session)],
+    user_id: uuid.UUID = current_user,
+) -> MeResponse:
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found")
+    return MeResponse(
+        id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        role=user.role.value,
+    )
+
+
+@router.post("/logout", status_code=204)
+def logout(
+    request: Request,
+    response: Response,
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Idempotent. Tolerates missing cookies/auth — always succeed and clear."""
+    refresh_secret = request.cookies.get(REFRESH_COOKIE)
+    if refresh_secret:
+        row = find_by_secret(session, refresh_secret)
+        if row is not None and row.revoked_at is None:
+            now = datetime.datetime.now(datetime.UTC)
+            family_rows = session.exec(
+                select(RefreshToken).where(
+                    RefreshToken.family_id == row.family_id,
+                    RefreshToken.revoked_at.is_(None),
+                )
+            ).all()
+            for r in family_rows:
+                r.revoked_at = now
+                r.revoke_reason = "logout"
+                session.add(r)
+            session.commit()
+            record_event(
+                get_engine(),
+                action="auth.logout",
+                entity_type="user",
+                entity_id=row.user_id,
+                actor_user_id=row.user_id,
+                after={"family_id": str(row.family_id)},
+            )
+    clear_session_cookies(response)
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
