@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { weld } from "../lib/welder";
-import { walkEdgeLoop, LOOP_MAX_VERTICES } from "./loopWalk";
+import { walkEdgeLoop } from "./loopWalk";
 
 function buildAxisAlignedCube(): { positions: Float32Array } {
   const v = [

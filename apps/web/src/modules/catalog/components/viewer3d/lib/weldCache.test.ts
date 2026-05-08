@@ -11,6 +11,14 @@ function fakeWelded(): WeldedMesh {
     sourceToWelded: new Uint32Array(0),
     weldedToSourceStart: new Uint32Array(1),
     weldedToSource: new Uint32Array(0),
+    graph: {
+      edges: new Uint32Array(0),
+      triangles: new Uint32Array(0),
+      dihedralAngles: new Float32Array(0),
+      vertexEdges: new Uint32Array(0),
+      vertexEdgesStart: new Uint32Array(1),
+      triangleEdgeIds: new Uint32Array(0),
+    },
   };
 }
 

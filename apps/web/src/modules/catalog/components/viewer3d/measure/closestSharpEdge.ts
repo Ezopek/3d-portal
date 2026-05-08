@@ -48,7 +48,8 @@ function bfsFindSharpEdge(
 ): SharpEdgeId | null {
   const visited = new Set<number>([startTri]);
   let frontier: number[] = [startTri];
-  let best: { id: SharpEdgeId; dist: number } | null = null;
+  let bestId: SharpEdgeId | null = null;
+  let bestDist = Infinity;
   for (let depth = 0; depth < maxDepth; depth++) {
     const nextFrontier: number[] = [];
     for (const t of frontier) {
@@ -60,11 +61,14 @@ function bfsFindSharpEdge(
         const candidate = pickClosestSharpEdgeOnTriangle(welded, graph, neighbor, hitPoint);
         if (candidate !== null) {
           const dist = pointToWeldedEdgeDistance(welded, graph, candidate, hitPoint);
-          if (best === null || dist < best.dist) best = { id: candidate, dist };
+          if (dist < bestDist) {
+            bestId = candidate;
+            bestDist = dist;
+          }
         }
       }
     }
-    if (best !== null) return best.id;
+    if (bestId !== null) return bestId;
     frontier = nextFrontier;
     if (frontier.length === 0) break;
   }

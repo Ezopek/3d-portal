@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { Vector3 } from "three";
 import { fitCircle, MIN_LOOP_VERTICES } from "./circleFit";
 
 function regularPolygonOnCircle(N: number, r: number, axis: "z" | "x" = "z"): { positions: Float32Array; loop: number[] } {
