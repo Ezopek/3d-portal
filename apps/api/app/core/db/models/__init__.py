@@ -25,7 +25,7 @@ from ._enums import (
     NoteKind,
     UserRole,
 )
-from ._helpers import _now_utc, sa_uuid_type, uuid_fk
+from ._helpers import UTCDateTime, _now_utc, sa_uuid_type, uuid_fk
 from ._user import User
 
 __all__ = [
@@ -46,6 +46,7 @@ __all__ = [
     "Tag",
     "User",
     "UserRole",
+    "UTCDateTime",
     "_now_utc",
     "sa_uuid_type",
     "uuid_fk",
