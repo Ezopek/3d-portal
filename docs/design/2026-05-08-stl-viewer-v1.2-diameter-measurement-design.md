@@ -5,11 +5,48 @@
 **Date:** 2026-05-08
 **Supersedes:** Extends `2026-05-06-stl-viewer-design.md` §12.2 (deferred
 "diameter / hole / circle measurement") and `2026-05-07-stl-viewer-v1.1-plane-measurement-design.md`
-**Revision:** v2 (post-Codex review)
+**Revision:** v3 (second-round Codex review)
 
 ## Revision history
 
-- **v2 (this)** — addresses Codex review (review file in same directory).
+- **v3 (this)** — second Codex review pass.
+  - **Sagitta gate calibrated for hex.** v2 had `SAGITTA_MULTIPLIER =
+    2.0` which rejected even `weak` hex holes at moderate radii (e.g.,
+    R=5 mm: hex sagitta 0.67 mm > 0.5 mm threshold). Bumped to
+    `SAGITTA_MULTIPLIER = 3.0`, which keeps hex passing as `weak` up
+    to and beyond catalog-realistic radii while still rejecting
+    squares/rectangles (which are caught by `MIN_LOOP_VERTICES`
+    anyway) and ellipses.
+  - **Palette `PAIR_LIGHTNESS_DARK` 0.50 → 0.55.** v2's value put the
+    worst-case sel2 at ~2.77:1 contrast against the canvas
+    (`#0d1422`), failing the 3:1 acceptance criterion. 0.55 brings
+    every sample to ≥ 3.43:1.
+  - **`walkEdgeLoop` signature corrected** to take `SharpEdgeGraph`
+    and `SharpEdgeId` (a leftover stale signature from v1's
+    Float32Array-style sharp edges).
+  - **Rim line closes by appending first point**, not by drei's
+    `closed` prop (which only exists on `<CatmullRomLine>`, not
+    `<Line>`). Spec now says explicitly: `points = [...loopPoints,
+    loopPoints[0]]` when feeding `<Line>`.
+  - **z-fighting fix uses `depthTest=false` on rim line**, not
+    `polygonOffset` (which has no effect on `LineMaterial`). Rim line
+    + center dot + label render with `renderOrder = 1` and
+    `depthTest = false` so they sit cleanly on top of the mesh.
+  - **Toast uses `sonner`** (the project's actual toast lib), not a
+    fictional `useToast` hook.
+  - **Click toast suppressed while prep is in flight.** "No circular
+    rim detected here" would mislead the user when the real reason is
+    "prep isn't finished yet" — and the StepBanner already says
+    "Preparing mesh…", so a parallel toast is noise.
+  - **Test fixture descriptions clarified.** "Smooth 256-seg dome"
+    fixture is now described as "closed sphere" (boundary edges count
+    as sharp under the §4.1 rule, so an open dome's equator would
+    create false sharp edges in the test). Replace with sphere or
+    explicitly assert "0 sharp internal edges, N=256 boundary edges
+    along open seam if any."
+  - **`ColorManagement` import removed** from §3.1 example (was
+    unused — lint would catch).
+- **v2** — addresses first-round Codex review (review file in same directory).
   - **P1.1 Detector false-positives.** Vertex-only circle fit accepts
     cube faces, rectangles, regular polygons. Added: minimum 6 loop
     vertices (reject < 6); midpoint sagitta check (chord midpoints
@@ -226,12 +263,18 @@ review.
    valid click on a visible rim cannot fail because the hover
    pipeline is one frame behind.
 5. **Click on no-rim (synchronous detection returned null):** brief
-   non-modal toast: `viewer3d.measure.diameter.no_rim` ("No circular
-   rim detected here" / "Tu nie wykryto okrągłej krawędzi"). Toast
-   uses existing `useToast` infrastructure; rate-limited to once per
-   2 s per Diameter session (suppressed if a successful click happens
-   in between). Hover-without-preview remains silent — only the
-   explicit click triggers the toast.
+   non-modal toast: `toast(t("viewer3d.measure.diameter.no_rim"))`
+   ("No circular rim detected here" / "Tu nie wykryto okrągłej
+   krawędzi"). Toast uses **`sonner`** (the project's existing toast
+   lib — see existing usages of `import { toast } from "sonner"`),
+   rate-limited to once per 2 s per Diameter session (suppressed if a
+   successful click happens in between). Hover-without-preview remains
+   silent.
+   **Suppression while prep is in flight (v3 fix):** if `prep.loading
+   === true` (welding + edge-graph build still running), the toast is
+   suppressed — `StepBanner` already says "Preparing mesh…", and a
+   parallel "no rim detected" toast would mislead the user about the
+   real reason for the no-op.
 
 ### 2.3 Visualization — completed Diameter measurement
 
@@ -239,15 +282,20 @@ A committed `kind:"diameter"` measurement renders three pieces in 3D:
 
 | Element | Geometry | Color |
 |---|---|---|
-| Rim loop | drei `<Line>`, `lineWidth: 2`, points = `rim.loopPoints` in loop order, closed = true | `bright sel1` of palette[`m.colorIndex`] |
+| Rim loop | drei `<Line>`, `lineWidth: 2`, `points = [...rim.loopPoints, rim.loopPoints[0]]` (loop closed by appending the first point — drei `<Line>` has no `closed` prop, only `<CatmullRomLine>` does) | `bright sel1` of palette[`m.colorIndex`] |
 | Center dot | `<mesh>` with `<sphereGeometry args={[max(0.5, radius*0.04), 12, 12]} />` at `rim.center` | same as rim |
 | Label | `<Html>` HTML badge, classes match v1.1 `LABEL_CLASS`. Text: `#N Ø 25.0 mm` (or `#N ~Ø 25.0 mm` if `weak: true`). Position: `rim.center + tangent * (radius + 4mm)`. | white text, dark zinc background |
 
-**Label/line depth:** rim line and label render with `renderOrder = 1`
-and the rim mesh material uses `polygonOffset: { factor: -1, units: -1 }`
-so the line sits cleanly above the mesh edge it traces (no
-z-fighting). Center dot uses default depth (it's a small sphere, can
-get occluded behind the model — desired behavior).
+**Z-fighting / depth (v3 fix).** `LineMaterial` doesn't honour
+`polygonOffset` (that's a `MeshBasicMaterial` thing). Instead:
+
+- Rim line uses `depthTest = false`, `depthWrite = false`, `renderOrder
+  = 1`. The line always renders on top of the mesh — a small
+  always-visible cue is desired for "this is what we measured".
+- Center dot uses default depth: it's a small sphere, occlusion
+  behind mesh is fine.
+- Label is HTML in screen-space (drei `<Html>`); its depth is handled
+  by drei's occlusion machinery — leave default.
 
 **Tangent (label-position) selection** — screen-aware with hysteresis:
 
@@ -351,12 +399,12 @@ planes.
 `apps/web/src/modules/catalog/components/viewer3d/lib/palette.ts`:
 
 ```ts
-import { Color, ColorManagement, LinearSRGBColorSpace } from "three";
+import { Color, LinearSRGBColorSpace } from "three";
 
 const BASE_HUE_DEG = 200;
 const GOLDEN_ANGLE_DEG = 137.50776;
 const PAIR_LIGHTNESS_BRIGHT = 0.78; // sel1
-const PAIR_LIGHTNESS_DARK = 0.50;   // sel2
+const PAIR_LIGHTNESS_DARK = 0.55;   // sel2 — bumped from 0.50 in v3 to clear 3:1 contrast vs #0d1422
 const PAIR_CHROMA = 0.18;
 
 export type PaletteSlot = "sel1" | "sel2";
@@ -405,14 +453,12 @@ export function oklchToLinearSrgb(L: number, C: number, hueDeg: number): [number
 - For every overlay color produced by `paletteFor(idx, slot)` for `idx
   ∈ [0, 16)` and `slot ∈ {sel1, sel2}`, contrast ratio against the
   viewer canvas clear color (`#0d1422`) must be ≥ **3:1** (WCAG 1.4.11
-  non-text contrast). At `L=0.50` (sel2) this is the hard case;
-  measured ratios for the chosen `BASE_HUE / golden angle` parameters
-  must be checked at spec-implementation time and stored as a unit
-  test (`palette.test.ts` — see §8.1) so future tuning of constants
-  doesn't silently regress.
-- If any palette index falls below 3:1, raise `PAIR_LIGHTNESS_DARK`
-  by 0.05 increments until the constraint holds for the full sample
-  range.
+  non-text contrast). With v3's `PAIR_LIGHTNESS_DARK = 0.55` the
+  worst-case sel2 lands ≈ 3.43:1 (computed during review). The unit
+  test (`palette.test.ts`, §8.1) asserts ≥ 3.0:1 so future tuning of
+  constants is gated.
+- If a future change drops any palette index below 3:1, raise
+  `PAIR_LIGHTNESS_DARK` further (0.05 steps).
 - HTML swatches in `MeasureSummary` always render with `border:
   1px solid var(--border)` (see §2.7) so light-on-light theme
   combinations never lose the swatch.
@@ -570,8 +616,8 @@ export const LOOP_MAX_VERTICES = 512;
 
 export function walkEdgeLoop(
   welded: WeldedMesh,
-  sharpEdges: Float32Array,
-  start: SharpEdgeRef,
+  graph: SharpEdgeGraph,
+  startEdge: SharpEdgeId,
 ): number[] | null {
   // Returns welded vertex indices in loop order, or null on:
   //   - loop > LOOP_MAX_VERTICES
@@ -624,7 +670,7 @@ export type Rim = {
 export const PLANARITY_RATIO_MAX = 0.05;  // λ_min / λ_avg
 export const RESIDUUM_FLOOR_MM = 0.1;
 export const RESIDUUM_RATIO = 0.05;       // 5% of radius
-export const SAGITTA_MULTIPLIER = 2.0;    // midpoint tolerance = SAGITTA_MULTIPLIER × vertex tolerance
+export const SAGITTA_MULTIPLIER = 3.0;    // midpoint tolerance = SAGITTA_MULTIPLIER × vertex tolerance — bumped from 2.0 in v3 so hex (sagitta ≈ 0.134R) survives as `weak`
 export const MIN_LOOP_VERTICES = 6;       // reject anything below this — no fit attempted
 export const WEAK_LOOP_VERTICES = 12;     // [6, 12) loops are at best weak
 export const MAX_ANGULAR_GAP_RATIO = 2.0; // largest vertex angular gap / mean ≤ this
@@ -659,14 +705,19 @@ Pipeline (each step `null` is hard reject, no fit returned):
    loop vertices. Threshold = `max(RESIDUUM_FLOOR_MM, RESIDUUM_RATIO * r)`.
    **Reject** if `vertexRes > threshold`. `weakV = vertexRes > 0.5 *
    threshold`.
-7. **Midpoint sagitta check (P1.1 in v2).** For each consecutive pair
-   `(vi, vi+1)` in 2D, compute the chord midpoint `mi = 0.5 * (vi + vi+1)`.
-   For a true tessellated circle, `‖mi - center2D‖ ≈ r * cos(π/N)`; for a
-   square or rectangle this distance can be `r/√2` (~ `0.707 r`),
-   visibly off-circle. `midpointRes = max(|‖mi - center2D‖ - r|)`. Threshold
-   = `SAGITTA_MULTIPLIER × vertex threshold` (chord midpoints for an
-   N-segment circle deviate by sagitta `r * (1 - cos(π/N))`; the multiplier
-   absorbs this expected deviation). **Reject** if `midpointRes >
+7. **Midpoint sagitta check (P1.1 in v2, calibrated in v3).** For each
+   consecutive pair `(vi, vi+1)` in 2D, compute the chord midpoint
+   `mi = 0.5 * (vi + vi+1)`. `midpointRes = max(|‖mi - center2D‖ - r|)`.
+   Threshold = `SAGITTA_MULTIPLIER × vertex threshold = 3 × max(0.1 mm,
+   0.05 r) = max(0.3 mm, 0.15 r)`. Background: an N-segment regular
+   inscribed polygon has chord-midpoint sagitta `r * (1 - cos(π/N))`. For
+   N=6 (hex), that's 0.134 r; the 0.15 r threshold leaves headroom so
+   hex passes (as `weak` via §4.4 step 9). For N=8: 0.076 r. For
+   N=12: 0.034 r. Squares (N=4: 0.293 r) and pentagons (N=5: 0.191 r)
+   exceed 0.15 r — but they're already rejected by `MIN_LOOP_VERTICES =
+   6` before reaching this step, so the gate is effectively a
+   **roundness check on N ≥ 6 loops** (rejects ovals, irregular
+   hexagons, "almost-but-not-quite" rims). **Reject** if `midpointRes >
    midpointThreshold`. `weakM = midpointRes > 0.5 * midpointThreshold`.
 8. **Angular-spacing sanity.** Sort loop angles `θi = atan2(v.y - cy,
    v.x - cx)` around `center2D`, compute consecutive gaps (mod 2π).
@@ -824,7 +875,7 @@ under `apps/web/tests/unit/`. Visual specs stay in
 | `viewer3d/lib/palette.ts` | `paletteFor(colorIndex, slot)`, `paletteCss(colorIndex, slot)`, `oklchToLinearSrgb()`, `allocateColorIndex(completed)`. Pure. |
 | `viewer3d/lib/palette.test.ts` | Generator determinism; sel1/sel2 distinct; hue separation across consecutive indices; **WCAG ≥ 3:1 contrast against `#0d1422` for indices [0, 16)**; allocator picks smallest unused (`[]` → 0; `[0,2]` → 1; `[1,2]` → 0). |
 | `viewer3d/lib/sharpEdgeGraph.ts` | `buildSharpEdgeGraph(welded)`, `SharpEdgeGraph` type, `SHARP_EDGE_THRESHOLD_RAD`. Pure. |
-| `viewer3d/lib/sharpEdgeGraph.test.ts` | Cube → 12 canonical sharp edges (each cube edge = one canonical edge between two faces), 8 vertices each with degree 3. Smooth 256-seg dome → 0 sharp edges (only boundary). Plate-with-32-seg-hole + 3 mm thickness → **64 sharp rim edges** (32 top + 32 bottom) + 12 plate-corner edges. CSR vertex incidence well-formed; non-manifold edges are flagged + skipped. |
+| `viewer3d/lib/sharpEdgeGraph.test.ts` | Cube → 12 canonical sharp edges (each cube edge = one canonical edge between two faces), 8 vertices each with degree 3. **Closed sphere (256-seg, no boundary)** → 0 sharp edges (smooth surface, no boundary; the v2 fixture description "smooth dome" was misleading because boundary edges count as sharp under §4.1). Plate-with-32-seg-hole + 3 mm thickness → **64 sharp rim edges** (32 top + 32 bottom) + 12 plate-corner edges. CSR vertex incidence well-formed; non-manifold edges are flagged + skipped. |
 | `viewer3d/lib/weldMesh.worker.ts` | Extended: builds `SharpEdgeGraph` after weld, transfers it. |
 | `viewer3d/measure/closestSharpEdge.ts` | `closestSharpEdge(welded, graph, hitTri, hitPoint)`. Pure. |
 | `viewer3d/measure/closestSharpEdge.test.ts` | Direct hit on triangle with sharp edge → that edge. Hit on triangle without sharp edges, sharp edge 2 hops away → returns it via BFS. Beyond depth 3 → null. |
@@ -880,8 +931,8 @@ CLICK (synchronous, authoritative — P1.3 in v2):
     → rim = detectRim(weldedTri, hitPoint, welded, welded.graph)
     if rim !== null:
       → dispatch({ type: "click-rim", rim })   // reducer allocates colorIndex + appends
-    else:
-      → toast("viewer3d.measure.diameter.no_rim", rateLimit: 2 s)
+    else if !prep.loading:
+      → sonner.toast(t("viewer3d.measure.diameter.no_rim"))   // rateLimit: 2s; suppressed during prep
 
 COMPLETED RENDER:
   for each m of state.completed where m.kind === "diameter":
@@ -941,7 +992,7 @@ click handling synchronous. Remaining races and their resolutions:
 |---|---|
 | Welding completes after user left Diameter mode | Existing v1.1 `jobId` filter in `usePlanePrep`; stale results dropped. |
 | File switch mid-hover | Existing `clear` dispatch + `useEffect` on `geometry` change in Viewer3DCanvas resets `hoveredRim`. |
-| User clicks while welding still in progress | `welded === null` → `detectRim` returns `null` → toast (intentional — informs user that prep isn't done). Better than silent no-op because StepBanner is already showing "Preparing mesh…", so the toast looks consistent. |
+| User clicks while welding still in progress | `welded === null` → `detectRim` returns `null` → **toast suppressed** (v3 fix). StepBanner already says "Preparing mesh…", a parallel toast misleads. Click is a no-op until prep completes. |
 | Tangent label hysteresis vs measurement deletion | Tangent state lives in component-local refs keyed by `m.id`; deletion clears the entry. |
 
 ### 7.5 Geometry edge cases
@@ -965,7 +1016,7 @@ click handling synchronous. Remaining races and their resolutions:
 | File | Cases |
 |---|---|
 | `lib/palette.test.ts` | Determinism: `paletteFor(0,"sel1")` is stable. sel1/sel2 distinct (deltaE > 30). Consecutive indices visibly different. All channels in `[0,1]`. **WCAG ≥ 3:1** vs `#0d1422` for `idx ∈ [0, 16)` × `slot ∈ {sel1,sel2}` (32 combinations). `allocateColorIndex([])` → 0. `allocateColorIndex` with gap → fills smallest unused. |
-| `lib/sharpEdgeGraph.test.ts` | Cube → 12 canonical sharp edges. Vertex incidence: each cube vertex has degree 3. Smooth 256-seg dome → 0 sharp internal edges (only boundary). Plate-with-32-seg-hole + 3 mm thickness → **64 sharp rim edges** (top rim 32 + bottom rim 32) + 12 plate-corner edges + 4 hole-cylinder-to-plate edges if the plate's flat top/bottom faces are tessellated as triangles (test fixture controls this). CSR `vertexEdgesStart` monotonic. Non-manifold edge in synthetic input → flagged + skipped. |
+| `lib/sharpEdgeGraph.test.ts` | Cube → 12 canonical sharp edges. Vertex incidence: each cube vertex has degree 3. **Closed UV sphere (256 segments, watertight)** → 0 sharp edges (no boundary, smooth surface). Plate-with-32-seg-hole + 3 mm thickness → **64 sharp rim edges** (top rim 32 + bottom rim 32) + 12 plate-corner edges + 4 hole-cylinder-to-plate edges if the plate's flat top/bottom faces are tessellated as triangles (test fixture controls this). CSR `vertexEdgesStart` monotonic. Non-manifold edge in synthetic input → flagged + skipped. |
 | `measure/closestSharpEdge.test.ts` | Direct hit on triangle with sharp edge → that edge id. Hit on triangle without sharp edges, sharp edge 2 hops away via adjacency → returns it. Beyond depth 3 → null. Hit on BOUNDARY-marked source triangle → null. |
 | `measure/loopWalk.test.ts` | 32-seg plate hole → loop length 32; vertices cyclic. **Cube edge → loop length 4** (loop walker on its own returns this; the detector layer is responsible for rejecting via circleFit). Synthetic T-junction (3 sharp edges at one vertex) → null. Synthetic open path → null. Loop > LOOP_MAX_VERTICES → null. |
 | `measure/circleFit.test.ts` | Ideal 32-vert circle r=10, noise=0 → `r = 10 ± 1e-6`, weak=false. 16-vert → weak=false. 12-vert → weak=false. **Hex N=6 → weak=true** (low-N or sagitta). **Square N=4 → null** (MIN_LOOP_VERTICES). **Rectangle 4 corners → null** (same). **Ellipse 2:1 (major=20, minor=10, 32 verts) → null** (sagitta varies between long/short chords). **Pentagon N=5 → null** (MIN_LOOP_VERTICES). Collinear points → null (planarity). Tilted 32-seg circle (axis ≠ z) → r correct, axis correct ±1e-3. Loop with one outlier vertex → null (angular gap). |
