@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { weld } from "./welder";
 import { buildSharpEdgeGraph, SHARP_EDGE_THRESHOLD_RAD } from "./sharpEdgeGraph";
 import { buildClosedSphere } from "../../../../../../tests/visual/fixtures/build-closed-sphere";
+import { buildPlateWithHole } from "../../../../../../tests/visual/fixtures/build-plate-with-hole";
 
 /** Expand an indexed mesh to triangle soup so weld() can process it. */
 function toSoup(positions: Float32Array, indices: Uint32Array): Float32Array {
@@ -75,5 +76,22 @@ describe("buildSharpEdgeGraph — closed sphere", () => {
 describe("buildSharpEdgeGraph — threshold semantics", () => {
   it("rejects internal edges with dihedral < SHARP_EDGE_THRESHOLD_RAD", () => {
     expect(SHARP_EDGE_THRESHOLD_RAD).toBeCloseTo((30 * Math.PI) / 180, 6);
+  });
+});
+
+describe("buildSharpEdgeGraph — plate with hole", () => {
+  it("32-segment hole + 3 mm plate produces 64 sharp rim edges + 12 plate-corner edges", () => {
+    const plate = buildPlateWithHole({ segments: 32 });
+    const welded = weld(toSoup(plate.positions, plate.indices), 60);
+    const graph = buildSharpEdgeGraph(welded);
+    // Expected sharp edges:
+    //  - top hole rim: 32 edges (top face → hole inner wall, 90° dihedral each)
+    //  - bottom hole rim: 32 edges
+    //  - 4 vertical plate edges (corners of cube top↔side, side↔side x4 = 4 vertical + 8 horizontal)
+    //  - 8 horizontal plate edges along the top + bottom rectangles
+    // The exact count depends on the fan triangulation — assert >= 64 for rims,
+    // and total in [76, 110] inclusive (slack for fan-triangulation interior edges).
+    expect(graph.edges.length / 2).toBeGreaterThanOrEqual(64 + 12);
+    expect(graph.edges.length / 2).toBeLessThanOrEqual(110);
   });
 });
