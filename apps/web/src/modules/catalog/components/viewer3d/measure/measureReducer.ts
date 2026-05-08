@@ -1,16 +1,19 @@
 import type { Vector3 } from "three";
 
 import { distance } from "./geometry";
+import { allocateColorIndex } from "../lib/palette";
 import type {
   Measurement,
   MeasureState,
   Plane,
+  Rim,
 } from "../types";
 
 export type MeasureAction =
   | { type: "set-mode"; mode: MeasureState["mode"] }
   | { type: "click-mesh"; point: Vector3 }
   | { type: "click-plane"; plane: Plane }
+  | { type: "click-rim"; rim: Rim }
   | { type: "set-tolerance"; value: number }
   | { type: "replace-active-plane"; plane: Plane }
   | { type: "clear" }
@@ -48,6 +51,7 @@ function pl2plPlaceholder(planeA: Plane, planeB: Plane, completed: Measurement[]
   return {
     kind: "pl2pl",
     id: newId("pl2pl", completed),
+    colorIndex: allocateColorIndex(completed),
     planeA,
     planeB,
     distanceMm: 0,
@@ -78,9 +82,11 @@ export function measureReducer(
         }
         const a = state.active.point;
         const b = action.point.clone();
+        const colorIndex = allocateColorIndex(state.completed);
         const m: Measurement = {
           kind: "p2p",
           id: newId("p2p", state.completed),
+          colorIndex,
           a,
           b,
           distanceMm: distance(a, b),
@@ -96,6 +102,7 @@ export function measureReducer(
         const m: Measurement = {
           kind: "p2pl",
           id: newId("p2pl", state.completed),
+          colorIndex: allocateColorIndex(state.completed),
           point: action.point.clone(),
           plane: state.active.plane,
           distanceMm: 0, // filled by canvas integration in Task 13 with geometry helpers from Task 6
@@ -178,6 +185,20 @@ export function measureReducer(
       if (last === undefined || last.kind !== "p2pl") return state;
       const patched: Measurement = { ...last, distanceMm: action.distanceMm };
       return { ...state, completed: [...state.completed.slice(0, -1), patched] };
+    }
+
+    case "click-rim": {
+      if (state.mode !== "diameter") return state;
+      const colorIndex = allocateColorIndex(state.completed);
+      const m: Measurement = {
+        kind: "diameter",
+        id: newId("diameter", state.completed),
+        colorIndex,
+        rim: action.rim,
+        diameterMm: action.rim.radius * 2,
+        weak: action.rim.weak,
+      };
+      return { ...state, completed: [...state.completed, m] };
     }
 
     default: {

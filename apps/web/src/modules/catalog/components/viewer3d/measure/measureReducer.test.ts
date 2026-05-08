@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { Vector3 } from "three";
 
 import { initialMeasureState, measureReducer } from "./measureReducer";
-import type { MeasureState, Plane } from "../types";
+import type { MeasureState, Plane, Rim } from "../types";
 
 describe("measureReducer", () => {
   it("sets mode and resets active stage", () => {
@@ -57,7 +57,7 @@ describe("measureReducer", () => {
         toleranceDeg: 1,
         active: { stage: "have-point", point: new Vector3(1, 0, 0) },
         completed: [
-          { kind: "p2p", id: "x", a: new Vector3(), b: new Vector3(1, 0, 0), distanceMm: 1 },
+          { kind: "p2p", id: "x", colorIndex: 0, a: new Vector3(), b: new Vector3(1, 0, 0), distanceMm: 1 },
         ],
       },
       { type: "clear" },
@@ -167,7 +167,7 @@ describe("measureReducer — plane modes", () => {
       mode: "plane-to-plane" as const,
       active: { stage: "have-plane" as const, plane: fakePlane(1, [1]) },
       completed: [
-        { kind: "p2p" as const, id: "x", a: new Vector3(), b: new Vector3(), distanceMm: 1 },
+        { kind: "p2p" as const, id: "x", colorIndex: 0, a: new Vector3(), b: new Vector3(), distanceMm: 1 },
       ],
     };
     const s1 = measureReducer(s0, { type: "clear" });
@@ -221,6 +221,7 @@ describe("measureReducer — plane modes", () => {
         {
           kind: "p2p" as const,
           id: "x",
+          colorIndex: 0,
           a: new Vector3(),
           b: new Vector3(),
           distanceMm: 1,
@@ -237,5 +238,60 @@ describe("measureReducer — plane modes", () => {
     expect(s1).toBe(s0); // exact reference equality (returned unchanged state)
     const s2 = measureReducer(s0, { type: "patch-last-p2pl", distanceMm: 5 });
     expect(s2).toBe(s0); // exact reference equality
+  });
+});
+
+function fakeRim(): Rim {
+  return {
+    center: new Vector3(0, 0, 0),
+    axis: new Vector3(0, 0, 1),
+    radius: 5,
+    loopPoints: [],
+    weak: false,
+  };
+}
+
+describe("measureReducer — click-rim", () => {
+  it("appends a kind:'diameter' measurement with colorIndex 0 in fresh state", () => {
+    const state = { ...initialMeasureState, mode: "diameter" as const };
+    const next = measureReducer(state, { type: "click-rim", rim: fakeRim() });
+    expect(next.completed).toHaveLength(1);
+    const m = next.completed[0]!;
+    expect(m.kind).toBe("diameter");
+    expect(m.colorIndex).toBe(0);
+    if (m.kind === "diameter") {
+      expect(m.diameterMm).toBe(10);
+    }
+  });
+
+  it("ignores click-rim when mode is not diameter", () => {
+    const state = { ...initialMeasureState, mode: "point-to-point" as const };
+    const next = measureReducer(state, { type: "click-rim", rim: fakeRim() });
+    expect(next.completed).toHaveLength(0);
+  });
+});
+
+describe("measureReducer — colorIndex stability", () => {
+  it("delete middle measurement does not recolor others", () => {
+    let state: MeasureState = { ...initialMeasureState, mode: "diameter" };
+    state = measureReducer(state, { type: "click-rim", rim: fakeRim() });
+    state = measureReducer(state, { type: "click-rim", rim: fakeRim() });
+    state = measureReducer(state, { type: "click-rim", rim: fakeRim() });
+    const id1 = state.completed[1]!.id;
+    const indicesBefore = state.completed.map((m) => m.colorIndex);
+    state = measureReducer(state, { type: "delete-measurement", id: id1 });
+    const indicesAfter = state.completed.map((m) => m.colorIndex);
+    expect(indicesAfter).toEqual([indicesBefore[0], indicesBefore[2]]);
+  });
+
+  it("reuses freed colorIndex on next allocation", () => {
+    let state: MeasureState = { ...initialMeasureState, mode: "diameter" };
+    state = measureReducer(state, { type: "click-rim", rim: fakeRim() }); // 0
+    state = measureReducer(state, { type: "click-rim", rim: fakeRim() }); // 1
+    state = measureReducer(state, { type: "click-rim", rim: fakeRim() }); // 2
+    const id1 = state.completed[1]!.id;
+    state = measureReducer(state, { type: "delete-measurement", id: id1 });
+    state = measureReducer(state, { type: "click-rim", rim: fakeRim() });
+    expect(state.completed.map((m) => m.colorIndex).sort()).toEqual([0, 1, 2]);
   });
 });
