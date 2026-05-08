@@ -128,3 +128,34 @@ def test_grace_ua_mismatch_denies_without_burning_family(client):
             select(RefreshToken).where(RefreshToken.revoked_at.is_(None))
         ).all()
         assert len(active) == 1
+
+
+def test_reuse_outside_grace_burns_family(client):
+    """Rotate, sleep past grace, present old → reuse_detected + family burned."""
+    old_refresh = _get_refresh_cookie(client)
+    client.post("/api/auth/refresh", headers={"User-Agent": "UA"})
+
+    # Backdate the rotated row's replaced_at past the grace window.
+    from app.core.db.session import get_engine
+    with Session(get_engine()) as s:
+        rotated = s.exec(
+            select(RefreshToken).where(RefreshToken.revoke_reason == "rotated")
+        ).first()
+        rotated.replaced_at = datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=60)
+        s.add(rotated)
+        s.commit()
+
+    for ck in list(client.cookies.jar):
+        if ck.name == REFRESH_COOKIE:
+            client.cookies.jar.clear(ck.domain, ck.path, ck.name)
+    client.cookies.set(REFRESH_COOKIE, old_refresh)
+    r = client.post("/api/auth/refresh", headers={"User-Agent": "UA"})
+    assert r.status_code == 401
+    assert r.json()["detail"] == "force_relogin"
+
+    # All rows in the family are revoked.
+    with Session(get_engine()) as s:
+        active = s.exec(
+            select(RefreshToken).where(RefreshToken.revoked_at.is_(None))
+        ).all()
+        assert active == []
