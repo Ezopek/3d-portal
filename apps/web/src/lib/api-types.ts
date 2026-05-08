@@ -171,6 +171,21 @@ export interface ModelListResponse {
   limit: number;
 }
 
+// --- Sessions ---
+
+export interface Session {
+  family_id: string;
+  last_used_at: string | null;
+  family_issued_at: string;
+  ip: string | null;
+  user_agent: string | null;
+  is_current: boolean;
+}
+
+export interface SessionsResponse {
+  items: Session[];
+}
+
 // --- Audit log ---
 
 export interface AuditLogEntry {
