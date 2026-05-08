@@ -73,3 +73,58 @@ def test_refresh_with_expired_returns_refresh_expired(client):
     r = client.post("/api/auth/refresh")
     assert r.status_code == 401
     assert r.json()["detail"] == "refresh_expired"
+
+
+def test_grace_returns_active_descendant_on_ua_match(client):
+    """Scenario: rotate once, then present the OLD refresh again with same UA → grace path.
+
+    The server cannot return the raw secret of the active descendant (only its hash is stored),
+    so it issues a fresh rotation from the active row. The invariants are:
+      1. Status 200 — not denied.
+      2. The response sets a new refresh cookie different from old_refresh.
+      3. The family is NOT burned — exactly one active row remains.
+    """
+    old_refresh = _get_refresh_cookie(client)
+    # First rotation
+    client.post("/api/auth/refresh", headers={"User-Agent": "UA-1"})
+    new_refresh = _get_refresh_cookie(client)
+    assert new_refresh != old_refresh
+    # Now present old (within grace, same UA) — replace current cookie in jar.
+    for ck in list(client.cookies.jar):
+        if ck.name == REFRESH_COOKIE:
+            client.cookies.jar.clear(ck.domain, ck.path, ck.name)
+    client.cookies.set(REFRESH_COOKIE, old_refresh)
+    r = client.post("/api/auth/refresh", headers={"User-Agent": "UA-1"})
+    assert r.status_code == 200
+    # The response sets a fresh token (rotated from active row) — different from old_refresh.
+    served_in_response = r.cookies.get(REFRESH_COOKIE)
+    assert served_in_response is not None
+    assert served_in_response != old_refresh
+
+    # And the family is NOT burned — exactly one active row.
+    from app.core.db.session import get_engine
+    with Session(get_engine()) as s:
+        active = s.exec(
+            select(RefreshToken).where(RefreshToken.revoked_at.is_(None))
+        ).all()
+        assert len(active) == 1
+
+
+def test_grace_ua_mismatch_denies_without_burning_family(client):
+    old_refresh = _get_refresh_cookie(client)
+    client.post("/api/auth/refresh", headers={"User-Agent": "UA-1"})
+    # Now present old with a different UA — replace current cookie in jar.
+    for ck in list(client.cookies.jar):
+        if ck.name == REFRESH_COOKIE:
+            client.cookies.jar.clear(ck.domain, ck.path, ck.name)
+    client.cookies.set(REFRESH_COOKIE, old_refresh)
+    r = client.post("/api/auth/refresh", headers={"User-Agent": "UA-2"})
+    assert r.status_code == 401
+    assert r.json()["detail"] == "force_relogin"
+    # Family NOT burned — active row still alive.
+    from app.core.db.session import get_engine
+    with Session(get_engine()) as s:
+        active = s.exec(
+            select(RefreshToken).where(RefreshToken.revoked_at.is_(None))
+        ).all()
+        assert len(active) == 1
