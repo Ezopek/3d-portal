@@ -320,7 +320,7 @@ export function Viewer3DCanvas({
         <ClusterOverlay
           welded={welded}
           triangleIds={hoveredPlane.triangleIds}
-          color={tokens.cluster}
+          color={paletteFor(allocateColorIndex(state.completed), "sel1")}
           opacity={0.2}
         />
       )}

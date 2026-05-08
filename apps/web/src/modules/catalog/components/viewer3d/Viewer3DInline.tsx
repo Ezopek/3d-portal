@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/ui/button";
@@ -11,7 +11,6 @@ import { usePerfGuard } from "./hooks/usePerfGuard";
 import { usePlanePrep } from "./hooks/usePlanePrep";
 import { useStlGeometry } from "./hooks/useStlGeometry";
 import type { ViewPreset } from "./lib/camera";
-import { readMeshTokens } from "./lib/readMeshTokens";
 import { ClusterOverlay } from "./measure/ClusterOverlay";
 import { uniqueClusterVerts } from "./measure/clusterVerts";
 import { fitPlane } from "./measure/fitting";
@@ -30,7 +29,7 @@ import {
   type MeasureAction,
 } from "./measure/measureReducer";
 import { RimOverlay } from "./measure/RimOverlay";
-import { paletteFor } from "./lib/palette";
+import { allocateColorIndex, paletteFor } from "./lib/palette";
 import type { Plane, StlFile } from "./types";
 
 export type Viewer3DInlineProps = {
@@ -103,7 +102,6 @@ function CanvasLoader({
   // weldCache poisoning when activeId changes before useStlGeometry refreshes).
   const cacheKey = geometry?.uuid ?? "";
   const prep = usePlanePrep(geometry, cacheKey, needsWelding);
-  const tokens = useMemo(() => readMeshTokens(), []);
 
   // Live tolerance update — see Modal for the dep-array rationale.
   useEffect(() => {
@@ -280,7 +278,7 @@ function CanvasLoader({
             <ClusterOverlay
               welded={prep.welded}
               triangleIds={state.active.plane.triangleIds}
-              color={tokens.cluster}
+              color={paletteFor(allocateColorIndex(state.completed), "sel1")}
               opacity={0.45}
             />
           )}
