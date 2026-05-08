@@ -39,6 +39,7 @@ def _isolated_db():
     os.environ["ADMIN_PASSWORD"] = "test-admin-pw"
     os.environ["JWT_SECRET"] = "test-secret-not-real"
     os.environ["PORTAL_CONTENT_DIR"] = str(content_dir)
+    os.environ["COOKIE_SECURE"] = "false"  # TestClient uses http://testserver (not HTTPS)
     # Clear any cached settings or engine that read env at import time
     from app.core.config import get_settings
     from app.core.db.session import get_engine, init_schema

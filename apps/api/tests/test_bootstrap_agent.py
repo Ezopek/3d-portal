@@ -56,6 +56,7 @@ def test_bootstrap_login_e2e_works(client):
     decodes to the agent's id with role=agent."""
     import jwt as _jwt
 
+    from app.core.auth.cookies import ACCESS_COOKIE
     from app.core.config import get_settings
 
     user, _, password = bootstrap_agent(email="agent-e2e@portal.example.com")
@@ -65,7 +66,7 @@ def test_bootstrap_login_e2e_works(client):
         json={"email": "agent-e2e@portal.example.com", "password": password},
     )
     assert r.status_code == 200
-    token = r.json()["access_token"]
+    token = r.cookies[ACCESS_COOKIE]
 
     claims = _jwt.decode(token, get_settings().jwt_secret, algorithms=["HS256"])
     assert claims["role"] == "agent"
@@ -78,14 +79,12 @@ def test_bootstrap_agent_can_call_admin_endpoints(client):
     exceptions like ?hard=true). Smoke against POST /api/admin/categories."""
     _user, _, password = bootstrap_agent(email="agent-call@portal.example.com")
 
-    r = client.post(
+    client.post(
         "/api/auth/login",
         json={"email": "agent-call@portal.example.com", "password": password},
     )
-    token = r.json()["access_token"]
 
     # Use a unique slug so this test stays independent
-    client.cookies.set("portal_access", token)
     r2 = client.post(
         "/api/admin/categories",
         json={"slug": "agent-bootstrap-smoke", "name_en": "Smoke"},

@@ -1,13 +1,14 @@
-def test_login_with_valid_credentials_returns_jwt(client):
+def test_login_with_valid_credentials_returns_user(client):
     r = client.post(
         "/api/auth/login",
         json={"email": "admin@localhost.localdomain", "password": "test-admin-pw"},
     )
     assert r.status_code == 200
     body = r.json()
-    assert "access_token" in body
-    assert body["token_type"] == "bearer"
-    assert body["expires_in"] == 10 * 60
+    assert "user" in body
+    assert body["user"]["email"] == "admin@localhost.localdomain"
+    assert body["user"]["role"] == "admin"
+    assert "access_token" not in body
 
 
 def test_login_with_wrong_password_returns_401(client):
@@ -21,12 +22,10 @@ def test_login_with_wrong_password_returns_401(client):
 def test_me_with_token_returns_user(client):
     import uuid
 
-    r = client.post(
+    client.post(
         "/api/auth/login",
         json={"email": "admin@localhost.localdomain", "password": "test-admin-pw"},
     )
-    token = r.json()["access_token"]
-    client.cookies.set("portal_access", token)
     r2 = client.get("/api/auth/me")
     assert r2.status_code == 200
     body = r2.json()
@@ -70,8 +69,6 @@ def test_me_with_member_token_returns_user(client):
         json={"email": "member-me@portal.example.com", "password": "member-pw"},
     )
     assert r.status_code == 200
-    token = r.json()["access_token"]
-    client.cookies.set("portal_access", token)
     r2 = client.get("/api/auth/me")
     assert r2.status_code == 200
     body = r2.json()
@@ -91,8 +88,7 @@ def test_me_with_agent_token_returns_user(client):
         "/api/auth/login",
         json={"email": "agent-me@portal.example.com", "password": password},
     )
-    token = r.json()["access_token"]
-    client.cookies.set("portal_access", token)
+    assert r.status_code == 200
     r2 = client.get("/api/auth/me")
     assert r2.status_code == 200
     assert r2.json()["role"] == "agent"
