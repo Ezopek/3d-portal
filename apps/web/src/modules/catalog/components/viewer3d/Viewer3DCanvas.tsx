@@ -250,7 +250,6 @@ export function Viewer3DCanvas({
         measurements={state.completed}
         partialPoint={partial}
         showAssumed
-        color={tokens.measure}
       />
       {children}
       {welded !== null && hoveredPlane !== null && expectsPlaneClick && (
