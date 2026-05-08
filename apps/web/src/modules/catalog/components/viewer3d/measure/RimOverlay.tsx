@@ -48,9 +48,9 @@ export function RimOverlay({ rim, color, label, labelTangent }: Props) {
         depthWrite={false}
         renderOrder={1}
       />
-      <mesh position={[rim.center.x, rim.center.y, rim.center.z]} renderOrder={1}>
+      <mesh position={[rim.center.x, rim.center.y, rim.center.z]}>
         <sphereGeometry args={[dotR, 12, 12]} />
-        <meshBasicMaterial color={color} depthTest={false} depthWrite={false} />
+        <meshBasicMaterial color={color} />
       </mesh>
       {labelPos !== null && (
         <Html position={labelPos} center>

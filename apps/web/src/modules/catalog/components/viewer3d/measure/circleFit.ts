@@ -1,12 +1,7 @@
 import { Vector3 } from "three";
 
-export type Rim = {
-  center: Vector3;
-  axis: Vector3;
-  radius: number;
-  loopPoints: Vector3[];
-  weak: boolean;
-};
+import type { Rim } from "../types";
+export type { Rim } from "../types";
 
 export const MIN_LOOP_VERTICES = 6;
 export const WEAK_LOOP_VERTICES = 12;

@@ -157,12 +157,11 @@ export function Viewer3DCanvas({
         setHoveredRim(null);
         return;
       }
-      // No rim. Toast — but suppress while prep is in flight (loading welded).
-      // welded is non-null here (guard above), so isPrepping is always false
-      // at this point; kept for documentation clarity.
-      const isPrepping = welded === null;
+      // No rim found. The welded === null early return above already handles
+      // prep-in-flight; reaching this line means welded was non-null and the
+      // algorithm legitimately found no rim on the clicked face.
       const now = performance.now();
-      if (!isPrepping && now - lastNoRimToastRef.current > NO_RIM_TOAST_DEBOUNCE_MS) {
+      if (now - lastNoRimToastRef.current > NO_RIM_TOAST_DEBOUNCE_MS) {
         toast(t("viewer3d.measure.diameter.no_rim"));
         lastNoRimToastRef.current = now;
       }
