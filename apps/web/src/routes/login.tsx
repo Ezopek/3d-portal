@@ -16,6 +16,7 @@ function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
   const navigate = useNavigate();
   const search = useSearch({ from: "/login" });
   const qc = useQueryClient();
@@ -23,6 +24,7 @@ function Login() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setPending(true);
     try {
       await api("/auth/login", {
         method: "POST",
@@ -33,16 +35,31 @@ function Login() {
       await navigate({ to: next as "/" });
     } catch {
       setError(t("errors.not_found"));
+      setPending(false);
     }
   }
 
   return (
     <form onSubmit={submit} className="mx-auto mt-12 grid w-full max-w-sm gap-4 p-4">
       <h1 className="text-xl font-semibold">{t("auth.login")}</h1>
-      <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t("auth.email")} type="email" />
-      <Input value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t("auth.password")} type="password" />
+      <Input
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder={t("auth.email")}
+        type="email"
+        disabled={pending}
+      />
+      <Input
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        placeholder={t("auth.password")}
+        type="password"
+        disabled={pending}
+      />
       {error !== null && <p className="text-sm text-destructive">{error}</p>}
-      <Button type="submit">{t("auth.login")}</Button>
+      <Button type="submit" disabled={pending}>
+        {t("auth.login")}
+      </Button>
     </form>
   );
 }
