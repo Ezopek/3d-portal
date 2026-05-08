@@ -23,6 +23,7 @@ def client(tmp_path, monkeypatch):
     get_settings.cache_clear()
     get_engine.cache_clear()
     with TestClient(create_app()) as c:
+        c.headers.update({"X-Portal-Client": "web"})
         c.post("/api/auth/login",
                json={"email": "admin@example.com", "password": "p"},
                headers={"User-Agent": "device-A"})
@@ -34,6 +35,7 @@ def client(tmp_path, monkeypatch):
 def _login_other_device(app) -> tuple[TestClient, str]:
     """Log in a second session in a separate client, return (client, refresh_cookie_value)."""
     sub = TestClient(app)
+    sub.headers.update({"X-Portal-Client": "web"})
     sub.post("/api/auth/login",
              json={"email": "admin@example.com", "password": "p"},
              headers={"User-Agent": "device-B"})
@@ -79,6 +81,7 @@ def test_sessions_delete_other_users_family_returns_403(client, tmp_path, monkey
         ))
         s.commit()
     sub = TestClient(client.app)
+    sub.headers.update({"X-Portal-Client": "web"})
     sub.post("/api/auth/login",
              json={"email": "b@example.com", "password": "p"},
              headers={"User-Agent": "device-C"})

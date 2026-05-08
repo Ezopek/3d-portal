@@ -26,6 +26,7 @@ def client(tmp_path, monkeypatch):
     # as an HTTP 500 (matching prod behaviour) instead of bubbling up into
     # the test runner.
     with TestClient(app, raise_server_exceptions=False) as c:
+        c.headers.update({"X-Portal-Client": "web"})
         # Retrieve the seeded admin user UUID for the token.
         from sqlmodel import Session, select
 

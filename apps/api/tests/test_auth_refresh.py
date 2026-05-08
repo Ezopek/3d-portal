@@ -22,6 +22,7 @@ def client(tmp_path, monkeypatch):
     get_settings.cache_clear()
     get_engine.cache_clear()
     with TestClient(create_app()) as c:
+        c.headers.update({"X-Portal-Client": "web"})
         c.post("/api/auth/login",
                json={"email": "admin@example.com", "password": "p"})
         yield c
@@ -169,6 +170,7 @@ def test_concurrent_refresh_one_wins(client):
 
     def _hit():
         with TestClient(client.app) as c:
+            c.headers.update({"X-Portal-Client": "web"})
             for k, v in cookies_snapshot.items():
                 c.cookies.set(k, v)
             r = c.post("/api/auth/refresh", headers={"User-Agent": "UA"})

@@ -32,6 +32,7 @@ def client(tmp_path, monkeypatch):
 
     factory.aclose = _aclose
     with TestClient(app) as c:
+        c.headers.update({"X-Portal-Client": "web"})
         # Swap the lifespan-created factory for the fakeredis one.
         app.state.redis = factory
         # Retrieve the seeded admin user UUID for the token.

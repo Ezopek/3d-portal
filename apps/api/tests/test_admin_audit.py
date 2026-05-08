@@ -25,6 +25,7 @@ def client(tmp_path, monkeypatch):
     ge.cache_clear()
     app = create_app()
     with TestClient(app) as c:
+        c.headers.update({"X-Portal-Client": "web"})
         # The admin user is created by lifespan seed_admin. Retrieve its UUID.
         engine = get_engine()
         with Session(engine) as s:

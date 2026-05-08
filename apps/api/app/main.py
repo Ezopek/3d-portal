@@ -4,6 +4,7 @@ from arq import create_pool
 from arq.connections import RedisSettings
 from fastapi import FastAPI
 
+from app.core.auth.csrf import install_csrf_middleware
 from app.core.config import get_settings
 from app.core.db.seed import seed_admin
 from app.core.db.session import get_engine, init_schema
@@ -63,6 +64,7 @@ def create_app() -> FastAPI:
         openapi_url="/api/openapi.json",
     )
     instrument_app(app)
+    install_csrf_middleware(app)
 
     @app.get("/api/health")
     def health() -> dict[str, str]:

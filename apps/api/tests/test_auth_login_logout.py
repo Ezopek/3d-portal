@@ -21,6 +21,7 @@ def client(tmp_path, monkeypatch):
     get_engine.cache_clear()
     app = create_app()
     with TestClient(app) as c:
+        c.headers.update({"X-Portal-Client": "web"})
         yield c
     get_settings.cache_clear()
     get_engine.cache_clear()

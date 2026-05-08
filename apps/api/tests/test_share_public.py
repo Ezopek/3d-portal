@@ -38,6 +38,7 @@ def client(tmp_path, monkeypatch):
     factory.aclose = _aclose
 
     with TestClient(app) as c:
+        c.headers.update({"X-Portal-Client": "web"})
         app.state.redis = factory
         from sqlmodel import select
 

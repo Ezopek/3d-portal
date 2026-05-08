@@ -61,4 +61,5 @@ def _isolated_db():
 def client() -> Iterator[TestClient]:
     app = create_app()
     with TestClient(app) as test_client:
+        test_client.headers.update({"X-Portal-Client": "web"})
         yield test_client
