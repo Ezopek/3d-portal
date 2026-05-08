@@ -18,8 +18,8 @@ function rowText(m: Measurement, t: ReturnType<typeof useTranslation>["t"]): str
   if (m.kind === "p2p") return formatMm(m.distanceMm);
   if (m.kind === "p2pl") return formatMm(m.distanceMm);
   if (m.kind === "pl2pl") return `${formatMm(m.distanceMm)} @ ${m.angleDeg.toFixed(1)}°`;
-  // diameter
-  const value = formatMm(m.diameterMm);
+  // diameter — i18n template adds "mm", pass raw number string only
+  const value = m.diameterMm.toFixed(1);
   return m.weak
     ? t("viewer3d.measure.diameter.weak", { value })
     : t("viewer3d.measure.diameter.format", { value });

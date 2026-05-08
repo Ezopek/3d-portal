@@ -9,7 +9,7 @@ export const PLANARITY_RATIO_MAX = 0.05;
 export const RESIDUUM_FLOOR_MM = 0.1;
 export const RESIDUUM_RATIO = 0.05;
 export const SAGITTA_MULTIPLIER = 3.0;
-export const MAX_ANGULAR_GAP_RATIO = 2.0;
+export const MAX_ANGULAR_GAP_RATIO = 3.0;
 
 export function fitCircle(
   loopVerts: number[],
@@ -17,10 +17,34 @@ export function fitCircle(
 ): Rim | null {
   if (loopVerts.length < MIN_LOOP_VERTICES) return null;
 
-  // Snapshot loop points (will be stored in Rim.loopPoints).
-  const loopPoints: Vector3[] = loopVerts.map((vi) => {
+  // Dedupe near-coincident consecutive verts. Some STL exporters split each
+  // rim vertex into two (or more) micro-offset copies that the welder can't
+  // merge under its bbox-relative tolerance — without dedup the hole rim
+  // returns 2N verts in clusters of pairs and the angular-gap check rejects
+  // legitimately-circular rims. 0.1 mm chosen so it dedupes float-precision
+  // pairs but stays well below typical cylinder tessellation segment length
+  // (~0.4 mm at r=4.5 mm with 73 segments).
+  const CONSECUTIVE_DEDUP_MM = 0.1;
+  const rawPoints: Vector3[] = loopVerts.map((vi) => {
     return new Vector3(positions[vi * 3]!, positions[vi * 3 + 1]!, positions[vi * 3 + 2]!);
   });
+  const loopPoints: Vector3[] = [];
+  for (let i = 0; i < rawPoints.length; i++) {
+    const p = rawPoints[i]!;
+    const prev = loopPoints[loopPoints.length - 1];
+    if (prev === undefined || prev.distanceTo(p) > CONSECUTIVE_DEDUP_MM) {
+      loopPoints.push(p);
+    }
+  }
+  // Also dedupe wrap-around: last point too close to first.
+  if (loopPoints.length >= 2) {
+    const first = loopPoints[0]!;
+    const last = loopPoints[loopPoints.length - 1]!;
+    if (first.distanceTo(last) <= CONSECUTIVE_DEDUP_MM) {
+      loopPoints.pop();
+    }
+  }
+  if (loopPoints.length < MIN_LOOP_VERTICES) return null;
 
   // Plane fit (PCA).
   const centroid = new Vector3();

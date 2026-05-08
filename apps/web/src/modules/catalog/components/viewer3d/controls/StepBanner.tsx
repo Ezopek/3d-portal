@@ -26,7 +26,10 @@ function pickKey(
   error: string | null,
 ): { key: string; isError: boolean } | null {
   if (error !== null) return { key: "viewer3d.welding_failed", isError: true };
-  if (loading && (mode === "point-to-plane" || mode === "plane-to-plane")) {
+  if (
+    loading &&
+    (mode === "point-to-plane" || mode === "plane-to-plane" || mode === "diameter")
+  ) {
     return { key: "viewer3d.measure.step.preparing", isError: false };
   }
   if (mode === "off") return null;
@@ -47,6 +50,9 @@ function pickKey(
           : "viewer3d.measure.step.p2pl_plane",
       isError: false,
     };
+  }
+  if (mode === "diameter") {
+    return { key: "viewer3d.measure.diameter.help", isError: false };
   }
   return {
     key:

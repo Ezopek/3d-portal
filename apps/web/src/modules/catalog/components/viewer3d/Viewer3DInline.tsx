@@ -18,7 +18,6 @@ import { floodFill } from "./measure/floodFill";
 import {
   anglePlanes,
   distancePointToPlane,
-  formatMm,
   minVertexPairDistance,
   perpendicularPlaneDistance,
 } from "./measure/geometry";
@@ -288,8 +287,8 @@ function CanvasLoader({
                 const sel1 = paletteFor(m.colorIndex, "sel1");
                 const tangent = pickTangent(m.rim.axis);
                 const labelText = m.weak
-                  ? `#${displayIndex(m, state.completed)} ${t("viewer3d.measure.diameter.weak", { value: formatMm(m.diameterMm) })}`
-                  : `#${displayIndex(m, state.completed)} ${t("viewer3d.measure.diameter.format", { value: formatMm(m.diameterMm) })}`;
+                  ? `#${displayIndex(m, state.completed)} ${t("viewer3d.measure.diameter.weak", { value: m.diameterMm.toFixed(1) })}`
+                  : `#${displayIndex(m, state.completed)} ${t("viewer3d.measure.diameter.format", { value: m.diameterMm.toFixed(1) })}`;
                 return (
                   <RimOverlay
                     key={m.id}
