@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import type { ModelFileRead } from "@/lib/api-types";
+import { refreshAccessToken } from "@/lib/refresh";
 
 export interface UploadVars {
   file: File;
@@ -16,12 +17,25 @@ export function useUploadFile(modelId: string) {
       form.append("kind", kind);
       const headers = new Headers();
       headers.set("X-Portal-Client", "web");
-      const res = await fetch(`/api/admin/models/${modelId}/files`, {
-        method: "POST",
-        body: form,
-        headers,
-        credentials: "include",
-      });
+
+      async function doUpload(): Promise<Response> {
+        return fetch(`/api/admin/models/${modelId}/files`, {
+          method: "POST",
+          body: form,
+          headers,
+          credentials: "include",
+        });
+      }
+
+      let res = await doUpload();
+      if (res.status === 401) {
+        const body = await res.clone().json().catch(() => ({}));
+        const detail = (body as { detail?: string })?.detail;
+        if (detail === "access_expired" || detail === "missing_access") {
+          const ok = await refreshAccessToken();
+          if (ok) res = await doUpload();
+        }
+      }
       if (!res.ok) {
         throw new Error(`upload failed: ${res.status}`);
       }
