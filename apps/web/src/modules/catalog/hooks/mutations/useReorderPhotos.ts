@@ -9,7 +9,6 @@ export function useReorderPhotos(modelId: string) {
       api<{ ok: true }>(
         `/admin/models/${modelId}/photos/reorder`,
         { method: "POST", body: JSON.stringify({ ordered_ids: orderedIds }) },
-        { authenticated: true },
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["sot", "photos", modelId] });

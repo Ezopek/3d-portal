@@ -9,7 +9,6 @@ export function useDeleteFile(modelId: string) {
       api<void>(
         `/admin/models/${modelId}/files/${fileId}`,
         { method: "DELETE" },
-        { authenticated: true },
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["sot", "photos", modelId] });

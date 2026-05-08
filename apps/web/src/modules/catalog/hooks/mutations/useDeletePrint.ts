@@ -9,7 +9,6 @@ export function useDeletePrint(modelId: string) {
       api<void>(
         `/admin/prints/${printId}`,
         { method: "DELETE" },
-        { authenticated: true },
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["sot", "models", modelId] });

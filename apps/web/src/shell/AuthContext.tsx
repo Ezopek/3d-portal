@@ -35,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const meQuery = useQuery<MeResponse, ApiError>({
     queryKey: ["auth", "me", stored?.token ?? null],
-    queryFn: () => api<MeResponse>("/auth/me", {}, { authenticated: true }),
+    queryFn: () => api<MeResponse>("/auth/me"),
     enabled: isAuthenticated,
     staleTime: 5 * 60 * 1000,
   });

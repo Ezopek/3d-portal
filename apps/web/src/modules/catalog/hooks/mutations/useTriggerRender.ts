@@ -18,7 +18,6 @@ export function useTriggerRender(modelId: string) {
       api<TriggerRenderResponse>(
         `/admin/models/${modelId}/render`,
         { method: "POST", body: JSON.stringify(input) },
-        { authenticated: true },
       ),
     onSuccess: () => {
       // Worker writes new ModelFile rows + updates thumbnail; FE doesn't know

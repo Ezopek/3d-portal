@@ -9,7 +9,6 @@ export function useDeleteModel(modelId: string) {
       api<void>(
         `/admin/models/${modelId}${hard ? "?hard=true" : ""}`,
         { method: "DELETE" },
-        { authenticated: true },
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["sot", "models"] });

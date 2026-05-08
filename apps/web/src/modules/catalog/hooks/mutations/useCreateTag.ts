@@ -16,7 +16,6 @@ export function useCreateTag() {
       api<TagRead>(
         "/admin/tags",
         { method: "POST", body: JSON.stringify(input) },
-        { authenticated: true },
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["sot", "tags"] });

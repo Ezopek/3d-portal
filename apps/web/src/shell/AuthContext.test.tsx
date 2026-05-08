@@ -144,7 +144,7 @@ describe("AuthContext", () => {
     });
   });
 
-  it("calls GET /api/auth/me with bearer token", async () => {
+  it("calls GET /api/auth/me with cookies and X-Portal-Client header", async () => {
     setToken({ sub: "00000000-0000-0000-0000-000000000005", role: "admin" });
     fetchMock.mockResolvedValueOnce(
       new Response(
@@ -161,8 +161,9 @@ describe("AuthContext", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("/api/auth/me");
-    const headers = (init as RequestInit).headers as Headers;
-    expect(headers.get("Authorization")).toMatch(/^Bearer /);
+    expect((init as RequestInit).credentials).toBe("include");
+    const headers = new Headers((init as RequestInit).headers);
+    expect(headers.get("X-Portal-Client")).toBe("web");
   });
 
   it("does not call /me when no token is present", async () => {

@@ -19,7 +19,6 @@ export function useUpdateModel(modelId: string) {
       api<ModelDetail>(
         `/admin/models/${modelId}`,
         { method: "PATCH", body: JSON.stringify(patch) },
-        { authenticated: true },
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["sot", "models", modelId] });

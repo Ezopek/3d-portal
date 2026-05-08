@@ -1,4 +1,4 @@
-import { readToken } from "./auth";
+import { refreshAccessToken } from "./refresh";
 
 const BASE = "/api";
 
@@ -8,20 +8,33 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T>(
-  path: string,
-  init: RequestInit = {},
-  { authenticated = false }: { authenticated?: boolean } = {},
-): Promise<T> {
+export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  return _api<T>(path, init, /* canRetry */ true);
+}
+
+async function _api<T>(path: string, init: RequestInit, canRetry: boolean): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body !== undefined && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  if (authenticated) {
-    const stored = readToken();
-    if (stored !== null) headers.set("Authorization", `Bearer ${stored.token}`);
+  headers.set("X-Portal-Client", "web");
+
+  const response = await fetch(`${BASE}${path}`, {
+    ...init,
+    headers,
+    credentials: "include",
+  });
+
+  if (response.status === 401 && canRetry) {
+    const body = await response.clone().json().catch(() => ({}));
+    const detail = (body as { detail?: string })?.detail;
+    if (detail === "access_expired" || detail === "missing_access") {
+      const ok = await refreshAccessToken();
+      if (ok) {
+        return _api<T>(path, init, /* canRetry */ false);
+      }
+    }
   }
-  const response = await fetch(`${BASE}${path}`, { ...init, headers });
   if (!response.ok) {
     let body: unknown = null;
     try {

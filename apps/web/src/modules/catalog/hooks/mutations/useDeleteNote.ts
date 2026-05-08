@@ -9,7 +9,6 @@ export function useDeleteNote(modelId: string) {
       api<void>(
         `/admin/notes/${noteId}`,
         { method: "DELETE" },
-        { authenticated: true },
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["sot", "models", modelId] });
