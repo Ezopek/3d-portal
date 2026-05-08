@@ -29,8 +29,6 @@ from app.core.db.session import get_engine
 JWT_SECRET = "test-secret-not-real"
 
 
-def _hdrs(token: str) -> dict:
-    return {"Authorization": f"Bearer {token}"}
 
 
 def _admin_token(user_id: uuid.UUID) -> str:
@@ -91,10 +89,10 @@ def test_replace_tags_empty_to_set(client):
         tag2_id = _seed_tag(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.put(
         f"/api/admin/models/{model_id}/tags",
         json={"tag_ids": [str(tag1_id), str(tag2_id)]},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 200, r.text
     result_ids = {item["id"] for item in r.json()}
@@ -115,10 +113,10 @@ def test_replace_tags_clears_existing(client):
         s.add(ModelTag(model_id=model_id, tag_id=old_tag))
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.put(
         f"/api/admin/models/{model_id}/tags",
         json={"tag_ids": [str(new_tag)]},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 200
     result_ids = {item["id"] for item in r.json()}
@@ -137,10 +135,10 @@ def test_replace_tags_empty_set(client):
         s.add(ModelTag(model_id=model_id, tag_id=tag_id))
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.put(
         f"/api/admin/models/{model_id}/tags",
         json={"tag_ids": []},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 200
     assert r.json() == []
@@ -152,10 +150,10 @@ def test_replace_tags_404_model_not_found(client):
         admin_id = _seed_admin(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.put(
         f"/api/admin/models/{uuid.uuid4()}/tags",
         json={"tag_ids": []},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404
 
@@ -169,10 +167,10 @@ def test_replace_tags_400_invalid_tag(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.put(
         f"/api/admin/models/{model_id}/tags",
         json={"tag_ids": [str(uuid.uuid4())]},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 400
 
@@ -186,10 +184,10 @@ def test_replace_tags_writes_audit(client):
         tag_id = _seed_tag(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     client.put(
         f"/api/admin/models/{model_id}/tags",
         json={"tag_ids": [str(tag_id)]},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     with Session(get_engine()) as s:
         logs = s.exec(
@@ -216,10 +214,10 @@ def test_add_tag_201(client):
         tag_id = _seed_tag(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/tags",
         json={"tag_id": str(tag_id)},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 200, r.text
     result_ids = {item["id"] for item in r.json()}
@@ -238,10 +236,9 @@ def test_add_tag_idempotent(client):
 
     url = f"/api/admin/models/{model_id}/tags"
     body = {"tag_id": str(tag_id)}
-    hdrs = _hdrs(_admin_token(admin_id))
-
-    r1 = client.post(url, json=body, headers=hdrs)
-    r2 = client.post(url, json=body, headers=hdrs)
+    client.cookies.set("portal_access", _admin_token(admin_id))
+    r1 = client.post(url, json=body)
+    r2 = client.post(url, json=body)
     assert r1.status_code == 200
     assert r2.status_code == 200
     # Should have exactly one ModelTag row
@@ -259,10 +256,10 @@ def test_add_tag_404_model(client):
         tag_id = _seed_tag(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{uuid.uuid4()}/tags",
         json={"tag_id": str(tag_id)},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404
 
@@ -275,10 +272,10 @@ def test_add_tag_404_tag(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/tags",
         json={"tag_id": str(uuid.uuid4())},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404
 
@@ -298,9 +295,9 @@ def test_remove_tag_204(client):
         s.add(ModelTag(model_id=model_id, tag_id=tag_id))
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.delete(
         f"/api/admin/models/{model_id}/tags/{tag_id}",
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 204
 
@@ -321,9 +318,9 @@ def test_remove_tag_idempotent(client):
         tag_id = _seed_tag(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.delete(
         f"/api/admin/models/{model_id}/tags/{tag_id}",
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 204
 
@@ -335,9 +332,9 @@ def test_remove_tag_404_model(client):
         tag_id = _seed_tag(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.delete(
         f"/api/admin/models/{uuid.uuid4()}/tags/{tag_id}",
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404
 
@@ -354,10 +351,10 @@ def test_create_tag_201(client):
         s.commit()
 
     slug = f"newtag-{uuid.uuid4().hex[:8]}"
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         "/api/admin/tags",
         json={"slug": slug, "name_en": "New Tag", "name_pl": "Nowy Tag"},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 201, r.text
     body = r.json()
@@ -378,10 +375,10 @@ def test_create_tag_409_slug_conflict(client):
         tag = s.get(Tag, tag_id)
         slug = tag.slug
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         "/api/admin/tags",
         json={"slug": slug, "name_en": "Another"},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 409
 
@@ -393,10 +390,10 @@ def test_create_tag_audit(client):
         s.commit()
 
     slug = f"audit-tag-{uuid.uuid4().hex[:8]}"
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         "/api/admin/tags",
         json={"slug": slug, "name_en": "Audit Tag"},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 201
     tag_id = uuid.UUID(r.json()["id"])
@@ -424,10 +421,10 @@ def test_patch_tag_200(client):
         tag_id = _seed_tag(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.patch(
         f"/api/admin/tags/{tag_id}",
         json={"name_en": "Updated Name"},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 200, r.text
     assert r.json()["name_en"] == "Updated Name"
@@ -439,10 +436,10 @@ def test_patch_tag_404(client):
         admin_id = _seed_admin(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.patch(
         f"/api/admin/tags/{uuid.uuid4()}",
         json={"name_en": "X"},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404
 
@@ -459,10 +456,10 @@ def test_patch_tag_409_slug_collision(client):
         tag2 = s.get(Tag, tag2_id)
         tag2_slug = tag2.slug
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.patch(
         f"/api/admin/tags/{tag1_id}",
         json={"slug": tag2_slug},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 409
 
@@ -479,9 +476,9 @@ def test_delete_tag_204(client):
         tag_id = _seed_tag(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.delete(
         f"/api/admin/tags/{tag_id}",
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 204
 
@@ -495,9 +492,9 @@ def test_delete_tag_404(client):
         admin_id = _seed_admin(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.delete(
         f"/api/admin/tags/{uuid.uuid4()}",
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404
 
@@ -513,9 +510,9 @@ def test_delete_tag_409_in_use(client):
         s.add(ModelTag(model_id=model_id, tag_id=tag_id))
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.delete(
         f"/api/admin/tags/{tag_id}",
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 409
 
@@ -537,10 +534,10 @@ def test_merge_tags_rewires_m2m(client):
         s.add(ModelTag(model_id=model_id, tag_id=from_id))
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         "/api/admin/tags/merge",
         json={"from_id": str(from_id), "to_id": str(to_id)},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 200, r.text
     assert r.json()["id"] == str(to_id)
@@ -569,10 +566,10 @@ def test_merge_tags_handles_duplicate(client):
         s.add(ModelTag(model_id=model_id, tag_id=to_id))
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         "/api/admin/tags/merge",
         json={"from_id": str(from_id), "to_id": str(to_id)},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 200
 
@@ -593,10 +590,10 @@ def test_merge_tags_404_from_not_found(client):
         to_id = _seed_tag(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         "/api/admin/tags/merge",
         json={"from_id": str(uuid.uuid4()), "to_id": str(to_id)},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404
 
@@ -609,10 +606,10 @@ def test_merge_tags_audit(client):
         to_id = _seed_tag(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         "/api/admin/tags/merge",
         json={"from_id": str(from_id), "to_id": str(to_id)},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 200
 

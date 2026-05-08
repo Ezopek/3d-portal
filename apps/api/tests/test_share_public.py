@@ -38,6 +38,7 @@ def client(tmp_path, monkeypatch):
     factory.aclose = _aclose
 
     with TestClient(app) as c:
+        c.headers.update({"X-Portal-Client": "web"})
         app.state.redis = factory
         from sqlmodel import select
 
@@ -114,11 +115,10 @@ def test_resolve_unknown_token_returns_404(client):
 
 def test_resolve_returns_subset_projection(client):
     c, token, ids = client
-    headers = {"Authorization": f"Bearer {token}"}
+    c.cookies.set("portal_access", token)
     created = c.post(
         "/api/admin/share",
         json={"model_id": str(ids["full"]), "expires_in_hours": 1},
-        headers=headers,
     ).json()
     r = c.get(f"/api/share/{created['token']}")
     assert r.status_code == 200
@@ -133,11 +133,10 @@ def test_resolve_returns_subset_projection(client):
 
 def test_resolve_returns_image_and_thumbnail_urls(client):
     c, token, ids = client
-    headers = {"Authorization": f"Bearer {token}"}
+    c.cookies.set("portal_access", token)
     created = c.post(
         "/api/admin/share",
         json={"model_id": str(ids["full"]), "expires_in_hours": 1},
-        headers=headers,
     ).json()
     body = c.get(f"/api/share/{created['token']}").json()
     expected_img = f"/api/models/{ids['full']}/files/{ids['img']}/content"
@@ -147,11 +146,10 @@ def test_resolve_returns_image_and_thumbnail_urls(client):
 
 def test_resolve_returns_stl_url_when_stl_present(client):
     c, token, ids = client
-    headers = {"Authorization": f"Bearer {token}"}
+    c.cookies.set("portal_access", token)
     created = c.post(
         "/api/admin/share",
         json={"model_id": str(ids["full"]), "expires_in_hours": 1},
-        headers=headers,
     ).json()
     body = c.get(f"/api/share/{created['token']}").json()
     assert body["has_3d"] is True
@@ -163,11 +161,10 @@ def test_resolve_returns_stl_url_when_stl_present(client):
 
 def test_resolve_no_files_returns_empty(client):
     c, token, ids = client
-    headers = {"Authorization": f"Bearer {token}"}
+    c.cookies.set("portal_access", token)
     created = c.post(
         "/api/admin/share",
         json={"model_id": str(ids["bare"]), "expires_in_hours": 1},
-        headers=headers,
     ).json()
     body = c.get(f"/api/share/{created['token']}").json()
     assert body["has_3d"] is False

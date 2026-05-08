@@ -18,7 +18,6 @@ export function useSetFileRenderSelection(modelId: string) {
           method: "PATCH",
           body: JSON.stringify({ selected_for_render: selected }),
         },
-        { authenticated: true },
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["sot", "models", modelId] });

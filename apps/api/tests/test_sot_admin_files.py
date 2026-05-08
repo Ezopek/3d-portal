@@ -31,8 +31,6 @@ from app.core.db.session import get_engine
 JWT_SECRET = "test-secret-not-real"
 
 
-def _hdrs(token: str) -> dict:
-    return {"Authorization": f"Bearer {token}"}
 
 
 def _admin_token(user_id: uuid.UUID) -> str:
@@ -123,11 +121,11 @@ def test_upload_201(client, tmp_path):
 
     content = b"solid test\nendsolid"
     files, data = _multipart(content, "part.stl", "stl")
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/files",
         files=files,
         data=data,
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 201, r.text
     body = r.json()
@@ -154,11 +152,11 @@ def test_upload_404_unknown_model(client):
         s.commit()
 
     files, data = _multipart(b"data", "f.stl", "stl")
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{uuid.uuid4()}/files",
         files=files,
         data=data,
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404
 
@@ -172,11 +170,11 @@ def test_upload_404_soft_deleted_model(client):
         s.commit()
 
     files, data = _multipart(b"data", "f.stl", "stl")
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/files",
         files=files,
         data=data,
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404
 
@@ -193,21 +191,21 @@ def test_upload_dedup_returns_200(client):
     content = b"unique-content-for-dedup-test"
     files, data = _multipart(content, "dup.stl", "stl")
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r1 = client.post(
         f"/api/admin/models/{model_id}/files",
         files=files,
         data=data,
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r1.status_code == 201
 
     # Re-create files dict (httpx consumes it)
     files2, data2 = _multipart(content, "dup.stl", "stl")
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r2 = client.post(
         f"/api/admin/models/{model_id}/files",
         files=files2,
         data=data2,
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r2.status_code == 200
     assert r2.json()["id"] == r1.json()["id"]
@@ -222,11 +220,11 @@ def test_upload_writes_audit_log(client):
         s.commit()
 
     files, data = _multipart(b"audit-test-content", "a.stl", "stl")
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/files",
         files=files,
         data=data,
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 201
     file_id = uuid.UUID(r.json()["id"])
@@ -254,11 +252,11 @@ def test_upload_sha256_computed(client):
     content = b"sha256-check-content"
     expected_sha = hashlib.sha256(content).hexdigest()
     files, data = _multipart(content, "check.stl", "stl")
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/files",
         files=files,
         data=data,
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 201
     assert r.json()["sha256"] == expected_sha
@@ -280,11 +278,11 @@ def test_upload_413_size_limit(client, monkeypatch):
 
     oversized = b"x" * 200  # 200 bytes > 100 byte limit
     files, data = _multipart(oversized, "big.stl", "stl")
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/files",
         files=files,
         data=data,
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 413
 
@@ -298,11 +296,11 @@ def test_upload_kind_stl_forces_mime_model_stl(client):
         s.commit()
 
     files, data = _multipart(b"stl-content", "model.stl", "stl")
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/files",
         files=files,
         data=data,
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 201
     assert r.json()["mime_type"] == "model/stl"
@@ -322,10 +320,10 @@ def test_patch_file_200(client):
         file_id, _ = _seed_file(s, model_id, kind=ModelFileKind.stl)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.patch(
         f"/api/admin/models/{model_id}/files/{file_id}",
         json={"original_name": "renamed.stl"},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 200, r.text
     assert r.json()["original_name"] == "renamed.stl"
@@ -350,10 +348,10 @@ def test_patch_file_404_unknown(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.patch(
         f"/api/admin/models/{model_id}/files/{uuid.uuid4()}",
         json={"original_name": "x.stl"},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404
 
@@ -369,10 +367,10 @@ def test_patch_file_404_cross_model(client):
         file_id, _ = _seed_file(s, m1_id)  # belongs to m1
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.patch(
         f"/api/admin/models/{m2_id}/files/{file_id}",  # wrong model
         json={"original_name": "cross.stl"},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404
 
@@ -418,10 +416,10 @@ def test_patch_file_409_kind_change_unique_collision(client):
         s.commit()
 
     # PATCH fa's kind to "image" → would collide with fb (same model, sha256, kind=image)
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.patch(
         f"/api/admin/models/{model_id}/files/{fa_id}",
         json={"kind": "image"},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 409
 
@@ -464,9 +462,9 @@ def test_delete_file_204(client):
 
     assert full_path.is_file()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.delete(
         f"/api/admin/models/{model_id}/files/{file_id}",
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 204
 
@@ -509,9 +507,9 @@ def test_delete_file_writes_audit_log(client):
         file_id = f.id
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.delete(
         f"/api/admin/models/{model_id}/files/{file_id}",
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 204
 
@@ -538,9 +536,9 @@ def test_delete_file_404_cross_model(client):
         file_id, _ = _seed_file(s, m1_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.delete(
         f"/api/admin/models/{m2_id}/files/{file_id}",
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404
 
@@ -582,9 +580,9 @@ def test_delete_file_clears_thumbnail_pointer(client):
         s.add(m)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.delete(
         f"/api/admin/models/{model_id}/files/{file_id}",
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 204
 
@@ -609,11 +607,11 @@ def test_upload_first_stl_is_selected_for_render(client):
         s.commit()
 
     files, data = _multipart(b"first stl bytes", "first.stl", "stl")
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/files",
         files=files,
         data=data,
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 201, r.text
     assert r.json()["selected_for_render"] is True
@@ -629,21 +627,21 @@ def test_upload_second_stl_is_not_selected_for_render(client):
         s.commit()
 
     f1, d1 = _multipart(b"first", "a.stl", "stl")
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r1 = client.post(
         f"/api/admin/models/{model_id}/files",
         files=f1,
         data=d1,
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r1.status_code == 201
     assert r1.json()["selected_for_render"] is True
 
     f2, d2 = _multipart(b"second", "b.stl", "stl")
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r2 = client.post(
         f"/api/admin/models/{model_id}/files",
         files=f2,
         data=d2,
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r2.status_code == 201
     assert r2.json()["selected_for_render"] is False
@@ -658,18 +656,18 @@ def test_patch_file_selected_for_render_toggle(client):
         file_id, _ = _seed_file(s, model_id, kind=ModelFileKind.stl)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.patch(
         f"/api/admin/models/{model_id}/files/{file_id}",
         json={"selected_for_render": True},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 200, r.text
     assert r.json()["selected_for_render"] is True
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r2 = client.patch(
         f"/api/admin/models/{model_id}/files/{file_id}",
         json={"selected_for_render": False},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r2.status_code == 200
     assert r2.json()["selected_for_render"] is False
@@ -692,9 +690,9 @@ def test_patch_file_selected_for_render_rejected_on_non_stl(client):
         )
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.patch(
         f"/api/admin/models/{model_id}/files/{file_id}",
         json={"selected_for_render": True},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 400

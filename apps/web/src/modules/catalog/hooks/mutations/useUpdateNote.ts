@@ -15,7 +15,6 @@ export function useUpdateNote(modelId: string, noteId: string) {
       api<NoteRead>(
         `/admin/notes/${noteId}`,
         { method: "PATCH", body: JSON.stringify(patch) },
-        { authenticated: true },
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["sot", "models", modelId] });

@@ -25,6 +25,7 @@ def client(tmp_path, monkeypatch):
     ge.cache_clear()
     app = create_app()
     with TestClient(app) as c:
+        c.headers.update({"X-Portal-Client": "web"})
         # The admin user is created by lifespan seed_admin. Retrieve its UUID.
         engine = get_engine()
         with Session(engine) as s:
@@ -55,8 +56,8 @@ def test_audit_requires_admin(client):
 
 def test_audit_returns_paginated_events(client):
     c, token, user_id = client
-    headers = {"Authorization": f"Bearer {token}"}
-    r = c.get("/api/admin/audit?limit=3", headers=headers)
+    c.cookies.set("portal_access", token)
+    r = c.get("/api/admin/audit?limit=3")
     assert r.status_code == 200
     body = r.json()
     assert len(body["events"]) == 3
@@ -79,15 +80,15 @@ def test_audit_returns_paginated_events(client):
 
 def test_audit_offset_paginates(client):
     c, token, _uid = client
-    headers = {"Authorization": f"Bearer {token}"}
-    page1 = c.get("/api/admin/audit?limit=2&offset=0", headers=headers).json()["events"]
-    page2 = c.get("/api/admin/audit?limit=2&offset=2", headers=headers).json()["events"]
+    c.cookies.set("portal_access", token)
+    page1 = c.get("/api/admin/audit?limit=2&offset=0").json()["events"]
+    page2 = c.get("/api/admin/audit?limit=2&offset=2").json()["events"]
     assert {e["id"] for e in page1}.isdisjoint({e["id"] for e in page2})
 
 
 def test_audit_log_returns_entries_for_entity_id(client):
     c, token, user_id = client
-    headers = {"Authorization": f"Bearer {token}"}
+    c.cookies.set("portal_access", token)
     engine = get_engine()
     target_id = uuid.uuid4()
     other_id = uuid.uuid4()
@@ -117,7 +118,6 @@ def test_audit_log_returns_entries_for_entity_id(client):
     )
     r = c.get(
         f"/api/admin/audit-log?entity_type=model&entity_id={target_id}",
-        headers=headers,
     )
     assert r.status_code == 200
     body = r.json()
@@ -135,7 +135,7 @@ def test_audit_log_returns_entries_for_entity_id(client):
 
 def test_audit_log_filters_by_entity_type(client):
     c, token, user_id = client
-    headers = {"Authorization": f"Bearer {token}"}
+    c.cookies.set("portal_access", token)
     engine = get_engine()
     record_event(
         engine,
@@ -145,7 +145,7 @@ def test_audit_log_filters_by_entity_type(client):
         actor_user_id=user_id,
         after={"k": 1},
     )
-    r = c.get("/api/admin/audit-log?entity_type=model_file", headers=headers)
+    r = c.get("/api/admin/audit-log?entity_type=model_file")
     assert r.status_code == 200
     body = r.json()
     assert len(body["items"]) >= 1

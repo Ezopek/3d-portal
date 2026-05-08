@@ -17,7 +17,6 @@ export function useCreatePrint(modelId: string) {
       api<PrintRead>(
         `/admin/models/${modelId}/prints`,
         { method: "POST", body: JSON.stringify(input) },
-        { authenticated: true },
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["sot", "models", modelId] });

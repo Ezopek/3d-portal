@@ -16,7 +16,6 @@ export function useCreateNote(modelId: string) {
       api<NoteRead>(
         "/admin/notes",
         { method: "POST", body: JSON.stringify(input) },
-        { authenticated: true },
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["sot", "models", modelId] });

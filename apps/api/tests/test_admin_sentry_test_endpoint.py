@@ -26,6 +26,7 @@ def client(tmp_path, monkeypatch):
     # as an HTTP 500 (matching prod behaviour) instead of bubbling up into
     # the test runner.
     with TestClient(app, raise_server_exceptions=False) as c:
+        c.headers.update({"X-Portal-Client": "web"})
         # Retrieve the seeded admin user UUID for the token.
         from sqlmodel import Session, select
 
@@ -52,17 +53,13 @@ def test_sentry_test_requires_admin_jwt(client) -> None:
 def test_sentry_test_rejects_non_admin_jwt(client) -> None:
     c, _ = client
     user_token = encode_token(subject=_NON_ADMIN_UUID, role="user", secret="test", ttl_minutes=30)
-    r = c.post(
-        "/api/admin/sentry-test",
-        headers={"Authorization": f"Bearer {user_token}"},
-    )
+    c.cookies.set("portal_access", user_token)
+    r = c.post("/api/admin/sentry-test")
     assert r.status_code == 403
 
 
 def test_sentry_test_returns_500_for_admin(client) -> None:
     c, token = client
-    r = c.post(
-        "/api/admin/sentry-test",
-        headers={"Authorization": f"Bearer {token}"},
-    )
+    c.cookies.set("portal_access", token)
+    r = c.post("/api/admin/sentry-test")
     assert r.status_code == 500

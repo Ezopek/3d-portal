@@ -1,4 +1,5 @@
 import datetime
+import uuid
 from typing import Any
 
 import jwt as _jwt
@@ -15,6 +16,7 @@ def encode_token(*, subject: str, role: str, secret: str, ttl_minutes: int) -> s
         "role": role,
         "iat": int(now.timestamp()),
         "exp": int((now + datetime.timedelta(minutes=ttl_minutes)).timestamp()),
+        "jti": uuid.uuid4().hex,
     }
     return _jwt.encode(payload, secret, algorithm="HS256")
 

@@ -16,7 +16,6 @@ export function useUpdatePrint(modelId: string, printId: string) {
       api<PrintRead>(
         `/admin/prints/${printId}`,
         { method: "PATCH", body: JSON.stringify(patch) },
-        { authenticated: true },
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["sot", "models", modelId] });

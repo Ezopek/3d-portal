@@ -10,7 +10,6 @@ export function useReplaceTags(modelId: string) {
       api<TagRead[]>(
         `/admin/models/${modelId}/tags`,
         { method: "PUT", body: JSON.stringify({ tag_ids: tagIds }) },
-        { authenticated: true },
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["sot", "models", modelId] });

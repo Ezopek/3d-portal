@@ -24,6 +24,7 @@ services:
       STATE_DIR: /data/state
       CATALOG_CACHE_DIR: /data/cache
       PORTAL_CONTENT_DIR: /data/content
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
       OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS}
       SENTRY_DSN: ${SENTRY_DSN}
@@ -54,6 +55,37 @@ services:
       ENVIRONMENT: ${ENVIRONMENT}
     volumes:
       - ${STATE_HOST_DIR}:/data/state
+      - ${CONTENT_HOST_DIR}:/data/content
+    depends_on: [redis]
+    restart: unless-stopped
+    networks: [portal]
+
+  arq-worker:
+    image: portal-api:${PORTAL_VERSION}
+    build: ../apps/api
+    command: ["arq", "app.workers.WorkerSettings"]
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: sqlite:////data/state/portal.db
+      REDIS_URL: redis://redis:6379/0
+      CATALOG_DATA_DIR: /data/catalog
+      RENDERS_DIR: /data/renders
+      STATE_DIR: /data/state
+      CATALOG_CACHE_DIR: /data/cache
+      PORTAL_CONTENT_DIR: /data/content
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS}
+      SENTRY_DSN: ${SENTRY_DSN}
+      PORTAL_VERSION: ${PORTAL_VERSION}
+    volumes:
+      - ${CATALOG_HOST_DIR}:/data/catalog:ro
+      - ${RENDERS_HOST_DIR}:/data/renders:ro
+      - ${STATE_HOST_DIR}:/data/state
+      - ${CACHE_HOST_DIR}:/data/cache
       - ${CONTENT_HOST_DIR}:/data/content
     depends_on: [redis]
     restart: unless-stopped

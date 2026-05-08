@@ -20,13 +20,11 @@ export function useUpsertDescription() {
             method: "POST",
             body: JSON.stringify({ model_id: modelId, kind: "description", body }),
           },
-          { authenticated: true },
         );
       }
       return api<NoteRead>(
         `/admin/notes/${existingId}`,
         { method: "PATCH", body: JSON.stringify({ body }) },
-        { authenticated: true },
       );
     },
     onSuccess: (_data, vars) => {

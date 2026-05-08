@@ -1,70 +1,60 @@
+"""apps/api/app/core/auth/dependencies.py"""
 import uuid
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import Cookie, Depends, HTTPException, status
 
+from app.core.auth.cookies import ACCESS_COOKIE
 from app.core.auth.jwt import TokenError, decode_token
 from app.core.config import Settings, get_settings
-
-_bearer = HTTPBearer(auto_error=False)
 
 _ALLOWED_ROLES: frozenset[str] = frozenset({"admin", "agent", "member"})
 
 
-def _resolve_admin(
-    creds: HTTPAuthorizationCredentials | None,
-    settings: Settings,
-) -> uuid.UUID:
-    if creds is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing bearer token")
+def _decode(
+    token: str | None, settings: Settings
+) -> dict[str, object]:
+    if token is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "missing_access")
     try:
-        claims = decode_token(creds.credentials, secret=settings.jwt_secret)
+        return decode_token(token, secret=settings.jwt_secret)
     except TokenError as exc:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token") from exc
+        msg = str(exc).lower()
+        if "expired" in msg:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "access_expired") from exc
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_access") from exc
+
+
+def _resolve_admin(claims: dict[str, object]) -> uuid.UUID:
     if claims.get("role") != "admin":
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin role required")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "admin_required")
     try:
-        return uuid.UUID(claims["sub"])
+        return uuid.UUID(str(claims["sub"]))
     except (KeyError, ValueError) as exc:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Malformed subject claim") from exc
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_access") from exc
 
 
-def _resolve_user(
-    creds: HTTPAuthorizationCredentials | None,
-    settings: Settings,
-) -> uuid.UUID:
-    """Resolve the authenticated user id, accepting any known role.
-
-    Used by endpoints that any logged-in user may call (e.g. /api/auth/me).
-    Rejects unknown roles with 403 — the role enum is closed.
-    """
-    if creds is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing bearer token")
-    try:
-        claims = decode_token(creds.credentials, secret=settings.jwt_secret)
-    except TokenError as exc:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token") from exc
+def _resolve_user(claims: dict[str, object]) -> uuid.UUID:
     if claims.get("role") not in _ALLOWED_ROLES:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Unknown role")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "forbidden_role")
     try:
-        return uuid.UUID(claims["sub"])
+        return uuid.UUID(str(claims["sub"]))
     except (KeyError, ValueError) as exc:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Malformed subject claim") from exc
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_access") from exc
 
 
 def _current_admin_dep(
-    creds: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
-    settings: Annotated[Settings, Depends(get_settings)],
+    portal_access: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    settings: Annotated[Settings, Depends(get_settings)] = None,  # type: ignore[assignment]
 ) -> uuid.UUID:
-    return _resolve_admin(creds, settings)
+    return _resolve_admin(_decode(portal_access, settings))
 
 
 def _current_user_dep(
-    creds: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
-    settings: Annotated[Settings, Depends(get_settings)],
+    portal_access: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    settings: Annotated[Settings, Depends(get_settings)] = None,  # type: ignore[assignment]
 ) -> uuid.UUID:
-    return _resolve_user(creds, settings)
+    return _resolve_user(_decode(portal_access, settings))
 
 
 current_admin = Depends(_current_admin_dep)

@@ -21,7 +21,7 @@ export function useAuditLog(opts: {
       opts.entity_id ?? null,
       opts.limit ?? 50,
     ],
-    queryFn: () => api<AuditLogResponse>(path, {}, { authenticated: true }),
+    queryFn: () => api<AuditLogResponse>(path),
     staleTime: 10 * 1000,
   });
 }
