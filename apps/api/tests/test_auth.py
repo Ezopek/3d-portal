@@ -26,7 +26,8 @@ def test_me_with_token_returns_user(client):
         json={"email": "admin@localhost.localdomain", "password": "test-admin-pw"},
     )
     token = r.json()["access_token"]
-    r2 = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    client.cookies.set("portal_access", token)
+    r2 = client.get("/api/auth/me")
     assert r2.status_code == 200
     body = r2.json()
     assert body["email"] == "admin@localhost.localdomain"
@@ -70,7 +71,8 @@ def test_me_with_member_token_returns_user(client):
     )
     assert r.status_code == 200
     token = r.json()["access_token"]
-    r2 = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    client.cookies.set("portal_access", token)
+    r2 = client.get("/api/auth/me")
     assert r2.status_code == 200
     body = r2.json()
     assert body["email"] == "member-me@portal.example.com"
@@ -90,6 +92,7 @@ def test_me_with_agent_token_returns_user(client):
         json={"email": "agent-me@portal.example.com", "password": password},
     )
     token = r.json()["access_token"]
-    r2 = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    client.cookies.set("portal_access", token)
+    r2 = client.get("/api/auth/me")
     assert r2.status_code == 200
     assert r2.json()["role"] == "agent"

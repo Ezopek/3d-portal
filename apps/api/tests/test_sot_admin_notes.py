@@ -25,8 +25,6 @@ from app.core.db.session import get_engine
 JWT_SECRET = "test-secret-not-real"
 
 
-def _hdrs(token: str) -> dict:
-    return {"Authorization": f"Bearer {token}"}
 
 
 def _admin_token(user_id: uuid.UUID) -> str:
@@ -88,10 +86,10 @@ def test_create_note_201(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/notes",
         json={"kind": "description", "body": "This is a note."},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 201, r.text
     body = r.json()
@@ -108,10 +106,10 @@ def test_create_note_404_model(client):
         admin_id = _seed_admin(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{uuid.uuid4()}/notes",
         json={"kind": "description", "body": "Note."},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404
 
@@ -124,10 +122,10 @@ def test_create_note_audit(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/notes",
         json={"kind": "operational", "body": "Audit body."},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 201
     note_id = uuid.UUID(r.json()["id"])
@@ -157,10 +155,10 @@ def test_patch_note_200(client):
         note_id = _seed_note(s, model_id, admin_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.patch(
         f"/api/admin/notes/{note_id}",
         json={"body": "Updated body."},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 200, r.text
     assert r.json()["body"] == "Updated body."
@@ -172,10 +170,10 @@ def test_patch_note_404(client):
         admin_id = _seed_admin(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.patch(
         f"/api/admin/notes/{uuid.uuid4()}",
         json={"body": "X"},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404
 
@@ -189,10 +187,10 @@ def test_patch_note_audit(client):
         note_id = _seed_note(s, model_id, admin_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     client.patch(
         f"/api/admin/notes/{note_id}",
         json={"body": "Patched body."},
-        headers=_hdrs(_admin_token(admin_id)),
     )
 
     with Session(get_engine()) as s:
@@ -220,9 +218,9 @@ def test_delete_note_204(client):
         note_id = _seed_note(s, model_id, admin_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.delete(
         f"/api/admin/notes/{note_id}",
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 204
 
@@ -236,8 +234,8 @@ def test_delete_note_404(client):
         admin_id = _seed_admin(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.delete(
         f"/api/admin/notes/{uuid.uuid4()}",
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404

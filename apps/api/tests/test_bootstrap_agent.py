@@ -85,9 +85,9 @@ def test_bootstrap_agent_can_call_admin_endpoints(client):
     token = r.json()["access_token"]
 
     # Use a unique slug so this test stays independent
+    client.cookies.set("portal_access", token)
     r2 = client.post(
         "/api/admin/categories",
-        headers={"Authorization": f"Bearer {token}"},
         json={"slug": "agent-bootstrap-smoke", "name_en": "Smoke"},
     )
     assert r2.status_code == 201, r2.text

@@ -41,11 +41,11 @@ def test_admin_trigger_render_enqueues_job(client, _patch_arq_pool):
         json={"email": "admin@localhost.localdomain", "password": "test-admin-pw"},
     )
     token = r.json()["access_token"]
+    client.cookies.set("portal_access", token)
 
     _patch_arq_pool.enqueue_job.reset_mock()
     r2 = client.post(
         f"/api/admin/models/{model_id}/render",
-        headers={"Authorization": f"Bearer {token}"},
         json={"selected_stl_file_ids": []},
     )
     assert r2.status_code == 202, r2.text
@@ -68,9 +68,9 @@ def test_admin_trigger_render_validates_selected_stls(client, _patch_arq_pool):
     )
     token = r.json()["access_token"]
     bogus_id = str(uuid.uuid4())
+    client.cookies.set("portal_access", token)
     r2 = client.post(
         f"/api/admin/models/{model_id}/render",
-        headers={"Authorization": f"Bearer {token}"},
         json={"selected_stl_file_ids": [bogus_id]},
     )
     assert r2.status_code == 400
@@ -82,9 +82,9 @@ def test_admin_trigger_render_unknown_model_404(client, _patch_arq_pool):
         json={"email": "admin@localhost.localdomain", "password": "test-admin-pw"},
     )
     token = r.json()["access_token"]
+    client.cookies.set("portal_access", token)
     r2 = client.post(
         f"/api/admin/models/{uuid.uuid4()}/render",
-        headers={"Authorization": f"Bearer {token}"},
         json={"selected_stl_file_ids": []},
     )
     assert r2.status_code == 404
@@ -109,12 +109,12 @@ def test_stl_upload_enqueues_render_when_no_prior(client, _patch_arq_pool):
         json={"email": "admin@localhost.localdomain", "password": "test-admin-pw"},
     )
     token = r.json()["access_token"]
+    client.cookies.set("portal_access", token)
 
     _patch_arq_pool.enqueue_job.reset_mock()
     files = {"file": ("thing.stl", b"solid x\nendsolid x\n", "model/stl")}
     r2 = client.post(
         f"/api/admin/models/{model_id}/files",
-        headers={"Authorization": f"Bearer {token}"},
         files=files,
         data={"kind": "stl"},
     )
@@ -140,6 +140,7 @@ def test_image_upload_does_not_enqueue_render(client, _patch_arq_pool):
         json={"email": "admin@localhost.localdomain", "password": "test-admin-pw"},
     )
     token = r.json()["access_token"]
+    client.cookies.set("portal_access", token)
     _patch_arq_pool.enqueue_job.reset_mock()
     # Smallest valid PNG (1x1 transparent)
     png_bytes = bytes.fromhex(
@@ -149,7 +150,6 @@ def test_image_upload_does_not_enqueue_render(client, _patch_arq_pool):
     files = {"file": ("a.png", png_bytes, "image/png")}
     r2 = client.post(
         f"/api/admin/models/{model_id}/files",
-        headers={"Authorization": f"Bearer {token}"},
         files=files,
         data={"kind": "image"},
     )
@@ -189,11 +189,11 @@ def test_stl_upload_does_not_re_enqueue_when_renders_exist(client, _patch_arq_po
         json={"email": "admin@localhost.localdomain", "password": "test-admin-pw"},
     )
     token = r.json()["access_token"]
+    client.cookies.set("portal_access", token)
     _patch_arq_pool.enqueue_job.reset_mock()
     files = {"file": ("second.stl", b"solid x\nendsolid x\n", "model/stl")}
     r2 = client.post(
         f"/api/admin/models/{model_id}/files",
-        headers={"Authorization": f"Bearer {token}"},
         files=files,
         data={"kind": "stl"},
     )

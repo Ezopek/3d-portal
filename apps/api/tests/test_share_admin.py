@@ -74,11 +74,10 @@ def test_create_share_requires_admin(client):
 
 def test_create_share_returns_token_and_url(client):
     c, token, (mid, _) = client
-    headers = {"Authorization": f"Bearer {token}"}
+    c.cookies.set("portal_access", token)
     r = c.post(
         "/api/admin/share",
         json={"model_id": str(mid), "expires_in_hours": 24},
-        headers=headers,
     )
     assert r.status_code == 201
     body = r.json()
@@ -88,42 +87,38 @@ def test_create_share_returns_token_and_url(client):
 
 def test_list_share_returns_active_tokens(client):
     c, token, (mid1, mid2) = client
-    headers = {"Authorization": f"Bearer {token}"}
+    c.cookies.set("portal_access", token)
     c.post(
         "/api/admin/share",
         json={"model_id": str(mid1), "expires_in_hours": 24},
-        headers=headers,
     )
     c.post(
         "/api/admin/share",
         json={"model_id": str(mid2), "expires_in_hours": 24},
-        headers=headers,
     )
-    r = c.get("/api/admin/share", headers=headers)
+    r = c.get("/api/admin/share")
     assert r.status_code == 200
     assert len(r.json()["tokens"]) == 2
 
 
 def test_revoke_share_removes_it(client):
     c, token, (mid, _) = client
-    headers = {"Authorization": f"Bearer {token}"}
+    c.cookies.set("portal_access", token)
     created = c.post(
         "/api/admin/share",
         json={"model_id": str(mid), "expires_in_hours": 1},
-        headers=headers,
     ).json()
-    r = c.delete(f"/api/admin/share/{created['token']}", headers=headers)
+    r = c.delete(f"/api/admin/share/{created['token']}")
     assert r.status_code == 204
-    after = c.get("/api/admin/share", headers=headers).json()
+    after = c.get("/api/admin/share").json()
     assert all(t["token"] != created["token"] for t in after["tokens"])
 
 
 def test_create_for_unknown_model_returns_404(client):
     c, token, _ = client
-    headers = {"Authorization": f"Bearer {token}"}
+    c.cookies.set("portal_access", token)
     r = c.post(
         "/api/admin/share",
         json={"model_id": str(uuid.uuid4()), "expires_in_hours": 1},
-        headers=headers,
     )
     assert r.status_code == 404

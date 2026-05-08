@@ -27,8 +27,6 @@ from app.core.db.session import get_engine
 JWT_SECRET = "test-secret-not-real"
 
 
-def _hdrs(token: str) -> dict:
-    return {"Authorization": f"Bearer {token}"}
 
 
 def _admin_token(user_id: uuid.UUID) -> str:
@@ -102,10 +100,10 @@ def test_create_print_201(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/prints",
         json={"printed_at": "2024-03-01", "note": "Looks great!"},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 201, r.text
     body = r.json()
@@ -129,10 +127,10 @@ def test_create_print_flat_path_is_not_mounted(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         "/api/admin/prints",
         json={"model_id": str(model_id)},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404
 
@@ -146,10 +144,10 @@ def test_create_print_minimal(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/prints",
         json={},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 201
     assert r.json()["model_id"] == str(model_id)
@@ -165,10 +163,10 @@ def test_create_print_with_photo(client):
         file_id = _seed_file(s, model_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/prints",
         json={"photo_file_id": str(file_id)},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 201
     assert r.json()["photo_file_id"] == str(file_id)
@@ -185,10 +183,10 @@ def test_create_print_400_cross_model_photo(client):
         file_id = _seed_file(s, other_model_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/prints",
         json={"photo_file_id": str(file_id)},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 400
 
@@ -199,10 +197,10 @@ def test_create_print_404_model(client):
         admin_id = _seed_admin(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{uuid.uuid4()}/prints",
         json={},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404
 
@@ -215,10 +213,10 @@ def test_create_print_audit(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/prints",
         json={"note": "Audit note."},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 201
     print_id = uuid.UUID(r.json()["id"])
@@ -248,10 +246,10 @@ def test_patch_print_200(client):
         print_id = _seed_print(s, model_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.patch(
         f"/api/admin/prints/{print_id}",
         json={"note": "Updated note."},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 200, r.text
     assert r.json()["note"] == "Updated note."
@@ -263,10 +261,10 @@ def test_patch_print_404(client):
         admin_id = _seed_admin(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.patch(
         f"/api/admin/prints/{uuid.uuid4()}",
         json={"note": "X"},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404
 
@@ -282,10 +280,10 @@ def test_patch_print_400_cross_model_photo(client):
         other_file_id = _seed_file(s, other_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.patch(
         f"/api/admin/prints/{print_id}",
         json={"photo_file_id": str(other_file_id)},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 400
 
@@ -304,9 +302,9 @@ def test_delete_print_204(client):
         print_id = _seed_print(s, model_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.delete(
         f"/api/admin/prints/{print_id}",
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 204
 
@@ -320,8 +318,8 @@ def test_delete_print_404(client):
         admin_id = _seed_admin(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.delete(
         f"/api/admin/prints/{uuid.uuid4()}",
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404

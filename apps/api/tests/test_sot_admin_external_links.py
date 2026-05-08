@@ -24,8 +24,6 @@ from app.core.db.session import get_engine
 JWT_SECRET = "test-secret-not-real"
 
 
-def _hdrs(token: str) -> dict:
-    return {"Authorization": f"Bearer {token}"}
 
 
 def _admin_token(user_id: uuid.UUID) -> str:
@@ -86,6 +84,7 @@ def test_create_link_201(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/external-links",
         json={
@@ -93,7 +92,6 @@ def test_create_link_201(client):
             "url": "https://printables.com/model/123",
             "external_id": "123",
         },
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 201, r.text
     body = r.json()
@@ -113,10 +111,10 @@ def test_create_link_409_source_conflict(client):
         _seed_link(s, model_id, source="printables")
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/external-links",
         json={"source": "printables", "url": "https://printables.com/model/999"},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 409
 
@@ -127,10 +125,10 @@ def test_create_link_404_model(client):
         admin_id = _seed_admin(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{uuid.uuid4()}/external-links",
         json={"source": "other", "url": "https://example.com"},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404
 
@@ -143,10 +141,10 @@ def test_create_link_audit(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/external-links",
         json={"source": "thingiverse", "url": "https://thingiverse.com/thing/1"},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 201
     link_id = uuid.UUID(r.json()["id"])
@@ -177,10 +175,10 @@ def test_patch_link_200(client):
         s.commit()
 
     new_url = "https://updated.example.com/xyz"
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.patch(
         f"/api/admin/external-links/{link_id}",
         json={"url": new_url},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 200, r.text
     assert r.json()["url"] == new_url
@@ -192,10 +190,10 @@ def test_patch_link_404(client):
         admin_id = _seed_admin(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.patch(
         f"/api/admin/external-links/{uuid.uuid4()}",
         json={"url": "https://x.com"},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404
 
@@ -211,10 +209,10 @@ def test_patch_link_409_source_conflict(client):
         _seed_link(s, model_id, source="thingiverse")
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.patch(
         f"/api/admin/external-links/{link1_id}",
         json={"source": "thingiverse"},
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 409
 
@@ -228,10 +226,10 @@ def test_patch_link_audit(client):
         link_id = _seed_link(s, model_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     client.patch(
         f"/api/admin/external-links/{link_id}",
         json={"url": "https://audit-updated.example.com"},
-        headers=_hdrs(_admin_token(admin_id)),
     )
 
     with Session(get_engine()) as s:
@@ -258,9 +256,9 @@ def test_delete_link_204(client):
         link_id = _seed_link(s, model_id)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.delete(
         f"/api/admin/external-links/{link_id}",
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 204
 
@@ -274,8 +272,8 @@ def test_delete_link_404(client):
         admin_id = _seed_admin(s)
         s.commit()
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.delete(
         f"/api/admin/external-links/{uuid.uuid4()}",
-        headers=_hdrs(_admin_token(admin_id)),
     )
     assert r.status_code == 404

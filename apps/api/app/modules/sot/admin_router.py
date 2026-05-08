@@ -11,6 +11,7 @@ from typing import Annotated
 
 from fastapi import (
     APIRouter,
+    Cookie,
     Depends,
     File,
     Form,
@@ -21,9 +22,9 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import Session, select
 
+from app.core.auth.cookies import ACCESS_COOKIE
 from app.core.auth.jwt import TokenError, decode_token
 from app.core.config import Settings, get_settings
 from app.core.db.models import Model, ModelFile, ModelFileKind, User, UserRole
@@ -101,26 +102,27 @@ router = APIRouter(prefix="/api/admin", tags=["sot-admin"])
 # Auth dependency — allows both admin and agent roles
 # ---------------------------------------------------------------------------
 
-_bearer = HTTPBearer(auto_error=False)
-
 
 def _current_admin_or_agent_dep(
-    creds: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
-    settings: Annotated[Settings, Depends(get_settings)],
+    portal_access: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    settings: Annotated[Settings, Depends(get_settings)] = None,  # type: ignore[assignment]
 ) -> uuid.UUID:
-    if creds is None:
-        raise HTTPException(401, "Missing bearer token")
+    if portal_access is None:
+        raise HTTPException(401, "missing_access")
     try:
-        claims = decode_token(creds.credentials, secret=settings.jwt_secret)
+        claims = decode_token(portal_access, secret=settings.jwt_secret)
     except TokenError as exc:
-        raise HTTPException(401, "Invalid token") from exc
+        msg = str(exc).lower()
+        if "expired" in msg:
+            raise HTTPException(401, "access_expired") from exc
+        raise HTTPException(401, "invalid_access") from exc
     role = claims.get("role")
     if role not in ("admin", "agent"):
         raise HTTPException(403, "Admin or agent role required")
     try:
         return uuid.UUID(claims["sub"])
     except (KeyError, ValueError) as exc:
-        raise HTTPException(401, "Malformed subject claim") from exc
+        raise HTTPException(401, "invalid_access") from exc
 
 
 _current_principal = Depends(_current_admin_or_agent_dep)
