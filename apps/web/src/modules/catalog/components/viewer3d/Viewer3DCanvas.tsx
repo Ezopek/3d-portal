@@ -10,15 +10,21 @@ import {
   PerspectiveCamera,
   Vector3,
 } from "three";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 
 import { framingDistance, viewPresets, type ViewPreset } from "./lib/camera";
+import { allocateColorIndex, paletteFor } from "./lib/palette";
 import { readMeshTokens } from "./lib/readMeshTokens";
 import type { WeldedMesh } from "./lib/welder";
 import { ClusterOverlay } from "./measure/ClusterOverlay";
+import type { Rim } from "./measure/circleFit";
+import { detectRim } from "./measure/detectRim";
 import { fitPlane } from "./measure/fitting";
 import { floodFill } from "./measure/floodFill";
 import { MeasureOverlay } from "./measure/MeasureOverlay";
 import type { MeasureAction } from "./measure/measureReducer";
+import { RimOverlay } from "./measure/RimOverlay";
 import type { MeasureMode, MeasureState, Plane } from "./types";
 
 const FOV_DEG = 50;
@@ -105,6 +111,7 @@ export function Viewer3DCanvas({
   onPickPlane,
   children,
 }: Props) {
+  const { t } = useTranslation();
   const tokens = useMemo(() => readMeshTokens(), []);
   const material = useMemo(
     () =>
@@ -125,6 +132,12 @@ export function Viewer3DCanvas({
   const [hoveredPlane, setHoveredPlane] = useState<Plane | null>(null);
   const hoveredTriRef = useRef<number | null>(null);
   const hoverRafRef = useRef<number | null>(null);
+
+  // Diameter hover preview: show which rim would be captured if the user
+  // clicks at the current cursor position.
+  const [hoveredRim, setHoveredRim] = useState<Rim | null>(null);
+  const lastNoRimToastRef = useRef<number>(0);
+  const NO_RIM_TOAST_DEBOUNCE_MS = 2000;
   const expectsPlaneClick =
     state.mode === "plane-to-plane" ||
     (state.mode === "point-to-plane" && state.active.stage === "empty");
@@ -132,6 +145,29 @@ export function Viewer3DCanvas({
   const handleMeshClick = (e: ThreeEvent<MouseEvent>) => {
     if (state.mode === "off") return;
     e.stopPropagation();
+    if (state.mode === "diameter") {
+      if (welded === null || welded === undefined) return;
+      if (typeof e.faceIndex !== "number") return;
+      const weldedTri = welded.sourceToWelded[e.faceIndex];
+      if (weldedTri === undefined || weldedTri === 0xffffffff) return;
+      // Synchronous re-detect from click event (P1.3 in spec v2/v3).
+      const rim = detectRim(weldedTri, e.point.clone(), welded, welded.graph);
+      if (rim !== null) {
+        dispatch({ type: "click-rim", rim });
+        setHoveredRim(null);
+        return;
+      }
+      // No rim. Toast — but suppress while prep is in flight (loading welded).
+      // welded is non-null here (guard above), so isPrepping is always false
+      // at this point; kept for documentation clarity.
+      const isPrepping = welded === null;
+      const now = performance.now();
+      if (!isPrepping && now - lastNoRimToastRef.current > NO_RIM_TOAST_DEBOUNCE_MS) {
+        toast(t("viewer3d.measure.diameter.no_rim"));
+        lastNoRimToastRef.current = now;
+      }
+      return;
+    }
     if (state.mode === "point-to-point") {
       dispatch({ type: "click-mesh", point: e.point.clone() });
       return;
@@ -164,6 +200,25 @@ export function Viewer3DCanvas({
   };
 
   const handleMeshPointerMove = (e: ThreeEvent<PointerEvent>) => {
+    if (state.mode === "diameter") {
+      if (welded === null || welded === undefined) return;
+      if (typeof e.faceIndex !== "number") {
+        setHoveredRim(null);
+        return;
+      }
+      const weldedTri = welded.sourceToWelded[e.faceIndex];
+      if (weldedTri === undefined || weldedTri === 0xffffffff) {
+        setHoveredRim(null);
+        return;
+      }
+      if (hoverRafRef.current !== null) cancelAnimationFrame(hoverRafRef.current);
+      hoverRafRef.current = requestAnimationFrame(() => {
+        hoverRafRef.current = null;
+        const rim = detectRim(weldedTri, e.point.clone(), welded, welded.graph);
+        setHoveredRim(rim);
+      });
+      return;
+    }
     if (!expectsPlaneClick) return;
     if (welded === null || welded === undefined) return;
     if (typeof e.faceIndex !== "number") return;
@@ -197,6 +252,15 @@ export function Viewer3DCanvas({
       setHoveredPlane(null);
     }
   }, [expectsPlaneClick, hoveredPlane]);
+
+  // Reset diameter hover preview when mode changes away from diameter or when
+  // a new geometry is loaded (stale rim would reference the wrong mesh).
+  useEffect(() => {
+    if (state.mode !== "diameter") setHoveredRim(null);
+  }, [state.mode]);
+  useEffect(() => {
+    setHoveredRim(null);
+  }, [geometry]);
 
   const partial =
     state.active.stage === "have-point"
@@ -258,6 +322,12 @@ export function Viewer3DCanvas({
           triangleIds={hoveredPlane.triangleIds}
           color={tokens.cluster}
           opacity={0.2}
+        />
+      )}
+      {state.mode === "diameter" && hoveredRim !== null && (
+        <RimOverlay
+          rim={hoveredRim}
+          color={paletteFor(allocateColorIndex(state.completed), "sel1")}
         />
       )}
     </Canvas>
