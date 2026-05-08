@@ -18,6 +18,12 @@ type Response =
       sourceToWelded: ArrayBuffer;
       weldedToSourceStart: ArrayBuffer;
       weldedToSource: ArrayBuffer;
+      graphEdges: ArrayBuffer;
+      graphTriangles: ArrayBuffer;
+      graphDihedralAngles: ArrayBuffer;
+      graphVertexEdges: ArrayBuffer;
+      graphVertexEdgesStart: ArrayBuffer;
+      graphTriangleEdgeIds: ArrayBuffer;
     }
   | { id: number; jobId: number; ok: false; error: string };
 
@@ -31,6 +37,12 @@ self.onmessage = (event: MessageEvent<Request>) => {
     const sourceToWeldedBuf = welded.sourceToWelded.buffer as ArrayBuffer;
     const weldedToSourceStartBuf = welded.weldedToSourceStart.buffer as ArrayBuffer;
     const weldedToSourceBuf = welded.weldedToSource.buffer as ArrayBuffer;
+    const graphEdgesBuf = welded.graph.edges.buffer as ArrayBuffer;
+    const graphTrianglesBuf = welded.graph.triangles.buffer as ArrayBuffer;
+    const graphDihedralAnglesBuf = welded.graph.dihedralAngles.buffer as ArrayBuffer;
+    const graphVertexEdgesBuf = welded.graph.vertexEdges.buffer as ArrayBuffer;
+    const graphVertexEdgesStartBuf = welded.graph.vertexEdgesStart.buffer as ArrayBuffer;
+    const graphTriangleEdgeIdsBuf = welded.graph.triangleEdgeIds.buffer as ArrayBuffer;
     const message: Response = {
       id,
       jobId,
@@ -41,6 +53,12 @@ self.onmessage = (event: MessageEvent<Request>) => {
       sourceToWelded: sourceToWeldedBuf,
       weldedToSourceStart: weldedToSourceStartBuf,
       weldedToSource: weldedToSourceBuf,
+      graphEdges: graphEdgesBuf,
+      graphTriangles: graphTrianglesBuf,
+      graphDihedralAngles: graphDihedralAnglesBuf,
+      graphVertexEdges: graphVertexEdgesBuf,
+      graphVertexEdgesStart: graphVertexEdgesStartBuf,
+      graphTriangleEdgeIds: graphTriangleEdgeIdsBuf,
     };
     (self as unknown as Worker).postMessage(message, [
       positionsBuf,
@@ -49,6 +67,12 @@ self.onmessage = (event: MessageEvent<Request>) => {
       sourceToWeldedBuf,
       weldedToSourceStartBuf,
       weldedToSourceBuf,
+      graphEdgesBuf,
+      graphTrianglesBuf,
+      graphDihedralAnglesBuf,
+      graphVertexEdgesBuf,
+      graphVertexEdgesStartBuf,
+      graphTriangleEdgeIdsBuf,
     ]);
   } catch (err) {
     const message: Response = {

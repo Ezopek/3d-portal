@@ -1,3 +1,5 @@
+import { buildSharpEdgeGraph, type SharpEdgeGraph } from "./sharpEdgeGraph";
+
 export type WeldedMesh = {
   positions: Float32Array;
   indices: Uint32Array;
@@ -9,6 +11,8 @@ export type WeldedMesh = {
   /** weldedToSourceStart[i]..weldedToSourceStart[i+1] indexes weldedToSource */
   weldedToSourceStart: Uint32Array;
   weldedToSource: Uint32Array;
+  /** Sharp-edge graph computed from the welded mesh. New in v1.2. */
+  graph: SharpEdgeGraph;
 };
 
 const MIN_GRANULARITY_MM = 1e-5;
@@ -139,6 +143,12 @@ export function weld(
     }
   }
 
+  const graph = buildSharpEdgeGraph({
+    positions: dedupedPositionsArr,
+    indices: indicesArr,
+    adjacency,
+  });
+
   return {
     positions: dedupedPositionsArr,
     indices: indicesArr,
@@ -146,5 +156,6 @@ export function weld(
     sourceToWelded,
     weldedToSourceStart,
     weldedToSource,
+    graph,
   };
 }

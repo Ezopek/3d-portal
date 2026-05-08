@@ -96,6 +96,12 @@ export function usePlanePrep(
             sourceToWelded: ArrayBuffer;
             weldedToSourceStart: ArrayBuffer;
             weldedToSource: ArrayBuffer;
+            graphEdges: ArrayBuffer;
+            graphTriangles: ArrayBuffer;
+            graphDihedralAngles: ArrayBuffer;
+            graphVertexEdges: ArrayBuffer;
+            graphVertexEdgesStart: ArrayBuffer;
+            graphTriangleEdgeIds: ArrayBuffer;
           }
         | { jobId: number; ok: false; error: string };
       if (data.jobId !== jobId) return;
@@ -112,6 +118,14 @@ export function usePlanePrep(
         sourceToWelded: new Uint32Array(data.sourceToWelded),
         weldedToSourceStart: new Uint32Array(data.weldedToSourceStart),
         weldedToSource: new Uint32Array(data.weldedToSource),
+        graph: {
+          edges: new Uint32Array(data.graphEdges),
+          triangles: new Uint32Array(data.graphTriangles),
+          dihedralAngles: new Float32Array(data.graphDihedralAngles),
+          vertexEdges: new Uint32Array(data.graphVertexEdges),
+          vertexEdgesStart: new Uint32Array(data.graphVertexEdgesStart),
+          triangleEdgeIds: new Uint32Array(data.graphTriangleEdgeIds),
+        },
       };
       weldCache.put(cacheKey, welded);
       const acq = weldCache.acquire(cacheKey)!;

@@ -1,4 +1,3 @@
-import type { WeldedMesh } from "./welder";
 import { BOUNDARY } from "./welder";
 
 export const SHARP_EDGE_THRESHOLD_RAD = (30 * Math.PI) / 180;
@@ -22,9 +21,15 @@ export type SharpEdgeGraph = {
   triangleEdgeIds: Uint32Array; // length = welded.indices.length
 };
 
+type GraphInput = {
+  positions: Float32Array;
+  indices: Uint32Array;
+  adjacency: Uint32Array;
+};
+
 const NO_SHARP = 0xffffffff;
 
-export function buildSharpEdgeGraph(welded: WeldedMesh): SharpEdgeGraph {
+export function buildSharpEdgeGraph(welded: GraphInput): SharpEdgeGraph {
   const triCount = welded.indices.length / 3;
   const vertCount = welded.positions.length / 3;
 
@@ -151,7 +156,7 @@ export function buildSharpEdgeGraph(welded: WeldedMesh): SharpEdgeGraph {
   };
 }
 
-function computeFaceNormals(welded: WeldedMesh): Float32Array {
+function computeFaceNormals(welded: GraphInput): Float32Array {
   const triCount = welded.indices.length / 3;
   const out = new Float32Array(triCount * 3);
   for (let t = 0; t < triCount; t++) {

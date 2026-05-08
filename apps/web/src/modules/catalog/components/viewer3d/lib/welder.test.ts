@@ -114,3 +114,29 @@ describe("welder.weld", () => {
     expect(welded.sourceToWelded[1]).toBe(BOUNDARY); // degenerate → sentinel
   });
 });
+
+function buildAxisAlignedCubeSoup(): Float32Array {
+  // 8 corners of a unit cube → 12 triangles → 36 verts as triangle soup
+  const v = [
+    [-1, -1, -1], [+1, -1, -1], [+1, +1, -1], [-1, +1, -1],
+    [-1, -1, +1], [+1, -1, +1], [+1, +1, +1], [-1, +1, +1],
+  ] as const;
+  const tri = (a: number, b: number, c: number) => [...v[a]!, ...v[b]!, ...v[c]!];
+  return new Float32Array([
+    ...tri(0, 1, 2), ...tri(0, 2, 3),
+    ...tri(4, 6, 5), ...tri(4, 7, 6),
+    ...tri(0, 3, 7), ...tri(0, 7, 4),
+    ...tri(1, 5, 6), ...tri(1, 6, 2),
+    ...tri(0, 4, 5), ...tri(0, 5, 1),
+    ...tri(3, 2, 6), ...tri(3, 6, 7),
+  ]);
+}
+
+describe("weld() — graph", () => {
+  it("returns a non-empty SharpEdgeGraph for a cube", () => {
+    const positions = buildAxisAlignedCubeSoup();
+    const welded = weld(positions, 4);
+    expect(welded.graph).toBeDefined();
+    expect(welded.graph.edges.length / 2).toBe(12);
+  });
+});
