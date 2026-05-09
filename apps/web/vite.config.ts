@@ -48,7 +48,6 @@ export default defineConfig({
       release: { name: `${PKG_VERSION}+${GIT_COMMIT}` },
       sourcemaps: { filesToDeleteAfterUpload: ["./dist/**/*.map"] },
       telemetry: false,
-      disable: !process.env.SENTRY_AUTH_TOKEN,
     }),
   ],
   resolve: {

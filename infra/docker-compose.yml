@@ -101,6 +101,11 @@ services:
         VITE_ENVIRONMENT: ${ENVIRONMENT}
         VITE_GIT_COMMIT: ${VITE_GIT_COMMIT:-}
         VITE_BUILD_TIME: ${VITE_BUILD_TIME:-}
+        SENTRY_ORG: ${GLITCHTIP_ORG_SLUG}
+        SENTRY_PROJECT: ${GLITCHTIP_PROJECT_SLUG}
+        SENTRY_URL: http://192.168.2.190:8800
+      secrets:
+        - sentry_token
     ports:
       # Host port 8090 because 8080 is occupied by another service on .190.
       # Bound on 0.0.0.0 so the dev/working LAN can reach it directly while
@@ -117,3 +122,7 @@ networks:
 
 volumes:
   redis-data:
+
+secrets:
+  sentry_token:
+    environment: GLITCHTIP_AUTH_TOKEN

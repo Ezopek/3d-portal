@@ -25,6 +25,10 @@ cd "$REPO_DIR"
 VITE_GIT_COMMIT="$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 VITE_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 export VITE_GIT_COMMIT VITE_BUILD_TIME
+# BuildKit is required for the --mount=type=secret syntax used in
+# apps/web/Dockerfile (mounts SENTRY_AUTH_TOKEN for the Sentry vite-plugin
+# without persisting it in any image layer).
+export DOCKER_BUILDKIT=1
 echo "  release identity: ${PORTAL_VERSION:-$VERSION}+${VITE_GIT_COMMIT}, built at ${VITE_BUILD_TIME}"
 docker compose --env-file "$LOCAL_ENV" -f infra/docker-compose.yml build
 
