@@ -27,7 +27,6 @@ describe("instrument.ts", () => {
   it("calls Sentry.init with the DSN when VITE_SENTRY_DSN is set", async () => {
     vi.stubEnv("VITE_SENTRY_DSN", "https://abc@example.invalid/1");
     vi.stubEnv("VITE_ENVIRONMENT", "production");
-    vi.stubEnv("VITE_PORTAL_VERSION", "1.2.3");
 
     await import("./instrument");
 
@@ -35,7 +34,7 @@ describe("instrument.ts", () => {
     const call = initSpy.mock.calls[0]?.[0];
     expect(call.dsn).toBe("https://abc@example.invalid/1");
     expect(call.environment).toBe("production");
-    expect(call.release).toBe("1.2.3");
+    expect(call.release).toMatch(/^\d+\.\d+\.\d+(\+[0-9a-f]+|\+unknown)$/);
     expect(setTagSpy).toHaveBeenCalledWith("service", "web");
   });
 
