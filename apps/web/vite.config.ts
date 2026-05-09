@@ -60,6 +60,27 @@ export default defineConfig({
   },
   build: {
     sourcemap: "hidden",
+    rollupOptions: {
+      output: {
+        // Source maps default to paths relative to the .map file
+        // (`../src/main.tsx` from `dist/assets/`); GlitchTip reflects those
+        // back as the resolved frame. NFR-R1 pins the regex to
+        // `^apps/web/src/.+\.tsx?$` so the verify ritual rejects permissive
+        // globs. Rewrite source paths from the project's PoV (drop the
+        // ../src/ prefix, anchor at apps/web/src/...) so the regex bites.
+        sourcemapPathTransform: (relativeSourcePath: string) => {
+          // Strip any leading `../` segments, then anchor app source paths
+          // at `apps/web/<...>` (so `src/main.tsx` becomes
+          // `apps/web/src/main.tsx`). Vendor paths under `node_modules/` are
+          // left untouched — symbolicator resolves them best-effort.
+          const stripped = relativeSourcePath.replace(/^(\.\.\/)+/, "");
+          if (stripped.startsWith("src/") || stripped.startsWith("public/")) {
+            return `apps/web/${stripped}`;
+          }
+          return stripped;
+        },
+      },
+    },
   },
   server: {
     host: "0.0.0.0",
