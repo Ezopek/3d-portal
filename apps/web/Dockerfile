@@ -26,9 +26,21 @@ ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN \
 # during this RUN step; it never lands in any image layer (verifiable via
 # `docker history`). The single-line env-var prefix exports the token into
 # the npm child process and goes out of scope when that subprocess exits.
-RUN --mount=type=secret,id=sentry_token \
-    SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_token)" \
-    npm run build
+#
+# `required=true` makes BuildKit fail the build if the secret source is
+# missing — the host must export GLITCHTIP_AUTH_TOKEN before invoking
+# `docker compose build`. The explicit non-empty guard then catches the
+# "secret file present but empty" edge case so Sentry vite-plugin's
+# warn-and-skip behavior does not silently produce a deploy without
+# uploaded source maps (FR4 hard-fail policy).
+RUN --mount=type=secret,id=sentry_token,required=true \
+    sh -c 'SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_token)"; \
+      if [ -z "$SENTRY_AUTH_TOKEN" ]; then \
+        echo "✗ SENTRY_AUTH_TOKEN secret is empty (BuildKit mounted but file is blank)" >&2; \
+        exit 1; \
+      fi; \
+      export SENTRY_AUTH_TOKEN; \
+      npm run build'
 
 FROM nginx:1.27-alpine
 COPY --from=build /app/dist /usr/share/nginx/html

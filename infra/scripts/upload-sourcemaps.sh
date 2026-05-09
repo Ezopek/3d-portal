@@ -88,6 +88,27 @@ if [[ ! -d "$DIST_DIR/assets" ]]; then
   exit 1
 fi
 
+# Maps-exist guard: this script is the FALLBACK recovery path; uploading .js
+# without paired .map files would defeat its purpose (symbolicator has no
+# source-map to resolve against). The active path's @sentry/vite-plugin
+# deletes maps post-upload via `filesToDeleteAfterUpload`, so a freshly-built
+# dist from `npm run build` (with token + plugin active) will not have maps.
+# To run this fallback, rebuild WITHOUT the plugin's upload, e.g.:
+#   unset SENTRY_AUTH_TOKEN; npm run build   (plugin sees missing token; today
+#                                             that is a hard failure per FR4,
+#                                             so this script is only useful
+#                                             after temporarily relaxing the
+#                                             gate or extracting maps from a
+#                                             prior build artifact)
+#   OR fetch a previously-built dist+maps artifact from a backup.
+map_count="$(find "$DIST_DIR" -name '*.map' | wc -l | tr -d ' ')"
+if [[ "$map_count" -eq 0 ]]; then
+  echo "✗ no .map files found under $DIST_DIR — fallback recovery needs maps" >&2
+  echo "  the active in-build plugin deletes maps via filesToDeleteAfterUpload;" >&2
+  echo "  rebuild with the plugin disabled, or restore dist+maps from backup" >&2
+  exit 1
+fi
+
 # --- Resolve CLI binary -----------------------------------------------------
 CLI_VERSION="v0.1.0"
 CLI_SHA256="aa98c98de1a95e1840afbb14f0b11889feb2fbf9d71b278e19e034a30b4623b7"
@@ -125,24 +146,21 @@ export SENTRY_AUTH_TOKEN="$GLITCHTIP_AUTH_TOKEN"
 export SENTRY_ORG="$GLITCHTIP_ORG_SLUG"
 
 echo "→ Inject debug IDs into $DIST_DIR"
-"$CLI_BIN" sourcemaps inject "$DIST_DIR"
-inject_rc=$?
-
-echo "→ Upload sourcemaps to GlitchTip (release: $RELEASE)"
-"$CLI_BIN" -p "$PROJECT_SLUG" sourcemaps upload \
-  --release "$RELEASE" \
-  --url-prefix '~/assets' \
-  "$DIST_DIR/assets"
-upload_rc=$?
-
-# Exit-code translation: glitchtip-cli's exit code is propagated as-is, but
-# `set -e` would have aborted before reaching here on non-zero. Re-check
-# explicitly so the documented exit-code map (0/1/2/3) is enforced even when
-# `set +e` callers run this script.
+# Capture exit code without letting `set -e` abort — the explicit error
+# message below is more actionable than a bare `set -e` exit.
+inject_rc=0
+"$CLI_BIN" sourcemaps inject "$DIST_DIR" || inject_rc=$?
 if [[ "$inject_rc" -ne 0 ]]; then
   echo "✗ glitchtip-cli sourcemaps inject exited $inject_rc" >&2
   exit "$inject_rc"
 fi
+
+echo "→ Upload sourcemaps to GlitchTip (release: $RELEASE)"
+upload_rc=0
+"$CLI_BIN" -p "$PROJECT_SLUG" sourcemaps upload \
+  --release "$RELEASE" \
+  --url-prefix '~/assets' \
+  "$DIST_DIR/assets" || upload_rc=$?
 if [[ "$upload_rc" -ne 0 ]]; then
   echo "✗ glitchtip-cli sourcemaps upload exited $upload_rc" >&2
   exit "$upload_rc"

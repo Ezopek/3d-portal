@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { RELEASE } from "./release";
+
 // `instrument.ts` runs a side-effectful Sentry.init at import time, gated
 // on `VITE_SENTRY_DSN`. These tests lock the contract so a refactor can't
 // silently drop the init (a recurring class of "errors aren't reaching
@@ -34,7 +36,11 @@ describe("instrument.ts", () => {
     const call = initSpy.mock.calls[0]?.[0];
     expect(call.dsn).toBe("https://abc@example.invalid/1");
     expect(call.environment).toBe("production");
-    expect(call.release).toMatch(/^\d+\.\d+\.\d+(\+[0-9a-f]+|\+unknown)$/);
+    // Equality (not regex match) is the single-source guard: instrument.ts
+    // must consume RELEASE from src/release.ts directly; a hardcoded string
+    // that happens to match the format would slip through a regex check
+    // (PRD FR3 — drift-impossible expression).
+    expect(call.release).toBe(RELEASE);
     expect(setTagSpy).toHaveBeenCalledWith("service", "web");
   });
 
