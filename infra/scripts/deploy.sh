@@ -32,32 +32,10 @@ export DOCKER_BUILDKIT=1
 echo "  release identity: ${PORTAL_VERSION:-$VERSION}+${VITE_GIT_COMMIT}, built at ${VITE_BUILD_TIME}"
 docker compose --env-file "$LOCAL_ENV" -f infra/docker-compose.yml build
 
-# Extract the dist/ baked into the just-built web image so we upload the
-# *exact* bundle hashes we are about to deploy. Building locally first then
-# uploading those would race with the in-image build (different node/pnpm
-# versions yield different content hashes), so we copy out of the image.
-echo "→ Upload sourcemaps to GlitchTip"
-# Cherry-pick only the env vars the upload step needs. `source` would choke on
-# lines like OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer <token> where the
-# unquoted value contains spaces (docker-compose tolerates this; bash does not).
-read_env_var() { grep -E "^$1=" "$LOCAL_ENV" | head -1 | cut -d= -f2-; }
-GLITCHTIP_AUTH_TOKEN="$(read_env_var GLITCHTIP_AUTH_TOKEN)"
-GLITCHTIP_ORG_SLUG="$(read_env_var GLITCHTIP_ORG_SLUG)"
-GLITCHTIP_PROJECT_SLUG="$(read_env_var GLITCHTIP_PROJECT_SLUG)"
-PORTAL_VERSION_ENV="$(read_env_var PORTAL_VERSION)"
-export GLITCHTIP_AUTH_TOKEN GLITCHTIP_ORG_SLUG GLITCHTIP_PROJECT_SLUG
-export PORTAL_VERSION="${PORTAL_VERSION_ENV:-$VERSION}"
-if [[ -n "${GLITCHTIP_AUTH_TOKEN:-}" ]]; then
-  EXTRACT_DIR="$(mktemp -d)"
-  trap 'rm -rf "$EXTRACT_DIR"' EXIT
-  CONTAINER="portal-web-extract-$$"
-  docker create --name "$CONTAINER" "portal-web:$VERSION" >/dev/null
-  docker cp "$CONTAINER:/usr/share/nginx/html" "$EXTRACT_DIR/dist"
-  docker rm "$CONTAINER" >/dev/null
-  DIST_DIR="$EXTRACT_DIR/dist" bash "$REPO_DIR/infra/scripts/upload-sourcemaps.sh"
-else
-  echo "  skipped: GLITCHTIP_AUTH_TOKEN not set in $LOCAL_ENV"
-fi
+# Source-map upload now happens via @sentry/vite-plugin INSIDE the docker
+# build stage (see apps/web/vite.config.ts + apps/web/Dockerfile's
+# `--mount=type=secret,id=sentry_token` line). For documented manual
+# recovery (FR25), use `bash infra/scripts/upload-sourcemaps.sh --help`.
 
 echo "→ Save and ship images to $TARGET_HOST"
 docker save \
