@@ -20,6 +20,26 @@ if [[ ! -f "$LOCAL_ENV" ]]; then
   chmod 600 "$LOCAL_ENV"
 fi
 
+# --- Stale-verify tripwire (Story 3.2; FR16) -----------------------------
+# Warn loud + non-fatal at the START if the previous deploy did NOT record
+# a successful verify. Reads `infra/.last-verify` mtime vs the current
+# HEAD's commit timestamp (chosen per epics.md:559 — simplest mechanism, no
+# new state file needed; HEAD time is monotonically tied to "the deploy
+# being performed now"). Older mtime → previous deploy's verify never
+# landed (or wasn't recent) → operator sees yellow warning.
+last_verify_path="$REPO_DIR/infra/.last-verify"
+if [[ -f "$last_verify_path" ]]; then
+  last_verify_mtime=$(stat -c %Y "$last_verify_path")
+  head_timestamp=$(git -C "$REPO_DIR" log -1 --format=%ct HEAD 2>/dev/null || echo 0)
+  if (( last_verify_mtime < head_timestamp )); then
+    printf '\033[33m⚠ stale verify: previous deploy did not record a successful verification (last verify: %s; last commit: %s)\033[0m\n' \
+      "$(date -u -d "@$last_verify_mtime" +%Y-%m-%dT%H:%M:%SZ)" \
+      "$(date -u -d "@$head_timestamp" +%Y-%m-%dT%H:%M:%SZ)" >&2
+  fi
+else
+  printf '\033[34m→ verify history not yet established (no infra/.last-verify); first run after this deploy will populate it\033[0m\n'
+fi
+
 echo "→ Build images locally (tag: $VERSION)"
 cd "$REPO_DIR"
 VITE_GIT_COMMIT="$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -54,5 +74,24 @@ ssh -p "$SSH_PORT" "$TARGET_HOST" "cd $COMPOSE_DIR && docker compose --env-file 
 
 echo "→ Run alembic migrations"
 ssh -p "$SSH_PORT" "$TARGET_HOST" "cd $COMPOSE_DIR && docker compose run --rm api alembic upgrade head"
+
+# --- Post-deploy verify (Story 3.2; FR15) --------------------------------
+# Non-fatal gate: deploy success is decoupled from verify outcome
+# (NFR-R3). Capture the FR12 exit code (0/1/2/3/4) and print an exit-code-
+# mapped warning. Deploy exits 0 regardless of verify_exit; the verify
+# signal lands in (a) the printed warning here, (b) infra/.last-verify
+# (Story 3.1 fail_verify writes FAILED on every non-zero exit), and
+# (c) a synthetic GlitchTip event for codes 1/3 (Story 3.1 emit_alarm).
+echo "→ Verify post-deploy symbolication"
+verify_exit=0
+bash "$REPO_DIR/infra/scripts/verify-symbolication.sh" || verify_exit=$?
+case "$verify_exit" in
+  0) echo "✓ verify OK" ;;
+  1) printf '\033[31m⚠ verify FAILED: symbolication broken (top frame regex mismatch)\033[0m\n' >&2 ;;
+  2) printf '\033[31m⚠ verify FAILED: GlitchTip unreachable\033[0m\n' >&2 ;;
+  3) printf '\033[31m⚠ verify FAILED: auth/scope failure — token rotation needed?\033[0m\n' >&2 ;;
+  4) printf '\033[31m⚠ verify FAILED: timeout (no matching event within 30s)\033[0m\n' >&2 ;;
+  *) printf '\033[31m⚠ verify FAILED: unexpected exit %s\033[0m\n' "$verify_exit" >&2 ;;
+esac
 
 echo "Done."
