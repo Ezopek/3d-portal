@@ -221,9 +221,11 @@ gt_get "$event_url" /tmp/gt-event.json
 top_frame=$(jq -r \
   '.entries[]? | select(.type=="exception") | .data.values[0].stacktrace.frames[-1].filename // empty' \
   < /tmp/gt-event.json | head -n1)
-release=$(jq -r '.release // empty' < /tmp/gt-event.json)
+# GlitchTip surfaces the SDK's `release` field as a tag, not as a top-level
+# event field. Read from .tags[] for compatibility with the 6.1.x API.
+release=$(jq -r '.tags[]? | select(.key=="release") | .value // empty' < /tmp/gt-event.json | head -n1)
 if [[ -z "$release" ]]; then
-  echo "⚠ event missing release field — falling back to 'unknown'" >&2
+  echo "⚠ event missing release tag — falling back to 'unknown'" >&2
   release="unknown"
 fi
 if [[ -z "$top_frame" ]]; then
