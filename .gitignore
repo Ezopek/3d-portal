@@ -47,6 +47,9 @@ htpasswd-*
 .env.production.local
 .env.dev.local
 
+# Verify ritual — runtime tripwire (Story 3.1)
+infra/.last-verify
+
 # Visual regression
 apps/web/tests/visual/test-results/
 apps/web/tests/visual/__snapshots__/**/*.actual.png
