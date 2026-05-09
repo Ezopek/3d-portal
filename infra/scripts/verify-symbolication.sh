@@ -27,13 +27,16 @@
 # Exit codes (FR12 contract — `deploy.sh` consumes these in Story 3.2):
 #   0 - success; smoke event symbolicated, top frame matches
 #       `^apps/web/src/.+\.tsx?$`. infra/.last-verify carries OK.
-#   1 - symbolication broken; event found but top-frame regex MISMATCH.
+#   1 - symbolication broken; event found but top-frame regex MISMATCH
+#       (or event had no exception stacktrace, or unexpected REST shape).
 #       infra/.last-verify carries FAILED. Synthetic alarm POSTed.
-#   2 - GlitchTip unreachable (REST 5xx OR network/DNS error). No alarm
-#       (GlitchTip itself is the broken party).
-#   3 - GlitchTip auth/scope failure (REST 401/403). Alarm best-effort.
-#   4 - timeout; no matching event within 30s budget (NFR-P3). No alarm
-#       (cause unknown — could be SDK, ingest lag, search).
+#   2 - GlitchTip unreachable (REST 5xx, network/DNS error, smoke-page 4xx/5xx).
+#       infra/.last-verify carries FAILED. No alarm (GlitchTip is broken party).
+#   3 - GlitchTip auth/scope failure (REST 401/403). infra/.last-verify
+#       carries FAILED. Alarm best-effort (envelope auth differs from REST
+#       auth — uses DSN public key, may still succeed).
+#   4 - timeout; no matching event within 30s budget (NFR-P3).
+#       infra/.last-verify carries FAILED. No alarm (cause unknown).
 #
 # Example:
 #   set -a; source infra/.env; set +a
@@ -110,40 +113,46 @@ envelope_url="${GLITCHTIP_URL}/api/${project_id}/envelope/"
 # loop. NFR-P3 codifies this as an SLO consumed by Story 3.2's deploy chain.
 deadline=$(( $(date +%s) + 30 ))
 smoke_run_id="$(uuidgen)"
-iso_start="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 # --- Helpers ----------------------------------------------------------------
 
-# AR13 GlitchTip REST GET — case-statement maps HTTP code to FR12 exit code.
-# stdout: response body file path (caller reads it). stderr: errors.
-gt_get() {
-  local url="$1" out="$2"
-  local http_code
-  http_code=$(curl -sS --max-time 10 -o "$out" -w '%{http_code}' \
-    -H "Authorization: Bearer $GLITCHTIP_AUTH_TOKEN" \
-    "$url" || echo "000")
-  case "$http_code" in
-    20*)     return 0 ;;
-    401|403) echo "✗ verify FAILED: GlitchTip auth/scope failure ($http_code)" >&2; exit 3 ;;
-    5*)      echo "✗ verify FAILED: GlitchTip unreachable ($http_code)" >&2; exit 2 ;;
-    000)     echo "✗ verify FAILED: GlitchTip unreachable (network error)" >&2; exit 2 ;;
-    *)       echo "✗ unexpected response ($http_code) from $url: $(cat "$out" 2>/dev/null)" >&2; exit 1 ;;
-  esac
+# Seconds left until the 30s deadline, clamped to [1, max]. Used to cap each
+# curl `--max-time` and sleep so the wall-clock budget stays hard.
+budget_left() {
+  local max="$1" now remaining
+  now=$(date +%s)
+  remaining=$((deadline - now))
+  if (( remaining < 1 )); then
+    echo 1
+  elif (( remaining < max )); then
+    echo "$remaining"
+  else
+    echo "$max"
+  fi
 }
 
-# Synthetic alarm event (AR9) — POST envelope to GlitchTip when the verify
-# concludes with exit code 1 (regex mismatch). NOT called for exit 2 (can't
-# reach GlitchTip) or exit 4 (cause unknown). Best-effort: failure to POST
-# is non-fatal because the primary signals (`infra/.last-verify` + stderr
-# + non-zero exit) are already loud.
+# Persist the .last-verify tripwire line. Single line, tab-separated, plain
+# ASCII (AR8). Always overwrites — idempotent on re-runs (AC12).
+write_last_verify() {
+  local status="$1" rel="${2:-unknown}"
+  printf '%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$status" "$rel" \
+    > "$REPO_DIR/infra/.last-verify"
+}
+
+# Synthetic alarm event (AR9) — POST envelope to GlitchTip when verify fails
+# with code 1 (regex mismatch / unexpected event shape) or code 3 (auth — best
+# effort: envelope POST uses DSN public key, may still ingest even if Bearer
+# is rejected). Codes 2 and 4 skip the alarm: code 2 means GlitchTip itself
+# is unreachable, code 4 means cause unknown.
 emit_alarm() {
-  local exit_code="$1" actual_frame="$2" rel="$3" run_id="$4" iso="$5"
-  local event_id unix_ts envelope_file http_code
+  local exit_code="$1" actual_frame="$2" rel="$3" run_id="$4"
+  local event_id unix_ts envelope_file http_code iso_now
   event_id=$(uuidgen | tr -d -)
   unix_ts=$(date +%s)
+  iso_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   envelope_file=/tmp/gt-envelope.json
   {
-    printf '{"event_id":"%s","sent_at":"%s"}\n' "$event_id" "$iso"
+    printf '{"event_id":"%s","sent_at":"%s"}\n' "$event_id" "$iso_now"
     printf '{"type":"event"}\n'
     jq -nc \
       --arg eid "$event_id" \
@@ -158,15 +167,52 @@ emit_alarm() {
         tags:{"deploy.verification":"failed","smoke.run_id":$rid,"service.version":$rel,"deployment.environment":"production"},
         extra:{exit_code:$exit, expected_top_frame_regex:"^apps/web/src/.+\\.tsx?$", actual_top_frame:$actual}}'
   } > "$envelope_file"
-  http_code=$(curl -sS --max-time 5 -o /tmp/gt-envelope-response.json -w '%{http_code}' \
-    -X POST \
-    -H "Content-Type: application/x-sentry-envelope" \
-    -H "X-Sentry-Auth: Sentry sentry_version=7, sentry_key=${dsn_key}, sentry_client=verify-symbolication.sh/1.0" \
-    --data-binary "@${envelope_file}" \
-    "$envelope_url" || echo "000")
+  if ! http_code=$(curl -sS --max-time 5 -o /tmp/gt-envelope-response.json -w '%{http_code}' \
+      -X POST \
+      -H "Content-Type: application/x-sentry-envelope" \
+      -H "X-Sentry-Auth: Sentry sentry_version=7, sentry_key=${dsn_key}, sentry_client=verify-symbolication.sh/1.0" \
+      --data-binary "@${envelope_file}" \
+      "$envelope_url"); then
+    echo "⚠ alarm POST failed (network error; alarm event NOT ingested)" >&2
+    return
+  fi
   case "$http_code" in
     20*) echo "→ alarm event posted (event_id=$event_id)" ;;
     *)   echo "⚠ alarm POST returned $http_code (alarm event may not have been ingested)" >&2 ;;
+  esac
+}
+
+# Single failure exit point — writes FAILED tripwire, optionally fires the
+# synthetic alarm event, exits with the FR12 code. Caller passes the code,
+# the (best-effort) release tag, the actual top frame (if known), and a
+# stderr message describing the failure mode.
+fail_verify() {
+  local code="$1" rel="${2:-unknown}" frame="${3:-}" msg="$4"
+  write_last_verify "FAILED" "$rel"
+  printf '\033[31m✗ verify FAILED: %s\033[0m\n' "$msg" >&2
+  case "$code" in
+    1|3) emit_alarm "$code" "$frame" "$rel" "$smoke_run_id" || true ;;
+  esac
+  exit "$code"
+}
+
+# AR13 GlitchTip REST GET — case-statement maps HTTP code to FR12 exit code.
+# Network/DNS failures hit the `if !`-branch (curl exits non-zero before
+# emitting %{http_code}); REST 5xx returns a `5xx` http_code with the body
+# in $out. stderr: errors via fail_verify; stdout: nothing on success.
+gt_get() {
+  local url="$1" out="$2"
+  local http_code max_time
+  max_time=$(budget_left 10)
+  if ! http_code=$(curl -sS --max-time "$max_time" -o "$out" -w '%{http_code}' \
+      -H "Authorization: Bearer $GLITCHTIP_AUTH_TOKEN" "$url"); then
+    fail_verify 2 "" "" "GlitchTip unreachable (network error)"
+  fi
+  case "$http_code" in
+    20*)     return 0 ;;
+    401|403) fail_verify 3 "" "" "GlitchTip auth/scope failure ($http_code)" ;;
+    5*)      fail_verify 2 "" "" "GlitchTip unreachable ($http_code)" ;;
+    *)       fail_verify 1 "" "" "unexpected response ($http_code) from $url" ;;
   esac
 }
 
@@ -177,9 +223,8 @@ smoke_url="${PORTAL_PUBLIC_URL%/}/?__sentry_smoke=${smoke_run_id}"
 # Precheck: production page must be reachable. curl can't fire the smoke
 # (no JS execution), but a 200 here means the SPA shell is up before we
 # spin chrome.
-if ! curl -fsS -o /dev/null --max-time 10 "$smoke_url"; then
-  echo "✗ smoke trigger failed: production page unreachable at $smoke_url" >&2
-  exit 2
+if ! curl -fsS -o /dev/null --max-time "$(budget_left 10)" "$smoke_url"; then
+  fail_verify 2 "" "" "production page unreachable at $smoke_url"
 fi
 
 # Headless chrome loads the SPA, executes the smoke handler in main.tsx,
@@ -188,7 +233,7 @@ fi
 # hung browser never eats the full 30s budget.
 chrome_user_dir="$(mktemp -d -t verify-chrome-XXXXXX)"
 trap 'rm -rf "$chrome_user_dir"' EXIT
-timeout 8 "$HEADLESS_BROWSER" \
+timeout "$(budget_left 8)" "$HEADLESS_BROWSER" \
   --headless=new --disable-gpu --no-sandbox \
   --user-data-dir="$chrome_user_dir" \
   --hide-scrollbars \
@@ -204,12 +249,13 @@ while [[ $(date +%s) -lt $deadline ]]; do
   gt_get "$issues_url" /tmp/gt-issues.json
   issue_id=$(jq -r '.[0].id // empty' < /tmp/gt-issues.json)
   [[ -n "$issue_id" ]] && break
-  sleep 2
+  # Clamp the poll cadence to the remaining budget so the last sleep can't
+  # blow the deadline.
+  sleep "$(budget_left 2)"
 done
 
 if [[ -z "$issue_id" ]]; then
-  echo "✗ verify FAILED: no matching GlitchTip event for smoke.run_id=$smoke_run_id within 30s" >&2
-  exit 4
+  fail_verify 4 "" "" "no matching GlitchTip event for smoke.run_id=$smoke_run_id within 30s"
 fi
 
 echo "→ Matched issue id=$issue_id; fetching latest event"
@@ -229,21 +275,15 @@ if [[ -z "$release" ]]; then
   release="unknown"
 fi
 if [[ -z "$top_frame" ]]; then
-  echo "✗ event has no exception stacktrace; top frame unavailable" >&2
-  exit 1
+  fail_verify 1 "$release" "" "event has no exception stacktrace; top frame unavailable"
 fi
-
-iso_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # --- Regex assertion --------------------------------------------------------
 if [[ "$top_frame" =~ ^apps/web/src/.+\.tsx?$ ]]; then
-  printf '%s\t%s\t%s\n' "$iso_now" "OK" "$release" > "$REPO_DIR/infra/.last-verify"
+  write_last_verify "OK" "$release"
   echo "✓ verify OK — top frame: $top_frame, release: $release"
   exit 0
 fi
 
 # Failure path: regex mismatch (FR12 exit 1).
-printf '%s\t%s\t%s\n' "$iso_now" "FAILED" "$release" > "$REPO_DIR/infra/.last-verify"
-printf '\033[31m✗ verify FAILED: top frame regex mismatch (got: %s)\033[0m\n' "$top_frame" >&2
-emit_alarm 1 "$top_frame" "$release" "$smoke_run_id" "$iso_now" || true
-exit 1
+fail_verify 1 "$release" "$top_frame" "top frame regex mismatch (got: $top_frame)"

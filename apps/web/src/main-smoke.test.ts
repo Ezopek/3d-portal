@@ -58,6 +58,12 @@ describe("main.tsx smoke handler", () => {
     expect(err).toBeInstanceOf(Error);
     expect((err as Error).message).toBe("smoke test-uuid-1234");
     expect(ctx).toEqual({ tags: { "smoke.run_id": "test-uuid-1234" } });
+    // `Sentry.flush(2000)` is load-bearing: headless Chrome closes shortly
+    // after the smoke handler runs, so the SDK transport must drain before
+    // the browser exits. Without this assertion a refactor could drop the
+    // flush call without breaking the test.
+    expect(flushSpy).toHaveBeenCalledTimes(1);
+    expect(flushSpy).toHaveBeenCalledWith(2000);
   });
 
   it("does not capture an exception when ?__sentry_smoke is absent", async () => {
@@ -67,5 +73,6 @@ describe("main.tsx smoke handler", () => {
     await import("./main");
 
     expect(captureExceptionSpy).not.toHaveBeenCalled();
+    expect(flushSpy).not.toHaveBeenCalled();
   });
 });

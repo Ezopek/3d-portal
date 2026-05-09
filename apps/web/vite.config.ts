@@ -69,11 +69,16 @@ export default defineConfig({
         // globs. Rewrite source paths from the project's PoV (drop the
         // ../src/ prefix, anchor at apps/web/src/...) so the regex bites.
         sourcemapPathTransform: (relativeSourcePath: string) => {
-          // Strip any leading `../` segments, then anchor app source paths
-          // at `apps/web/<...>` (so `src/main.tsx` becomes
-          // `apps/web/src/main.tsx`). Vendor paths under `node_modules/` are
-          // left untouched — symbolicator resolves them best-effort.
-          const stripped = relativeSourcePath.replace(/^(\.\.\/)+/, "");
+          // Strip any leading `./` or `../` segments, then anchor app source
+          // paths at `apps/web/<...>` (so `src/main.tsx` and `./src/main.tsx`
+          // both become `apps/web/src/main.tsx`). Pre-anchored paths
+          // (`apps/web/src/...`, `apps/web/public/...`) pass through. Vendor
+          // paths under `node_modules/` are left untouched — symbolicator
+          // resolves them best-effort.
+          const stripped = relativeSourcePath.replace(/^(?:\.\.?\/)+/, "");
+          if (stripped.startsWith("apps/web/src/") || stripped.startsWith("apps/web/public/")) {
+            return stripped;
+          }
           if (stripped.startsWith("src/") || stripped.startsWith("public/")) {
             return `apps/web/${stripped}`;
           }
