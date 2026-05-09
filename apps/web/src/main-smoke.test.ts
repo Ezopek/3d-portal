@@ -12,11 +12,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const initSpy = vi.fn();
 const setTagSpy = vi.fn();
 const captureExceptionSpy = vi.fn();
+const flushSpy = vi.fn().mockResolvedValue(true);
 
 vi.mock("@sentry/react", () => ({
   init: initSpy,
   setTag: setTagSpy,
   captureException: captureExceptionSpy,
+  flush: flushSpy,
 }));
 
 // react-dom/client.createRoot().render() must be a no-op in jsdom or it
@@ -33,6 +35,7 @@ beforeEach(() => {
   initSpy.mockReset();
   setTagSpy.mockReset();
   captureExceptionSpy.mockReset();
+  flushSpy.mockClear();
   vi.resetModules();
   // jsdom seeds location at about:blank — replace via history API so the
   // URLSearchParams probe resolves the query param under test.

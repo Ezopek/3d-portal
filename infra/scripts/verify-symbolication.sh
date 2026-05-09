@@ -59,10 +59,37 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 command -v jq >/dev/null    || { echo "✗ missing required tool: jq" >&2; exit 1; }
 command -v curl >/dev/null  || { echo "✗ missing required tool: curl" >&2; exit 1; }
 command -v uuidgen >/dev/null || { echo "✗ missing required tool: uuidgen" >&2; exit 1; }
+command -v timeout >/dev/null || { echo "✗ missing required tool: timeout (coreutils)" >&2; exit 1; }
+
+# Headless browser is mandatory: the smoke event fires inside the SPA's JS
+# (`apps/web/src/main.tsx`), so a plain curl GET cannot trigger it — only a
+# real browser executing the bundle. Auto-detect the first available chrome
+# binary; the operator can pin a specific one via HEADLESS_BROWSER env.
+HEADLESS_BROWSER="${HEADLESS_BROWSER:-}"
+if [[ -z "$HEADLESS_BROWSER" ]]; then
+  for c in google-chrome google-chrome-stable chromium chromium-browser; do
+    if command -v "$c" >/dev/null; then
+      HEADLESS_BROWSER="$c"
+      break
+    fi
+  done
+fi
+[[ -z "$HEADLESS_BROWSER" ]] && {
+  echo "✗ no headless browser found (need google-chrome or chromium)" >&2
+  echo "  set HEADLESS_BROWSER=<binary> in env to override" >&2
+  exit 1
+}
 
 set -a
+# `infra/.env` carries an OTEL_EXPORTER_OTLP_HEADERS line whose value
+# `authorization=Bearer <token>` contains an unquoted space; bash parses the
+# token as a command and sets exit 127. Suspend `set -e` for the source so
+# that quirk doesn't abort us. The vars we actually read (GLITCHTIP_*,
+# VITE_SENTRY_DSN, GLITCHTIP_URL, PORTAL_PUBLIC_URL) export normally.
+set +e
 # shellcheck disable=SC1090,SC1091
-source "$REPO_DIR/infra/.env"
+source "$REPO_DIR/infra/.env" 2>/dev/null
+set -e
 set +a
 
 : "${GLITCHTIP_AUTH_TOKEN:?missing in infra/.env}"
@@ -146,10 +173,27 @@ emit_alarm() {
 # --- Smoke trigger ----------------------------------------------------------
 echo "→ Triggering smoke event: smoke.run_id=$smoke_run_id"
 smoke_url="${PORTAL_PUBLIC_URL%/}/?__sentry_smoke=${smoke_run_id}"
+
+# Precheck: production page must be reachable. curl can't fire the smoke
+# (no JS execution), but a 200 here means the SPA shell is up before we
+# spin chrome.
 if ! curl -fsS -o /dev/null --max-time 10 "$smoke_url"; then
   echo "✗ smoke trigger failed: production page unreachable at $smoke_url" >&2
   exit 2
 fi
+
+# Headless chrome loads the SPA, executes the smoke handler in main.tsx,
+# and Sentry.flush(2000) drains the transport queue. virtual-time-budget
+# advances JS timers so the flush completes; timeout caps wallclock so a
+# hung browser never eats the full 30s budget.
+chrome_user_dir="$(mktemp -d -t verify-chrome-XXXXXX)"
+trap 'rm -rf "$chrome_user_dir"' EXIT
+timeout 8 "$HEADLESS_BROWSER" \
+  --headless=new --disable-gpu --no-sandbox \
+  --user-data-dir="$chrome_user_dir" \
+  --hide-scrollbars \
+  --virtual-time-budget=5000 \
+  --dump-dom "$smoke_url" >/dev/null 2>&1 || true
 
 echo "→ Polling GlitchTip REST for matching event (budget: 30s)"
 issues_url="${GLITCHTIP_URL}/api/0/projects/${GLITCHTIP_ORG_SLUG}/${GLITCHTIP_PROJECT_SLUG}/issues/?statsPeriod=5m&query=smoke.run_id:${smoke_run_id}"
