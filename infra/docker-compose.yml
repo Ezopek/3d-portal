@@ -99,6 +99,8 @@ services:
         VITE_SENTRY_DSN: ${VITE_SENTRY_DSN}
         VITE_PORTAL_VERSION: ${PORTAL_VERSION}
         VITE_ENVIRONMENT: ${ENVIRONMENT}
+        VITE_GIT_COMMIT: ${VITE_GIT_COMMIT:-}
+        VITE_BUILD_TIME: ${VITE_BUILD_TIME:-}
     ports:
       # Host port 8090 because 8080 is occupied by another service on .190.
       # Bound on 0.0.0.0 so the dev/working LAN can reach it directly while

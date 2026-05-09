@@ -11,20 +11,15 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as SettingsSessionsRouteImport } from './routes/settings/sessions'
 import { Route as SpoolsIndexRouteImport } from './routes/spools/index'
 import { Route as RequestsIndexRouteImport } from './routes/requests/index'
 import { Route as QueueIndexRouteImport } from './routes/queue/index'
 import { Route as PrinterIndexRouteImport } from './routes/printer/index'
 import { Route as CatalogIndexRouteImport } from './routes/catalog/index'
+import { Route as SettingsSessionsRouteImport } from './routes/settings/sessions'
 import { Route as DevComponentsRouteImport } from './routes/dev/components'
 import { Route as CatalogIdRouteImport } from './routes/catalog/$id'
 
-const SettingsSessionsRoute = SettingsSessionsRouteImport.update({
-  id: '/settings/sessions',
-  path: '/settings/sessions',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -60,6 +55,11 @@ const CatalogIndexRoute = CatalogIndexRouteImport.update({
   path: '/catalog/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsSessionsRoute = SettingsSessionsRouteImport.update({
+  id: '/settings/sessions',
+  path: '/settings/sessions',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DevComponentsRoute = DevComponentsRouteImport.update({
   id: '/dev/components',
   path: '/dev/components',
@@ -74,9 +74,9 @@ const CatalogIdRoute = CatalogIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
-  '/settings/sessions': typeof SettingsSessionsRoute
   '/catalog/$id': typeof CatalogIdRoute
   '/dev/components': typeof DevComponentsRoute
+  '/settings/sessions': typeof SettingsSessionsRoute
   '/catalog/': typeof CatalogIndexRoute
   '/printer/': typeof PrinterIndexRoute
   '/queue/': typeof QueueIndexRoute
@@ -86,9 +86,9 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
-  '/settings/sessions': typeof SettingsSessionsRoute
   '/catalog/$id': typeof CatalogIdRoute
   '/dev/components': typeof DevComponentsRoute
+  '/settings/sessions': typeof SettingsSessionsRoute
   '/catalog': typeof CatalogIndexRoute
   '/printer': typeof PrinterIndexRoute
   '/queue': typeof QueueIndexRoute
@@ -99,9 +99,9 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
-  '/settings/sessions': typeof SettingsSessionsRoute
   '/catalog/$id': typeof CatalogIdRoute
   '/dev/components': typeof DevComponentsRoute
+  '/settings/sessions': typeof SettingsSessionsRoute
   '/catalog/': typeof CatalogIndexRoute
   '/printer/': typeof PrinterIndexRoute
   '/queue/': typeof QueueIndexRoute
@@ -113,9 +113,9 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
-    | '/settings/sessions'
     | '/catalog/$id'
     | '/dev/components'
+    | '/settings/sessions'
     | '/catalog/'
     | '/printer/'
     | '/queue/'
@@ -125,9 +125,9 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/login'
-    | '/settings/sessions'
     | '/catalog/$id'
     | '/dev/components'
+    | '/settings/sessions'
     | '/catalog'
     | '/printer'
     | '/queue'
@@ -137,9 +137,9 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/login'
-    | '/settings/sessions'
     | '/catalog/$id'
     | '/dev/components'
+    | '/settings/sessions'
     | '/catalog/'
     | '/printer/'
     | '/queue/'
@@ -150,9 +150,9 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
-  SettingsSessionsRoute: typeof SettingsSessionsRoute
   CatalogIdRoute: typeof CatalogIdRoute
   DevComponentsRoute: typeof DevComponentsRoute
+  SettingsSessionsRoute: typeof SettingsSessionsRoute
   CatalogIndexRoute: typeof CatalogIndexRoute
   PrinterIndexRoute: typeof PrinterIndexRoute
   QueueIndexRoute: typeof QueueIndexRoute
@@ -174,13 +174,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings/sessions': {
-      id: '/settings/sessions'
-      path: '/settings/sessions'
-      fullPath: '/settings/sessions'
-      preLoaderRoute: typeof SettingsSessionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/spools/': {
@@ -218,6 +211,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CatalogIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/sessions': {
+      id: '/settings/sessions'
+      path: '/settings/sessions'
+      fullPath: '/settings/sessions'
+      preLoaderRoute: typeof SettingsSessionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dev/components': {
       id: '/dev/components'
       path: '/dev/components'
@@ -238,9 +238,9 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
-  SettingsSessionsRoute: SettingsSessionsRoute,
   CatalogIdRoute: CatalogIdRoute,
   DevComponentsRoute: DevComponentsRoute,
+  SettingsSessionsRoute: SettingsSessionsRoute,
   CatalogIndexRoute: CatalogIndexRoute,
   PrinterIndexRoute: PrinterIndexRoute,
   QueueIndexRoute: QueueIndexRoute,
