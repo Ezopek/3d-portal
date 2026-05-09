@@ -2,6 +2,7 @@ import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { TanStackRouterVite } from "@tanstack/router-vite-plugin";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
@@ -21,7 +22,35 @@ const BUILD_TIME = process.env.VITE_BUILD_TIME?.trim() || new Date().toISOString
 const PKG_VERSION = JSON.parse(readFileSync("./package.json", "utf-8")).version as string;
 
 export default defineConfig({
-  plugins: [TanStackRouterVite({ routesDirectory: "src/routes", routeFileIgnorePattern: "\\.js$" }), react()],
+  plugins: [
+    TanStackRouterVite({ routesDirectory: "src/routes", routeFileIgnorePattern: "\\.js$" }),
+    react(),
+    // Sentry/GlitchTip source-map upload + debug-ID injection.
+    // Dormant until Story 1.5 lands the BuildKit secret in the docker build
+    // context; `disable: !process.env.SENTRY_AUTH_TOKEN` short-circuits the
+    // plugin when the token is absent (production docker builds today,
+    // off-LAN CI, plain `npm run build` from a contributor box without a
+    // homelab token). Once 1.5 ships, the docker stage gets the token and
+    // this gate auto-flips to active. MUST stay LAST in plugins[] per
+    // architecture AR3.
+    sentryVitePlugin({
+      url: process.env.SENTRY_URL,
+      org: "homelab",
+      project: "3d-portal",
+      authToken: process.env.SENTRY_AUTH_TOKEN,
+      // Same `${PKG_VERSION}+${GIT_COMMIT}` expression as src/release.ts.
+      // Drift-impossible: both pipelines read from the same env-var → host-git
+      // → "unknown" fallback chain plus apps/web/package.json. Inlining here
+      // (instead of `import { RELEASE } from "./src/release"`) avoids a
+      // chicken/egg problem: vite bundles this config BEFORE the `define`
+      // block is active, so ambient `__PKG_VERSION__` / `__GIT_COMMIT__` are
+      // not yet substituted in src/ imports.
+      release: { name: `${PKG_VERSION}+${GIT_COMMIT}` },
+      sourcemaps: { filesToDeleteAfterUpload: ["./dist/**/*.map"] },
+      telemetry: false,
+      disable: !process.env.SENTRY_AUTH_TOKEN,
+    }),
+  ],
   resolve: {
     alias: { "@": path.resolve(__dirname, "src") },
   },
