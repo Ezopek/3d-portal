@@ -102,9 +102,11 @@ bash infra/scripts/render-all.sh "<bearer-jwt>"
 
 The script lists `/api/models`, then `POST /api/admin/models/{uuid}/render` for each. arq processes jobs serially in the worker container; wall time depends on STL complexity (~5–30 s per model on .190). Watch progress with `docker compose logs -f worker` on the host.
 
-## GlitchTip error tracking
+## GlitchTip observability — operator runbook
 
-All three services (web, api, worker) report uncaught errors to a single GlitchTip project at `https://glitchtip.ezop.ddns.net`, project `3d-portal` in org `homelab`. The DSN is shared across services; events are tagged `service=web|api|render`, `release=$PORTAL_VERSION`, `environment=$ENVIRONMENT`.
+All three services (web, api, worker) report uncaught errors to a single GlitchTip project at `https://glitchtip.ezop.ddns.net`, project `3d-portal` in org `homelab`. The DSN is shared across services; events are tagged `service=web|api|render`, `release=<pkg.version>+<git_short_sha>`, `environment=$ENVIRONMENT`.
+
+Frontend symbolication is fully wired as of Epic 3: `@sentry/vite-plugin` injects debug IDs at build time INSIDE the docker stage, source maps upload via chunk-upload, and `verify-symbolication.sh` proves on every deploy that the resolved top frame still matches `^apps/web/src/.+\.tsx?$`.
 
 ### Configuration
 
@@ -113,35 +115,119 @@ The DSN lives in two `.env` files:
 | Where | Vars | Why |
 |---|---|---|
 | `.190:/mnt/raid/docker-compose/3d-portal/.env` | `SENTRY_DSN`, `VITE_SENTRY_DSN` | passed to api/worker containers (runtime) and web (build arg) |
-| `~/repos/3d-portal/infra/.env` (dev box only) | `SENTRY_DSN`, `VITE_SENTRY_DSN`, `GLITCHTIP_AUTH_TOKEN`, `GLITCHTIP_ORG_SLUG`, `GLITCHTIP_PROJECT_SLUG` | the auth token + slugs power `infra/scripts/upload-sourcemaps.sh` and must NOT be pushed to `.190` |
+| `~/repos/3d-portal/infra/.env` (dev box only) | `SENTRY_DSN`, `VITE_SENTRY_DSN`, `GLITCHTIP_AUTH_TOKEN`, `GLITCHTIP_ORG_SLUG`, `GLITCHTIP_PROJECT_SLUG` | the auth token + slugs power the in-build plugin upload, the CLI manual recovery, and the verify ritual; must NOT be pushed to `.190` |
 
 If the DSN is rotated or the project recreated, update both `.env` files (the public DSN value is identical) and re-deploy. Replacing the auth token is dev-box-only.
 
-### Sourcemap upload (frontend symbolication)
+### Deploy ritual
 
-`infra/scripts/deploy.sh` calls `infra/scripts/upload-sourcemaps.sh` after the docker web image is built. The upload script extracts `dist/` from the just-built `portal-web:$PORTAL_VERSION` image (so the bundle hashes match what `.190` will serve), then uses the official `glitchtip-cli` (cached binary in `~/.cache/glitchtip-cli/`) to upload via the chunk-upload protocol.
+`bash infra/scripts/deploy.sh` runs the canonical chain:
 
-The legacy `POST /api/0/organizations/{org}/releases/{version}/files/` endpoint is NOT used — this GlitchTip version returns 405 there. Modern symbolication is debug-id-based; the CLI stores artifacts as debug-id-keyed bundles via `POST /api/0/organizations/{org}/chunk-upload/`.
+1. **Build images locally** — `docker compose build` with `DOCKER_BUILDKIT=1`. Inside the `apps/web` build stage, `@sentry/vite-plugin` injects debug IDs into the bundle and uploads source maps via the chunk-upload protocol against `http://192.168.2.190:8800` (LAN HTTP, mandatory for multi-MB chunks). `SENTRY_AUTH_TOKEN` flows in via BuildKit `--mount=type=secret,id=sentry_token,required=true` — token never lands in any image layer (verifiable with `docker history`).
+2. **Save and ship** — `docker save | ssh ... docker load` pushes images to `.190`.
+3. **Restart stack** — `docker compose up -d` recreates containers.
+4. **Alembic migrations** — `docker compose run --rm api alembic upgrade head`.
+5. **Verify post-deploy symbolication** — `bash infra/scripts/verify-symbolication.sh` triggers a smoke event via headless Chrome against `https://3d.ezop.ddns.net/?__sentry_smoke=<uuid>`, polls GlitchTip REST for the resolved event, asserts the top frame regex `^apps/web/src/.+\.tsx?$`, and writes `infra/.last-verify` (single-line tab-separated `<ISO-8601>\t<STATUS>\t<release>`).
 
-The script uses `http://192.168.2.190:8800` (internal HTTP, GlitchTip pod port) instead of `https://glitchtip.ezop.ddns.net` to bypass the public nginx body-size limit on multi-MB sourcemap chunks. This means the upload only works from the dev box on the LAN.
+The verify call is **non-fatal**: deploy.sh exits 0 regardless of verify outcome. The verify result lands in three independent signals (the three-signal failure model — NFR-R3):
 
-To upload manually after a hotfix or release tag bump:
+- **stdout/stderr warning** — `✓ verify OK` on success (stdout) or red `⚠ verify FAILED: <reason>` on failure (stderr), exit-code-mapped per `verify-symbolication.sh`'s FR12 contract (exit 0/1/2/3/4).
+- **`infra/.last-verify` marker** — `OK` on success, `FAILED` on any non-zero exit. Consumed by the next deploy's stale-verify tripwire (see below).
+- **Synthetic GlitchTip event** — for exit codes 1 (regex mismatch) and 3 (auth/scope failure), `verify-symbolication.sh` POSTs an envelope event tagged `deploy.verification=failed` to the same DSN as runtime errors. Operator sees it in the same triage path; filter by tag to distinguish meta-failures from real app exceptions.
+
+**Stale-verify tripwire.** At the START of every `deploy.sh` invocation (before the build phase), the script reads `infra/.last-verify` mtime and compares it to HEAD's commit timestamp (`git log -1 --format=%ct HEAD`). If the marker is older than the current HEAD's commit time → a yellow `⚠ stale verify: previous deploy did not record a successful verification` warning prints to stderr (non-fatal). This guards against the "we forgot to run verify" decay scenario (FR16 / NFR-R4).
+
+**Required tools on the dev box** (where `deploy.sh` runs): `docker`, `git`, `node` (via nvm; v22+ for the docker stage, v24+ on host), `jq`, `curl`, `uuidgen`, `timeout`, plus a headless Chrome/Chromium binary (`google-chrome` or `chromium`). The verify script auto-detects the browser; override with `HEADLESS_BROWSER=<binary>` if needed.
+
+### Manual recovery — CLI fallback
+
+When the in-build plugin upload fails (transient GlitchTip 5xx, network glitch, expired token mid-build, or the Phase 0 issue #299 redux), use `infra/scripts/upload-sourcemaps.sh` standalone:
 
 ```bash
 cd /home/ezop/repos/3d-portal
 set -a; source infra/.env; set +a
-# Build (or extract dist/ from a deployed image — see upload-sourcemaps.sh for that flow):
-pnpm --dir apps/web build
+# Rebuild with maps in dist (the plugin's filesToDeleteAfterUpload removes them by default;
+# disable the plugin or use a previously-built dist+maps archive — see the script's --help):
+cd apps/web && npm run build && cd ../..
 bash infra/scripts/upload-sourcemaps.sh
+# Re-run verify to confirm the maps are now resolvable:
+bash infra/scripts/verify-symbolication.sh
 ```
 
-If `GLITCHTIP_AUTH_TOKEN` is missing from `infra/.env`, the deploy still succeeds with sourcemap upload skipped (warning on stdout).
+The CLI script uses the official `glitchtip-cli` (Rust, cached at `~/.cache/glitchtip-cli/`, sha256-pinned). It computes `RELEASE = ${pkg.version}+${git_short_sha}` from `apps/web/package.json` + `git rev-parse --short HEAD` — drift-impossible: matches both `apps/web/src/release.ts` (consumed by `Sentry.init`) and the in-build plugin's `release.name`. See `bash infra/scripts/upload-sourcemaps.sh --help` for the full operator guide.
 
-#### Known limitation: synthetic test events do not symbolicate
+**FR4 hard-fail policy.** If `SENTRY_AUTH_TOKEN` is missing or empty in `infra/.env`, the docker build aborts at the BuildKit secret-mount step (`required=true` + non-empty guard in `apps/web/Dockerfile`). NO silent skip — the deploy stops before any image ships. Either set the token or roll back to a previous deploy.
 
-Vite's `build.sourcemap = "hidden"` does NOT inject a `//# debugId=` comment into the bundle. GlitchTip's chunk-upload symbolicator matches by debug-id, so synthetic events sent via the DSN store endpoint with crafted `stacktrace.frames[].abs_path` will appear in the panel but their stack frames stay minified.
+### Token rotation procedure (same-day)
 
-Real frontend errors triggered in a browser DO carry the SDK's `release` tag and Sentry's per-event `debug_meta` block, which gives the symbolicator enough context to resolve via legacy by-name fallback most of the time. If you need bulletproof symbolication, the proper fix is to add `@sentry/vite-plugin` to `apps/web/vite.config.ts` so debug IDs get injected at build time. That is currently out of scope; track it as a follow-up if minified browser stacks bite you in practice.
+1. Open `https://glitchtip.ezop.ddns.net/profile/auth-tokens/` on LAN/VPN.
+2. Click **+ Create New Token**. Set the scopes per the next subsection (5 scopes total).
+3. Copy the new token value.
+4. Update `~/repos/3d-portal/infra/.env`: replace the `GLITCHTIP_AUTH_TOKEN` value with the new token. Save (`chmod 600` already applied).
+5. Validate end-to-end: `bash infra/scripts/deploy.sh`. The plugin upload + verify ritual both exercise the new token. A green `✓ verify OK` line + `infra/.last-verify` carrying `OK <release>` confirms the token works.
+6. Revoke the OLD token in the GlitchTip UI.
+7. Record the rotation date inline in this runbook (or in `_bmad-output/project-context.md` as an evergreen log entry).
+
+**Why same-day:** the token has write scope (`event:write`, `project:write`). Quarterly rotation is the baseline; ad-hoc rotation on suspected leak / personnel change should complete within a single operator session.
+
+### Required token scopes (exact list)
+
+The token MUST carry exactly these five scopes:
+
+| Scope | Used by |
+|---|---|
+| `org:read` | REST queries against `/api/0/organizations/<org>/...` |
+| `project:read` | REST queries against `/api/0/projects/<org>/<proj>/...` |
+| `project:write` | source-map upload (chunk-upload + assemble) |
+| `project:releases` | release record creation/updates during plugin upload |
+| `event:write` | `verify-symbolication.sh`'s synthetic alarm event POST (envelope endpoint) |
+
+NOT `org:write`, NOT `org:admin`. Token-scope minimization is NFR-S3; broader scopes are a liability without value.
+
+`event:write` is required by the verify ritual's three-signal failure path (Story 3.1's `emit_alarm` helper). A token that worked under the old 4-scope list will silently fail at the alarm-POST step on regex-mismatch failures — the alarm event won't ingest, leaving only stdout + the `.last-verify FAILED` marker as failure signals. The verify ritual's NFR-R3 three-signal contract requires the fifth scope.
+
+### Triage script usage
+
+> **Status (2026-05-10):** the triage script is Epic 2 scope and ships in **Story 2.5** (currently backlog). The contract below is locked; once the story lands, the section stays accurate.
+
+```bash
+bash infra/scripts/glitchtip-triage.sh <issue_id>
+```
+
+Returns a paste-ready markdown stub with fixed field order:
+
+- Top frame (`filename:line`)
+- Fingerprint
+- Route context (`route.pathname`)
+- `model.id` (when present)
+- Release SHA + commit hash
+- Last 5 events (timestamp + message preview)
+- Suggested file to edit (top-frame source)
+- GlitchTip permalink
+
+Schema is verifiable: `bash infra/scripts/glitchtip-triage.sh --schema | diff -u tests/golden/triage-schema.txt -` returns zero diff on stable contract. Read-only against GlitchTip — no state mutation.
+
+The output is the triage interface for AI agents. Open it in `bmad-quick-dev` or `bmad-create-story` directly; the GlitchTip web UI is the slow path.
+
+### Cross-references
+
+- `~/repos/configs/docs/glitchtip-agent-guide.md` — REST recipes for arbitrary GlitchTip queries (events, issues, releases). Extends what this runbook covers.
+- `~/repos/configs/docs/observability-logging-contract.md` — tag taxonomy (ECS-style dotted naming for `service.*`, `deployment.*`, `route.*`, etc.). Project-specific extensions preserve the dotted convention.
+- `_bmad-output/planning-artifacts/architecture.md` Decision K — verify ritual rationale + three-signal failure model.
+
+### GlitchTip 6.1.x version pin
+
+The verify and CLI flows depend on the GlitchTip 6.1.x REST API surface:
+
+- `GET /api/0/projects/<org>/<proj>/issues/?statsPeriod=5m&query=<tag>:<value>` — issue search by tag (verify ritual's poll target).
+- `GET /api/0/issues/<id>/events/latest/` — latest event for an issue.
+- `POST /api/0/organizations/<org>/chunk-upload/` + `POST /api/0/organizations/<org>/artifactbundle/assemble/` — modern source-map upload (chunk-upload protocol; replaces the legacy `releases/{version}/files/` endpoint, which returns 405 on this version).
+- `POST /api/<project_id>/envelope/` — Sentry-protocol envelope ingest (synthetic alarm events).
+- The `release` field surfaces in event JSON as a TAG entry (`.tags[] | select(.key=="release")`), NOT as a top-level `.release` field.
+
+Upgrade to GlitchTip 7.x requires re-validation of all five surfaces (NFR-I1) before re-tagging the runbook. Cite the "Provisioning a fresh project" subsection below for the operator-side test plan; cross-check against the live verify ritual after upgrade.
+
+**Homelab GlitchTip config invariant.** The `glitchtip-worker` container in `/mnt/raid/docker-compose/glitchtip.yml` MUST mount the `glitchtip-uploads` volume at `/code/uploads` — same as the web container. Without it, `assemble_artifacts_task` fails with `FileNotFoundError` and source maps never persist in `sourcecode_debugsymbolbundle`. Discovered + fixed during Story 3.1's dev cycle (2026-05-09); see `_bmad-output/implementation-artifacts/epic-1-symbolication-regression.md` for full context.
 
 ### Trigger a test event
 
@@ -224,7 +310,7 @@ curl -s -b /tmp/gt-cookies.txt -H "X-CSRFTOKEN: $CSRF" -H "Referer: https://glit
   | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['dsn']['public'])"
 ```
 
-5. For sourcemap uploads, use any existing long-lived API token from `https://glitchtip.ezop.ddns.net/profile/auth-tokens/` with scopes `org:read`, `project:read`, `project:write`, `project:releases`. Save as `GLITCHTIP_AUTH_TOKEN` in local `infra/.env`.
+5. For sourcemap uploads + verify alarm POSTs, use any existing long-lived API token from `https://glitchtip.ezop.ddns.net/profile/auth-tokens/` with the exact 5-scope list documented in **Required token scopes** above (`org:read`, `project:read`, `project:write`, `project:releases`, `event:write`). Save as `GLITCHTIP_AUTH_TOKEN` in local `infra/.env`.
 
 ## SoT migration — operational state (post Slice 2 series)
 
