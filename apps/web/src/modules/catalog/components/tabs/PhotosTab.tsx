@@ -18,6 +18,7 @@ import { GripVertical, Star, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { ConfirmDialog } from "@/ui/custom/ConfirmDialog";
 import { LoadingState } from "@/ui/custom/LoadingState";
 import type { ModelDetail, ModelFileRead } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,7 @@ export function PhotosTab({ detail }: Props) {
   const upload = useUploadFile(detail.id);
   const photos = photosQuery.data ?? [];
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const sensors = useSensors(
@@ -108,13 +110,31 @@ export function PhotosTab({ detail }: Props) {
           isThumbnail={detail.thumbnail_file_id === selected.id}
           onSetThumbnail={() => setThumb.mutate(selected.id)}
           onDelete={() => {
-            if (confirm(t("catalog.actions.confirmDeletePhoto", { name: selected.original_name }))) {
-              del.mutate(selected.id);
-              setSelectedId(null);
-            }
+            setPendingDelete({ id: selected.id, name: selected.original_name });
           }}
         />
       )}
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(next) => {
+          if (!next) setPendingDelete(null);
+        }}
+        title={
+          pendingDelete !== null
+            ? t("catalog.actions.confirmDeletePhoto", { name: pendingDelete.name })
+            : ""
+        }
+        confirmLabel={t("catalog.actions.delete")}
+        destructive
+        pending={del.isPending}
+        onConfirm={() => {
+          if (pendingDelete !== null) {
+            del.mutate(pendingDelete.id);
+            setSelectedId(null);
+            setPendingDelete(null);
+          }
+        }}
+      />
     </div>
   );
 }

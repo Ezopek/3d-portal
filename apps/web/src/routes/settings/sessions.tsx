@@ -8,7 +8,9 @@ import {
 } from "@/modules/catalog/hooks/useSessions";
 import { AuthGate } from "@/shell/AuthGate";
 import { Button } from "@/ui/button";
+import { ConfirmDialog } from "@/ui/custom/ConfirmDialog";
 import { LoadingState } from "@/ui/custom/LoadingState";
+import { useState } from "react";
 
 function Sessions() {
   const { data, isLoading } = useSessions();
@@ -16,6 +18,7 @@ function Sessions() {
   const logoutOthers = useLogoutOthers();
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const [pendingCurrentRevoke, setPendingCurrentRevoke] = useState<string | null>(null);
 
   if (isLoading) return <LoadingState variant="spinner" className="p-6" />;
 
@@ -24,11 +27,19 @@ function Sessions() {
 
   async function onRevoke(familyId: string, isCurrent: boolean) {
     if (isCurrent) {
-      const ok = window.confirm(t("auth.sessions.confirm_revoke_current"));
-      if (!ok) return;
+      // Defer to the ConfirmDialog and let it call performCurrentRevoke().
+      setPendingCurrentRevoke(familyId);
+      return;
     }
     await revoke.mutateAsync(familyId);
-    if (isCurrent) await navigate({ to: "/login", replace: true });
+  }
+
+  async function performCurrentRevoke() {
+    if (pendingCurrentRevoke === null) return;
+    const familyId = pendingCurrentRevoke;
+    setPendingCurrentRevoke(null);
+    await revoke.mutateAsync(familyId);
+    await navigate({ to: "/login", replace: true });
   }
 
   return (
@@ -129,6 +140,17 @@ function Sessions() {
           </div>
         ))}
       </div>
+      <ConfirmDialog
+        open={pendingCurrentRevoke !== null}
+        onOpenChange={(next) => {
+          if (!next) setPendingCurrentRevoke(null);
+        }}
+        title={t("auth.sessions.confirm_revoke_current")}
+        confirmLabel={t("auth.sessions.revoke")}
+        destructive
+        pending={revoke.isPending}
+        onConfirm={() => void performCurrentRevoke()}
+      />
     </div>
   );
 }

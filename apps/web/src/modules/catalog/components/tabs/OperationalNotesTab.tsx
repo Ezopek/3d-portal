@@ -7,6 +7,7 @@ import { AddNoteSheet } from "@/modules/catalog/components/sheets/AddNoteSheet";
 import { useDeleteNote } from "@/modules/catalog/hooks/mutations/useDeleteNote";
 import { useAuth } from "@/shell/AuthContext";
 import { Button } from "@/ui/button";
+import { ConfirmDialog } from "@/ui/custom/ConfirmDialog";
 
 const KIND_BORDER: Record<Exclude<NoteRead["kind"], "description">, string> = {
   operational: "border-l-warning",
@@ -25,6 +26,7 @@ export function OperationalNotesTab({
   const { isAdmin } = useAuth();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<NoteRead | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const del = useDeleteNote(modelId);
 
   const visible = notes.filter((n) => n.kind !== "description");
@@ -39,9 +41,13 @@ export function OperationalNotesTab({
     setSheetOpen(true);
   }
 
-  function confirmDelete(noteId: string) {
-    if (window.confirm(t("catalog.actions.confirmDeleteNote"))) {
-      del.mutate(noteId);
+  function requestDelete(noteId: string) {
+    setPendingDelete(noteId);
+  }
+  function performDelete() {
+    if (pendingDelete !== null) {
+      del.mutate(pendingDelete);
+      setPendingDelete(null);
     }
   }
 
@@ -82,7 +88,7 @@ export function OperationalNotesTab({
                   <button
                     type="button"
                     aria-label={t("catalog.actions.deleteNote")}
-                    onClick={() => confirmDelete(n.id)}
+                    onClick={() => requestDelete(n.id)}
                     className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground opacity-50 hover:bg-accent hover:opacity-100"
                   >
                     <Trash2 className="size-3" aria-hidden />
@@ -101,6 +107,17 @@ export function OperationalNotesTab({
           onOpenChange={setSheetOpen}
         />
       )}
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(next) => {
+          if (!next) setPendingDelete(null);
+        }}
+        title={t("catalog.actions.confirmDeleteNote")}
+        confirmLabel={t("catalog.actions.delete")}
+        destructive
+        pending={del.isPending}
+        onConfirm={performDelete}
+      />
     </>
   );
 }

@@ -111,18 +111,19 @@ describe("OperationalNotesTab", () => {
 
   it("DELETEs the note after confirm", async () => {
     mockUseAuth.mockReturnValue({ isAdmin: true });
-    vi.stubGlobal("confirm", vi.fn(() => true));
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
     render(
       <OperationalNotesTab modelId={MODEL_ID} notes={[note("operational", "tip", "n1")]} />,
       { wrapper: wrap() },
     );
-    fireEvent.click(screen.getByLabelText("Delete note"));
+    fireEvent.click(screen.getByLabelText(/delete note/i));
+    const confirmBtn = await waitFor(() =>
+      screen.getByRole("button", { name: /^(delete|usuń)$/i }),
+    );
+    fireEvent.click(confirmBtn);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/admin/notes/n1");
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(init.method).toBe("DELETE");
-    vi.unstubAllGlobals();
-    vi.stubGlobal("fetch", fetchMock);
   });
 });

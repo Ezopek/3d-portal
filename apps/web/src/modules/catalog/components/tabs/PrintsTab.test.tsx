@@ -86,15 +86,17 @@ describe("PrintsTab", () => {
 
   it("DELETEs the print after confirm", async () => {
     mockUseAuth.mockReturnValue({ isAdmin: true });
-    vi.stubGlobal("confirm", vi.fn(() => true));
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
     render(<PrintsTab modelId={MODEL_ID} prints={[PRINT]} />, { wrapper: wrap() });
-    fireEvent.click(screen.getByLabelText("Delete print"));
+    fireEvent.click(screen.getByLabelText(/delete print/i));
+    // ConfirmDialog opens — click its destructive Confirm button to actually delete.
+    const confirmBtn = await waitFor(() =>
+      screen.getByRole("button", { name: /^(delete|usuń)$/i }),
+    );
+    fireEvent.click(confirmBtn);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/admin/prints/p1");
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(init.method).toBe("DELETE");
-    vi.unstubAllGlobals();
-    vi.stubGlobal("fetch", fetchMock);
   });
 });

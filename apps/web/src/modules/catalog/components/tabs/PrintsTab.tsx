@@ -7,6 +7,7 @@ import { AddPrintSheet } from "@/modules/catalog/components/sheets/AddPrintSheet
 import { useDeletePrint } from "@/modules/catalog/hooks/mutations/useDeletePrint";
 import { useAuth } from "@/shell/AuthContext";
 import { Button } from "@/ui/button";
+import { ConfirmDialog } from "@/ui/custom/ConfirmDialog";
 import { EmptyState } from "@/ui/custom/EmptyState";
 
 export function PrintsTab({
@@ -20,6 +21,7 @@ export function PrintsTab({
   const { isAdmin } = useAuth();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<PrintRead | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const del = useDeletePrint(modelId);
 
   function openAdd() {
@@ -32,9 +34,13 @@ export function PrintsTab({
     setSheetOpen(true);
   }
 
-  function confirmDelete(printId: string) {
-    if (window.confirm(t("catalog.actions.confirmDeletePrint"))) {
-      del.mutate(printId);
+  function requestDelete(printId: string) {
+    setPendingDelete(printId);
+  }
+  function performDelete() {
+    if (pendingDelete !== null) {
+      del.mutate(pendingDelete);
+      setPendingDelete(null);
     }
   }
 
@@ -95,7 +101,7 @@ export function PrintsTab({
                   <button
                     type="button"
                     aria-label={t("catalog.actions.deletePrint")}
-                    onClick={() => confirmDelete(p.id)}
+                    onClick={() => requestDelete(p.id)}
                     className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground opacity-50 hover:bg-accent hover:opacity-100"
                   >
                     <Trash2 className="size-3" aria-hidden />
@@ -114,6 +120,17 @@ export function PrintsTab({
           onOpenChange={setSheetOpen}
         />
       )}
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(next) => {
+          if (!next) setPendingDelete(null);
+        }}
+        title={t("catalog.actions.confirmDeletePrint")}
+        confirmLabel={t("catalog.actions.delete")}
+        destructive
+        pending={del.isPending}
+        onConfirm={performDelete}
+      />
     </>
   );
 }
