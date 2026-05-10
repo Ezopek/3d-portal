@@ -2,6 +2,8 @@ import * as Sentry from "@sentry/react";
 
 import { RELEASE } from "@/release";
 
+import { applyBeforeSendFilters } from "./instrument-filters";
+
 const dsn = import.meta.env.VITE_SENTRY_DSN;
 
 if (typeof dsn === "string" && dsn !== "") {
@@ -11,6 +13,7 @@ if (typeof dsn === "string" && dsn !== "") {
     release: RELEASE,
     sampleRate: 1.0,
     tracesSampleRate: 0,
+    beforeSend: applyBeforeSendFilters,
   });
   Sentry.setTag("service", "web");
   // Static identity tags (Story 2.2, architecture Decision G). Attached once

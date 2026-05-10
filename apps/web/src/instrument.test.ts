@@ -41,6 +41,12 @@ describe("instrument.ts", () => {
     // that happens to match the format would slip through a regex check
     // (PRD FR3 — drift-impossible expression).
     expect(call.release).toBe(RELEASE);
+    // Story 2.4 — beforeSend filter wired at init time. Reference equality
+    // would fail because vi.resetModules() in beforeEach re-evaluates the
+    // module, producing a fresh function object each test; assert by name +
+    // typeof to lock the wiring contract without coupling to identity.
+    expect(typeof call.beforeSend).toBe("function");
+    expect(call.beforeSend.name).toBe("applyBeforeSendFilters");
     expect(setTagSpy).toHaveBeenCalledWith("service", "web");
     // Story 2.2: 5 dotted-name static identity tags additive on top of the
     // baseline `service:web`. Order is fixed in instrument.ts but jest/vitest
