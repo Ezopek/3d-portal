@@ -108,19 +108,47 @@ esac
 # chain is BINDING (matches Story 4.1 Completion Notes); any drift here
 # vs the chain that produced infra/.runbook-fingerprint will yield a
 # spurious mismatch on a runbook that hasn't actually changed.
+#
+# IMPORTANT: under `set -euo pipefail` (top of this script), every step
+# below MUST tolerate non-zero exit codes from curl/sha256sum/awk via
+# explicit `|| true` or `if ! ...; then`. Otherwise a transient prod
+# blip kills the deploy script before it writes the FAILED marker.
 echo "→ Verify post-deploy agent runbook fingerprint"
 runbook_url="${PORTAL_RUNBOOK_URL:-https://3d.ezop.ddns.net/agent-runbook}"
 last_runbook_path="$REPO_DIR/infra/.last-verify-runbook"
 expected_fp="$(cat "$REPO_DIR/infra/.runbook-fingerprint" 2>/dev/null || echo "<missing>")"
-actual_fp="$(curl -fsS "$runbook_url" 2>/dev/null \
-  | awk '/^# / {after_h1=1; next} after_h1 && NF>0 {print; exit}' \
-  | sha256sum | awk '{print $1}')"
+
+runbook_body=""
+runbook_ctype=""
+curl_exit=0
+# `-w` extracts the live Content-Type so we can sanity-check NFR7 — a
+# successful 200 with a wrong content-type would still match the
+# fingerprint and silently pass otherwise.
+curl_out="$(curl -fsS -w $'\n--CTYPE--\n%{content_type}' \
+  "$runbook_url" 2>/dev/null)" || curl_exit=$?
+if [[ $curl_exit -eq 0 ]]; then
+  runbook_body="${curl_out%$'\n--CTYPE--\n'*}"
+  runbook_ctype="${curl_out##*--CTYPE--$'\n'}"
+fi
+actual_fp=""
+if [[ -n "$runbook_body" ]]; then
+  actual_fp="$(printf '%s' "$runbook_body" \
+    | awk '/^# / {after_h1=1; next} after_h1 && NF>0 {print; exit}' \
+    | sha256sum | awk '{print $1}')" || actual_fp=""
+fi
+
 if [[ "$expected_fp" = "<missing>" ]]; then
   printf '\033[33m⚠ runbook verify SKIPPED: infra/.runbook-fingerprint not present\033[0m\n' >&2
   echo "SKIPPED $(date -Iseconds) reason=baseline-missing" > "$last_runbook_path"
+elif [[ $curl_exit -ne 0 || -z "$runbook_body" ]]; then
+  printf '\033[31m⚠ runbook verify FAILED: %s unreachable (curl exit %s)\033[0m\n' "$runbook_url" "$curl_exit" >&2
+  echo "FAILED $(date -Iseconds) reason=unreachable url=$runbook_url curl_exit=$curl_exit" > "$last_runbook_path"
+elif [[ "$runbook_ctype" != text/markdown* ]]; then
+  printf '\033[31m⚠ runbook verify FAILED: wrong Content-Type %s (expected text/markdown)\033[0m\n' "$runbook_ctype" >&2
+  echo "FAILED $(date -Iseconds) reason=content-type ctype=$runbook_ctype" > "$last_runbook_path"
 elif [[ -z "$actual_fp" ]]; then
-  printf '\033[31m⚠ runbook verify FAILED: %s unreachable or returned empty\033[0m\n' "$runbook_url" >&2
-  echo "FAILED $(date -Iseconds) reason=unreachable url=$runbook_url" > "$last_runbook_path"
+  printf '\033[31m⚠ runbook verify FAILED: fingerprint extraction returned empty (intro paragraph missing or awk chain broken)\033[0m\n' >&2
+  echo "FAILED $(date -Iseconds) reason=fingerprint-empty" > "$last_runbook_path"
 elif [[ "$expected_fp" = "$actual_fp" ]]; then
   echo "✓ runbook fingerprint OK ($actual_fp)"
   echo "OK $(date -Iseconds) $actual_fp" > "$last_runbook_path"

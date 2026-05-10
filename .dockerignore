@@ -1,0 +1,68 @@
+# Repo-root .dockerignore — applied to ALL builds whose context is the
+# repo root (currently: workers/render image and apps/api image, both via
+# infra/docker-compose.yml). Without this, the ~1.5G working tree
+# (including .git, infra/.env, _bmad-output/, node_modules, build caches)
+# would be sent to the docker daemon as build context, slowing builds
+# and risking secret leaks in image layers.
+#
+# Strategy: deny-by-default at the directory level, then allowlist the
+# narrow paths each Dockerfile actually COPYs from. Paths NOT listed
+# here continue to be sent to the build context (Docker uses
+# allowlist-via-negation: leading `!` re-includes after a broader
+# exclude pattern).
+
+# --- Always exclude --------------------------------------------------------
+.git
+.gitignore
+.gitattributes
+.dockerignore
+.github
+
+# Editor / OS noise
+.vscode
+.idea
+.DS_Store
+*.swp
+*.swo
+
+# BMAD planning + scheduling artifacts (gitignored too, but we must
+# also keep them out of the Docker build context to avoid surprise
+# leaks of operator-internal docs into image layers if anyone ever
+# accidentally copies "everything").
+_bmad-output
+.claude
+.codex
+.worktrees
+
+# Test + coverage output
+.pytest_cache
+**/__pycache__
+**/*.pyc
+**/.venv
+coverage
+.coverage
+test-results
+playwright-report
+.playwright-mcp
+
+# Frontend build / dependency caches
+node_modules
+.pnpm-store
+**/dist
+**/build
+**/*.tsbuildinfo
+apps/web/vite.config.js
+apps/web/vite.config.d.ts
+
+# Local env / secret files (never include in any image layer)
+.env
+.env.local
+.env.production
+infra/.env
+infra/.last-verify
+infra/.last-verify-runbook
+
+# Docs not needed at runtime EXCEPT the agent runbook (re-included below
+# for the apps/api Dockerfile's COPY step).
+docs/**
+!docs/agents-add-model-runbook.md
