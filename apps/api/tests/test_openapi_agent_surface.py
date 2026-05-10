@@ -119,18 +119,25 @@ def _request_body_schema(operation: dict, spec: dict) -> dict | None:
     return schema
 
 
-def _has_examples(schema: dict) -> bool:
+def _has_examples(schema: dict, spec: dict) -> bool:
     """Return True if a schema (or one of its allOf/anyOf branches) carries an
     `examples` array OR an `example` field. Pydantic v2 typically emits
-    `examples`; OpenAPI 3.0 sometimes uses singular `example`."""
+    `examples`; OpenAPI 3.0 sometimes uses singular `example`. `$ref`s are
+    resolved against `spec` at every recursive node so a branch like
+    `{"allOf": [{"$ref": "..."}]}` doesn't escape the check."""
     if not schema:
         return False
+    if "$ref" in schema:
+        try:
+            schema = _resolve_ref(spec, schema["$ref"])
+        except (AssertionError, KeyError):
+            return False
     if schema.get("examples"):
         return True
     if schema.get("example") is not None:
         return True
     for branch in schema.get("allOf", []) + schema.get("anyOf", []) + schema.get("oneOf", []):
-        if isinstance(branch, dict) and _has_examples(branch):
+        if isinstance(branch, dict) and _has_examples(branch, spec):
             return True
     return False
 
@@ -175,17 +182,39 @@ def test_every_admin_sot_operation_has_description(openapi_spec):
 # ---------------------------------------------------------------------------
 
 
-def test_agent_write_routes_exist(openapi_spec):
-    """Sanity: at least 25 operations carry the `agent-write` tag (29 routes
-    in sot/admin_router.py — allow some slack for future renames)."""
-    count = sum(
-        1
-        for _m, _p, op in _iter_target_operations(openapi_spec)
+def test_every_sot_admin_route_has_agent_write_tag(openapi_spec):
+    """Strict: every route registered on `sot.admin_router.router` MUST carry
+    the `agent-write` tag in its OpenAPI operation. Iterates the FastAPI router
+    objects rather than counting OpenAPI operations so a future route added to
+    `sot/admin_router.py` without `tags=['agent-write']` fails this test
+    immediately. Additionally cross-checks that the OpenAPI total matches the
+    router count (catches a future tag rename or filter regression)."""
+    from app.modules.sot.admin_router import router as sot_admin_router
+
+    expected_keys: set[tuple[str, str]] = set()
+    for route in sot_admin_router.routes:
+        for method in getattr(route, "methods", set()):
+            if method.lower() in HTTP_METHODS:
+                # `route.path` already includes the router prefix.
+                # Strip the FastAPI `:uuid` path-converter suffix; OpenAPI emits the
+                # bare path parameter name.
+                expected_keys.add((method.upper(), route.path.replace(":uuid", "")))
+
+    actual_keys: set[tuple[str, str]] = {
+        (method, path)
+        for method, path, op in _iter_target_operations(openapi_spec)
         if "agent-write" in (op.get("tags") or [])
+    }
+
+    missing = expected_keys - actual_keys
+    extra = actual_keys - expected_keys
+    assert not missing, (
+        "routes in sot.admin_router.router missing `agent-write` tag in OpenAPI:\n  "
+        + "\n  ".join(f"{m} {p}" for m, p in sorted(missing))
     )
-    assert count >= 25, (
-        f"expected ≥25 `agent-write`-tagged operations; found {count}. "
-        "Did Story 4.3 not ship, or did the tag get renamed?"
+    assert not extra, (
+        "routes tagged `agent-write` in OpenAPI but not registered on sot.admin_router:\n  "
+        + "\n  ".join(f"{m} {p}" for m, p in sorted(extra))
     )
 
 
@@ -201,7 +230,7 @@ def test_every_agent_write_json_body_has_examples(openapi_spec):
         if schema is None:
             # No JSON body (e.g. multipart, or no body at all like DELETE) — skip.
             continue
-        if not _has_examples(schema):
+        if not _has_examples(schema, openapi_spec):
             missing.append(f"{method} {path}")
     assert not missing, (
         "agent-write operations with JSON bodies missing `examples` on the request "
@@ -225,7 +254,7 @@ def test_enriched_request_model_has_examples_in_components(openapi_spec, model_n
         "or removed without updating ENRICHED_REQUEST_MODELS in this test?"
     )
     schema = schemas[model_name]
-    assert _has_examples(schema), (
+    assert _has_examples(schema, openapi_spec), (
         f"model `{model_name}` is in components.schemas but has no `examples` / "
         "`example`. Add `model_config = ConfigDict(json_schema_extra={'examples': "
         "[...]})` to its class definition in `apps/api/app/modules/sot/admin_schemas.py`."

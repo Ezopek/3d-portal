@@ -26,12 +26,16 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
     summary="Deliberately raise to verify GlitchTip plumbing (admin only)",
     description=(
         "Raises a test exception to prove the GlitchTip → portal symbolication pipeline "
-        "is working end-to-end. Admin-only. Returns 204 on the wire (the exception is "
-        "captured by Sentry middleware before the response is shaped). **Do NOT 'fix' "
-        "the raise — it is the contract.** Used by `infra/scripts/verify-symbolication.sh` "
-        "and the operator's manual verify ritual."
+        "is working end-to-end. Admin-only. The decorator declares 204, but in practice "
+        "the unhandled `RuntimeError` propagates through FastAPI's default exception "
+        "handler and the client sees **HTTP 500** while Sentry captures the event. "
+        "**Do NOT 'fix' the raise — it is the contract.** Used by "
+        "`infra/scripts/verify-symbolication.sh` and the operator's manual verify ritual."
     ),
     status_code=204,
+    responses={
+        500: {"description": "Deliberate raise propagates to FastAPI's default 500 handler"}
+    },
 )
 def sentry_test(_user_id: uuid.UUID = current_admin) -> None:
     """Deliberately raise to verify GlitchTip plumbing. Admin-only."""

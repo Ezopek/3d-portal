@@ -73,11 +73,12 @@ def get_tags(
     "/models",
     summary="List models with filtering, sorting, pagination",
     description=(
-        "Returns `ModelListResponse` (paged). Filters: `category_ids` (OR), `status`, "
-        "`tag_ids` (OR), `source`, `q` (substring search across name + tags), "
-        "`include_deleted` (default false; soft-deleted rows are hidden). Sort modes: "
-        "see `ModelListSort` enum (`recent`, etc.). Pagination: `offset` (≥0), "
-        "`limit` (1-200, default 50). Public, unauthenticated."
+        "Returns `ModelListResponse` (paged). Filters: `category_ids` (OR — model in "
+        "any listed category), `status`, **`tag_ids` (AND — model has ALL listed tags)**, "
+        "`source`, `q` (case-insensitive substring across `name_en` / `name_pl` / `slug`; "
+        "**does NOT search tag names**), `include_deleted` (default false; soft-deleted "
+        "rows are hidden). Sort modes: see `ModelListSort` enum (`recent`, etc.). "
+        "Pagination: `offset` (≥0), `limit` (1-200, default 50). Public, unauthenticated."
     ),
     response_model=ModelListResponse,
 )

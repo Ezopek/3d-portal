@@ -146,10 +146,10 @@ def _require_admin_role(session: Session, user_id: uuid.UUID) -> None:
     description=(
         "Creates a new Model row from a `ModelCreate` payload. Returns 201 + `ModelDetail`. "
         "Common 4xx: 400 on `category not found` (the `category_id` UUID doesn't exist), "
-        "409 on `slug already exists` (slugs are unique within a category), 422 on other "
-        "Pydantic validation failures. The model is created with `deleted_at=None` and is "
-        "immediately visible to public reads. To attach a source URL, follow with "
-        "`POST /models/{id}/external-links`."
+        "409 on `slug already exists` (Model.slug is globally unique across all categories), "
+        "422 on other Pydantic validation failures. The model is created with "
+        "`deleted_at=None` and is immediately visible to public reads. To attach a source "
+        "URL, follow with `POST /models/{id}/external-links`."
     ),
     status_code=201,
     response_model=ModelDetail,
@@ -246,11 +246,13 @@ def admin_restore_model(
     "/models/{model_id}",
     summary="Soft-delete a model (or hard-delete with ?hard=true; admin only)",
     description=(
-        "Default behavior (no `hard` query) is soft-delete: sets `deleted_at` to now; "
-        "the model disappears from public listings but remains queryable + restorable. "
-        "Returns 200 + `ModelDetail`. With `?hard=true`: admin-only path that physically "
-        "removes the row + on-disk files under portal-content; **agent role gets 403 "
-        "here**. 404 if the model never existed."
+        "Default behavior (no `hard` query) is soft-delete: sets `deleted_at` to now and "
+        "returns 200 + `ModelDetail` with the soft-deleted row. The model disappears from "
+        "public listings but remains queryable + restorable. With `?hard=true`: admin-only "
+        "path that physically removes the row + on-disk files under portal-content and "
+        "returns an **empty 200 response** (no body) — the `response_model` here documents "
+        "the soft path; the hard path returns nothing because the row no longer exists. "
+        "**Agent role gets 403 on `?hard=true`**. 404 if the model never existed."
     ),
     status_code=200,
     response_model=ModelDetail,
@@ -293,9 +295,11 @@ def admin_delete_model(
     summary="Set a model's thumbnail to a specific ModelFile",
     description=(
         "Replaces the model's `thumbnail_file_id` with the file referenced in the "
-        "`ThumbnailSet` payload. The file must belong to the same model. Returns 200 + "
-        "`ModelDetail`. 404 if model not found, 400 if the file belongs to a different "
-        "model or is not an image-kind file."
+        "`ThumbnailSet` payload. The file must exist AND belong to this model — the "
+        "service does NOT enforce file kind, so a non-image kind technically passes "
+        "validation (the frontend is expected to pick an image-kind file). Returns 200 "
+        "+ `ModelDetail`. 404 if model not found. 400 if the file row doesn't exist or "
+        "belongs to a different model."
     ),
     response_model=ModelDetail,
     tags=["agent-write"],
@@ -328,9 +332,10 @@ def admin_set_thumbnail(
     "/models/{model_id}/photos/reorder",
     summary="Reorder a model's photo files",
     description=(
-        "Atomically reorders the model's image-kind files according to `ordered_ids`. "
-        "The provided UUID list MUST be a permutation of the existing image file ids on "
-        'this model — extras or missing ids yield 400. Returns 200 + `{"ok": true}`.'
+        "Assigns sequential `position=0..N-1` to the files in `ordered_ids`. Each file "
+        "id MUST belong to this model AND be `kind=image` or `kind=print` (other kinds "
+        "yield 400). The list does NOT have to cover every existing photo — files not "
+        'named in `ordered_ids` keep their existing position. Returns 200 + `{"ok": true}`.'
     ),
     status_code=status.HTTP_200_OK,
     response_model=dict,
@@ -420,12 +425,15 @@ async def admin_trigger_render(
     summary="Upload a binary file (STL/3MF/image/source) to a model",
     description=(
         "Multipart upload. Form fields: `file` (the binary part), `kind` (one of "
-        "`ModelFileKind`: stl/image/print/source/archive_3mf). **First STL upload "
-        "(`kind=stl`) per model auto-enqueues a render job via arq** — no separate "
-        "render call is needed for the initial preview; subsequent STL uploads do NOT "
-        "re-enqueue. Returns 201 + `ModelFileRead` on new upload; 200 + existing "
-        "`ModelFileRead` on sha256 dedup (same content already in catalog); 413 if the "
-        "file exceeds the upload size limit."
+        "`ModelFileKind`: stl/image/print/source/archive_3mf). **STL uploads "
+        "(`kind=stl`) auto-enqueue a render job via arq IFF the model has no "
+        "auto-rendered image yet** (gate: `model_has_auto_renders`). Practical "
+        "consequence: rapid back-to-back STL uploads on a fresh model can each trigger "
+        "an enqueue until the worker writes the first render image; once an auto-render "
+        "lands, subsequent STL uploads do NOT re-enqueue. Trigger explicit re-renders "
+        "via `POST /models/{id}/render`. Returns 201 + `ModelFileRead` on new upload; "
+        "200 + existing `ModelFileRead` on sha256 dedup (same content already in "
+        "catalog); 413 if the file exceeds the upload size limit."
     ),
     response_model=ModelFileRead,
     status_code=status.HTTP_201_CREATED,
@@ -912,10 +920,13 @@ def admin_delete_note(
     "/models/{model_id}/prints",
     summary="Record a print event for a model",
     description=(
-        "Appends a `Print` row to the model's print history. `printed_at` defaults to "
-        "today if omitted. `photo_file_id`, if supplied, must reference a ModelFile "
-        "attached to this model. Returns 201 + `PrintRead`. 404 if model not found. "
-        "400 if `photo_file_id` references the wrong model or kind."
+        "Appends a `Print` row to the model's print history. `printed_at` is stored as "
+        "`null` if omitted (no auto-default to today — the caller decides). "
+        "`photo_file_id`, if supplied, must reference a ModelFile attached to this "
+        "model; the service does NOT enforce file kind on this reference, so a non-image "
+        "file technically passes (frontend is expected to pick a photo). Returns 201 + "
+        "`PrintRead`. 404 if model not found. 400 if `photo_file_id` references a file "
+        "that doesn't belong to this model."
     ),
     response_model=PrintRead,
     status_code=status.HTTP_201_CREATED,
