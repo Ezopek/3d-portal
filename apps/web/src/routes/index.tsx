@@ -1,23 +1,11 @@
-import { Link, createFileRoute } from "@tanstack/react-router";
-import { useTranslation } from "react-i18next";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-const MODULES = ["catalog", "queue", "spools", "printer", "requests"] as const;
-
-function Landing() {
-  const { t } = useTranslation();
-  return (
-    <div className="grid gap-4 p-4 md:grid-cols-2 lg:grid-cols-3">
-      {MODULES.map((m) => (
-        <Link
-          key={m}
-          to={`/${m}`}
-          className="rounded-md border border-border bg-card p-6 text-card-foreground hover:border-ring"
-        >
-          <h2 className="text-lg font-semibold">{t(`modules.${m}`)}</h2>
-        </Link>
-      ))}
-    </div>
-  );
-}
-
-export const Route = createFileRoute("/")({ component: Landing });
+// V1 ships with one working module (catalog); the other module slots are
+// "Coming soon" stubs. A landing grid linking to four stubs and one real
+// module is a confusing first impression, so / hands off straight to the
+// catalog. Replace with a proper landing once a second module ships.
+export const Route = createFileRoute("/")({
+  beforeLoad: () => {
+    throw redirect({ to: "/catalog" });
+  },
+});
