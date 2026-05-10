@@ -120,4 +120,27 @@ describe("FilterRibbon", () => {
     // The sort select displays its current value as a label
     expect(screen.getByLabelText(/sort/i).textContent ?? "").toMatch(/name_asc|A→Z|Name/i);
   });
+
+  it("closes the tag picker when the Cancel trigger is clicked (regression: 212c025 outside-click race)", () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify([]), { status: 200 }),
+    );
+    render(
+      withQuery(
+        <FilterRibbon
+          state={{ q: "", tag_ids: [], status: undefined, source: undefined, sort: "recent" }}
+          tagsById={new Map()}
+          onChange={() => {}}
+        />,
+      ),
+    );
+    // Open via "+ tag" button (label localized; regex matches both EN/PL).
+    fireEvent.click(screen.getByRole("button", { name: /tag|cancel|anuluj/i }));
+    expect(screen.getByRole("dialog", { name: /add tags|dodaj tagi/i })).toBeTruthy();
+    // Click the same button — now labelled "Cancel"/"Anuluj" — to close.
+    // Pre-fix: outside-click listener queues close, then the button's
+    // functional `(v) => !v` toggle re-opens. Asserts the picker is gone.
+    fireEvent.click(screen.getByRole("button", { name: /cancel|anuluj/i }));
+    expect(screen.queryByRole("dialog", { name: /add tags|dodaj tagi/i })).toBeNull();
+  });
 });

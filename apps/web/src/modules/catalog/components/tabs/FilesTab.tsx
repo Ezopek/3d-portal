@@ -88,7 +88,7 @@ export function FilesTab({
             className={cn(
               "rounded px-3 py-1 text-xs",
               c.kind === active
-                ? "bg-primary/10 text-primary font-medium"
+                ? "bg-primary/10 text-foreground font-medium ring-1 ring-inset ring-primary"
                 : "bg-muted text-muted-foreground hover:text-foreground",
             )}
           >

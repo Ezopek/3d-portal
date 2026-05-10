@@ -105,4 +105,36 @@ describe("DeleteModelDialog", () => {
     expect(init.method).toBe("DELETE");
     await waitFor(() => expect(onDeleted).toHaveBeenCalledTimes(1));
   });
+
+  it("clears the confirm input on Cancel + reopen (regression: f631beb cancel-bypass)", () => {
+    function ToggleHarness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)} aria-label="open">
+            open
+          </button>
+          <DeleteModelDialog
+            detail={makeDetail()}
+            open={open}
+            onOpenChange={setOpen}
+          />
+        </>
+      );
+    }
+    render(<ToggleHarness />, { wrapper: wrap() });
+    fireEvent.click(screen.getByLabelText("open"));
+    let input = screen.getByPlaceholderText("Dragon") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Dragon" } });
+    expect(input.value).toBe("Dragon");
+    // Pre-fix: Cancel called onOpenChange(false) directly, bypassing the
+    // wrapping clear-on-close handler. Half-typed text persisted into the
+    // next open and could leave the destructive button enabled on reopen.
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+    fireEvent.click(screen.getByLabelText("open"));
+    input = screen.getByPlaceholderText("Dragon") as HTMLInputElement;
+    expect(input.value).toBe("");
+    const deleteBtn = screen.getByRole("button", { name: /^delete$/i });
+    expect((deleteBtn as HTMLButtonElement).disabled).toBe(true);
+  });
 });

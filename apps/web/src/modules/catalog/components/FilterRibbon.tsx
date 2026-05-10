@@ -94,7 +94,16 @@ export function FilterRibbon({ state, tagsById, onChange }: Props) {
           variant="outline"
           size="sm"
           className="h-6 text-xs"
-          onClick={() => setTagPickerOpen((v) => !v)}
+          // Literal !tagPickerOpen instead of (v) => !v: when the picker is
+          // open, the document mousedown listener inside TagPicker fires
+          // FIRST (target is outside containerRef) and queues a close, then
+          // this onClick fires and queues another update. With the
+          // functional form, the second update reads the just-queued state
+          // (false) and flips it back to true — picker stays open. The
+          // literal form reads tagPickerOpen from render-time closure
+          // (true), and both queued updates resolve to false. Caught by
+          // Codex review of 212c025.
+          onClick={() => setTagPickerOpen(!tagPickerOpen)}
         >
           {tagPickerOpen ? t("common.cancel") : t("catalog.actions.addTag")}
         </Button>

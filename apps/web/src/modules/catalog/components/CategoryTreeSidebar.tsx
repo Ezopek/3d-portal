@@ -55,7 +55,7 @@ export function CategoryTreeSidebar({ tree, selectedId, onSelect, mobile = false
         className={cn(
           "flex min-h-9 w-full items-center justify-between rounded px-2 py-1 text-left text-sm",
           selectedId === null
-            ? "bg-primary/10 text-primary font-medium"
+            ? "bg-primary/10 text-foreground font-medium ring-1 ring-inset ring-primary"
             : "text-muted-foreground hover:text-foreground",
         )}
       >
@@ -126,7 +126,7 @@ function TreeRow({ node, depth, expanded, toggle, selectedId, onSelect, preferPl
           className={cn(
             "flex min-h-9 flex-1 items-center justify-between rounded px-2 py-1 text-left text-sm",
             selectedId === node.id
-              ? "bg-primary/10 text-primary font-medium"
+              ? "bg-primary/10 text-foreground font-medium ring-1 ring-inset ring-primary"
               : "text-muted-foreground hover:text-foreground",
           )}
         >
