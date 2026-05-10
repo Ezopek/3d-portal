@@ -35,10 +35,10 @@ export function ActivityTab({ modelId }: Props) {
           <span
             className={`rounded px-1.5 py-0.5 font-mono ${
               entry.action.endsWith(".create")
-                ? "bg-green-500/20 text-green-700 dark:text-green-400"
+                ? "bg-success/20 text-success"
                 : entry.action.endsWith(".delete")
-                  ? "bg-red-500/20 text-red-700 dark:text-red-400"
-                  : "bg-blue-500/20 text-blue-700 dark:text-blue-400"
+                  ? "bg-destructive/20 text-destructive"
+                  : "bg-primary/20 text-primary"
             }`}
           >
             {entry.action}

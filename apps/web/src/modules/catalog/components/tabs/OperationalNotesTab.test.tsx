@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import "@/locales/i18n";
 import type { NoteRead } from "@/lib/api-types";
 
 import { OperationalNotesTab } from "./OperationalNotesTab";
@@ -83,7 +84,7 @@ describe("OperationalNotesTab", () => {
       <OperationalNotesTab modelId={MODEL_ID} notes={[note("description", "x", "n1")]} />,
       { wrapper: wrap() },
     );
-    expect(document.body.textContent?.toLowerCase()).toContain("no notes");
+    expect(document.body.textContent?.toLowerCase()).toMatch(/no notes|brak notatek/);
   });
 
   it("does not show + Add note or per-card affordances for non-admin", () => {

@@ -1,4 +1,6 @@
+import { Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { NoteRead } from "@/lib/api-types";
 import { AddNoteSheet } from "@/modules/catalog/components/sheets/AddNoteSheet";
@@ -7,9 +9,9 @@ import { useAuth } from "@/shell/AuthContext";
 import { Button } from "@/ui/button";
 
 const KIND_BORDER: Record<Exclude<NoteRead["kind"], "description">, string> = {
-  operational: "border-l-orange-400",
-  ai_review: "border-l-blue-400",
-  other: "border-l-gray-400",
+  operational: "border-l-warning",
+  ai_review: "border-l-primary",
+  other: "border-l-muted-foreground",
 };
 
 export function OperationalNotesTab({
@@ -19,6 +21,7 @@ export function OperationalNotesTab({
   modelId: string;
   notes: readonly NoteRead[];
 }) {
+  const { t } = useTranslation();
   const { isAdmin } = useAuth();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<NoteRead | null>(null);
@@ -37,7 +40,7 @@ export function OperationalNotesTab({
   }
 
   function confirmDelete(noteId: string) {
-    if (window.confirm("Delete this note?")) {
+    if (window.confirm(t("catalog.actions.confirmDeleteNote"))) {
       del.mutate(noteId);
     }
   }
@@ -47,12 +50,12 @@ export function OperationalNotesTab({
       {isAdmin && (
         <div className="flex justify-end p-3 pb-0">
           <Button size="sm" onClick={openAdd}>
-            + Add note
+            {t("catalog.actions.addNote")}
           </Button>
         </div>
       )}
       {visible.length === 0 ? (
-        <p className="p-4 text-sm text-muted-foreground">no notes</p>
+        <p className="p-4 text-sm text-muted-foreground">{t("catalog.empty.notes")}</p>
       ) : (
         <ul className="space-y-3 p-3">
           {visible.map((n) => (
@@ -70,19 +73,19 @@ export function OperationalNotesTab({
                 <div className="flex items-start gap-1">
                   <button
                     type="button"
-                    aria-label="Edit note"
+                    aria-label={t("catalog.actions.editNote")}
                     onClick={() => openEdit(n)}
-                    className="text-xs text-muted-foreground opacity-50 hover:opacity-100"
+                    className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground opacity-50 hover:bg-accent hover:opacity-100"
                   >
-                    ✏
+                    <Pencil className="size-3" aria-hidden />
                   </button>
                   <button
                     type="button"
-                    aria-label="Delete note"
+                    aria-label={t("catalog.actions.deleteNote")}
                     onClick={() => confirmDelete(n.id)}
-                    className="text-xs text-muted-foreground opacity-50 hover:opacity-100"
+                    className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground opacity-50 hover:bg-accent hover:opacity-100"
                   >
-                    🗑
+                    <Trash2 className="size-3" aria-hidden />
                   </button>
                 </div>
               )}
