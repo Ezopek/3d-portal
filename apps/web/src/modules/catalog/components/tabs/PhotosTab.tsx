@@ -82,7 +82,7 @@ export function PhotosTab({ detail }: Props) {
   const selected = photos.find((p) => p.id === selectedId) ?? photos[0] ?? null;
 
   return (
-    <div className="grid grid-cols-1 gap-4 p-3 md:grid-cols-[520px_1fr]">
+    <div className="grid grid-cols-1 gap-4 p-3 md:grid-cols-[minmax(260px,420px)_1fr]">
       <div className="space-y-2">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={photos.map((p) => p.id)} strategy={verticalListSortingStrategy}>
@@ -290,6 +290,7 @@ function UploadZone({
   onFiles: (files: FileList | null) => void;
   inputRef: React.RefObject<HTMLInputElement | null>;
 }) {
+  const { t } = useTranslation();
   const [isDragging, setIsDragging] = useState(false);
 
   // The browser default for `drop` on a webpage is to navigate to the file —
@@ -297,6 +298,8 @@ function UploadZone({
   // uploading. Stop the default on every step of the drag lifecycle.
   return (
     <div
+      role="region"
+      aria-label={t("catalog.actions.uploadZoneLabel")}
       data-testid="photo-upload-zone"
       data-dragging={isDragging ? "true" : "false"}
       onDragOver={(e) => {
@@ -334,7 +337,7 @@ function UploadZone({
         className="text-foreground underline"
         onClick={() => inputRef.current?.click()}
       >
-        + Drop photos here, or click to browse
+        {t("catalog.actions.dropOrBrowse")}
       </button>
     </div>
   );

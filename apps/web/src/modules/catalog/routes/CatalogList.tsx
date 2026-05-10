@@ -203,7 +203,7 @@ export function CatalogList() {
                 {t("common.prev")}
               </Button>
               <span className="text-muted-foreground">
-                {page} / {lastPage} · {total} {t("catalog.totalSuffix", { defaultValue: "total" })}
+                {page} / {lastPage} · {total} {t("catalog.totalSuffix")}
               </span>
               <Button
                 variant="outline"

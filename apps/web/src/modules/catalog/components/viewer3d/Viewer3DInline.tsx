@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/ui/button";
 
 import { Viewer3DCanvas, type CanvasHandle } from "./Viewer3DCanvas";
+import { InteractionHint } from "./controls/InteractionHint";
 import { MeasureSummary } from "./controls/MeasureSummary";
 import { StepBanner } from "./controls/StepBanner";
 import { ViewToolbar } from "./controls/ViewToolbar";
@@ -235,6 +236,7 @@ function CanvasLoader({
           {t("viewer3d.tooltip.expand")}
         </Button>
       </div>
+      <InteractionHint />
       {isLargeMesh && (
         <div
           role="status"
