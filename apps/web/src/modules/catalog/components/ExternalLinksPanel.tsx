@@ -1,11 +1,14 @@
+import { useTranslation } from "react-i18next";
+
 import type { ExternalLinkRead } from "@/lib/api-types";
 
 export function ExternalLinksPanel({ links }: { links: readonly ExternalLinkRead[] }) {
+  const { t } = useTranslation();
   if (links.length === 0) return null;
   return (
     <section className="rounded border border-border bg-card p-4">
       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        External links
+        {t("catalog.panels.externalLinks")}
       </h3>
       <ul className="space-y-1">
         {links.map((link) => (

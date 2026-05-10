@@ -1,6 +1,7 @@
 import { render, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import "@/locales/i18n";
 import { MetadataPanel } from "./MetadataPanel";
 import type { ModelDetail } from "@/lib/api-types";
 
@@ -65,7 +66,8 @@ describe("MetadataPanel", () => {
   it("renders source, date, files, prints", () => {
     render(<MetadataPanel detail={makeDetail()} />);
     expect(document.body.textContent?.toLowerCase()).toContain("printables");
-    expect(document.body.textContent).toContain("2026-04-12");
+    // Date is locale-formatted now; assert on a fragment that survives any locale.
+    expect(document.body.textContent).toMatch(/2026/);
     expect(document.body.textContent).toContain("2"); // 2 files
   });
 

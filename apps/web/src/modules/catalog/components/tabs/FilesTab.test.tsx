@@ -3,6 +3,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/re
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import "@/locales/i18n";
 import type { ModelFileRead } from "@/lib/api-types";
 
 import { FilesTab } from "./FilesTab";

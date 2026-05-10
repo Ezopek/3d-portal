@@ -1,3 +1,4 @@
+import { MoreVertical, Pencil } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -54,7 +55,7 @@ function buildAncestorChain(
 }
 
 export function ModelHero({ detail }: { detail: ModelDetail }) {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { isAdmin } = useAuth();
   const [tagsOpen, setTagsOpen] = useState(false);
   const [descriptionOpen, setDescriptionOpen] = useState(false);
@@ -91,7 +92,7 @@ export function ModelHero({ detail }: { detail: ModelDetail }) {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="text-xs text-muted-foreground" data-testid="model-breadcrumb">
-            <span>All</span>
+            <span>{t("catalog.gallery.allBreadcrumb")}</span>
             {ancestorChain.map((cat) => (
               <Fragment key={cat.id}>
                 {" › "}
@@ -108,21 +109,21 @@ export function ModelHero({ detail }: { detail: ModelDetail }) {
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="Model actions"
+                  aria-label={t("catalog.actions.modelActions")}
                 />
               }
             >
-              ⋮
+              <MoreVertical className="size-4" aria-hidden />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => setDescriptionOpen(true)}>
-                Edit description
+                {t("catalog.actions.editDescription")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setRenderSheetOpen(true)}>
-                Re-render
+                {t("catalog.actions.rerender")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setDeleteOpen(true)}>
-                Delete
+                {t("catalog.actions.delete")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -161,11 +162,11 @@ export function ModelHero({ detail }: { detail: ModelDetail }) {
         {isAdmin && (
           <button
             type="button"
-            aria-label="Edit tags"
+            aria-label={t("catalog.actions.editTags")}
             onClick={() => setTagsOpen(true)}
-            className="text-xs text-muted-foreground opacity-50 hover:opacity-100"
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground opacity-50 hover:bg-accent hover:opacity-100"
           >
-            ✏
+            <Pencil className="size-3" aria-hidden />
           </button>
         )}
       </div>

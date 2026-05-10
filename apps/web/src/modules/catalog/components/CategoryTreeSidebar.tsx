@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -49,11 +50,13 @@ export function CategoryTreeSidebar({ tree, selectedId, onSelect, mobile = false
       </h3>
       <button
         type="button"
-        aria-label="select all categories"
+        aria-label={t("a11y.allCategories")}
         onClick={() => onSelect(null)}
         className={cn(
-          "flex w-full items-center justify-between rounded px-2 py-1 text-left text-sm",
-          selectedId === null ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground",
+          "flex min-h-9 w-full items-center justify-between rounded px-2 py-1 text-left text-sm",
+          selectedId === null
+            ? "bg-primary/10 text-primary font-medium"
+            : "text-muted-foreground hover:text-foreground",
         )}
       >
         <span>{t("common.all")}</span>
@@ -88,6 +91,7 @@ interface RowProps {
 }
 
 function TreeRow({ node, depth, expanded, toggle, selectedId, onSelect, preferPl }: RowProps) {
+  const { t } = useTranslation();
   const isExpanded = expanded.has(node.slug);
   const hasChildren = node.children.length > 0;
   const label = preferPl && node.name_pl !== null ? node.name_pl : node.name_en;
@@ -98,22 +102,31 @@ function TreeRow({ node, depth, expanded, toggle, selectedId, onSelect, preferPl
         {hasChildren ? (
           <button
             type="button"
-            aria-label={`expand ${node.slug}`}
+            aria-label={
+              isExpanded
+                ? t("a11y.collapse", { name: label })
+                : t("a11y.expand", { name: label })
+            }
+            aria-expanded={isExpanded}
             onClick={() => toggle(node.slug)}
-            className="text-xs text-muted-foreground hover:text-foreground"
+            className="flex h-8 w-8 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
           >
-            {isExpanded ? "▾" : "▸"}
+            {isExpanded ? (
+              <ChevronDown className="size-3.5" aria-hidden />
+            ) : (
+              <ChevronRight className="size-3.5" aria-hidden />
+            )}
           </button>
         ) : (
-          <span className="w-4" />
+          <span className="h-8 w-8" />
         )}
         <button
           type="button"
           onClick={() => onSelect(node.id)}
           className={cn(
-            "flex flex-1 items-center justify-between rounded px-2 py-1 text-left text-sm",
+            "flex min-h-9 flex-1 items-center justify-between rounded px-2 py-1 text-left text-sm",
             selectedId === node.id
-              ? "bg-accent text-accent-foreground"
+              ? "bg-primary/10 text-primary font-medium"
               : "text-muted-foreground hover:text-foreground",
           )}
         >

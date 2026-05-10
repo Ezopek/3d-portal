@@ -1,3 +1,6 @@
+import { Pencil } from "lucide-react";
+import { useTranslation } from "react-i18next";
+
 import type { ModelDetail } from "@/lib/api-types";
 import { useAuth } from "@/shell/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
@@ -8,7 +11,18 @@ import { OperationalNotesTab } from "./tabs/OperationalNotesTab";
 import { PhotosTab } from "./tabs/PhotosTab";
 import { PrintsTab } from "./tabs/PrintsTab";
 
+function EditableHint() {
+  const { t } = useTranslation();
+  return (
+    <>
+      <Pencil className="size-3" aria-hidden />
+      <span className="sr-only">{t("a11y.editable")}</span>
+    </>
+  );
+}
+
 export function SecondaryTabs({ detail }: { detail: ModelDetail }) {
+  const { t } = useTranslation();
   const { isAdmin } = useAuth();
   const filesCount = detail.files.filter(
     (f) => f.kind === "stl" || f.kind === "source" || f.kind === "archive_3mf",
@@ -28,11 +42,27 @@ export function SecondaryTabs({ detail }: { detail: ModelDetail }) {
        */}
       <div className="min-w-0 max-w-full overflow-x-auto">
         <TabsList className="flex w-max flex-nowrap">
-          <TabsTrigger value="files">Files ({filesCount})</TabsTrigger>
-          {isAdmin && <TabsTrigger value="photos">Photos ({photosCount}) ✏</TabsTrigger>}
-          <TabsTrigger value="prints">Prints ({detail.prints.length})</TabsTrigger>
-          <TabsTrigger value="ops">Operational notes ({opsCount})</TabsTrigger>
-          {isAdmin && <TabsTrigger value="activity">Activity ✏</TabsTrigger>}
+          <TabsTrigger value="files">
+            {t("catalog.tabs.files")} ({filesCount})
+          </TabsTrigger>
+          {isAdmin && (
+            <TabsTrigger value="photos" className="gap-1">
+              {t("catalog.tabs.photos")} ({photosCount})
+              <EditableHint />
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="prints">
+            {t("catalog.tabs.prints")} ({detail.prints.length})
+          </TabsTrigger>
+          <TabsTrigger value="ops">
+            {t("catalog.tabs.opsNotes")} ({opsCount})
+          </TabsTrigger>
+          {isAdmin && (
+            <TabsTrigger value="activity" className="gap-1">
+              {t("catalog.tabs.activity")}
+              <EditableHint />
+            </TabsTrigger>
+          )}
         </TabsList>
       </div>
       <TabsContent value="files">

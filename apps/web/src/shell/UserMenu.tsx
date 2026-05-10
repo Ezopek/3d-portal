@@ -37,7 +37,7 @@ export function UserMenu() {
     );
   }
 
-  const label = user?.display_name ?? user?.email ?? "Account";
+  const label = user?.display_name ?? user?.email ?? t("auth.account_label_fallback");
 
   return (
     <DropdownMenu>

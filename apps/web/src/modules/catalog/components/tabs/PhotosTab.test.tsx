@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import "@/locales/i18n";
 import type { ModelDetail } from "@/lib/api-types";
 
 import { PhotosTab } from "./PhotosTab";

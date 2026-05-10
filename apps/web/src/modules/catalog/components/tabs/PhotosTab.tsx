@@ -14,7 +14,9 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { GripVertical, Star, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { LoadingState } from "@/ui/custom/LoadingState";
 import type { ModelDetail, ModelFileRead } from "@/lib/api-types";
@@ -31,6 +33,7 @@ interface Props {
 }
 
 export function PhotosTab({ detail }: Props) {
+  const { t } = useTranslation();
   const photosQuery = usePhotos(detail.id);
   const reorder = useReorderPhotos(detail.id);
   const setThumb = useSetThumbnail(detail.id);
@@ -68,7 +71,7 @@ export function PhotosTab({ detail }: Props) {
   if (photos.length === 0 && !upload.isPending) {
     return (
       <div className="space-y-3 p-3">
-        <p className="text-sm text-muted-foreground">no photos</p>
+        <p className="text-sm text-muted-foreground">{t("catalog.empty.photos")}</p>
         <UploadZone onFiles={onUpload} inputRef={fileInputRef} />
       </div>
     );
@@ -105,7 +108,7 @@ export function PhotosTab({ detail }: Props) {
           isThumbnail={detail.thumbnail_file_id === selected.id}
           onSetThumbnail={() => setThumb.mutate(selected.id)}
           onDelete={() => {
-            if (confirm(`Delete ${selected.original_name}?`)) {
+            if (confirm(t("catalog.actions.confirmDeletePhoto", { name: selected.original_name }))) {
               del.mutate(selected.id);
               setSelectedId(null);
             }
@@ -149,15 +152,7 @@ function SortableRow({
         isSelected && "ring-2 ring-ring",
       )}
     >
-      <button
-        type="button"
-        aria-label="drag handle"
-        className="cursor-grab text-muted-foreground"
-        {...attributes}
-        {...listeners}
-      >
-        ⋮⋮
-      </button>
+      <DragHandle attributes={attributes} listeners={listeners} />
       <button
         type="button"
         onClick={onSelect}
@@ -204,12 +199,8 @@ function PhotoDetail({
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" disabled={isThumbnail} onClick={onSetThumbnail}>
-            ★ Set as thumbnail
-          </Button>
-          <Button variant="destructive" size="sm" onClick={onDelete}>
-            🗑
-          </Button>
+          <ThumbnailButton isThumbnail={isThumbnail} onClick={onSetThumbnail} />
+          <DeletePhotoButton onClick={onDelete} />
         </div>
       </div>
       <img
@@ -218,6 +209,57 @@ function PhotoDetail({
         className="max-h-[600px] w-full rounded bg-muted object-contain"
       />
     </div>
+  );
+}
+
+function DragHandle({
+  attributes,
+  listeners,
+}: {
+  attributes: ReturnType<typeof useSortable>["attributes"];
+  listeners: ReturnType<typeof useSortable>["listeners"];
+}) {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      aria-label={t("catalog.actions.dragHandle")}
+      className="cursor-grab text-muted-foreground"
+      {...attributes}
+      {...listeners}
+    >
+      <GripVertical className="size-4" aria-hidden />
+    </button>
+  );
+}
+
+function ThumbnailButton({
+  isThumbnail,
+  onClick,
+}: {
+  isThumbnail: boolean;
+  onClick: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Button variant="outline" size="sm" disabled={isThumbnail} onClick={onClick}>
+      <Star className="mr-1 size-3" aria-hidden />
+      {t("catalog.actions.setAsThumbnail")}
+    </Button>
+  );
+}
+
+function DeletePhotoButton({ onClick }: { onClick: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <Button
+      variant="destructive"
+      size="sm"
+      onClick={onClick}
+      aria-label={t("catalog.actions.deletePhoto")}
+    >
+      <Trash2 className="size-4" aria-hidden />
+    </Button>
   );
 }
 

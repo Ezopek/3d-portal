@@ -67,7 +67,7 @@ describe("CategoryTreeSidebar", () => {
 
   it("expands a parent on caret click and persists state", () => {
     render(<CategoryTreeSidebar tree={TREE} selectedId={null} onSelect={() => {}} />);
-    const caret = screen.getByLabelText("expand decorations");
+    const caret = screen.getByLabelText(/expand decorations/i);
     fireEvent.click(caret);
     expect(screen.getByText(/Vases/)).toBeTruthy();
     expect(sessionStorage.getItem("catalog:tree-expand")).toContain("decorations");
@@ -93,7 +93,7 @@ describe("CategoryTreeSidebar", () => {
     render(
       <CategoryTreeSidebar tree={TREE} selectedId="a" onSelect={(id) => calls.push(id)} />,
     );
-    fireEvent.click(screen.getByLabelText("select all categories"));
+    fireEvent.click(screen.getByLabelText(/all categories/i));
     expect(calls).toEqual([null]);
   });
 });

@@ -1,10 +1,13 @@
+import { Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { PrintRead } from "@/lib/api-types";
 import { AddPrintSheet } from "@/modules/catalog/components/sheets/AddPrintSheet";
 import { useDeletePrint } from "@/modules/catalog/hooks/mutations/useDeletePrint";
 import { useAuth } from "@/shell/AuthContext";
 import { Button } from "@/ui/button";
+import { EmptyState } from "@/ui/custom/EmptyState";
 
 export function PrintsTab({
   modelId,
@@ -13,6 +16,7 @@ export function PrintsTab({
   modelId: string;
   prints: readonly PrintRead[];
 }) {
+  const { t } = useTranslation();
   const { isAdmin } = useAuth();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<PrintRead | null>(null);
@@ -29,7 +33,7 @@ export function PrintsTab({
   }
 
   function confirmDelete(printId: string) {
-    if (window.confirm("Delete this print?")) {
+    if (window.confirm(t("catalog.actions.confirmDeletePrint"))) {
       del.mutate(printId);
     }
   }
@@ -39,12 +43,21 @@ export function PrintsTab({
       {isAdmin && (
         <div className="flex justify-end p-3 pb-0">
           <Button size="sm" onClick={openAdd}>
-            + Add print
+            {t("catalog.actions.addPrint")}
           </Button>
         </div>
       )}
       {prints.length === 0 ? (
-        <p className="p-4 text-sm text-muted-foreground">no prints</p>
+        isAdmin ? (
+          <EmptyState
+            messageKey="catalog.empty.prints"
+            action={{ labelKey: "catalog.actions.addPrint", onClick: openAdd }}
+          />
+        ) : (
+          <p className="p-4 text-sm text-muted-foreground">
+            {t("catalog.empty.prints")}
+          </p>
+        )
       ) : (
         <ul className="space-y-3 p-3">
           {prints.map((p) => (
@@ -73,19 +86,19 @@ export function PrintsTab({
                 <div className="flex items-start gap-1">
                   <button
                     type="button"
-                    aria-label="Edit print"
+                    aria-label={t("catalog.actions.editPrint")}
                     onClick={() => openEdit(p)}
-                    className="text-xs text-muted-foreground opacity-50 hover:opacity-100"
+                    className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground opacity-50 hover:bg-accent hover:opacity-100"
                   >
-                    ✏
+                    <Pencil className="size-3" aria-hidden />
                   </button>
                   <button
                     type="button"
-                    aria-label="Delete print"
+                    aria-label={t("catalog.actions.deletePrint")}
                     onClick={() => confirmDelete(p.id)}
-                    className="text-xs text-muted-foreground opacity-50 hover:opacity-100"
+                    className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground opacity-50 hover:bg-accent hover:opacity-100"
                   >
-                    🗑
+                    <Trash2 className="size-3" aria-hidden />
                   </button>
                 </div>
               )}

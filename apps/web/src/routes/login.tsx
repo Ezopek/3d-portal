@@ -36,7 +36,7 @@ function Login() {
       const next = search.next ? decodeURIComponent(search.next) : "/";
       await navigate({ to: next as "/" });
     } catch {
-      setError(t("errors.not_found"));
+      setError(t("auth.error.invalid_credentials"));
       setPending(false);
     }
   }

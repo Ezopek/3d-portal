@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import "@/locales/i18n";
 import { DescriptionPanel } from "./DescriptionPanel";
 import type { ModelDetail, NoteRead } from "@/lib/api-types";
 
@@ -103,18 +104,19 @@ describe("DescriptionPanel", () => {
   it("does not render the edit affordance for non-admin", () => {
     mockUseAuth.mockReturnValue({ isAdmin: false });
     render(<DescriptionPanel detail={makeDetail([note()])} />, { wrapper: wrap() });
-    expect(screen.queryByLabelText("Edit description")).toBeNull();
+    expect(screen.queryByLabelText(/edit description/i)).toBeNull();
   });
 
   it("renders the edit affordance for admin and opens the sheet on click", async () => {
     mockUseAuth.mockReturnValue({ isAdmin: true });
     render(<DescriptionPanel detail={makeDetail([note()])} />, { wrapper: wrap() });
-    const editBtn = screen.getByLabelText("Edit description");
+    const editBtn = screen.getByLabelText(/edit description/i);
     expect(editBtn).toBeTruthy();
     fireEvent.click(editBtn);
-    await waitFor(() => expect(screen.getByText("Edit description")).toBeTruthy());
-    // Sheet renders a textbox with the body preloaded
-    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    // Sheet opens — it renders a textbox with the body preloaded
+    const textarea = await waitFor(
+      () => screen.getByRole("textbox") as HTMLTextAreaElement,
+    );
     expect(textarea.value).toBe("Articulated dragon for Bambu A1.");
   });
 });

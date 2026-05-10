@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ModelSource, ModelStatus, TagRead } from "@/lib/api-types";
@@ -62,7 +62,7 @@ export function FilterRibbon({ state, tagsById, onChange }: Props) {
               {label}
               <button
                 type="button"
-                aria-label={`remove tag ${label}`}
+                aria-label={t("catalog.tags.removeTag", { name: label })}
                 onClick={() =>
                   onChange({ ...state, tag_ids: state.tag_ids.filter((x) => x !== tid) })
                 }
@@ -88,6 +88,7 @@ export function FilterRibbon({ state, tagsById, onChange }: Props) {
             onChange({ ...state, tag_ids: [...state.tag_ids, tid] });
             setTagPickerOpen(false);
           }}
+          onClose={() => setTagPickerOpen(false)}
         />
       )}
       <Select
@@ -163,26 +164,74 @@ export function FilterRibbon({ state, tagsById, onChange }: Props) {
   );
 }
 
-function TagPicker({ selected, onAdd }: { selected: string[]; onAdd: (id: string) => void }) {
+function TagPicker({
+  selected,
+  onAdd,
+  onClose,
+}: {
+  selected: string[];
+  onAdd: (id: string) => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
   const [q, setQ] = useState("");
   const tagsQuery = useTags(q);
-  const items = (tagsQuery.data ?? []).filter((t) => !selected.includes(t.id));
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const items = (tagsQuery.data ?? []).filter((tag) => !selected.includes(tag.id));
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    }
+    function onClick(e: MouseEvent) {
+      if (
+        containerRef.current &&
+        e.target instanceof Node &&
+        !containerRef.current.contains(e.target)
+      ) {
+        onClose();
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onClick);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onClick);
+    };
+  }, [onClose]);
+
   return (
-    <div className="absolute z-50 mt-1 w-64 rounded border border-border bg-card p-2 shadow">
+    <div
+      ref={containerRef}
+      role="dialog"
+      aria-label={t("catalog.tags.pickerTitle")}
+      className="absolute z-50 mt-1 w-64 rounded border border-border bg-card p-2 shadow-lg"
+    >
       <Input
+        ref={inputRef}
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Search tag…"
+        placeholder={t("catalog.tags.searchPlaceholder")}
         className="mb-2 text-xs"
       />
-      <div className="max-h-48 space-y-1 overflow-y-auto">
+      <div className="max-h-48 space-y-1 overflow-y-auto" role="listbox">
         {items.length === 0 && (
-          <p className="text-xs text-muted-foreground">No matches</p>
+          <p className="text-xs text-muted-foreground">{t("catalog.tags.noMatches")}</p>
         )}
         {items.map((tag) => (
           <button
             key={tag.id}
             type="button"
+            role="option"
+            aria-selected={false}
             onClick={() => onAdd(tag.id)}
             className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-accent"
           >

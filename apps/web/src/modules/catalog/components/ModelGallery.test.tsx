@@ -1,6 +1,7 @@
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import "@/locales/i18n";
 import { ModelGallery } from "./ModelGallery";
 import type { ModelFileRead } from "@/lib/api-types";
 

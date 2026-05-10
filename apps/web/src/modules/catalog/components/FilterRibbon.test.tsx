@@ -70,7 +70,7 @@ describe("FilterRibbon", () => {
       ),
     );
     expect(screen.getByText("dragon")).toBeTruthy();
-    fireEvent.click(screen.getByLabelText("remove tag dragon"));
+    fireEvent.click(screen.getByLabelText(/remove tag dragon/i));
     expect(calls.at(-1)?.tag_ids).toEqual([]);
   });
 

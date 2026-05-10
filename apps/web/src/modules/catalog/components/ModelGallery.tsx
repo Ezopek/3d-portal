@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { ModelFileRead } from "@/lib/api-types";
 
@@ -37,12 +38,13 @@ export function ModelGallery({
   files: readonly ModelFileRead[];
   thumbnailFileId?: string | null;
 }) {
+  const { t } = useTranslation();
   const images = withThumbnailFirst(files.filter(isImage), thumbnailFileId);
   const [activeId, setActiveId] = useState<string | null>(images[0]?.id ?? null);
   if (images.length === 0) {
     return (
       <div className="grid aspect-[4/3] place-items-center rounded bg-muted text-sm text-muted-foreground">
-        no preview
+        {t("catalog.no_preview")}
       </div>
     );
   }
@@ -71,7 +73,7 @@ export function ModelGallery({
           <>
             <button
               type="button"
-              aria-label="previous image"
+              aria-label={t("catalog.gallery.previousImage")}
               data-testid="gallery-prev"
               onClick={() => step(-1)}
               className="absolute left-2 top-1/2 -translate-y-1/2 grid h-9 w-9 place-items-center rounded-full bg-black/40 text-white opacity-0 transition-opacity hover:bg-black/60 focus-visible:opacity-100 group-hover:opacity-100"
@@ -80,7 +82,7 @@ export function ModelGallery({
             </button>
             <button
               type="button"
-              aria-label="next image"
+              aria-label={t("catalog.gallery.nextImage")}
               data-testid="gallery-next"
               onClick={() => step(1)}
               className="absolute right-2 top-1/2 -translate-y-1/2 grid h-9 w-9 place-items-center rounded-full bg-black/40 text-white opacity-0 transition-opacity hover:bg-black/60 focus-visible:opacity-100 group-hover:opacity-100"
@@ -94,11 +96,13 @@ export function ModelGallery({
         )}
       </div>
       <div className="grid grid-cols-7 gap-1">
-        {images.map((img) => (
+        {images.map((img, idx) => (
           <button
             key={img.id}
             type="button"
             data-testid="gallery-thumb"
+            aria-label={t("catalog.gallery.thumbN", { n: idx + 1, total })}
+            aria-pressed={img.id === active.id}
             onClick={() => setActiveId(img.id)}
             className={`aspect-square overflow-hidden rounded ${
               img.id === active.id ? "ring-2 ring-ring" : "opacity-70 hover:opacity-100"

@@ -1,5 +1,6 @@
-import { Box, ChevronDown, ChevronRight } from "lucide-react";
+import { Box, ChevronDown, ChevronRight, Download } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import type { ModelFileKind, ModelFileRead } from "@/lib/api-types";
@@ -40,6 +41,7 @@ export function FilesTab({
   modelId: string;
   files: readonly ModelFileRead[];
 }) {
+  const { t } = useTranslation();
   const [active, setActive] = useState<Visible>("stl");
   const { isAdmin } = useAuth();
   const setRenderSelection = useSetFileRenderSelection(modelId);
@@ -108,7 +110,7 @@ export function FilesTab({
       {isAdmin && active === "stl" && visible.length > 0 && (
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">
-            Checked STLs feed Re-render. Click to regenerate the preview now.
+            {t("catalog.actions.checkedHelp")}
           </p>
           <Button
             type="button"
@@ -125,12 +127,14 @@ export function FilesTab({
               )
             }
           >
-            {triggerRender.isPending ? "Queuing…" : "Re-render preview"}
+            {triggerRender.isPending
+              ? t("catalog.actions.queueing")
+              : t("catalog.actions.rerenderPreview")}
           </Button>
         </div>
       )}
       {visible.length === 0 ? (
-        <p className="text-sm text-muted-foreground">no files</p>
+        <p className="text-sm text-muted-foreground">{t("catalog.empty.files")}</p>
       ) : (
         <ul className="divide-y divide-border rounded border border-border">
           {visible.map((f) => {
@@ -185,9 +189,10 @@ export function FilesTab({
                   )}
                   <a
                     href={`/api/models/${modelId}/files/${f.id}/content?download=1`}
-                    className="rounded px-2 py-1 text-xs text-foreground hover:bg-accent"
+                    className="flex items-center rounded px-2 py-1 text-xs text-foreground hover:bg-accent"
+                    aria-label={t("catalog.actions.download")}
                   >
-                    ⬇
+                    <Download className="size-3.5" aria-hidden />
                   </a>
                 </div>
                 {isExpanded && stlFile !== undefined && (
@@ -196,7 +201,7 @@ export function FilesTab({
                     className="border-t border-border bg-muted/10 p-3"
                   >
                     <Suspense
-                      fallback={<div className="text-xs">Loading viewer…</div>}
+                      fallback={<div className="text-xs">{t("viewer3d.loading_viewer")}</div>}
                     >
                       <Viewer3DInline
                         file={stlFile}
