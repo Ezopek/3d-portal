@@ -8,6 +8,7 @@ import {
 } from "@/modules/catalog/hooks/useSessions";
 import { AuthGate } from "@/shell/AuthGate";
 import { Button } from "@/ui/button";
+import { LoadingState } from "@/ui/custom/LoadingState";
 
 function Sessions() {
   const { data, isLoading } = useSessions();
@@ -16,8 +17,7 @@ function Sessions() {
   const navigate = useNavigate();
   const { t } = useTranslation();
 
-  if (isLoading)
-    return <div className="p-6 text-sm text-muted-foreground">…</div>;
+  if (isLoading) return <LoadingState variant="spinner" className="p-6" />;
 
   const items = data?.items ?? [];
   const hasOthers = items.some((i) => !i.is_current);

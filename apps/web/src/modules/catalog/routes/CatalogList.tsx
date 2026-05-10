@@ -11,6 +11,7 @@ import { useTags } from "@/modules/catalog/hooks/useTags";
 import type { CatalogSearch } from "@/routes/catalog/index";
 import { Button } from "@/ui/button";
 import { EmptyState } from "@/ui/custom/EmptyState";
+import { LoadingState } from "@/ui/custom/LoadingState";
 import { ModelCard } from "@/ui/custom/ModelCard";
 import {
   Sheet,
@@ -100,14 +101,23 @@ export function CatalogList() {
   // TanStack Query has not yet mounted the queries, so `isLoading` is still
   // false. Without this, CategoryTreeSidebar paints with empty subtree counts
   // before `tree.data` resolves (QA round 2 issue 3).
-  if (tree.data === undefined || models.data === undefined) {
-    if (tree.isError || models.isError) {
-      return <div className="p-4 text-sm text-destructive">{t("errors.network")}</div>;
-    }
-    return <div className="p-4 text-sm text-muted-foreground">…</div>;
-  }
   if (tree.isError || models.isError) {
-    return <div className="p-4 text-sm text-destructive">{t("errors.network")}</div>;
+    return (
+      <EmptyState
+        messageKey="errors.network"
+        tone="error"
+        action={{
+          labelKey: "common.retry",
+          onClick: () => {
+            void tree.refetch();
+            void models.refetch();
+          },
+        }}
+      />
+    );
+  }
+  if (tree.data === undefined || models.data === undefined) {
+    return <LoadingState variant="skeleton-grid" cols={5} rows={3} />;
   }
 
   const items = models.data?.items ?? [];

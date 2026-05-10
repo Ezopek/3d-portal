@@ -16,6 +16,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useRef, useState } from "react";
 
+import { LoadingState } from "@/ui/custom/LoadingState";
 import type { ModelDetail, ModelFileRead } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
 import { useDeleteFile } from "@/modules/catalog/hooks/mutations/useDeleteFile";
@@ -62,7 +63,7 @@ export function PhotosTab({ detail }: Props) {
   }
 
   if (photosQuery.isLoading) {
-    return <p className="p-4 text-sm text-muted-foreground">…</p>;
+    return <LoadingState variant="spinner" />;
   }
   if (photos.length === 0 && !upload.isPending) {
     return (

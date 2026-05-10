@@ -15,6 +15,8 @@
   "common.all": "Wszystkie",
   "common.prev": "Poprzednia",
   "common.next": "Następna",
+  "common.loading": "Ładowanie…",
+  "common.retry": "Spróbuj ponownie",
   "auth.login": "Zaloguj się",
   "auth.signing_in": "Logowanie…",
   "auth.logout": "Wyloguj",

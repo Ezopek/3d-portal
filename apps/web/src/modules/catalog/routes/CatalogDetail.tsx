@@ -1,5 +1,4 @@
 import { useParams } from "@tanstack/react-router";
-import { useTranslation } from "react-i18next";
 
 import { DescriptionPanel } from "@/modules/catalog/components/DescriptionPanel";
 import { ExternalLinksPanel } from "@/modules/catalog/components/ExternalLinksPanel";
@@ -8,17 +7,27 @@ import { ModelGallery } from "@/modules/catalog/components/ModelGallery";
 import { ModelHero } from "@/modules/catalog/components/ModelHero";
 import { SecondaryTabs } from "@/modules/catalog/components/SecondaryTabs";
 import { useModel } from "@/modules/catalog/hooks/useModel";
+import { EmptyState } from "@/ui/custom/EmptyState";
+import { LoadingState } from "@/ui/custom/LoadingState";
 
 export function CatalogDetail() {
   const { id } = useParams({ from: "/catalog/$id" });
-  const { t } = useTranslation();
-  const { data: detail, isLoading, isError } = useModel(id);
+  const { data: detail, isLoading, isError, refetch } = useModel(id);
 
   if (isLoading) {
-    return <div className="p-4 text-sm text-muted-foreground">…</div>;
+    return <LoadingState variant="skeleton-detail" />;
   }
   if (isError || detail === undefined) {
-    return <div className="p-4 text-sm text-destructive">{t("errors.network")}</div>;
+    return (
+      <EmptyState
+        messageKey="errors.network"
+        tone="error"
+        action={{
+          labelKey: "common.retry",
+          onClick: () => void refetch(),
+        }}
+      />
+    );
   }
 
   return (
