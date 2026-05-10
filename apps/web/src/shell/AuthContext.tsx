@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react";
 import { useQuery } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 
@@ -57,6 +58,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     authSnapshot = { isAuthenticated: value.isAuthenticated };
+    // Re-emit to Sentry's active scope eagerly — the router-onLoad listener
+    // (instrument-router.ts) only fires on navigation, so login/logout that
+    // resolves between routes (or the common initial-page-load case where
+    // /auth/me resolves AFTER the first onLoad) would leave a stale
+    // `auth.is_authenticated` tag attached to subsequent captures until the
+    // user navigated again. Mirror to scope here so every auth-state flip
+    // is reflected immediately, regardless of routing activity.
+    Sentry.setTag("auth.is_authenticated", String(value.isAuthenticated));
   }, [value.isAuthenticated]);
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;

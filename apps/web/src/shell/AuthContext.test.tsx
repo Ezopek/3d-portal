@@ -9,6 +9,14 @@ vi.mock("@/lib/api", () => ({
   api: vi.fn(),
 }));
 
+// vi.mock is hoisted above imports, so the spy must be hoisted too via
+// vi.hoisted — otherwise it would be in the temporal dead zone when the
+// factory runs.
+const { sentrySetTagSpy } = vi.hoisted(() => ({ sentrySetTagSpy: vi.fn() }));
+vi.mock("@sentry/react", () => ({
+  setTag: sentrySetTagSpy,
+}));
+
 import { api } from "@/lib/api";
 
 function Probe() {
@@ -37,6 +45,7 @@ function wrap(children: ReactNode) {
 
 afterEach(() => {
   cleanup();
+  sentrySetTagSpy.mockReset();
 });
 
 describe("AuthContext (cookie-based)", () => {
@@ -108,6 +117,30 @@ describe("AuthContext (cookie-based)", () => {
       expect(screen.getByTestId("loading").textContent).toBe("false");
       expect(screen.getByTestId("auth").textContent).toBe("false");
       expect(screen.getByTestId("admin").textContent).toBe("false");
+    });
+  });
+
+  // Story 2.3 review fix (Codex P2 finding): the auth tag is mirrored to
+  // Sentry's active scope eagerly on every auth-state change so it does not
+  // go stale between router onLoad events.
+  it("emits Sentry.setTag('auth.is_authenticated', 'true') when /auth/me resolves authenticated", async () => {
+    (api as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "u-1",
+      email: "a@example.com",
+      display_name: "Admin",
+      role: "admin",
+    });
+    render(wrap(<Probe />));
+    await waitFor(() => {
+      expect(sentrySetTagSpy).toHaveBeenCalledWith("auth.is_authenticated", "true");
+    });
+  });
+
+  it("emits Sentry.setTag('auth.is_authenticated', 'false') when /auth/me rejects (401)", async () => {
+    (api as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("401"));
+    render(wrap(<Probe />));
+    await waitFor(() => {
+      expect(sentrySetTagSpy).toHaveBeenCalledWith("auth.is_authenticated", "false");
     });
   });
 });
