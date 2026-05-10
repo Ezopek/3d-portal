@@ -53,10 +53,23 @@ export function applyBeforeSendFilters(
   event: ErrorEvent,
   hint: EventHint,
 ): ErrorEvent | null {
-  // 1. denyUrls (FR5) — page URL the user was on, NOT script URL.
+  // 1. denyUrls (FR5). Architecture Decision H originally pinned this to
+  //    `event.request?.url`, but the request URL carries the PAGE the user
+  //    was on (the portal's origin) — extension-injected exceptions show
+  //    `chrome-extension://...` only inside stack frames' `filename`. To
+  //    actually catch FR5's "events originating from browser-extension URLs"
+  //    we test the page URL AND every frame filename of the first exception.
+  //    Codex review of c85cd30 (Story 2.4 follow-up) flagged the page-URL-only
+  //    variant as a no-op for the canonical case.
   const url = event.request?.url ?? "";
+  const frames = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
   for (const pattern of denyUrls) {
     if (pattern.test(url)) return null;
+    for (const frame of frames) {
+      if (typeof frame.filename === "string" && pattern.test(frame.filename)) {
+        return null;
+      }
+    }
   }
   // 2. ignoreErrors (FR6) — first exception's `.value` field per Decision H.
   const value = event.exception?.values?.[0]?.value ?? "";

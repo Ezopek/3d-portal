@@ -41,6 +41,36 @@ describe("applyBeforeSendFilters — 5-step ordered chain (architecture Decision
     expect(result).toBeNull();
   });
 
+  it("drops_via_denyUrls when a stack-frame filename matches an extension scheme (Story 2.4 review fix)", () => {
+    // The canonical extension-noise case — page URL is the portal, the
+    // extension URL is buried inside the exception's stack frames. Codex
+    // review of 4149507 caught the page-URL-only filter as a no-op for FR5.
+    const event = {
+      request: { url: "https://3d.ezop.ddns.net/catalog" },
+      exception: {
+        values: [
+          {
+            type: "TypeError",
+            value: "Cannot read property 'foo' of undefined",
+            stacktrace: {
+              frames: [
+                { filename: "chrome-extension://abcdefghijk/inject.js", lineno: 12 },
+                { filename: "https://3d.ezop.ddns.net/assets/index.js", lineno: 99 },
+              ],
+            },
+          },
+        ],
+      },
+    };
+
+    const result = applyBeforeSendFilters(
+      event as Parameters<typeof applyBeforeSendFilters>[0],
+      makeHint() as Parameters<typeof applyBeforeSendFilters>[1],
+    );
+
+    expect(result).toBeNull();
+  });
+
   it("drops_via_ignoreErrors when event.exception.values[0].value matches a noise title", () => {
     const event = makeEvent({
       exception: { values: [{ value: "ResizeObserver loop limit exceeded" }] },
