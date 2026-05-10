@@ -125,10 +125,17 @@ LATEST_BODY="/tmp/gt-triage-${ISSUE_ID}-$$-latest.json"
 EVENTS_BODY="/tmp/gt-triage-${ISSUE_ID}-$$-events.json"
 trap 'rm -f "${LATEST_BODY}" "${EVENTS_BODY}"' EXIT
 
-http_code=$(curl -sS -o "${LATEST_BODY}" -w '%{http_code}' \
+# Wrap the primary curl in an if-guard so transport failures (DNS error,
+# connect refused, timeout) map to the documented exit code 2 instead of
+# letting `set -e` bail with curl's raw exit code (e.g. 7, 28). Mirrors
+# the pattern in verify-symbolication.sh.
+if ! http_code=$(curl -sS -o "${LATEST_BODY}" -w '%{http_code}' \
   --max-time 10 \
   -H "Authorization: Bearer ${GLITCHTIP_AUTH_TOKEN}" \
-  "${GLITCHTIP_URL}/api/0/issues/${ISSUE_ID}/events/latest/")
+  "${GLITCHTIP_URL}/api/0/issues/${ISSUE_ID}/events/latest/"); then
+  echo "GlitchTip unreachable (curl transport failure) on /api/0/issues/${ISSUE_ID}/events/latest/" >&2
+  exit 2
+fi
 
 case "${http_code}" in
   20*) ;;
@@ -149,10 +156,13 @@ case "${http_code}" in
 esac
 
 # --- REST: fetch last 5 events (graceful fallback on failure) ----------------
+# Transport failures here are non-fatal (latest event already extracted);
+# the `|| echo "000"` swallows curl's non-zero exit so set -e doesn't kill
+# the script before we can degrade gracefully to a "—" last-5 block.
 events_http=$(curl -sS -o "${EVENTS_BODY}" -w '%{http_code}' \
   --max-time 10 \
   -H "Authorization: Bearer ${GLITCHTIP_AUTH_TOKEN}" \
-  "${GLITCHTIP_URL}/api/0/issues/${ISSUE_ID}/events/?limit=5" || echo "000")
+  "${GLITCHTIP_URL}/api/0/issues/${ISSUE_ID}/events/?limit=5" 2>/dev/null || echo "000")
 
 # --- jq extraction (latest event = camelCase shape) --------------------------
 TITLE=$(jq -r '.title // "—"' < "${LATEST_BODY}")
@@ -191,13 +201,18 @@ if [[ -z "${PERMALINK}" || "${PERMALINK}" == "null" ]]; then
 fi
 
 # Last 5 events block: snake_case at the events list endpoint.
+# GlitchTip 6.1.x returns either a plain array (single page) OR the
+# documented paginated shape `{"items":[...], "next":...}` for larger
+# result sets. Normalize via `if type == "array" then . else .items end`
+# so both shapes render correctly. Codex review of ed48ab2 caught the
+# paginated case as a P1 — the script would jq-error and exit non-zero.
 if [[ "${events_http}" == 20* ]]; then
   LAST5_BLOCK=$(jq -r '
-    (. // [])
+    (if type == "array" then . else (.items // []) end)
     | to_entries
     | map("\(.key+1). `\(.value.date_created // "—")` — `\(.value.message // .value.title // "—")`")
     | .[]
-  ' < "${EVENTS_BODY}" | sed 's/^/  /' | sed -E '1s/^  //')
+  ' < "${EVENTS_BODY}" 2>/dev/null | sed 's/^/  /' | sed -E '1s/^  //' || true)
   if [[ -z "${LAST5_BLOCK}" ]]; then
     LAST5_BLOCK="—"
   fi
