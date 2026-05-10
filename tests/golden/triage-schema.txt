@@ -1,0 +1,15 @@
+# Issue #<issue_id>: <title>
+
+- **Top frame:** `<filename>:<line>`
+- **Fingerprint:** `<fingerprint>`
+- **Route:** `<route.pathname>` (model.id=<id>)
+- **Release:** `<release>` (commit `<git.commit>`)
+- **Last 5 events:**
+  1. `<timestamp>` — `<message preview>`
+  2. `<timestamp>` — `<message preview>`
+  3. `<timestamp>` — `<message preview>`
+  4. `<timestamp>` — `<message preview>`
+  5. `<timestamp>` — `<message preview>`
+- **Suggested file to edit:** `<filename>` (top-frame source)
+
+GlitchTip link: <permalink>
