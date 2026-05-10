@@ -101,4 +101,32 @@ case "$verify_exit" in
   *) printf '\033[31m⚠ verify FAILED: unexpected exit %s\033[0m\n' "$verify_exit" >&2 ;;
 esac
 
+# --- Post-deploy verify: agent runbook fingerprint (Story 4.2; Decision D) -
+# Non-fatal: deploy success is decoupled from verify outcome. Same three-
+# signal model as verify-symbolication.sh: stderr warning + state marker
+# + (future) synthetic GlitchTip event on mismatch. Fingerprint extraction
+# chain is BINDING (matches Story 4.1 Completion Notes); any drift here
+# vs the chain that produced infra/.runbook-fingerprint will yield a
+# spurious mismatch on a runbook that hasn't actually changed.
+echo "→ Verify post-deploy agent runbook fingerprint"
+runbook_url="${PORTAL_RUNBOOK_URL:-https://3d.ezop.ddns.net/agent-runbook}"
+last_runbook_path="$REPO_DIR/infra/.last-verify-runbook"
+expected_fp="$(cat "$REPO_DIR/infra/.runbook-fingerprint" 2>/dev/null || echo "<missing>")"
+actual_fp="$(curl -fsS "$runbook_url" 2>/dev/null \
+  | awk '/^# / {after_h1=1; next} after_h1 && NF>0 {print; exit}' \
+  | sha256sum | awk '{print $1}')"
+if [[ "$expected_fp" = "<missing>" ]]; then
+  printf '\033[33m⚠ runbook verify SKIPPED: infra/.runbook-fingerprint not present\033[0m\n' >&2
+  echo "SKIPPED $(date -Iseconds) reason=baseline-missing" > "$last_runbook_path"
+elif [[ -z "$actual_fp" ]]; then
+  printf '\033[31m⚠ runbook verify FAILED: %s unreachable or returned empty\033[0m\n' "$runbook_url" >&2
+  echo "FAILED $(date -Iseconds) reason=unreachable url=$runbook_url" > "$last_runbook_path"
+elif [[ "$expected_fp" = "$actual_fp" ]]; then
+  echo "✓ runbook fingerprint OK ($actual_fp)"
+  echo "OK $(date -Iseconds) $actual_fp" > "$last_runbook_path"
+else
+  printf '\033[31m⚠ runbook fingerprint MISMATCH: expected %s, got %s\033[0m\n' "$expected_fp" "$actual_fp" >&2
+  echo "FAILED $(date -Iseconds) expected=$expected_fp actual=$actual_fp" > "$last_runbook_path"
+fi
+
 echo "Done."

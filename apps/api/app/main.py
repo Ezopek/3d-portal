@@ -12,6 +12,7 @@ from app.core.logging import configure_logging
 from app.core.observability import init_observability, instrument_app
 from app.core.redis import RedisFactory
 from app.core.sentry import init_sentry
+from app.modules.runbook.router import router as runbook_router
 from app.router import api_router
 
 
@@ -71,6 +72,10 @@ def create_app() -> FastAPI:
         return {"status": "ok", "version": settings.app_version}
 
     app.include_router(api_router)
+    # Root-level discovery resource (NOT under /api/ — it is conceptually
+    # the bootstrap URL for fresh-session AI agents, not part of the
+    # REST API surface). Public read; no auth.
+    app.include_router(runbook_router)
 
     return app
 

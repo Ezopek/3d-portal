@@ -78,3 +78,4 @@ tmp/
 
 # Claude scheduled task locks (session-only)
 .claude/scheduled_tasks.lock
+infra/.last-verify-runbook
