@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -20,6 +20,8 @@ function Login() {
   const navigate = useNavigate();
   const search = useSearch({ from: "/login" });
   const qc = useQueryClient();
+  const emailId = useId();
+  const passwordId = useId();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -42,23 +44,39 @@ function Login() {
   return (
     <form onSubmit={submit} className="mx-auto mt-12 grid w-full max-w-sm gap-4 p-4">
       <h1 className="text-xl font-semibold">{t("auth.login")}</h1>
-      <Input
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder={t("auth.email")}
-        type="email"
-        disabled={pending}
-      />
-      <Input
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        placeholder={t("auth.password")}
-        type="password"
-        disabled={pending}
-      />
+      <div className="grid gap-1.5">
+        <label htmlFor={emailId} className="text-sm font-medium">
+          {t("auth.email")}
+        </label>
+        <Input
+          id={emailId}
+          name="email"
+          type="email"
+          autoComplete="username"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          disabled={pending}
+        />
+      </div>
+      <div className="grid gap-1.5">
+        <label htmlFor={passwordId} className="text-sm font-medium">
+          {t("auth.password")}
+        </label>
+        <Input
+          id={passwordId}
+          name="password"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          disabled={pending}
+        />
+      </div>
       {error !== null && <p className="text-sm text-destructive">{error}</p>}
       <Button type="submit" disabled={pending}>
-        {t("auth.login")}
+        {pending ? t("auth.signing_in") : t("auth.login")}
       </Button>
     </form>
   );

@@ -16,6 +16,7 @@
   "common.prev": "Poprzednia",
   "common.next": "Następna",
   "auth.login": "Zaloguj się",
+  "auth.signing_in": "Logowanie…",
   "auth.logout": "Wyloguj",
   "auth.logout_everywhere": "Wyloguj wszędzie",
   "auth.sessions.menu_link": "Aktywne sesje",

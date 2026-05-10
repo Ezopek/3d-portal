@@ -1,19 +1,18 @@
+import { Construction } from "lucide-react";
 import { useTranslation } from "react-i18next";
-
-import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 
 export function ComingSoonStub({ moduleKey }: { moduleKey: string }) {
   const { t } = useTranslation();
   return (
-    <div className="grid min-h-[60vh] place-items-center p-8">
-      <Card className="max-w-md">
-        <CardHeader>
-          <CardTitle>{t(`modules.${moduleKey}`)}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">{t("common.coming_soon")}</p>
-        </CardContent>
-      </Card>
+    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center">
+      <Construction
+        aria-hidden
+        className="size-16 text-muted-foreground/40"
+      />
+      <h2 className="text-2xl font-semibold">{t(`modules.${moduleKey}`)}</h2>
+      <p className="max-w-md text-sm text-muted-foreground">
+        {t("common.coming_soon")}
+      </p>
     </div>
   );
 }
