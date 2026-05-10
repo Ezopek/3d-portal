@@ -9,9 +9,15 @@ import { LangProvider } from "@/shell/LangProvider";
 import { ThemeProvider } from "@/shell/ThemeProvider";
 
 import { Sentry } from "./instrument";
+import { attachRouterContext } from "./instrument-router";
 import { routeTree } from "./routeTree.gen";
 
 const router = createRouter({ routeTree, scrollRestoration: true });
+// Story 2.3 — dynamic context tags via router.subscribe('onLoad', ...).
+// Top-level side effect: subscribes once at module evaluation time. The
+// returned unsubscribe is intentionally discarded — subscription lifetime
+// equals app lifetime.
+attachRouterContext(router);
 
 declare module "@tanstack/react-router" {
   interface Register {

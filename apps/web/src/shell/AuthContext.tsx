@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 
 import { api } from "@/lib/api";
 import type { MeResponse, Role } from "@/lib/api-types";
@@ -26,6 +26,12 @@ const ANONYMOUS: AuthState = {
 
 const AuthCtx = createContext<AuthState>(ANONYMOUS);
 
+// Module-scoped mirror of the auth state for non-React callers (e.g. the
+// router.subscribe('onLoad', ...) listener in instrument-router.ts, which
+// fires outside the render tree and cannot use useAuth()). Updated by the
+// AuthProvider effect below; defaults to ANONYMOUS until the provider mounts.
+let authSnapshot: { isAuthenticated: boolean } = { isAuthenticated: false };
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const meQuery = useQuery<MeResponse>({
     queryKey: ["auth", "me"],
@@ -49,7 +55,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [meQuery.isPending, meQuery.isError, meQuery.data]);
 
+  useEffect(() => {
+    authSnapshot = { isAuthenticated: value.isAuthenticated };
+  }, [value.isAuthenticated]);
+
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
+}
+
+export function getAuthSnapshot(): { isAuthenticated: boolean } {
+  return authSnapshot;
 }
 
 export function useAuth(): AuthState {
