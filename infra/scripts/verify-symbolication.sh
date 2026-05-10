@@ -84,15 +84,8 @@ fi
 }
 
 set -a
-# `infra/.env` carries an OTEL_EXPORTER_OTLP_HEADERS line whose value
-# `authorization=Bearer <token>` contains an unquoted space; bash parses the
-# token as a command and sets exit 127. Suspend `set -e` for the source so
-# that quirk doesn't abort us. The vars we actually read (GLITCHTIP_*,
-# VITE_SENTRY_DSN, GLITCHTIP_URL, PORTAL_PUBLIC_URL) export normally.
-set +e
 # shellcheck disable=SC1090,SC1091
-source "$REPO_DIR/infra/.env" 2>/dev/null
-set -e
+source "$REPO_DIR/infra/.env"
 set +a
 
 : "${GLITCHTIP_AUTH_TOKEN:?missing in infra/.env}"

@@ -108,14 +108,8 @@ fi
 # --- Bootstrap (env) ---------------------------------------------------------
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 if [[ -f "${REPO_DIR}/infra/.env" ]]; then
-  # `set +e` guards against syntax noise inside infra/.env (some lines may
-  # legitimately fail to parse as bash commands when sourced — e.g. multi-
-  # line values without `KEY=` prefixes). The exported KEY=VALUE pairs we
-  # actually care about still land in the env. Restore strict mode after.
-  set +e
   # shellcheck disable=SC1091
-  set -a; source "${REPO_DIR}/infra/.env" 2>/dev/null; set +a
-  set -e
+  set -a; source "${REPO_DIR}/infra/.env"; set +a
 fi
 : "${GLITCHTIP_AUTH_TOKEN:?missing in infra/.env}"
 GLITCHTIP_URL="${GLITCHTIP_URL:-http://192.168.2.190:8800}"
