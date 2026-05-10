@@ -67,7 +67,11 @@ export function CardCarousel({ modelId, fileIds, alt }: Props) {
     const decoded = (() => {
       const img = new Image();
       img.src = urlFor(modelId, targetId);
-      return img.decode().catch(() => undefined);
+      // Optional chaining handles environments without HTMLImageElement.decode
+      // (jsdom in unit tests; some older browsers / image MIME types). A
+      // missing decode degrades the cross-fade to "show the new src as soon
+      // as the timer + held promise resolve", which is acceptable.
+      return (img.decode?.() ?? Promise.resolve()).catch(() => undefined);
     })();
     const held = new Promise<void>((resolve) =>
       setTimeout(resolve, HOLD_BEFORE_SWAP_MS),

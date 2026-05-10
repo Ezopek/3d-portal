@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CardCarousel } from "./CardCarousel";
@@ -16,6 +16,8 @@ function urlFor(fileId: string) {
   return `/api/models/${MODEL_ID}/files/${fileId}/content`;
 }
 
+const dotsQuery = { name: /^go to image / };
+
 describe("CardCarousel", () => {
   it("renders the first image as the main one", () => {
     render(<CardCarousel modelId={MODEL_ID} fileIds={IDS} alt="Dragon" />);
@@ -27,7 +29,7 @@ describe("CardCarousel", () => {
 
   it("renders N dot buttons when fileIds.length >= 2", () => {
     render(<CardCarousel modelId={MODEL_ID} fileIds={IDS} alt="Dragon" />);
-    const dots = screen.getAllByRole("button");
+    const dots = screen.getAllByRole("button", dotsQuery);
     expect(dots).toHaveLength(IDS.length);
     dots.forEach((dot, i) => {
       expect(dot.getAttribute("aria-label")).toBe(`go to image ${i + 1}`);
@@ -42,17 +44,21 @@ describe("CardCarousel", () => {
     expect(screen.queryByTestId("card-carousel-dots")).toBeNull();
   });
 
-  it("clicking a dot switches the main image", () => {
+  it("clicking a dot switches the main image", async () => {
     render(<CardCarousel modelId={MODEL_ID} fileIds={IDS} alt="Dragon" />);
     const img = () => document.querySelector("img") as HTMLImageElement;
     expect(img().getAttribute("src")).toBe(urlFor(IDS[0]!));
 
-    const dots = screen.getAllByRole("button");
+    const dots = screen.getAllByRole("button", dotsQuery);
     fireEvent.click(dots[2]!);
-    expect(img().getAttribute("src")).toBe(urlFor(IDS[2]!));
+    await waitFor(() => {
+      expect(img().getAttribute("src")).toBe(urlFor(IDS[2]!));
+    });
 
     fireEvent.click(dots[1]!);
-    expect(img().getAttribute("src")).toBe(urlFor(IDS[1]!));
+    await waitFor(() => {
+      expect(img().getAttribute("src")).toBe(urlFor(IDS[1]!));
+    });
   });
 
   it("clicking a dot does not propagate to wrapping link / preventDefault is called", () => {
@@ -61,8 +67,6 @@ describe("CardCarousel", () => {
       <a
         href="/catalog/some-id"
         onClick={(e) => {
-          // If preventDefault wasn't called by the dot, navigation would
-          // happen; record both flags so the test asserts on them.
           wrapperClick({
             defaultPrevented: e.defaultPrevented,
             propagationStopped: false,
@@ -73,10 +77,9 @@ describe("CardCarousel", () => {
       </a>,
     );
 
-    const dots = screen.getAllByRole("button");
+    const dots = screen.getAllByRole("button", dotsQuery);
     fireEvent.click(dots[1]!);
 
-    // stopPropagation prevents the wrapping <a>'s onClick from firing at all.
     expect(wrapperClick).not.toHaveBeenCalled();
   });
 });
