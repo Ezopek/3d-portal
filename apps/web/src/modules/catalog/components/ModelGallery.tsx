@@ -1,8 +1,9 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ModelFileRead } from "@/lib/api-types";
+import { cn } from "@/lib/utils";
 
 function isImage(f: ModelFileRead): boolean {
   return f.kind === "image" || f.kind === "print";
@@ -41,6 +42,12 @@ export function ModelGallery({
   const { t } = useTranslation();
   const images = withThumbnailFirst(files.filter(isImage), thumbnailFileId);
   const [activeId, setActiveId] = useState<string | null>(images[0]?.id ?? null);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  // Reset blur-up state when the active image changes so subsequent picks
+  // also show the loading transition.
+  useEffect(() => {
+    setImageLoaded(false);
+  }, [activeId]);
   if (images.length === 0) {
     return (
       <div className="grid aspect-[4/3] place-items-center rounded bg-muted text-sm text-muted-foreground">
@@ -62,12 +69,19 @@ export function ModelGallery({
 
   return (
     <div className="space-y-2">
-      <div className="group relative">
+      <div className="group relative aspect-[4/3] overflow-hidden rounded bg-muted">
         <img
           data-testid="gallery-main"
           src={srcFor(modelId, active.id)}
           alt={active.original_name}
-          className="aspect-[4/3] w-full rounded bg-muted object-contain"
+          onLoad={() => setImageLoaded(true)}
+          onError={() => setImageLoaded(true)}
+          className={cn(
+            "absolute inset-0 h-full w-full object-contain transition duration-150 will-change-[filter,opacity]",
+            imageLoaded
+              ? "scale-100 blur-0 opacity-100"
+              : "scale-105 blur-[8px] opacity-25",
+          )}
         />
         {total > 1 && (
           <>

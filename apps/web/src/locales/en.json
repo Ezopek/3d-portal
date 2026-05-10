@@ -54,6 +54,8 @@
   "catalog.filters.anyStatus": "Any status",
   "catalog.filters.anySource": "Any source",
   "catalog.filters.openCategories": "Categories",
+  "catalog.filters.openFilters": "Filters",
+  "catalog.filters.title": "Filters",
   "catalog.sort.recent": "Recently added",
   "catalog.sort.oldest": "Oldest first",
   "catalog.sort.name_asc": "Name A–Z",

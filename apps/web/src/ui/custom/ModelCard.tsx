@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { ImageOff } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -11,7 +12,7 @@ import { SourceBadge } from "./SourceBadge";
 import { StatusBadge } from "./StatusBadge";
 
 export function ModelCard({ model }: { model: ModelSummary }) {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [imageLoaded, setImageLoaded] = useState(false);
   const primary = i18n.language.startsWith("pl") && model.name_pl !== null ? model.name_pl : model.name_en;
   const secondary =
@@ -65,8 +66,9 @@ export function ModelCard({ model }: { model: ModelSummary }) {
                 />
               </div>
             ) : (
-              <div className="grid h-full place-items-center text-muted-foreground">
-                <span className="text-xs">no preview</span>
+              <div className="flex h-full flex-col items-center justify-center gap-1 text-muted-foreground">
+                <ImageOff className="size-8 opacity-40" aria-hidden />
+                <span className="text-xs">{t("catalog.no_preview")}</span>
               </div>
             )}
           </div>

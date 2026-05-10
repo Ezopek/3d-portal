@@ -1,3 +1,4 @@
+import { SlidersHorizontal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -5,6 +6,13 @@ import type { ModelSource, ModelStatus, TagRead } from "@/lib/api-types";
 import { useTags } from "@/modules/catalog/hooks/useTags";
 import type { ModelListSort } from "@/modules/catalog/hooks/useModels";
 import { Button } from "@/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/ui/sheet";
 import { Input } from "@/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
 
@@ -38,9 +46,19 @@ interface Props {
   onChange: (next: FilterRibbonState) => void;
 }
 
+function activeFilterCount(state: FilterRibbonState): number {
+  let n = 0;
+  if (state.status !== undefined) n += 1;
+  if (state.source !== undefined) n += 1;
+  if (state.sort !== "recent") n += 1;
+  return n;
+}
+
 export function FilterRibbon({ state, tagsById, onChange }: Props) {
   const { t } = useTranslation();
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
+  const [filtersSheetOpen, setFiltersSheetOpen] = useState(false);
+  const activeCount = activeFilterCount(state);
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background/95 p-3">
       <Input
@@ -91,13 +109,65 @@ export function FilterRibbon({ state, tagsById, onChange }: Props) {
           onClose={() => setTagPickerOpen(false)}
         />
       )}
+
+      {/* Mobile: collapse status/source/sort into a Filters sheet */}
+      <Sheet open={filtersSheetOpen} onOpenChange={setFiltersSheetOpen}>
+        <SheetTrigger
+          render={
+            <Button
+              variant="outline"
+              size="sm"
+              className="md:hidden"
+              aria-label={t("catalog.filters.openFilters")}
+            >
+              <SlidersHorizontal className="size-3.5" aria-hidden />
+              <span className="ml-1.5">{t("catalog.filters.openFilters")}</span>
+              {activeCount > 0 && (
+                <span className="ml-1 rounded-full bg-primary px-1.5 text-[10px] font-medium text-primary-foreground">
+                  {activeCount}
+                </span>
+              )}
+            </Button>
+          }
+        />
+        <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>{t("catalog.filters.title")}</SheetTitle>
+          </SheetHeader>
+          <div className="grid gap-3 p-4">
+            <FilterSelects state={state} onChange={onChange} fullWidth />
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Desktop: inline selects */}
+      <div className="hidden flex-wrap items-center gap-2 md:flex">
+        <FilterSelects state={state} onChange={onChange} />
+      </div>
+    </div>
+  );
+}
+
+function FilterSelects({
+  state,
+  onChange,
+  fullWidth = false,
+}: {
+  state: FilterRibbonState;
+  onChange: (next: FilterRibbonState) => void;
+  fullWidth?: boolean;
+}) {
+  const { t } = useTranslation();
+  const triggerWidth = fullWidth ? "w-full" : "w-36";
+  return (
+    <>
       <Select
         value={state.status ?? ANY_STATUS}
         onValueChange={(v) =>
           onChange({ ...state, status: v === ANY_STATUS ? undefined : (v as ModelStatus) })
         }
       >
-        <SelectTrigger className="w-36" aria-label={t("catalog.filters.status")}>
+        <SelectTrigger className={triggerWidth} aria-label={t("catalog.filters.status")}>
           <SelectValue>
             {(value) =>
               value === ANY_STATUS || value === null || value === undefined
@@ -121,7 +191,7 @@ export function FilterRibbon({ state, tagsById, onChange }: Props) {
           onChange({ ...state, source: v === ANY_SOURCE ? undefined : (v as ModelSource) })
         }
       >
-        <SelectTrigger className="w-36" aria-label={t("catalog.filters.source")}>
+        <SelectTrigger className={triggerWidth} aria-label={t("catalog.filters.source")}>
           <SelectValue>
             {(value) =>
               value === ANY_SOURCE || value === null || value === undefined
@@ -143,7 +213,7 @@ export function FilterRibbon({ state, tagsById, onChange }: Props) {
         value={state.sort}
         onValueChange={(v) => onChange({ ...state, sort: v as ModelListSort })}
       >
-        <SelectTrigger className="w-36" aria-label={t("catalog.filters.sort")}>
+        <SelectTrigger className={triggerWidth} aria-label={t("catalog.filters.sort")}>
           <SelectValue>
             {(value) =>
               value === null || value === undefined
@@ -160,7 +230,7 @@ export function FilterRibbon({ state, tagsById, onChange }: Props) {
           ))}
         </SelectContent>
       </Select>
-    </div>
+    </>
   );
 }
 

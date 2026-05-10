@@ -178,11 +178,15 @@ export function CardCarousel({ modelId, fileIds, alt }: Props) {
                 type="button"
                 aria-label={`go to image ${i + 1}`}
                 onClick={(e) => move(i, e)}
-                className={cn(
-                  "h-1.5 w-1.5 rounded-full transition-colors",
-                  i === active ? "bg-white" : "bg-white/40 hover:bg-white/70",
-                )}
-              />
+                className="flex h-6 w-6 items-center justify-center"
+              >
+                <span
+                  className={cn(
+                    "block h-1.5 w-1.5 rounded-full transition-colors",
+                    i === active ? "bg-white" : "bg-white/40 hover:bg-white/70",
+                  )}
+                />
+              </button>
             ))}
           </div>
         </>
