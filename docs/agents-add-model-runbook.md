@@ -250,6 +250,20 @@ To enumerate the full surface without enumerating it here:
 curl -s https://3d.ezop.ddns.net/api/openapi.json | jq '.paths | keys[]'
 ```
 
+To filter just the endpoints the agent role can WRITE to (model + file + tag + category + note + print + external-link mutations under `/api/admin/...`):
+
+```bash
+curl -s https://3d.ezop.ddns.net/api/openapi.json \
+  | jq '.paths | to_entries[] | select(.value | .. | objects? | .tags? // [] | index("agent-write")) | .key'
+```
+
+Each operation also carries a `summary` (one-liner) + `description` (multi-line, with behavioral side-effects like the auto-render trigger). To see the full enrichment for one endpoint:
+
+```bash
+curl -s https://3d.ezop.ddns.net/api/openapi.json \
+  | jq '.paths."/api/admin/models".post | {summary, description, tags, requestBody}'
+```
+
 The Swagger UI at `https://3d.ezop.ddns.net/api/docs` renders the same surface human-readably; useful for spot-checking but not for programmatic discovery.
 
 ## Behavioral Notes

@@ -35,14 +35,32 @@ from app.modules.sot.service import (
 router = APIRouter(prefix="/api", tags=["sot-read"])
 
 
-@router.get("/categories", response_model=CategoryTree)
+@router.get(
+    "/categories",
+    summary="Get the full category tree",
+    description=(
+        "Returns the complete hierarchical category tree (`CategoryTree`). Used by "
+        "agents during the pre-flight check to confirm a target slug exists before "
+        "creating a model. Public, unauthenticated."
+    ),
+    response_model=CategoryTree,
+)
 def get_categories(
     session: Annotated[Session, Depends(get_session)],
 ) -> CategoryTree:
     return list_categories_tree(session)
 
 
-@router.get("/tags", response_model=list[TagRead])
+@router.get(
+    "/tags",
+    summary="List global tags (optional fuzzy search)",
+    description=(
+        "Returns up to `limit` tags, optionally filtered by substring match against "
+        "`q` over `slug`/`name_en`/`name_pl`. Default `limit=50`, max `limit=200`. "
+        "Public, unauthenticated."
+    ),
+    response_model=list[TagRead],
+)
 def get_tags(
     session: Annotated[Session, Depends(get_session)],
     q: str | None = None,
@@ -51,7 +69,18 @@ def get_tags(
     return list_tags(session, q=q, limit=limit)
 
 
-@router.get("/models", response_model=ModelListResponse)
+@router.get(
+    "/models",
+    summary="List models with filtering, sorting, pagination",
+    description=(
+        "Returns `ModelListResponse` (paged). Filters: `category_ids` (OR), `status`, "
+        "`tag_ids` (OR), `source`, `q` (substring search across name + tags), "
+        "`include_deleted` (default false; soft-deleted rows are hidden). Sort modes: "
+        "see `ModelListSort` enum (`recent`, etc.). Pagination: `offset` (≥0), "
+        "`limit` (1-200, default 50). Public, unauthenticated."
+    ),
+    response_model=ModelListResponse,
+)
 def get_models(
     session: Annotated[Session, Depends(get_session)],
     category_ids: Annotated[list[uuid.UUID] | None, Query()] = None,
@@ -78,7 +107,17 @@ def get_models(
     )
 
 
-@router.get("/models/{model_id}", response_model=ModelDetail)
+@router.get(
+    "/models/{model_id}",
+    summary="Get a single model's full detail",
+    description=(
+        "Returns `ModelDetail` including category, tags, files, notes, prints, external "
+        "links, and the `thumbnail` field (non-null once a render lands). 404 if the "
+        "model is not found OR is soft-deleted (use `?include_deleted=true` to include). "
+        "Public, unauthenticated."
+    ),
+    response_model=ModelDetail,
+)
 def get_model(
     model_id: uuid.UUID,
     session: Annotated[Session, Depends(get_session)],
@@ -90,7 +129,17 @@ def get_model(
     return detail
 
 
-@router.get("/models/{model_id}/files", response_model=FileListResponse)
+@router.get(
+    "/models/{model_id}/files",
+    summary="List a model's files (optionally filtered by kind)",
+    description=(
+        "Returns `FileListResponse` for the given model. `kind` query (one of "
+        "`ModelFileKind`) narrows results. 404 if model not found. Public, "
+        "unauthenticated. Use the streaming `/files/{file_id}/content` endpoint to "
+        "fetch the binary."
+    ),
+    response_model=FileListResponse,
+)
 def get_model_files(
     model_id: uuid.UUID,
     session: Annotated[Session, Depends(get_session)],
@@ -102,7 +151,19 @@ def get_model_files(
     return result
 
 
-@router.get("/models/{model_id}/files/{file_id}/content")
+@router.get(
+    "/models/{model_id}/files/{file_id}/content",
+    summary="Stream a model file's binary content",
+    description=(
+        "Streams the raw bytes of the file from `portal-content` storage. ETag header is "
+        "set; If-None-Match returns 304 on cache hit. `?download=true` adds a "
+        "Content-Disposition with the original filename. 404 if the file row is not "
+        "found OR doesn't belong to the given model (defense against cross-model file "
+        "id confusion). 404 if the row exists but the on-disk blob is missing "
+        "(integrity issue). 500 if storage path resolution escapes the storage root "
+        "(should never happen; defense in depth)."
+    ),
+)
 def get_model_file_content(
     model_id: uuid.UUID,
     file_id: uuid.UUID,

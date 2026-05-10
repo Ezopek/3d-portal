@@ -140,7 +140,21 @@ def _require_admin_role(session: Session, user_id: uuid.UUID) -> None:
 # ---------------------------------------------------------------------------
 
 
-@router.post("/models", status_code=201, response_model=ModelDetail)
+@router.post(
+    "/models",
+    summary="Create a model row in the catalog",
+    description=(
+        "Creates a new Model row from a `ModelCreate` payload. Returns 201 + `ModelDetail`. "
+        "Common 4xx: 400 on `category not found` (the `category_id` UUID doesn't exist), "
+        "409 on `slug already exists` (slugs are unique within a category), 422 on other "
+        "Pydantic validation failures. The model is created with `deleted_at=None` and is "
+        "immediately visible to public reads. To attach a source URL, follow with "
+        "`POST /models/{id}/external-links`."
+    ),
+    status_code=201,
+    response_model=ModelDetail,
+    tags=["agent-write"],
+)
 def admin_create_model(
     payload: ModelCreate,
     session: Annotated[Session, Depends(get_session)],
@@ -162,7 +176,19 @@ def admin_create_model(
     return detail
 
 
-@router.patch("/models/{model_id}", response_model=ModelDetail)
+@router.patch(
+    "/models/{model_id}",
+    summary="Patch mutable fields on an existing model",
+    description=(
+        "Partial update of a `Model` row. Only fields supplied in the patch body are "
+        "changed (per `ModelPatch.model_config.extra='forbid'`, unknown keys yield 422). "
+        "Returns 200 + `ModelDetail`. 4xx: 404 if model not found or soft-deleted (use "
+        "restore first), 400 on `category not found`, 409 on `slug already exists`, "
+        "422 on other validation."
+    ),
+    response_model=ModelDetail,
+    tags=["agent-write"],
+)
 def admin_patch_model(
     model_id: uuid.UUID,
     patch: ModelPatch,
@@ -189,7 +215,17 @@ def admin_patch_model(
     return detail
 
 
-@router.post("/models/{model_id}/restore", response_model=ModelDetail)
+@router.post(
+    "/models/{model_id}/restore",
+    summary="Restore a soft-deleted model row",
+    description=(
+        "Clears `deleted_at` on a previously soft-deleted Model row, making it visible "
+        "to public reads again. Returns 200 + `ModelDetail`. 404 if the model never "
+        "existed. Idempotent — restoring an already-live model is a no-op success."
+    ),
+    response_model=ModelDetail,
+    tags=["agent-write"],
+)
 def admin_restore_model(
     model_id: uuid.UUID,
     session: Annotated[Session, Depends(get_session)],
@@ -206,7 +242,20 @@ def admin_restore_model(
     return detail
 
 
-@router.delete("/models/{model_id}", status_code=200, response_model=ModelDetail)
+@router.delete(
+    "/models/{model_id}",
+    summary="Soft-delete a model (or hard-delete with ?hard=true; admin only)",
+    description=(
+        "Default behavior (no `hard` query) is soft-delete: sets `deleted_at` to now; "
+        "the model disappears from public listings but remains queryable + restorable. "
+        "Returns 200 + `ModelDetail`. With `?hard=true`: admin-only path that physically "
+        "removes the row + on-disk files under portal-content; **agent role gets 403 "
+        "here**. 404 if the model never existed."
+    ),
+    status_code=200,
+    response_model=ModelDetail,
+    tags=["agent-write"],
+)
 def admin_delete_model(
     model_id: uuid.UUID,
     session: Annotated[Session, Depends(get_session)],
@@ -239,7 +288,18 @@ def admin_delete_model(
     return detail
 
 
-@router.put("/models/{model_id:uuid}/thumbnail", response_model=ModelDetail)
+@router.put(
+    "/models/{model_id:uuid}/thumbnail",
+    summary="Set a model's thumbnail to a specific ModelFile",
+    description=(
+        "Replaces the model's `thumbnail_file_id` with the file referenced in the "
+        "`ThumbnailSet` payload. The file must belong to the same model. Returns 200 + "
+        "`ModelDetail`. 404 if model not found, 400 if the file belongs to a different "
+        "model or is not an image-kind file."
+    ),
+    response_model=ModelDetail,
+    tags=["agent-write"],
+)
 def admin_set_thumbnail(
     model_id: uuid.UUID,
     payload: ThumbnailSet,
@@ -266,8 +326,15 @@ def admin_set_thumbnail(
 
 @router.post(
     "/models/{model_id}/photos/reorder",
+    summary="Reorder a model's photo files",
+    description=(
+        "Atomically reorders the model's image-kind files according to `ordered_ids`. "
+        "The provided UUID list MUST be a permutation of the existing image file ids on "
+        'this model — extras or missing ids yield 400. Returns 200 + `{"ok": true}`.'
+    ),
     status_code=status.HTTP_200_OK,
     response_model=dict,
+    tags=["agent-write"],
 )
 def admin_reorder_photos(
     model_id: uuid.UUID,
@@ -291,8 +358,19 @@ def admin_reorder_photos(
 
 @router.post(
     "/models/{model_id}/render",
+    summary="Enqueue an arq render job for this model (status 202)",
+    description=(
+        'Async render enqueue. Returns 202 + `{"status": "queued", "status_key": '
+        '"<key>"}`. The worker (`workers/render/`) consumes from arq; poll via '
+        "`GET /models/{model_id}` and watch the `thumbnail` field flip non-null. Empty "
+        "`selected_stl_file_ids` lets the worker pick the first STL automatically. 404 "
+        "if model not found. 400 if any selected STL id doesn't belong to this model or "
+        "isn't `kind=stl`. **Note:** the first STL upload to a fresh model AUTO-enqueues "
+        "a render — only call this explicitly for re-renders."
+    ),
     status_code=status.HTTP_202_ACCEPTED,
     response_model=dict,
+    tags=["agent-write"],
 )
 async def admin_trigger_render(
     model_id: uuid.UUID,
@@ -339,6 +417,16 @@ async def admin_trigger_render(
 
 @router.post(
     "/models/{model_id}/files",
+    summary="Upload a binary file (STL/3MF/image/source) to a model",
+    description=(
+        "Multipart upload. Form fields: `file` (the binary part), `kind` (one of "
+        "`ModelFileKind`: stl/image/print/source/archive_3mf). **First STL upload "
+        "(`kind=stl`) per model auto-enqueues a render job via arq** — no separate "
+        "render call is needed for the initial preview; subsequent STL uploads do NOT "
+        "re-enqueue. Returns 201 + `ModelFileRead` on new upload; 200 + existing "
+        "`ModelFileRead` on sha256 dedup (same content already in catalog); 413 if the "
+        "file exceeds the upload size limit."
+    ),
     response_model=ModelFileRead,
     status_code=status.HTTP_201_CREATED,
     responses={
@@ -346,6 +434,7 @@ async def admin_trigger_render(
         201: {"description": "File uploaded"},
         413: {"description": "File too large"},
     },
+    tags=["agent-write"],
 )
 async def admin_upload_file(
     model_id: uuid.UUID,
@@ -386,7 +475,17 @@ async def admin_upload_file(
 
 @router.patch(
     "/models/{model_id}/files/{file_id}",
+    summary="Patch metadata on an existing ModelFile",
+    description=(
+        "Updates mutable fields (`kind`, `original_name`, `selected_for_render`); "
+        "content-tied fields (`storage_path`, `sha256`, `size_bytes`, `mime_type`) are "
+        "intentionally NOT patchable — replace the binary via DELETE + new POST upload "
+        "instead. Returns 200 + `ModelFileRead`. 404 if model or file not found. 409 "
+        "if a `kind` change would violate the unique `(model, sha256, kind)` constraint. "
+        "400 if `selected_for_render=true` is set on a non-STL file."
+    ),
     response_model=ModelFileRead,
+    tags=["agent-write"],
 )
 def admin_patch_file(
     model_id: uuid.UUID,
@@ -421,7 +520,15 @@ def admin_patch_file(
 
 @router.delete(
     "/models/{model_id}/files/{file_id}",
+    summary="Delete a ModelFile (DB row + portal-content blob)",
+    description=(
+        "Removes the file row from the DB AND the on-disk blob from `portal-content` "
+        "storage. Returns 204. 404 if file not found or doesn't belong to the given "
+        "model. Idempotent in the failure case — re-running against an already-deleted "
+        "file id still 404s."
+    ),
     status_code=status.HTTP_204_NO_CONTENT,
+    tags=["agent-write"],
 )
 def admin_delete_file(
     model_id: uuid.UUID,
@@ -447,7 +554,18 @@ def admin_delete_file(
 # ---------------------------------------------------------------------------
 
 
-@router.put("/models/{model_id}/tags", response_model=list[TagRead])
+@router.put(
+    "/models/{model_id}/tags",
+    summary="Replace a model's full tag list atomically",
+    description=(
+        "Replaces the model's tag M2M list with exactly the `tag_ids` in the payload "
+        "(atomic). For incremental add use `POST /models/{model_id}/tags` instead. "
+        "Returns 200 + the resulting tag list. 404 if model or any tag id is missing. "
+        "400 on validation failure (e.g. duplicate ids in the payload)."
+    ),
+    response_model=list[TagRead],
+    tags=["agent-write"],
+)
 def admin_replace_model_tags(
     model_id: uuid.UUID,
     payload: TagsReplace,
@@ -465,7 +583,17 @@ def admin_replace_model_tags(
     return [TagRead.model_validate(t) for t in tags]
 
 
-@router.post("/models/{model_id}/tags", response_model=list[TagRead])
+@router.post(
+    "/models/{model_id}/tags",
+    summary="Add one tag to a model's M2M tag list",
+    description=(
+        "Incremental add — appends one tag to the model's tag M2M list. Idempotent: "
+        "adding an already-attached tag is a no-op success. Returns 200 + the resulting "
+        "tag list. 404 if model or tag not found."
+    ),
+    response_model=list[TagRead],
+    tags=["agent-write"],
+)
 def admin_add_model_tag(
     model_id: uuid.UUID,
     payload: TagAdd,
@@ -481,7 +609,16 @@ def admin_add_model_tag(
     return [TagRead.model_validate(t) for t in tags]
 
 
-@router.delete("/models/{model_id}/tags/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/models/{model_id}/tags/{tag_id}",
+    summary="Remove one tag from a model's M2M tag list",
+    description=(
+        "Detaches one tag from the model. Returns 204. 404 if model or tag not found, "
+        "or if the tag isn't attached to this model."
+    ),
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["agent-write"],
+)
 def admin_remove_model_tag(
     model_id: uuid.UUID,
     tag_id: uuid.UUID,
@@ -499,7 +636,17 @@ def admin_remove_model_tag(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/tags", response_model=TagRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/tags",
+    summary="Create a new global tag",
+    description=(
+        "Creates a new `Tag` row visible to all models. Returns 201 + `TagRead`. 409 on "
+        "slug conflict (tag slugs are globally unique). 422 on other validation."
+    ),
+    response_model=TagRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["agent-write"],
+)
 def admin_create_tag(
     payload: TagCreate,
     session: Annotated[Session, Depends(get_session)],
@@ -514,7 +661,18 @@ def admin_create_tag(
     return TagRead.model_validate(tag)
 
 
-@router.post("/tags/merge", response_model=TagRead)
+@router.post(
+    "/tags/merge",
+    summary="Merge two tags (move all M2M references then delete the source)",
+    description=(
+        "Atomic merge: moves every M2M reference from `from_id` to `to_id`, then deletes "
+        "the `from_id` Tag row. Returns 200 + the surviving `TagRead`. 404 if either tag "
+        "id doesn't exist. Idempotent if `from_id == to_id` (no-op success). Reflects in "
+        "the audit log as a `tag.merge` event."
+    ),
+    response_model=TagRead,
+    tags=["agent-write"],
+)
 def admin_merge_tags(
     payload: TagMerge,
     session: Annotated[Session, Depends(get_session)],
@@ -527,7 +685,16 @@ def admin_merge_tags(
     return TagRead.model_validate(tag)
 
 
-@router.patch("/tags/{tag_id}", response_model=TagRead)
+@router.patch(
+    "/tags/{tag_id}",
+    summary="Patch a global tag's fields",
+    description=(
+        "Updates the tag's `slug` / `name_en` / `name_pl`. Returns 200 + `TagRead`. 404 "
+        "if tag not found. 409 on slug conflict. 422 on other validation."
+    ),
+    response_model=TagRead,
+    tags=["agent-write"],
+)
 def admin_patch_tag(
     tag_id: uuid.UUID,
     patch: TagPatch,
@@ -545,7 +712,17 @@ def admin_patch_tag(
     return TagRead.model_validate(tag)
 
 
-@router.delete("/tags/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/tags/{tag_id}",
+    summary="Delete a global tag (only if no models reference it)",
+    description=(
+        "Permanent delete. Returns 204 on success. 404 if tag not found. **409 if the "
+        "tag is still referenced by any model** — detach it from all models first (or "
+        "call `POST /tags/merge` to fold it into a surviving tag)."
+    ),
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["agent-write"],
+)
 def admin_delete_tag(
     tag_id: uuid.UUID,
     session: Annotated[Session, Depends(get_session)],
@@ -566,7 +743,19 @@ def admin_delete_tag(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/categories", response_model=CategorySummary, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/categories",
+    summary="Create a new category (optionally under a parent)",
+    description=(
+        "Creates a Category row. `parent_id=null` for top-level categories; otherwise "
+        "the parent must exist. Returns 201 + `CategorySummary`. 400 on `parent not "
+        "found`. 409 on `slug already exists for this parent` (slugs are unique within "
+        "a parent). 422 on other validation."
+    ),
+    response_model=CategorySummary,
+    status_code=status.HTTP_201_CREATED,
+    tags=["agent-write"],
+)
 def admin_create_category(
     payload: CategoryCreate,
     session: Annotated[Session, Depends(get_session)],
@@ -584,7 +773,18 @@ def admin_create_category(
     return CategorySummary.model_validate(cat)
 
 
-@router.patch("/categories/{category_id}", response_model=CategorySummary)
+@router.patch(
+    "/categories/{category_id}",
+    summary="Patch a category's fields (including reparenting)",
+    description=(
+        "Updates `slug` / `name_en` / `name_pl` / `parent_id`. Returns 200 + "
+        "`CategorySummary`. 404 if category not found. 400 on `parent not found` or "
+        "`would create a cycle` (re-parenting cannot make an ancestor a descendant). "
+        "409 on slug conflict for the new parent. 422 on other validation."
+    ),
+    response_model=CategorySummary,
+    tags=["agent-write"],
+)
 def admin_patch_category(
     category_id: uuid.UUID,
     patch: CategoryPatch,
@@ -609,7 +809,16 @@ def admin_patch_category(
     return CategorySummary.model_validate(cat)
 
 
-@router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/categories/{category_id}",
+    summary="Delete a category (only if no models / no child categories reference it)",
+    description=(
+        "Permanent delete. Returns 204. 404 if category not found. **409 if the category "
+        "has models OR child categories** — reassign or delete those first."
+    ),
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["agent-write"],
+)
 def admin_delete_category(
     category_id: uuid.UUID,
     session: Annotated[Session, Depends(get_session)],
@@ -632,8 +841,16 @@ def admin_delete_category(
 
 @router.post(
     "/models/{model_id}/notes",
+    summary="Attach a note to a model",
+    description=(
+        "Creates a Note row tied to the model. Use `kind=description` for the headline "
+        "description, `operational` for print-time notes, `ai_review` for review "
+        "artifacts, `other` for everything else. Returns 201 + `NoteRead`. 404 if model "
+        "not found."
+    ),
     response_model=NoteRead,
     status_code=status.HTTP_201_CREATED,
+    tags=["agent-write"],
 )
 def admin_create_note(
     model_id: uuid.UUID,
@@ -648,7 +865,13 @@ def admin_create_note(
     return NoteRead.model_validate(note)
 
 
-@router.patch("/notes/{note_id}", response_model=NoteRead)
+@router.patch(
+    "/notes/{note_id}",
+    summary="Patch a note's body or kind",
+    description="Updates the note. Returns 200 + `NoteRead`. 404 if note not found.",
+    response_model=NoteRead,
+    tags=["agent-write"],
+)
 def admin_patch_note(
     note_id: uuid.UUID,
     patch: NotePatch,
@@ -662,7 +885,13 @@ def admin_patch_note(
     return NoteRead.model_validate(note)
 
 
-@router.delete("/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/notes/{note_id}",
+    summary="Delete a note",
+    description="Permanent delete. Returns 204. 404 if note not found.",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["agent-write"],
+)
 def admin_delete_note(
     note_id: uuid.UUID,
     session: Annotated[Session, Depends(get_session)],
@@ -681,8 +910,16 @@ def admin_delete_note(
 
 @router.post(
     "/models/{model_id}/prints",
+    summary="Record a print event for a model",
+    description=(
+        "Appends a `Print` row to the model's print history. `printed_at` defaults to "
+        "today if omitted. `photo_file_id`, if supplied, must reference a ModelFile "
+        "attached to this model. Returns 201 + `PrintRead`. 404 if model not found. "
+        "400 if `photo_file_id` references the wrong model or kind."
+    ),
     response_model=PrintRead,
     status_code=status.HTTP_201_CREATED,
+    tags=["agent-write"],
 )
 def admin_create_print(
     model_id: uuid.UUID,
@@ -699,7 +936,16 @@ def admin_create_print(
     return PrintRead.model_validate(pr)
 
 
-@router.patch("/prints/{print_id}", response_model=PrintRead)
+@router.patch(
+    "/prints/{print_id}",
+    summary="Patch a print event's fields",
+    description=(
+        "Updates the print row. Returns 200 + `PrintRead`. 404 if print not found. 400 "
+        "on validation."
+    ),
+    response_model=PrintRead,
+    tags=["agent-write"],
+)
 def admin_patch_print(
     print_id: uuid.UUID,
     patch: PrintPatch,
@@ -715,7 +961,13 @@ def admin_patch_print(
     return PrintRead.model_validate(pr)
 
 
-@router.delete("/prints/{print_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/prints/{print_id}",
+    summary="Delete a print event from a model's history",
+    description="Permanent delete. Returns 204. 404 if print not found.",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["agent-write"],
+)
 def admin_delete_print(
     print_id: uuid.UUID,
     session: Annotated[Session, Depends(get_session)],
@@ -734,8 +986,18 @@ def admin_delete_print(
 
 @router.post(
     "/models/{model_id}/external-links",
+    summary="Attach a source-URL link to a model",
+    description=(
+        "Creates an `ExternalLink` row tying the model to a source-side identifier + URL "
+        "(Printables/Thangs/Thingiverse/MakerWorld/Cults3D/Other). **This is the dedup "
+        "surface for source-URL idempotence** — pre-flight checks should query existing "
+        "external links by URL before creating a duplicate model. Returns 201 + "
+        "`ExternalLinkRead`. 404 if model not found. **409 on `source_conflict`** — a "
+        "model can have at most one link per source."
+    ),
     response_model=ExternalLinkRead,
     status_code=status.HTTP_201_CREATED,
+    tags=["agent-write"],
 )
 def admin_create_external_link(
     model_id: uuid.UUID,
@@ -756,7 +1018,16 @@ def admin_create_external_link(
     return ExternalLinkRead.model_validate(link)
 
 
-@router.patch("/external-links/{link_id}", response_model=ExternalLinkRead)
+@router.patch(
+    "/external-links/{link_id}",
+    summary="Patch an external link's url / external_id / source",
+    description=(
+        "Updates the link. Returns 200 + `ExternalLinkRead`. 404 if link not found. 409 "
+        "if changing `source` would conflict with an existing link on the same model."
+    ),
+    response_model=ExternalLinkRead,
+    tags=["agent-write"],
+)
 def admin_patch_external_link(
     link_id: uuid.UUID,
     patch: ExternalLinkPatch,
@@ -776,7 +1047,13 @@ def admin_patch_external_link(
     return ExternalLinkRead.model_validate(link)
 
 
-@router.delete("/external-links/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/external-links/{link_id}",
+    summary="Delete an external link",
+    description="Permanent delete. Returns 204. 404 if link not found.",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["agent-write"],
+)
 def admin_delete_external_link(
     link_id: uuid.UUID,
     session: Annotated[Session, Depends(get_session)],

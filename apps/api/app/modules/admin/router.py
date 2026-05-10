@@ -21,13 +21,33 @@ from app.core.db.session import get_session
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
-@router.post("/sentry-test", status_code=204)
+@router.post(
+    "/sentry-test",
+    summary="Deliberately raise to verify GlitchTip plumbing (admin only)",
+    description=(
+        "Raises a test exception to prove the GlitchTip → portal symbolication pipeline "
+        "is working end-to-end. Admin-only. Returns 204 on the wire (the exception is "
+        "captured by Sentry middleware before the response is shaped). **Do NOT 'fix' "
+        "the raise — it is the contract.** Used by `infra/scripts/verify-symbolication.sh` "
+        "and the operator's manual verify ritual."
+    ),
+    status_code=204,
+)
 def sentry_test(_user_id: uuid.UUID = current_admin) -> None:
     """Deliberately raise to verify GlitchTip plumbing. Admin-only."""
     raise RuntimeError("sentry-test: deliberate test event")
 
 
-@router.get("/audit")
+@router.get(
+    "/audit",
+    summary="List raw audit-log events (admin only)",
+    description=(
+        "Returns paged audit events with `before` / `after` JSON snapshots inline. "
+        "`limit` 1-500 (default 50), `offset` ≥0. Admin-only — agent role gets 403. "
+        "Use `/audit-log` for the typed/structured response shape; this endpoint returns "
+        "an untyped dict for backwards compatibility with operator scripts."
+    ),
+)
 def list_audit(
     session: Annotated[Session, Depends(get_session)],
     limit: int = Query(default=50, ge=1, le=500),
@@ -85,7 +105,16 @@ class AuditLogResponse(BaseModel):
     items: list[AuditLogEntry]
 
 
-@router.get("/audit-log", response_model=AuditLogResponse)
+@router.get(
+    "/audit-log",
+    summary="List audit-log events as typed AuditLogResponse (admin only)",
+    description=(
+        "Same data as `/audit` but with a typed Pydantic response shape (`AuditLogResponse`). "
+        "Filters: `entity_type` (e.g. `model`, `tag`), `entity_id`. `limit` 1-200 "
+        "(default 50). Admin-only — agent role gets 403."
+    ),
+    response_model=AuditLogResponse,
+)
 def admin_get_audit_log(
     session: Annotated[Session, Depends(get_session)],
     entity_type: str | None = None,
