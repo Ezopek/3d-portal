@@ -44,7 +44,14 @@ echo "→ Build images locally (tag: $VERSION)"
 cd "$REPO_DIR"
 VITE_GIT_COMMIT="$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 VITE_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-export VITE_GIT_COMMIT VITE_BUILD_TIME
+# Resolve build host on the dev box BEFORE the docker build container
+# inherits the env. Without this the inner BuildKit container would supply
+# its own ephemeral hostname (e.g. `buildkitsandbox`), defeating the
+# `host.name` static identity tag (Story 2.2 / architecture Decision G).
+# Honor an operator-set VITE_BUILD_HOST if already exported, else fall
+# back to `hostname`.
+VITE_BUILD_HOST="${VITE_BUILD_HOST:-$(hostname 2>/dev/null || echo unknown)}"
+export VITE_GIT_COMMIT VITE_BUILD_TIME VITE_BUILD_HOST
 # BuildKit is required for the --mount=type=secret syntax used in
 # apps/web/Dockerfile (mounts SENTRY_AUTH_TOKEN for the Sentry vite-plugin
 # without persisting it in any image layer).
