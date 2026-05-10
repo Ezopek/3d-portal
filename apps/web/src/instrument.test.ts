@@ -42,6 +42,15 @@ describe("instrument.ts", () => {
     // (PRD FR3 — drift-impossible expression).
     expect(call.release).toBe(RELEASE);
     expect(setTagSpy).toHaveBeenCalledWith("service", "web");
+    // Story 2.2: 5 dotted-name static identity tags additive on top of the
+    // baseline `service:web`. Order is fixed in instrument.ts but jest/vitest
+    // toHaveBeenCalledWith matches any call, so order is verified separately
+    // via toHaveBeenNthCalledWith below where it matters.
+    expect(setTagSpy).toHaveBeenCalledWith("service.version", RELEASE);
+    expect(setTagSpy).toHaveBeenCalledWith("host.name", expect.stringMatching(/.+/));
+    expect(setTagSpy).toHaveBeenCalledWith("deployment.environment", "production");
+    expect(setTagSpy).toHaveBeenCalledWith("git.commit", expect.stringMatching(/.+/));
+    expect(setTagSpy).toHaveBeenCalledWith("build.time", expect.stringMatching(/.+/));
   });
 
   it("no-ops when VITE_SENTRY_DSN is empty", async () => {
