@@ -1,8 +1,10 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { api } from "@/lib/api";
+import { AgentsInfoDialog } from "@/shell/AgentsInfoDialog";
 import { useAuth } from "@/shell/AuthContext";
 import { Button } from "@/ui/button";
 import {
@@ -15,9 +17,10 @@ import {
 
 export function UserMenu() {
   const { t } = useTranslation();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [agentsDialogOpen, setAgentsDialogOpen] = useState(false);
 
   async function logout(endpoint: "/auth/logout" | "/auth/logout-all") {
     try {
@@ -40,22 +43,32 @@ export function UserMenu() {
   const label = user?.display_name ?? user?.email ?? t("auth.account_label_fallback");
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
-        {label}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem render={<a href="/settings/sessions" />}>
-          {t("auth.sessions.menu_link")}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => void logout("/auth/logout")}>
-          {t("auth.logout")}
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => void logout("/auth/logout-all")}>
-          {t("auth.logout_everywhere")}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+          {label}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem render={<a href="/settings/sessions" />}>
+            {t("auth.sessions.menu_link")}
+          </DropdownMenuItem>
+          {isAdmin && (
+            <DropdownMenuItem onClick={() => setAgentsDialogOpen(true)}>
+              {t("agents.menu_label")}
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => void logout("/auth/logout")}>
+            {t("auth.logout")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => void logout("/auth/logout-all")}>
+            {t("auth.logout_everywhere")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {isAdmin && (
+        <AgentsInfoDialog open={agentsDialogOpen} onOpenChange={setAgentsDialogOpen} />
+      )}
+    </>
   );
 }
