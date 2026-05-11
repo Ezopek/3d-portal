@@ -55,6 +55,14 @@
 #       script — repeated exit-4 runs slowly re-accumulate smoke noise.
 #       Manual GlitchTip sweep advised after extended debugging sessions
 #       on a failing verify (TB-001 retention-as-evidence trade-off).
+#   5 - SKIPPED (TB-005); the web image was NOT rebuilt this deploy
+#       (image `.Created` predates DEPLOY_START_TS). The running web
+#       SDK still reports the OLD release while the new smoke would be
+#       tagged with the NEW release identity — guaranteed mismatch,
+#       not a real symbolication regression. No alarm, no smoke event
+#       emitted. infra/.last-verify carries SKIPPED. Only triggered
+#       when invoked from deploy.sh (DEPLOY_START_TS + PORTAL_VERSION
+#       in env); standalone CLI invocations always run the full verify.
 #
 # Example:
 #   set -a; source infra/.env; set +a
@@ -65,6 +73,16 @@
 #   bash infra/scripts/verify-symbolication.sh --help
 
 set -euo pipefail
+
+# TB-005 cmdline-override capture (P1-B): the staleness gate consumes
+# DEPLOY_START_TS + PORTAL_VERSION from env, but `set -a; source infra/.env;
+# set +a` below clobbers any cmdline-passed PORTAL_VERSION with the .env
+# value. Snapshot the inbound env BEFORE the source so the gate honors
+# explicit overrides (matters when an operator runs
+# `PORTAL_VERSION=0.2.0 bash deploy.sh` against a .env still pinned to
+# 0.1.0 — the gate must inspect the actually-built image tag).
+_inbound_deploy_start_ts="${DEPLOY_START_TS:-}"
+_inbound_portal_version="${PORTAL_VERSION:-}"
 
 # --- Argument parsing -------------------------------------------------------
 KEEP_SMOKE=0
@@ -126,6 +144,57 @@ set +a
 
 GLITCHTIP_URL="${GLITCHTIP_URL:-http://192.168.2.190:8800}"
 PORTAL_PUBLIC_URL="${PORTAL_PUBLIC_URL:-https://3d.ezop.ddns.net}"
+
+# --- Staleness gate (TB-005) ------------------------------------------------
+# When invoked as part of deploy.sh, an API-only / doc-only / infra-only
+# deploy may leave the web docker image fully layer-cached (`portal-web:$V`
+# image's `.Created` predates this deploy's start). The running web SDK
+# then reports the OLD release identity, while a new smoke event would be
+# tagged with the NEW release — guaranteed mismatch → 30s timeout → exit-4
+# FAILED marker even though symbolication is healthy. Detect this case
+# upfront and exit 5 (SKIPPED) so the verify-history isn't polluted with
+# structurally-unavoidable false-negatives.
+#
+# Gate only fires when deploy.sh exported DEPLOY_START_TS + PORTAL_VERSION.
+# Standalone invocations (operator running verify by hand) always run the
+# full flow — the gate is opt-in for the deploy chain, not a global skip.
+#
+# `docker inspect` failures (image missing, daemon down) are intentionally
+# non-fatal: fall through to the normal verify path. The verify will then
+# fail with its own appropriate exit code (likely 2 or 4) — TB-005 is a
+# noise-reducer, not a new failure mode.
+if [[ -n "$_inbound_deploy_start_ts" && -n "$_inbound_portal_version" ]]; then
+  if command -v docker >/dev/null; then
+    web_image_tag="portal-web:${_inbound_portal_version}"
+    if web_image_created=$(docker inspect --format '{{.Created}}' "$web_image_tag" 2>/dev/null); then
+      # `.Created` is ISO 8601 with nanos; GNU date(1) accepts it directly.
+      # Parse-failures fall through silently to the normal verify path
+      # (graceful degradation — TB-005 is a noise-reducer, not a gate).
+      if web_image_epoch=$(date -d "$web_image_created" +%s 2>/dev/null); then
+        if (( web_image_epoch < _inbound_deploy_start_ts )); then
+          # P1-A guard: never overwrite a previous FAILED marker with
+          # SKIPPED. If the last verify failed, run the full verify even
+          # on a cached image — symbolication might genuinely still be
+          # broken, and a cache-hit deploy must not erase that signal.
+          # (verify will likely time out under cached-image release-tag
+          # mismatch and re-write FAILED — that is the honest outcome.)
+          last_verify_path="$REPO_DIR/infra/.last-verify"
+          if [[ -f "$last_verify_path" ]] && grep -qw FAILED "$last_verify_path"; then
+            echo "⚠ TB-005 staleness gate would SKIP, but last verify was FAILED — running full verify to avoid erasing the FAILED signal" >&2
+          else
+            printf '%s\tSKIPPED\tweb-image-cached\n' \
+              "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              > "$last_verify_path"
+            printf '→ verify SKIPPED — web image cached (image created %s, deploy started %s)\n' \
+              "$web_image_created" \
+              "$(date -u -d "@$_inbound_deploy_start_ts" +%Y-%m-%dT%H:%M:%SZ)"
+            exit 5
+          fi
+        fi
+      fi
+    fi
+  fi
+fi
 
 # Parse the DSN once — needed for the envelope endpoint URL + auth header.
 # Format: https://<public_key>@<host>/<project_id>

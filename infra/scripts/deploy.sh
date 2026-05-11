@@ -11,6 +11,16 @@ SSH_PORT="${PORTAL_SSH_PORT:-30022}"
 VERSION="${PORTAL_VERSION:-0.1.0}"
 LOCAL_ENV="$REPO_DIR/infra/.env"
 
+# Captured before `docker compose build` so verify-symbolication.sh (TB-005)
+# can compare against the resulting web image's `.Created` timestamp: a
+# cached web image (API-only / doc-only deploys) leaves it older than this
+# value, which the verify script treats as a skip condition (release-tag
+# mismatch is structural, not a real symbolication regression). Exported
+# alongside PORTAL_VERSION so the child script can resolve the image tag.
+DEPLOY_START_TS=$(date +%s)
+export DEPLOY_START_TS
+export PORTAL_VERSION="$VERSION"
+
 # Local docker compose build still needs all ${VAR} references resolved
 # (volumes, image tags, build args). Pull the canonical .env from .190 if
 # we don't already have a local copy.
@@ -98,6 +108,7 @@ case "$verify_exit" in
   2) printf '\033[31m⚠ verify FAILED: GlitchTip unreachable\033[0m\n' >&2 ;;
   3) printf '\033[31m⚠ verify FAILED: auth/scope failure — token rotation needed?\033[0m\n' >&2 ;;
   4) printf '\033[31m⚠ verify FAILED: timeout (no matching event within 30s)\033[0m\n' >&2 ;;
+  5) printf '\033[33m→ verify SKIPPED: web image cached (no rebuild → release-tag mismatch unavoidable, not a real regression)\033[0m\n' ;;
   *) printf '\033[31m⚠ verify FAILED: unexpected exit %s\033[0m\n' "$verify_exit" >&2 ;;
 esac
 
@@ -156,5 +167,10 @@ else
   printf '\033[31m⚠ runbook fingerprint MISMATCH: expected %s, got %s\033[0m\n' "$expected_fp" "$actual_fp" >&2
   echo "FAILED $(date -Iseconds) expected=$expected_fp actual=$actual_fp" > "$last_runbook_path"
 fi
+
+# Defensive: clean up TB-005 exports so an operator who runs verify by hand
+# in the same shell (e.g. after `source` rather than `bash` invocation) does
+# not silently inherit the gate and SKIP unexpectedly.
+unset DEPLOY_START_TS PORTAL_VERSION || true
 
 echo "Done."
