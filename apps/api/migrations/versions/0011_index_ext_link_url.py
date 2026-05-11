@@ -1,6 +1,6 @@
 """Add index on model_external_link.url for the TB-004 dedup filter.
 
-Revision ID: 0011_index_model_external_link_url
+Revision ID: 0011_index_ext_link_url
 Revises: 0010_drop_model_legacy_id
 Create Date: 2026-05-12
 
@@ -18,13 +18,18 @@ links, or two models sharing a single Printables source).
 SQLite supports `CREATE INDEX` directly without `batch_alter_table`
 for additive index changes — kept consistent with 0009 (which also
 added indexes without the batch wrapper).
+
+Revision ID shortened to ≤32 chars after Codex review on commit
+`7e1b026` flagged Alembic's default `alembic_version.version_num
+VARCHAR(32)` constraint on Postgres-ready databases (the project
+docs PostgreSQL as a future DATABASE_URL switch target).
 """
 
 from __future__ import annotations
 
 from alembic import op
 
-revision = "0011_index_model_external_link_url"
+revision = "0011_index_ext_link_url"
 down_revision = "0010_drop_model_legacy_id"
 branch_labels = None
 depends_on = None
