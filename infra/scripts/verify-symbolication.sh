@@ -11,7 +11,11 @@
 #
 # Required env (sourced from infra/.env on dev box):
 #   GLITCHTIP_AUTH_TOKEN     long-lived token; org:read + project:read +
-#                            event:write (write needed for synthetic alarm).
+#                            event:write (write needed for synthetic alarm
+#                            + best-effort smoke-issue DELETE — TB-001
+#                            verified the homelab GlitchTip 6.1.x accepts
+#                            DELETE under event:write; upstream Sentry OSS
+#                            scope docs may require project:admin).
 #   GLITCHTIP_ORG_SLUG       org slug (default-fixture: homelab).
 #   GLITCHTIP_PROJECT_SLUG   project slug (default-fixture: 3d-portal).
 #   VITE_SENTRY_DSN          DSN — public key + project_id parsed for the
@@ -24,9 +28,18 @@
 #   PORTAL_PUBLIC_URL  Production SPA URL where the smoke handler runs
 #                      (default https://3d.ezop.ddns.net).
 #
+# Flags:
+#   --keep-smoke   Retain the smoke issue in GlitchTip after a successful
+#                  verify (default: delete it to keep noise out of triage).
+#                  Useful for local debugging when the operator wants to
+#                  inspect the smoke event payload manually. TB-001.
+#
 # Exit codes (FR12 contract — `deploy.sh` consumes these in Story 3.2):
 #   0 - success; smoke event symbolicated, top frame matches
 #       `^apps/web/src/.+\.tsx?$`. infra/.last-verify carries OK.
+#       Smoke issue auto-deleted from GlitchTip on this path (unless
+#       --keep-smoke given). DELETE failures are warned to stderr but
+#       do NOT change the exit code (best-effort cleanup — TB-001).
 #   1 - symbolication broken; event found but top-frame regex MISMATCH
 #       (or event had no exception stacktrace, or unexpected REST shape).
 #       infra/.last-verify carries FAILED. Synthetic alarm POSTed.
@@ -37,6 +50,11 @@
 #       auth — uses DSN public key, may still succeed).
 #   4 - timeout; no matching event within 30s budget (NFR-P3).
 #       infra/.last-verify carries FAILED. No alarm (cause unknown).
+#       Note: a smoke event arriving after the deadline (GlitchTip
+#       ingest lag) will land as an orphan issue not cleaned up by this
+#       script — repeated exit-4 runs slowly re-accumulate smoke noise.
+#       Manual GlitchTip sweep advised after extended debugging sessions
+#       on a failing verify (TB-001 retention-as-evidence trade-off).
 #
 # Example:
 #   set -a; source infra/.env; set +a
@@ -48,13 +66,26 @@
 
 set -euo pipefail
 
-# --- Help flag --------------------------------------------------------------
-if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  # Reprint the header comment block (lines 2..first blank) with leading
-  # `# ` stripped. Single source of truth — the docstring IS the help text.
-  sed -n '2,/^$/p' "$0" | sed -E 's/^# ?//'
-  exit 0
-fi
+# --- Argument parsing -------------------------------------------------------
+KEEP_SMOKE=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --help|-h)
+      # Reprint the header comment block (lines 2..first blank) with leading
+      # `# ` stripped. Single source of truth — the docstring IS the help text.
+      sed -n '2,/^$/p' "$0" | sed -E 's/^# ?//'
+      exit 0
+      ;;
+    --keep-smoke)
+      KEEP_SMOKE=1
+      shift
+      ;;
+    *)
+      echo "✗ unknown argument: $1 (use --help for usage)" >&2
+      exit 1
+      ;;
+  esac
+done
 
 # --- Bootstrap --------------------------------------------------------------
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -189,6 +220,63 @@ fail_verify() {
   exit "$code"
 }
 
+# Best-effort smoke-issue cleanup (TB-001). Each verify run injects a smoke
+# event with a UUID-tagged title, which GlitchTip refuses to deduplicate;
+# without cleanup these accumulate monotonically (~1 per deploy, hit 18 in
+# three weeks of dev-box testing). Called only on the SUCCESS exit path —
+# never from fail_verify, since a retained smoke issue on failure is
+# evidence (lets the operator inspect the payload that failed regex match).
+# Failures here are warned to stderr and do NOT change the script exit code
+# (FR15-aligned non-fatal contract — verify is about symbolication health,
+# cleanup is best-effort). --keep-smoke flag skips the DELETE for operators
+# who want to inspect the smoke payload after a successful verify.
+cleanup_smoke_issue() {
+  local id="$1" http_code title meta_out
+  if (( KEEP_SMOKE == 1 )); then
+    echo "→ smoke issue id=$id retained (--keep-smoke)"
+    return 0
+  fi
+  # Title-guard against DELETEing a wrong issue. The poll loop captures
+  # $issue_id from `?query=smoke.run_id:${smoke_run_id}&statsPeriod=5m`
+  # which is not a guaranteed exact-tag match (GlitchTip query is a
+  # text-match expression — collisions are vanishingly unlikely with a
+  # full UUID, but two near-simultaneous verify runs sharing the 5m
+  # window could in theory swap each other's `.[0]`). One extra GET +
+  # title equality check before the destructive call eliminates that
+  # path entirely. Title is set deterministically by the smoke handler
+  # in apps/web/src/main.tsx as "Error: smoke <uuid>".
+  meta_out=/tmp/gt-smoke-meta.json
+  if ! http_code=$(curl -sS --max-time 5 -o "$meta_out" -w '%{http_code}' \
+      -H "Authorization: Bearer $GLITCHTIP_AUTH_TOKEN" \
+      "${GLITCHTIP_URL}/api/0/issues/${id}/"); then
+    echo "⚠ smoke cleanup: meta GET transport error (issue id=$id retained)" >&2
+    return 0
+  fi
+  case "$http_code" in
+    20*) : ;;
+    404) echo "→ smoke issue id=$id already gone (404 on meta GET)"; return 0 ;;
+    *)   echo "⚠ smoke cleanup: meta GET returned $http_code (issue id=$id retained)" >&2; return 0 ;;
+  esac
+  title=$(jq -r '.title // empty' < "$meta_out")
+  if [[ "$title" != "Error: smoke ${smoke_run_id}" ]]; then
+    echo "⚠ smoke cleanup: issue id=$id title mismatch ('${title}' != 'Error: smoke ${smoke_run_id}'); skipping DELETE" >&2
+    return 0
+  fi
+  if ! http_code=$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' \
+      -X DELETE \
+      -H "Authorization: Bearer $GLITCHTIP_AUTH_TOKEN" \
+      "${GLITCHTIP_URL}/api/0/issues/${id}/"); then
+    echo "⚠ smoke cleanup: DELETE transport error (issue id=$id retained)" >&2
+    return 0
+  fi
+  case "$http_code" in
+    20*)     echo "→ smoke issue id=$id deleted from GlitchTip" ;;
+    401|403) echo "⚠ smoke cleanup: DELETE returned $http_code (token lacks delete scope on GlitchTip 6.1.x; issue id=$id retained)" >&2 ;;
+    404)     echo "→ smoke issue id=$id already gone (404)" ;;
+    *)       echo "⚠ smoke cleanup: DELETE returned $http_code (issue id=$id may still exist)" >&2 ;;
+  esac
+}
+
 # AR13 GlitchTip REST GET — case-statement maps HTTP code to FR12 exit code.
 # Network/DNS failures hit the `if !`-branch (curl exits non-zero before
 # emitting %{http_code}); REST 5xx returns a `5xx` http_code with the body
@@ -275,6 +363,7 @@ fi
 if [[ "$top_frame" =~ ^apps/web/src/.+\.tsx?$ ]]; then
   write_last_verify "OK" "$release"
   echo "✓ verify OK — top frame: $top_frame, release: $release"
+  cleanup_smoke_issue "$issue_id"
   exit 0
 fi
 
