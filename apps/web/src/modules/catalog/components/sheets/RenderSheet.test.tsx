@@ -28,7 +28,6 @@ function wrap() {
 function makeDetail(files: ModelDetail["files"]): ModelDetail {
   return {
     id: "m1",
-    legacy_id: null,
     slug: "x",
     name_en: "X",
     name_pl: null,

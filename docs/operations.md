@@ -326,11 +326,18 @@ holds the canonical catalog: 89 models, 821 binary files (2.8 GB across
 `/api/admin/render/{string-id}`, the legacy thumbnail-override
 endpoints, `CatalogService`, the `thumbnailoverride` and
 `renderselection` tables, and the WSL `sync-data.sh` script were all
-removed once log inspection confirmed zero non-test callers. Migration
-script (`scripts/migrate_from_index_json.py`,
-`scripts/backfill_legacy_renders.py`) reads still expect the legacy
-filesystem layout and `Model.legacy_id` mapping, so those one-shots
-remain runnable from a backup snapshot if ever needed.
+removed once log inspection confirmed zero non-test callers.
+
+**E4.4-followup (2026-05-11) retired the migration scripts entirely.**
+`Model.legacy_id` was dropped via Alembic migration `0010_drop_model_legacy_id.py`;
+`scripts/migrate_from_index_json.py`, `scripts/backfill_legacy_renders.py`,
+`scripts/backfill_iso_thumbnail.py`, and `scripts/fix_legacy_render_names.py`
+were `git rm`'d. Disaster recovery references the pre-DROP snapshot at
+`docs/migration-reports/2026-05-11-legacy-id-snapshot.json` (89 rows,
+~5 KB) for the legacy-id ↔ model.id mapping; full re-import from a
+Nextcloud snapshot would have to be reconstructed manually (or by
+checking out commit `d92e551` — the original SoT migration entry
+point — from git history).
 
 ### UI rewrite delivered (Slices 3A-3F)
 
@@ -367,7 +374,16 @@ Run `python -m scripts.hydrate_local_tree --portal-url
 http://192.168.2.190:8090 --target <local-dir> --token-file
 ~/.config/3d-portal/agent.token --kinds stl` from WSL to materialize
 STLs locally. State is kept in `<target>/.hydrate-state.json` for
-incremental updates. Layout: `<category-slug>/<subcategory-slug>/<model-slug>-<legacy_id>/<original_name>`.
+incremental updates. Layout:
+`<category-slug>/<subcategory-slug>/<model-slug>-<8-char-uuid>/<original_name>`
+(the 8-char suffix is the model UUID hex with dashes stripped,
+truncated). **Note:** prior to E4.4-followup (2026-05-11) the suffix
+was `legacy_id` (e.g. `001`, `002`) where present, falling back to the
+short-uuid; post-DROP all models use the short-uuid uniformly.
+Local trees rendered under the old scheme retain their pre-rename
+directory names — either accept the layout change on next re-hydrate
+OR run a one-time bulk-rename pass against the local tree before
+re-running `hydrate_local_tree.py`.
 
 ### What remains
 

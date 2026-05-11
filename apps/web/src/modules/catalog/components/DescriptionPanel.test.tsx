@@ -43,7 +43,6 @@ function note(over: Partial<NoteRead> = {}): NoteRead {
 function makeDetail(notes: NoteRead[] = []): ModelDetail {
   return {
     id: MODEL_ID,
-    legacy_id: null,
     slug: "dragon",
     name_en: "Dragon",
     name_pl: null,

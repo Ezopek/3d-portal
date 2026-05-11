@@ -87,7 +87,6 @@ class ModelSummary(_OrmBase):
     """Used in list responses; tags eagerly loaded, no other embeds."""
 
     id: uuid.UUID
-    legacy_id: str | None
     slug: str
     name_en: str
     name_pl: str | None

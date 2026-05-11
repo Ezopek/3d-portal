@@ -184,22 +184,7 @@ def test_model_basic_persist(engine):
         assert m.source == ModelSource.unknown
         assert m.status == ModelStatus.not_printed
         assert m.deleted_at is None
-        assert m.legacy_id is None
         assert m.rating is None
-
-
-def test_model_legacy_id_unique(engine):
-    with Session(engine) as session:
-        cat = Category(slug="decorum", name_en="Decorum")
-        session.add(cat)
-        session.commit()
-        session.refresh(cat)
-
-        a = Model(slug="a-001", name_en="A", category_id=cat.id, legacy_id="001")
-        b = Model(slug="b-001", name_en="B", category_id=cat.id, legacy_id="001")
-        session.add_all([a, b])
-        with pytest.raises(sqlalchemy.exc.IntegrityError):
-            session.commit()
 
 
 def test_model_slug_unique(engine):

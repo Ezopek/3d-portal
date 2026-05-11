@@ -23,7 +23,6 @@ afterEach(() => cleanup());
 function makeDetail(over: Partial<ModelDetail> = {}): ModelDetail {
   return {
     id: "m1",
-    legacy_id: null,
     slug: "dragon",
     name_en: "Dragon",
     name_pl: null,

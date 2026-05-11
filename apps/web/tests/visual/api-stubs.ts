@@ -42,7 +42,6 @@ export async function stubViewerModelDetail(
       contentType: "application/json",
       body: JSON.stringify({
         id: modelId,
-        legacy_id: null,
         slug: "cube",
         name_en: "Cube",
         name_pl: "Sześcian",
@@ -174,7 +173,6 @@ export async function stubSotList(page: Page) {
         items: [
           {
             id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-            legacy_id: "001",
             slug: "dragon",
             name_en: "Dragon",
             name_pl: "Smok",
@@ -199,7 +197,6 @@ export async function stubSotList(page: Page) {
           },
           {
             id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-            legacy_id: "002",
             slug: "vase",
             name_en: "Vase",
             name_pl: "Wazon",
@@ -243,7 +240,6 @@ export async function stubSotDetail(page: Page) {
       contentType: "application/json",
       body: JSON.stringify({
         id,
-        legacy_id: "001",
         slug: "dragon",
         name_en: "Dragon",
         name_pl: "Smok",

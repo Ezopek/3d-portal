@@ -136,7 +136,6 @@ export type ModelStatus = "not_printed" | "printed" | "in_progress" | "broken";
 
 export interface ModelSummary {
   id: string;
-  legacy_id: string | null;
   slug: string;
   name_en: string;
   name_pl: string | null;

@@ -1,0 +1,542 @@
+{
+  "exported_at": "2026-05-11",
+  "source": "3d-portal prod SQLite at /data/state/portal.db (alembic 0009)",
+  "purpose": "Pre-DROP snapshot of Model.legacy_id mapping — see docs/migration-reports/2026-05-11-legacy-sot-folder-decision.md § 'Backup strategy'.",
+  "row_count": 89,
+  "rows": [
+    {
+      "model_id": "4af77d61fbd948fa83ce0bba3e7954a3",
+      "legacy_id": "001",
+      "name_en": "Articulated Dragon and Dragon Egg",
+      "created_at": "2026-05-04 19:13:11.058888"
+    },
+    {
+      "model_id": "2493f75239e54870b5bfab43ab1b4a16",
+      "legacy_id": "002",
+      "name_en": "Articulated Hermit Crab",
+      "created_at": "2026-05-04 19:13:13.578427"
+    },
+    {
+      "model_id": "9ec37cef1b6a41ffbb3de6dde6081194",
+      "legacy_id": "003",
+      "name_en": "Articulated Shark",
+      "created_at": "2026-05-04 19:13:15.787569"
+    },
+    {
+      "model_id": "b6775b0ca82b44a9bc102c407fd71c39",
+      "legacy_id": "004",
+      "name_en": "Pistachio Bowl (v1)",
+      "created_at": "2026-05-04 19:13:19.479777"
+    },
+    {
+      "model_id": "87e2943e4b4e45c5b0b95bc2e0afaef3",
+      "legacy_id": "005",
+      "name_en": "Pistachio Bowl (v2)",
+      "created_at": "2026-05-04 19:13:24.536075"
+    },
+    {
+      "model_id": "9951ddca0f1849b99c890f89c1a75d77",
+      "legacy_id": "006",
+      "name_en": "BunBowl - rabbit dish",
+      "created_at": "2026-05-04 19:13:24.815724"
+    },
+    {
+      "model_id": "eca51a09601441aa86be3b91c1af4d45",
+      "legacy_id": "007",
+      "name_en": "Cloud Storage",
+      "created_at": "2026-05-04 19:13:25.098224"
+    },
+    {
+      "model_id": "66bfea31885a4f8c9990c27dbdbd0224",
+      "legacy_id": "008",
+      "name_en": "Flexi Cat",
+      "created_at": "2026-05-04 19:13:27.156661"
+    },
+    {
+      "model_id": "cf2ce856c69143ca9a025b0083b0c467",
+      "legacy_id": "009",
+      "name_en": "High Heel Storage Caddy",
+      "created_at": "2026-05-04 19:13:27.729649"
+    },
+    {
+      "model_id": "b337b5abee3e468cb07ab0169eb4e740",
+      "legacy_id": "010",
+      "name_en": "HITAMI Toilet Paper Organizer",
+      "created_at": "2026-05-04 19:13:28.894554"
+    },
+    {
+      "model_id": "4bcbbdea2ed74291b5aa2cc08d56fb8d",
+      "legacy_id": "011",
+      "name_en": "Jumbo Elephant Cutlery Drainer",
+      "created_at": "2026-05-04 19:13:29.596410"
+    },
+    {
+      "model_id": "d46ee80fefad47d2a796875e5b90ff51",
+      "legacy_id": "012",
+      "name_en": "Plant Pot Spacer",
+      "created_at": "2026-05-04 19:13:33.917207"
+    },
+    {
+      "model_id": "f48ca14e133a4cbda4cb944fda1968c8",
+      "legacy_id": "013",
+      "name_en": "Revolver Caddy",
+      "created_at": "2026-05-04 19:13:34.211071"
+    },
+    {
+      "model_id": "774eedd5a6c1429f898a5a0c478b25ea",
+      "legacy_id": "014",
+      "name_en": "Dimensional Spacer",
+      "created_at": "2026-05-04 19:13:35.193831"
+    },
+    {
+      "model_id": "3b12bc44e54b42b68c2e5f2904760b9b",
+      "legacy_id": "015",
+      "name_en": "Spiral Vase",
+      "created_at": "2026-05-04 19:13:35.549319"
+    },
+    {
+      "model_id": "ce213888e0fb45db9cd9d5248384d921",
+      "legacy_id": "016",
+      "name_en": "Cotton Swabs and Pads Stand",
+      "created_at": "2026-05-04 19:13:37.554856"
+    },
+    {
+      "model_id": "5eb196c783764543abf93b0da38fb5a6",
+      "legacy_id": "017",
+      "name_en": "Yellow Rabbit Easter Vase",
+      "created_at": "2026-05-04 19:13:39.339891"
+    },
+    {
+      "model_id": "8c59b6cc334e4e309f72bb7835a755e0",
+      "legacy_id": "018",
+      "name_en": "Cali Cat Pencil Holder",
+      "created_at": "2026-05-04 19:13:40.092036"
+    },
+    {
+      "model_id": "47f72c00de2a46acbbff8d3d38ecc046",
+      "legacy_id": "019",
+      "name_en": "Stria Toilet Paper Holder",
+      "created_at": "2026-05-04 19:13:41.198832"
+    },
+    {
+      "model_id": "831b83c2e8814bf4aede6cf9db135b7a",
+      "legacy_id": "020",
+      "name_en": "Bridging Calibration Test",
+      "created_at": "2026-05-04 19:13:41.639816"
+    },
+    {
+      "model_id": "627cbe56f829427ea1819a92d21abc7a",
+      "legacy_id": "021",
+      "name_en": "Califlower Calibration",
+      "created_at": "2026-05-04 19:13:42.014957"
+    },
+    {
+      "model_id": "7061c9720f644c03b847dafb391e8c2d",
+      "legacy_id": "022",
+      "name_en": "Elephant Foot Compensation",
+      "created_at": "2026-05-04 19:13:42.213321"
+    },
+    {
+      "model_id": "dadeb32d60a94a268d772bfb369daab9",
+      "legacy_id": "023",
+      "name_en": "Calibration Spacers 0.2-1mm",
+      "created_at": "2026-05-04 19:13:43.203958"
+    },
+    {
+      "model_id": "76595d1b7fca41099da8984e467066fa",
+      "legacy_id": "024",
+      "name_en": "Support Z-Distance Calibration",
+      "created_at": "2026-05-04 19:13:43.995783"
+    },
+    {
+      "model_id": "802029bb1f194cd69bb191366c2a4bae",
+      "legacy_id": "025",
+      "name_en": "K1 Max Riser",
+      "created_at": "2026-05-04 19:13:44.432747"
+    },
+    {
+      "model_id": "de6fed2fb8614b12a403a84c0aac889a",
+      "legacy_id": "026",
+      "name_en": "K1 Max Side Fan",
+      "created_at": "2026-05-04 19:13:45.427840"
+    },
+    {
+      "model_id": "f78a173e547746b9a2e5d4ce8a2679e0",
+      "legacy_id": "027",
+      "name_en": "K1 Max Doors Hinge (removable)",
+      "created_at": "2026-05-04 19:13:45.961638"
+    },
+    {
+      "model_id": "1a68561362974661a8fdb0f823d23ed5",
+      "legacy_id": "028",
+      "name_en": "Filament Bunker v3",
+      "created_at": "2026-05-04 19:13:46.318962"
+    },
+    {
+      "model_id": "261ce2390c1f408a850ec9f624f32f4d",
+      "legacy_id": "029",
+      "name_en": "Rosa3D Spool Adapter",
+      "created_at": "2026-05-04 19:13:46.813897"
+    },
+    {
+      "model_id": "9175299a21bd4329b770648dcbd65179",
+      "legacy_id": "030",
+      "name_en": "Smart 4mm PTFE Tube Connector",
+      "created_at": "2026-05-04 19:13:48.046750"
+    },
+    {
+      "model_id": "60cc4c76769c48e09e0434a5dab1a680",
+      "legacy_id": "031",
+      "name_en": "PTFE Tube Clip",
+      "created_at": "2026-05-04 19:13:48.852185"
+    },
+    {
+      "model_id": "f1d17ce630f34735a2817c524e604496",
+      "legacy_id": "032",
+      "name_en": "Gridfinity Box 3x6x2",
+      "created_at": "2026-05-04 19:13:48.948358"
+    },
+    {
+      "model_id": "01ad7701c7ec4b71a7e8466474489ae9",
+      "legacy_id": "033",
+      "name_en": "Multiboard - wall organization system",
+      "created_at": "2026-05-04 19:13:49.260753"
+    },
+    {
+      "model_id": "24774f60e22a4b30860f6036a4614fd8",
+      "legacy_id": "034",
+      "name_en": "Soldering Iron Holder",
+      "created_at": "2026-05-04 19:14:10.322046"
+    },
+    {
+      "model_id": "762ab0d143074e0883437b1b21bdf19f",
+      "legacy_id": "035",
+      "name_en": "Stealth Press 1.2 (insert press)",
+      "created_at": "2026-05-04 19:14:10.879870"
+    },
+    {
+      "model_id": "7cae28cff79a41ca96612635f3461eeb",
+      "legacy_id": "036",
+      "name_en": "TS100 Tips and Inserts Case",
+      "created_at": "2026-05-04 19:14:13.794699"
+    },
+    {
+      "model_id": "0792c5818d554d7daa40138f10a2ed6d",
+      "legacy_id": "037",
+      "name_en": "Glasses Case",
+      "created_at": "2026-05-04 19:14:14.257838"
+    },
+    {
+      "model_id": "8aa77697019749faaa546d98e5774e9a",
+      "legacy_id": "038",
+      "name_en": "Phone Stand",
+      "created_at": "2026-05-04 19:14:22.162140"
+    },
+    {
+      "model_id": "2152a46806ff443fbf6f7bd09851d8b8",
+      "legacy_id": "039",
+      "name_en": "Laundry Detergent Dispenser",
+      "created_at": "2026-05-04 19:14:22.710857"
+    },
+    {
+      "model_id": "ac611aa688e94a2f9e78df7fd08527fe",
+      "legacy_id": "040",
+      "name_en": "Self-Watering Plant Pot with Indicator",
+      "created_at": "2026-05-04 19:14:23.599065"
+    },
+    {
+      "model_id": "cddd3b5a7e7c41bfb6de12254f7ec0b2",
+      "legacy_id": "041",
+      "name_en": "Self-Watering Plant Pot (v2)",
+      "created_at": "2026-05-04 19:14:24.179410"
+    },
+    {
+      "model_id": "fa9a9d30090144ed8a7f55f8f17a0bce",
+      "legacy_id": "042",
+      "name_en": "Quechua Backpack Buckle 50x55mm",
+      "created_at": "2026-05-04 19:14:24.700470"
+    },
+    {
+      "model_id": "4e851aef149c496cb523d07108b09ede",
+      "legacy_id": "043",
+      "name_en": "Monitor Stand",
+      "created_at": "2026-05-04 19:14:25.521955"
+    },
+    {
+      "model_id": "8080e8a3354d499aa2c0cf1848bb06a9",
+      "legacy_id": "044",
+      "name_en": "Monitor Stand (STL)",
+      "created_at": "2026-05-04 19:14:26.469735"
+    },
+    {
+      "model_id": "d7f7812054604d588d748f6c37bb10bb",
+      "legacy_id": "045",
+      "name_en": "Car Umbrella Hook Holder",
+      "created_at": "2026-05-04 19:14:26.686874"
+    },
+    {
+      "model_id": "d40039b4259e4340aa47dce6fd5b7cfa",
+      "legacy_id": "046",
+      "name_en": "Waterdrop Stand (small)",
+      "created_at": "2026-05-04 19:14:27.061725"
+    },
+    {
+      "model_id": "804dad70d83e4482bf4d3f94eaf6c563",
+      "legacy_id": "047",
+      "name_en": "Waterdrop Stand with Tablet v2",
+      "created_at": "2026-05-04 19:14:27.307128"
+    },
+    {
+      "model_id": "e59866c8b84344f69d934a8b71286724",
+      "legacy_id": "048",
+      "name_en": "Travel Bag Box",
+      "created_at": "2026-05-04 19:14:27.565696"
+    },
+    {
+      "model_id": "ae2db4327b6d44e594b137b77052ebee",
+      "legacy_id": "050",
+      "name_en": "Marshmallow Table",
+      "created_at": "2026-05-04 19:14:28.239376"
+    },
+    {
+      "model_id": "d2f772540bd64c4ca8ca212d2983009e",
+      "legacy_id": "051",
+      "name_en": "Multifunctional Planter BRBP",
+      "created_at": "2026-05-04 19:14:29.150415"
+    },
+    {
+      "model_id": "1becfbfcb2f7476fb91645d158ccd8c7",
+      "legacy_id": "052",
+      "name_en": "Amanita Muscaria Mushroom Lamp",
+      "created_at": "2026-05-04 19:14:36.035465"
+    },
+    {
+      "model_id": "84cbab4830b84121bef107efd287ab07",
+      "legacy_id": "053",
+      "name_en": "Sponge Holder",
+      "created_at": "2026-05-04 19:14:47.347149"
+    },
+    {
+      "model_id": "116a6024e80045f194d9df8b23284318",
+      "legacy_id": "054",
+      "name_en": "Tea Bag Dispenser",
+      "created_at": "2026-05-04 19:14:47.791375"
+    },
+    {
+      "model_id": "241eb7cc18914bbf9174280c95b98d60",
+      "legacy_id": "055",
+      "name_en": "MOSFET HW-700 Case",
+      "created_at": "2026-05-04 19:14:48.836744"
+    },
+    {
+      "model_id": "4f9d280c7d51418c9b29702573456c34",
+      "legacy_id": "058",
+      "name_en": "Chip Bag Clip V7",
+      "created_at": "2026-05-04 19:14:49.308801"
+    },
+    {
+      "model_id": "18e4071bd82a4191bf74f1a21f6db566",
+      "legacy_id": "059",
+      "name_en": "Croc Clip v2",
+      "created_at": "2026-05-04 19:14:49.971705"
+    },
+    {
+      "model_id": "5a2264e1067742baac1893cc19e5059c",
+      "legacy_id": "060",
+      "name_en": "Emergency Stash Keychain",
+      "created_at": "2026-05-04 19:14:50.606233"
+    },
+    {
+      "model_id": "399c0b2cc34342bea0074fe227202360",
+      "legacy_id": "061",
+      "name_en": "SHARKZ Multipurpose Clips",
+      "created_at": "2026-05-04 19:14:51.239626"
+    },
+    {
+      "model_id": "9846ad1594fb40d7adca8bc818caa217",
+      "legacy_id": "062",
+      "name_en": "Squeeze Fan (handheld)",
+      "created_at": "2026-05-04 19:14:53.099786"
+    },
+    {
+      "model_id": "0151c9ddc73942d9982cc0a61670d57c",
+      "legacy_id": "063",
+      "name_en": "Smart Stand for phones and tablets",
+      "created_at": "2026-05-04 19:14:55.980189"
+    },
+    {
+      "model_id": "6bb93c2baa674db681f3f0da7f6f8b42",
+      "legacy_id": "064",
+      "name_en": "Jura Coffee Machine Parts (for Jarek)",
+      "created_at": "2026-05-04 19:15:01.741835"
+    },
+    {
+      "model_id": "018ae11f5b834d9a9cf709e603f07553",
+      "legacy_id": "065",
+      "name_en": "Ben's Better Dropper Post Seat Bag Adapters (for Jarek)",
+      "created_at": "2026-05-04 19:15:01.944987"
+    },
+    {
+      "model_id": "f1e38b4fa7f243da8a6504b95787f963",
+      "legacy_id": "066",
+      "name_en": "Helical Self-Watering Planter",
+      "created_at": "2026-05-04 19:15:03.527252"
+    },
+    {
+      "model_id": "24e9ccaa209f42848a0a524a2d3d18c0",
+      "legacy_id": "067",
+      "name_en": "MultiBin Shell - Topped Rail 3x4x1 LU",
+      "created_at": "2026-05-04 19:15:04.245207"
+    },
+    {
+      "model_id": "292c40d907aa49ac9b9b0d0de12b7ee7",
+      "legacy_id": "068",
+      "name_en": "MultiBin Shell - Topped Rail 3x4x1.5 LU",
+      "created_at": "2026-05-04 19:15:04.937297"
+    },
+    {
+      "model_id": "b6d436379bee4024b409ede981968284",
+      "legacy_id": "069",
+      "name_en": "MultiBin Shell - Topped Rail 3x4x2 LU",
+      "created_at": "2026-05-04 19:15:05.695860"
+    },
+    {
+      "model_id": "af272454886440348ee1e75b6717220d",
+      "legacy_id": "070",
+      "name_en": "Tart Mold Tray vide-poches (Mo-design)",
+      "created_at": "2026-05-04 19:15:06.399339"
+    },
+    {
+      "model_id": "7123e954d1e94a7fb31c3ea925ba87a5",
+      "legacy_id": "071",
+      "name_en": "CTEK Charger Holder (Porsche) (for Jarek)",
+      "created_at": "2026-05-04 19:15:06.863018"
+    },
+    {
+      "model_id": "74e65362ed4240f4ad2dfb37edab0cb8",
+      "legacy_id": "072",
+      "name_en": "Bosch 36V Ebike Battery Connector + DIY 2A Charger",
+      "created_at": "2026-05-04 19:15:07.435511"
+    },
+    {
+      "model_id": "0b097de720bf48f09936eaa67fa77ce7",
+      "legacy_id": "073",
+      "name_en": "XT30 Male Horizontal Mounting Bracket",
+      "created_at": "2026-05-04 19:15:09.863681"
+    },
+    {
+      "model_id": "880a185daf50465bad339561357ee52f",
+      "legacy_id": "074",
+      "name_en": "VW Crafter USB/Switch Mount (for Jarek - MOD 12mm no-recess)",
+      "created_at": "2026-05-04 19:15:10.587454"
+    },
+    {
+      "model_id": "674f236f8d4a41dfbe827e5b42ab2d99",
+      "legacy_id": "075",
+      "name_en": "Creality K1 Max Top-Mounted Filament Spool Holder (for TPU)",
+      "created_at": "2026-05-04 19:15:13.127501"
+    },
+    {
+      "model_id": "61a4724fc3684c02a9ae11c3fecffa25",
+      "legacy_id": "076",
+      "name_en": "Small TPU Door Stop (Bumper, conical)",
+      "created_at": "2026-05-04 19:15:13.520191"
+    },
+    {
+      "model_id": "0e1c0e820e1c4812a1be47e7905337c4",
+      "legacy_id": "077",
+      "name_en": "Cubical Shelf Door Bumper (TPU, profiled)",
+      "created_at": "2026-05-04 19:15:13.892303"
+    },
+    {
+      "model_id": "65ebdde021344b0dbf17f79d3b0d9814",
+      "legacy_id": "078",
+      "name_en": "Articulated Print-in-Place Flexi Squid",
+      "created_at": "2026-05-04 19:15:14.636618"
+    },
+    {
+      "model_id": "21960980b4364b1ea392997ff9c8e0c9",
+      "legacy_id": "079",
+      "name_en": "Flexi Alligator",
+      "created_at": "2026-05-04 19:15:16.069179"
+    },
+    {
+      "model_id": "9e58627aeefc4c79a399900c3d3cc458",
+      "legacy_id": "080",
+      "name_en": "Thick Voronoi Squeeze Ball",
+      "created_at": "2026-05-04 19:15:16.264764"
+    },
+    {
+      "model_id": "74d15947c4674052a2e71bcdc31b2ed6",
+      "legacy_id": "081",
+      "name_en": "TPU Stretchy Bracelet",
+      "created_at": "2026-05-04 19:15:17.530242"
+    },
+    {
+      "model_id": "5e960773615b4864a878ad41b2f9caf2",
+      "legacy_id": "082",
+      "name_en": "Dino-Bite Springless Raptor Clip",
+      "created_at": "2026-05-04 19:15:18.963139"
+    },
+    {
+      "model_id": "37b8e1fe8ca5481b9641199245e8a4d7",
+      "legacy_id": "083",
+      "name_en": "Portable Cable Organizer / Winder",
+      "created_at": "2026-05-04 19:15:19.798626"
+    },
+    {
+      "model_id": "62273c13775249a5bdc012340e3f467c",
+      "legacy_id": "084",
+      "name_en": "Professional Pet Grooming Brush",
+      "created_at": "2026-05-04 19:15:21.507445"
+    },
+    {
+      "model_id": "0e7a8f08ae04416c85891cd529b48407",
+      "legacy_id": "085",
+      "name_en": "K1 Max Glass Corner Bumper (own, parametric, no-lip)",
+      "created_at": "2026-05-04 19:15:22.101735"
+    },
+    {
+      "model_id": "b8b7edfe266b4c50b017278a719d04ca",
+      "legacy_id": "086",
+      "name_en": "K1 Max Raiser 33mm (for ABS, with closeable ventilation)",
+      "created_at": "2026-05-04 19:15:22.355807"
+    },
+    {
+      "model_id": "1db5d311d8e042fc8ef78bc05100b29c",
+      "legacy_id": "087",
+      "name_en": "USB Cable Winder Stackable (classic)",
+      "created_at": "2026-05-04 19:15:23.206894"
+    },
+    {
+      "model_id": "540d9be2d834420685e33e1352e92f83",
+      "legacy_id": "088",
+      "name_en": "Next Gen USB Cable Winder (braided / USB-A / USB-C)",
+      "created_at": "2026-05-04 19:15:25.815557"
+    },
+    {
+      "model_id": "a3ad3e1238f248d8966ec361ea96174f",
+      "legacy_id": "089",
+      "name_en": "Parametric Cable Organizer (FreeCAD, adjustable)",
+      "created_at": "2026-05-04 19:15:27.308002"
+    },
+    {
+      "model_id": "235cf9116cf34e76a988071700dd8a96",
+      "legacy_id": "090",
+      "name_en": "Stackable Cable/Cord Winder with interchangeable caps",
+      "created_at": "2026-05-04 19:15:29.123343"
+    },
+    {
+      "model_id": "1a419f9071554e15ac78a25a4d3d44b5",
+      "legacy_id": "091",
+      "name_en": "Stackable Bottle Drying Rack",
+      "created_at": "2026-05-04 19:15:30.762630"
+    },
+    {
+      "model_id": "7513b0f3b0254ea28b7634981dd254a9",
+      "legacy_id": "092",
+      "name_en": "Window Holder",
+      "created_at": "2026-05-04 19:15:32.905594"
+    }
+  ]
+}

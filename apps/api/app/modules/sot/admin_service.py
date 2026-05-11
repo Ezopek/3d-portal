@@ -134,7 +134,6 @@ def _model_snapshot(m: Model) -> dict:
         "name_en": m.name_en,
         "name_pl": m.name_pl,
         "slug": m.slug,
-        "legacy_id": m.legacy_id,
         "category_id": str(m.category_id),
         "source": str(m.source),
         "status": str(m.status),

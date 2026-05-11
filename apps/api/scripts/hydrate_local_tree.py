@@ -302,13 +302,20 @@ def run_hydrate(
     for model in all_models:
         model_id = model["id"]
         slug = model["slug"]
-        legacy_id = model.get("legacy_id")
         cat_id = model["category_id"]
 
         cat_path = category_paths.get(cat_id, "uncategorized")
 
-        # Folder name: slug + legacy_id suffix (or short uuid)
-        suffix = legacy_id or model_id.replace("-", "")[:8]
+        # Folder name: slug + 8-char short uuid as a stable disambiguator.
+        # Prior to E4.4-followup the legacy_id ("001", "002", ...) was preferred
+        # when present; the column was dropped 2026-05-11 so all models now
+        # use the short-uuid suffix. Existing local trees rendered under the
+        # old scheme retain their pre-rename directory names — re-running
+        # `hydrate_local_tree.py` against the live API after the schema
+        # migration emits the new suffix everywhere; the operator either
+        # accepts the layout change OR runs a one-time bulk-rename pass
+        # against the pre-migration tree before re-hydrating.
+        suffix = model_id.replace("-", "")[:8]
         model_dir_rel = f"{cat_path}/{slug}-{suffix}"
         model_dir = target / model_dir_rel
 

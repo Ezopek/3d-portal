@@ -15,7 +15,6 @@ import type { ModelSummary } from "@/lib/api-types";
 
 const FAKE_MODEL: ModelSummary = {
   id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-  legacy_id: "001",
   slug: "dragon",
   name_en: "Dragon",
   name_pl: "Smok",
@@ -39,7 +38,6 @@ const FAKE_MODEL: ModelSummary = {
 const FAKE_MODEL_2: ModelSummary = {
   ...FAKE_MODEL,
   id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-  legacy_id: "002",
   slug: "vase",
   name_en: "Vase",
   name_pl: "Wazon",

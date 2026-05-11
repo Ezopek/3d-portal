@@ -24,7 +24,6 @@ const ID = "m1";
 function makeDetail(over: Partial<ModelDetail> = {}): ModelDetail {
   return {
     id: ID,
-    legacy_id: null,
     slug: "x",
     name_en: "X",
     name_pl: null,

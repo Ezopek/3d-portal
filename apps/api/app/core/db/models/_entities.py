@@ -79,7 +79,6 @@ class Model(SQLModel, table=True):
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    legacy_id: str | None = Field(default=None, unique=True, index=True)
     slug: str = Field(unique=True, index=True)
     name_en: str
     name_pl: str | None = None

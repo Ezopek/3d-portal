@@ -41,7 +41,6 @@ afterEach(() => {
 function makeDetail(over: Partial<ModelDetail> = {}): ModelDetail {
   return {
     id: "11111111-1111-1111-1111-111111111111",
-    legacy_id: "001",
     slug: "dragon",
     name_en: "Dragon",
     name_pl: "Smok",
