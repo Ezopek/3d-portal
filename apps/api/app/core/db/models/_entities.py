@@ -169,6 +169,17 @@ class ModelExternalLink(SQLModel, table=True):
             "source",
             "external_id",
         ),
+        # TB-008: backs the TB-004 `?external_url=<url>` filter on
+        # GET /api/models. Without this index the subquery is a full
+        # table scan — tolerable for low-thousands of rows, but not
+        # under any bulk-import sweep. Non-unique because a given URL
+        # can appear on multiple sources/models in pathological edge
+        # cases (e.g. two distinct models pointing at the same source URL,
+        # exercised by `test_list_models_external_url_combines_with_other_filters`).
+        Index(
+            "ix_model_external_link_url",
+            "url",
+        ),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
