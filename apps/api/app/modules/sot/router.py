@@ -76,9 +76,12 @@ def get_tags(
         "Returns `ModelListResponse` (paged). Filters: `category_ids` (OR — model in "
         "any listed category), `status`, **`tag_ids` (AND — model has ALL listed tags)**, "
         "`source`, `q` (case-insensitive substring across `name_en` / `name_pl` / `slug`; "
-        "**does NOT search tag names**), `include_deleted` (default false; soft-deleted "
-        "rows are hidden). Sort modes: see `ModelListSort` enum (`recent`, etc.). "
-        "Pagination: `offset` (≥0), `limit` (1-200, default 50). Public, unauthenticated."
+        "**does NOT search tag names**), `external_url` (exact match against any of the "
+        "model's `model_external_link.url` rows — primary use case is agent-runbook "
+        "dedup-by-source-URL pre-flight; typically 0 or 1 result), `include_deleted` "
+        "(default false; soft-deleted rows are hidden). Sort modes: see `ModelListSort` "
+        "enum (`recent`, etc.). Pagination: `offset` (≥0), `limit` (1-200, default 50). "
+        "Public, unauthenticated."
     ),
     response_model=ModelListResponse,
 )
@@ -89,6 +92,7 @@ def get_models(
     tag_ids: Annotated[list[uuid.UUID] | None, Query()] = None,
     source: ModelSource | None = None,
     q: str | None = None,
+    external_url: str | None = None,
     sort: ModelListSort = ModelListSort.recent,
     include_deleted: bool = False,
     offset: int = Query(default=0, ge=0),
@@ -101,6 +105,7 @@ def get_models(
         tag_ids=tag_ids,
         source=source,
         q=q,
+        external_url=external_url,
         sort=sort,
         include_deleted=include_deleted,
         offset=offset,

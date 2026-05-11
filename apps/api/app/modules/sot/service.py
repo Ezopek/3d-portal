@@ -145,6 +145,7 @@ def list_models(
     tag_ids: list[uuid.UUID] | None = None,
     source: ModelSource | None = None,
     q: str | None = None,
+    external_url: str | None = None,
     sort: ModelListSort = ModelListSort.recent,
     include_deleted: bool = False,
     offset: int = 0,
@@ -155,6 +156,10 @@ def list_models(
     - category_ids: OR filter (model is in any of the listed categories).
     - tag_ids: AND filter (model has ALL listed tags).
     - source: exact match.
+    - external_url: exact match against a model's `ModelExternalLink.url`
+      (any source). Primary use case is agent-runbook dedup-by-source-URL
+      pre-flight check (TB-004): hit returns the existing model's UUID,
+      miss returns empty so the agent proceeds with a fresh import.
     - sort: ModelListSort enum; default = recent (created_at desc).
     """
     base = select(Model)
@@ -177,6 +182,16 @@ def list_models(
                 func.lower(Model.name_en).like(like),
                 func.lower(Model.name_pl).like(like),
                 func.lower(Model.slug).like(like),
+            )
+        )
+    if external_url is not None:
+        # TB-004: exact-match join via ModelExternalLink.url. Subquery (not
+        # SQL JOIN) mirrors the tag_ids AND pattern above and keeps the
+        # outer SELECT shape unchanged — same paging/sort/eager-tag/eager-
+        # gallery pipeline applies to the (typically 0-or-1-row) result.
+        base = base.where(
+            Model.id.in_(
+                select(ModelExternalLink.model_id).where(ModelExternalLink.url == external_url)
             )
         )
 

@@ -6,7 +6,7 @@ This runbook teaches an AI agent (Claude, Codex, or any future LLM) how to add a
 
 - **Pull-only ergonomics.** The portal serves discovery and accepts writes; it never pushes. The agent decides cadence — fetch this runbook + OpenAPI on demand, login once per session, reuse the cookie.
 - **REST + cookie session.** All admin/sot calls go over HTTPS to `https://3d.ezop.ddns.net`. Auth is a JWT carried in the `portal_access` cookie set by the login endpoint. There is no long-lived bearer token; do NOT send `Authorization: Bearer ...` headers.
-- **Idempotence.** Re-importing the same source URL must not duplicate models. Pre-flight check #4 (duplicate-check) gates this — query the existing catalog before creating.
+- **Idempotence.** Re-importing the same source URL must not duplicate models. Pre-flight check #4 (duplicate-check) gates this via the `external_url` query parameter on `GET /api/models` — a single call returns the existing model UUID (or empty if not imported).
 - **Layered auto-discovery.** This runbook documents narrative, behavioral rules, and external-API recipes. The portal's own endpoints, request shapes, and status codes live in `/api/openapi.json` — query that, not source code.
 
 ## Auth & Login Flow
@@ -261,7 +261,13 @@ Verify all five items BEFORE the first portal write call. If any item is false, 
    The portal's `category_id` field on the model-create payload requires a valid UUID; you must pick from the existing tree, not invent a slug.
 2. **Model name sanitized.** No Polish diacritics in `name_en`, no leading/trailing whitespace, no file extension. Polish translations belong in `name_pl`.
 3. **At least one STL ready to upload.** After any 3MF conversion (above) or OBJ/STEP conversion (use `trimesh.load(path, force='mesh').export(out, file_type='stl')`), the working directory must contain at least one `.stl` file. Verify case-insensitively (some legacy assets are `.STL`): `find . -maxdepth 1 -type f -iname '*.stl'`.
-4. **Duplicate check via external links.** The source URL is NOT stored on the model row itself — it lives on a separate `ExternalLink` row attached to the model. Query the existing external-links surface (discover the read endpoint via `/api/openapi.json`) for the source URL; if a match exists, abort the import and return the existing model UUID. The model's `source` field is an enum (`printables`, `thangs`, `unknown`, etc.) and does NOT carry the URL.
+4. **Duplicate check via external links.** The source URL is NOT stored on the model row itself — it lives on a separate `ExternalLink` row attached to the model. Use the `external_url` query parameter on `GET /api/models` for a one-shot lookup; a hit returns the existing model row(s), a miss returns `items: []` and `total: 0` so the agent proceeds with a fresh import. The model's `source` field is an enum (`printables`, `thangs`, `unknown`, etc.) and does NOT carry the URL.
+   ```bash
+   curl -s -b /tmp/portal-cookies.txt --get \
+     --data-urlencode "external_url=https://www.printables.com/model/1000" \
+     https://3d.ezop.ddns.net/api/models | jq '{total, ids: [.items[].id]}'
+   ```
+   Typically returns 0 or 1 row. URL-encode the source URL via `--data-urlencode` so `?` `&` `#` characters in the URL don't corrupt the query string.
 5. **No leftover transient files.** No `.3mf`, no `.zip`, no `.7z` in the working directory after extraction + conversion. Only the source files (STL, optional OBJ/STEP keep-original) remain.
 
 ## Endpoint Discovery via OpenAPI

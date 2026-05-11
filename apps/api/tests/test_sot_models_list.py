@@ -403,3 +403,133 @@ def test_list_models_exposes_gallery_hints(client):
     empty = by_id[without_id]
     assert empty["image_count"] == 0
     assert empty["gallery_file_ids"] == []
+
+
+# ---------------------------------------------------------------------------
+# external_url filter (TB-004) — agent-runbook dedup-by-source-URL primitive.
+# ---------------------------------------------------------------------------
+
+
+def test_list_models_external_url_exact_match_returns_owner(client):
+    """`?external_url=<url>` returns the one model that owns a matching link."""
+    from app.core.db.models import ExternalSource, ModelExternalLink
+
+    engine = get_engine()
+    target_url = "https://example.com/dedup/owner"
+    other_url = "https://example.com/dedup/other"
+    with Session(engine) as s:
+        cat = _seed_cat(s, "cat-4-tb-004-owner")
+        owner = _seed_model(s, "model-4-tb-004-owner", category_id=cat.id)
+        decoy = _seed_model(s, "model-4-tb-004-decoy", category_id=cat.id)
+        s.add(ModelExternalLink(model_id=owner.id, source=ExternalSource.other, url=target_url))
+        s.add(ModelExternalLink(model_id=decoy.id, source=ExternalSource.other, url=other_url))
+        s.commit()
+        owner_id = str(owner.id)
+        decoy_id = str(decoy.id)
+
+    r = client.get("/api/models", params={"external_url": target_url})
+    assert r.status_code == 200
+    body = r.json()
+    items = body["items"]
+    ids = {it["id"] for it in items}
+    assert owner_id in ids
+    assert decoy_id not in ids
+    assert body["total"] == 1
+
+
+def test_list_models_external_url_no_match_returns_empty(client):
+    """`?external_url=<url>` returns empty even when other models exist with different URLs."""
+    from app.core.db.models import ExternalSource, ModelExternalLink
+
+    engine = get_engine()
+    seeded_url = "https://example.com/dedup/no-match-seeded"
+    queried_url = "https://example.com/dedup/no-match-queried"
+    with Session(engine) as s:
+        cat = _seed_cat(s, "cat-4-tb-004-no-match")
+        m = _seed_model(s, "model-4-tb-004-no-match", category_id=cat.id)
+        # Seed a control row on a DIFFERENT URL — if the filter silently
+        # ignored its input, queried_url would still match this row's
+        # owner via the default-no-filter path → total>0. Strict 0 here
+        # proves the filter is actually consulted.
+        s.add(ModelExternalLink(model_id=m.id, source=ExternalSource.other, url=seeded_url))
+        s.commit()
+
+    r = client.get("/api/models", params={"external_url": queried_url})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] == 0
+    assert body["items"] == []
+
+
+def test_list_models_external_url_excludes_soft_deleted_owner(client):
+    """A soft-deleted owner is excluded from external_url results by default."""
+    from app.core.db.models import ExternalSource, ModelExternalLink
+
+    engine = get_engine()
+    target_url = "https://example.com/dedup/soft-deleted"
+    with Session(engine) as s:
+        cat = _seed_cat(s, "cat-4-tb-004-sd")
+        owner = _seed_model(s, "model-4-tb-004-sd", category_id=cat.id)
+        s.add(ModelExternalLink(model_id=owner.id, source=ExternalSource.other, url=target_url))
+        s.commit()
+        owner_id = owner.id
+
+    # Soft-delete the owner
+    with Session(engine) as s:
+        m = s.get(Model, owner_id)
+        m.deleted_at = datetime.datetime.now(tz=datetime.UTC)
+        s.add(m)
+        s.commit()
+
+    r = client.get("/api/models", params={"external_url": target_url})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] == 0
+
+    # But include_deleted=true does surface it
+    r2 = client.get("/api/models", params={"external_url": target_url, "include_deleted": "true"})
+    assert r2.status_code == 200
+    body2 = r2.json()
+    assert body2["total"] == 1
+    assert body2["items"][0]["id"] == str(owner_id)
+
+
+def test_list_models_external_url_combines_with_other_filters(client):
+    """`external_url` AND-combines with `status` like other filters."""
+    from app.core.db.models import ExternalSource, ModelExternalLink
+
+    engine = get_engine()
+    target_url = "https://example.com/dedup/combine"
+    other_url = "https://example.com/dedup/combine-control"
+    with Session(engine) as s:
+        cat = _seed_cat(s, "cat-4-tb-004-combine")
+        # Two models share the target_url with different print-status.
+        m_printed = _seed_model(
+            s, "model-4-tb-004-printed", category_id=cat.id, status=ModelStatus.printed
+        )
+        m_unprinted = _seed_model(
+            s, "model-4-tb-004-unprinted", category_id=cat.id, status=ModelStatus.not_printed
+        )
+        # Control: status=printed but a DIFFERENT external_url — would leak
+        # through if external_url were silently ignored.
+        m_control = _seed_model(
+            s, "model-4-tb-004-printed-control", category_id=cat.id, status=ModelStatus.printed
+        )
+        s.add(ModelExternalLink(model_id=m_printed.id, source=ExternalSource.other, url=target_url))
+        s.add(
+            ModelExternalLink(model_id=m_unprinted.id, source=ExternalSource.other, url=target_url)
+        )
+        s.add(ModelExternalLink(model_id=m_control.id, source=ExternalSource.other, url=other_url))
+        s.commit()
+        printed_id = str(m_printed.id)
+        unprinted_id = str(m_unprinted.id)
+        control_id = str(m_control.id)
+
+    r = client.get("/api/models", params={"external_url": target_url, "status": "printed"})
+    assert r.status_code == 200
+    body = r.json()
+    ids = {it["id"] for it in body["items"]}
+    assert ids == {printed_id}, f"expected only {printed_id}, got {ids}"
+    assert unprinted_id not in ids
+    assert control_id not in ids
+    assert body["total"] == 1
