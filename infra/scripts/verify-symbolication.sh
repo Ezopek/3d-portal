@@ -246,7 +246,7 @@ emit_alarm() {
   event_id=$(uuidgen | tr -d -)
   unix_ts=$(date +%s)
   iso_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  envelope_file=/tmp/gt-envelope.json
+  envelope_file="$tmp_dir/envelope.json"
   {
     printf '{"event_id":"%s","sent_at":"%s"}\n' "$event_id" "$iso_now"
     printf '{"type":"event"}\n'
@@ -263,7 +263,7 @@ emit_alarm() {
         tags:{"deploy.verification":"failed","smoke.run_id":$rid,"service.version":$rel,"deployment.environment":"production"},
         extra:{exit_code:$exit, expected_top_frame_regex:"^apps/web/src/.+\\.tsx?$", actual_top_frame:$actual}}'
   } > "$envelope_file"
-  if ! http_code=$(curl -sS --max-time 5 -o /tmp/gt-envelope-response.json -w '%{http_code}' \
+  if ! http_code=$(curl -sS --max-time 5 -o "$tmp_dir/envelope-response.json" -w '%{http_code}' \
       -X POST \
       -H "Content-Type: application/x-sentry-envelope" \
       -H "X-Sentry-Auth: Sentry sentry_version=7, sentry_key=${dsn_key}, sentry_client=verify-symbolication.sh/1.0" \
@@ -283,7 +283,10 @@ emit_alarm() {
 # the (best-effort) release tag, the actual top frame (if known), and a
 # stderr message describing the failure mode.
 fail_verify() {
-  local code="$1" rel="${2:-unknown}" frame="${3:-}" msg="$4"
+  # All four args have defaults so an under-argumented caller hits a
+  # cleanly-empty failure-reason line rather than an `unbound variable`
+  # abort under `set -u` (TB-007 review P1#3).
+  local code="$1" rel="${2:-unknown}" frame="${3:-}" msg="${4:-}"
   write_last_verify "FAILED" "$rel"
   printf '\033[31m✗ verify FAILED: %s\033[0m\n' "$msg" >&2
   case "$code" in
@@ -310,14 +313,18 @@ cleanup_smoke_issue() {
   fi
   # Title-guard against DELETEing a wrong issue. The poll loop captures
   # $issue_id from `?query=smoke.run_id:${smoke_run_id}&statsPeriod=5m`
-  # which is not a guaranteed exact-tag match (GlitchTip query is a
-  # text-match expression — collisions are vanishingly unlikely with a
-  # full UUID, but two near-simultaneous verify runs sharing the 5m
-  # window could in theory swap each other's `.[0]`). One extra GET +
-  # title equality check before the destructive call eliminates that
-  # path entirely. Title is set deterministically by the smoke handler
-  # in apps/web/src/main.tsx as "Error: smoke <uuid>".
-  meta_out=/tmp/gt-smoke-meta.json
+  # which is a GlitchTip text-match expression, not exact-tag equality —
+  # if the index returns the wrong `.[0]` we'd otherwise DELETE somebody
+  # else's issue. One extra GET + title equality check before the
+  # destructive call eliminates that path entirely. Title is set
+  # deterministically by the smoke handler in apps/web/src/main.tsx as
+  # "Error: smoke <uuid>".
+  #
+  # Note: TB-007 (mktemp tmpdir) already eliminates the *shared-file*
+  # variant of the race (two runs reading each other's `/tmp/gt-issues.
+  # json`); this title-guard remains as defence-in-depth against the
+  # query-engine returning a wrong `.[0]` purely from server-side state.
+  meta_out="$tmp_dir/smoke-meta.json"
   if ! http_code=$(curl -sS --max-time 5 -o "$meta_out" -w '%{http_code}' \
       -H "Authorization: Bearer $GLITCHTIP_AUTH_TOKEN" \
       "${GLITCHTIP_URL}/api/0/issues/${id}/"); then
@@ -359,12 +366,21 @@ cleanup_smoke_issue() {
 # AR13 GlitchTip REST GET — case-statement maps HTTP code to FR12 exit code.
 # Network/DNS failures hit the `if !`-branch (curl exits non-zero before
 # emitting %{http_code}); REST 5xx returns a `5xx` http_code with the body
-# in $out. stderr: errors via fail_verify; stdout: nothing on success.
+# in $out_file. stderr: errors via fail_verify; stdout: nothing on success.
+#
+# `out_file` MUST live inside `$tmp_dir` (TB-007 invariant): the per-run
+# tmpdir is the only safe write target under concurrent verify invocations.
+# Guard rather than trust the caller, since this helper is generic enough
+# that a future caller could inadvertently break the isolation.
 gt_get() {
-  local url="$1" out="$2"
+  local url="$1" out_file="$2"
+  if [[ "$out_file" != "$tmp_dir/"* ]]; then
+    echo "✗ gt_get: out_file '$out_file' not inside tmp_dir '$tmp_dir' (TB-007 invariant)" >&2
+    exit 1
+  fi
   local http_code max_time
   max_time=$(budget_left 10)
-  if ! http_code=$(curl -sS --max-time "$max_time" -o "$out" -w '%{http_code}' \
+  if ! http_code=$(curl -sS --max-time "$max_time" -o "$out_file" -w '%{http_code}' \
       -H "Authorization: Bearer $GLITCHTIP_AUTH_TOKEN" "$url"); then
     fail_verify 2 "" "" "GlitchTip unreachable (network error)"
   fi
@@ -380,6 +396,21 @@ gt_get() {
 echo "→ Triggering smoke event: smoke.run_id=$smoke_run_id"
 smoke_url="${PORTAL_PUBLIC_URL%/}/?__sentry_smoke=${smoke_run_id}"
 
+# Per-run tmpdirs (TB-007): previously the script wrote to hardcoded
+# `/tmp/gt-*.json` paths for poll output, event details, smoke-meta, and
+# alarm envelopes. Concurrent verify invocations (e.g. operator + CI both
+# triggered in the same minute) would interleave reads and writes on the
+# same files — `issue_id` could end up referring to the other run's poll
+# result, propagating downstream into the title-guarded DELETE (TB-001)
+# and the regex assertion. Move all transient state into a per-run
+# `mktemp -d` directory; single EXIT trap cleans both this and Chrome's
+# state dir. Set up BEFORE the smoke trigger preflight so any fail_verify
+# path (which may invoke emit_alarm's envelope-file writes) has tmp_dir
+# already resolved.
+tmp_dir="$(mktemp -d -t verify-gt-XXXXXX)"
+chrome_user_dir="$(mktemp -d -t verify-chrome-XXXXXX)"
+trap 'rm -rf "$tmp_dir" "$chrome_user_dir"' EXIT
+
 # Precheck: production page must be reachable. curl can't fire the smoke
 # (no JS execution), but a 200 here means the SPA shell is up before we
 # spin chrome.
@@ -391,8 +422,6 @@ fi
 # and Sentry.flush(2000) drains the transport queue. virtual-time-budget
 # advances JS timers so the flush completes; timeout caps wallclock so a
 # hung browser never eats the full 30s budget.
-chrome_user_dir="$(mktemp -d -t verify-chrome-XXXXXX)"
-trap 'rm -rf "$chrome_user_dir"' EXIT
 timeout "$(budget_left 8)" "$HEADLESS_BROWSER" \
   --headless=new --disable-gpu --no-sandbox \
   --user-data-dir="$chrome_user_dir" \
@@ -406,8 +435,8 @@ issues_url="${GLITCHTIP_URL}/api/0/projects/${GLITCHTIP_ORG_SLUG}/${GLITCHTIP_PR
 # --- Poll loop --------------------------------------------------------------
 issue_id=""
 while [[ $(date +%s) -lt $deadline ]]; do
-  gt_get "$issues_url" /tmp/gt-issues.json
-  issue_id=$(jq -r '.[0].id // empty' < /tmp/gt-issues.json)
+  gt_get "$issues_url" "$tmp_dir/issues.json"
+  issue_id=$(jq -r '.[0].id // empty' < "$tmp_dir/issues.json")
   [[ -n "$issue_id" ]] && break
   # Clamp the poll cadence to the remaining budget so the last sleep can't
   # blow the deadline.
@@ -422,14 +451,14 @@ echo "→ Matched issue id=$issue_id; fetching latest event"
 
 # --- Fetch latest event + extract top frame --------------------------------
 event_url="${GLITCHTIP_URL}/api/0/issues/${issue_id}/events/latest/"
-gt_get "$event_url" /tmp/gt-event.json
+gt_get "$event_url" "$tmp_dir/event.json"
 
 top_frame=$(jq -r \
   '.entries[]? | select(.type=="exception") | .data.values[0].stacktrace.frames[-1].filename // empty' \
-  < /tmp/gt-event.json | head -n1)
+  < "$tmp_dir/event.json" | head -n1)
 # GlitchTip surfaces the SDK's `release` field as a tag, not as a top-level
 # event field. Read from .tags[] for compatibility with the 6.1.x API.
-release=$(jq -r '.tags[]? | select(.key=="release") | .value // empty' < /tmp/gt-event.json | head -n1)
+release=$(jq -r '.tags[]? | select(.key=="release") | .value // empty' < "$tmp_dir/event.json" | head -n1)
 if [[ -z "$release" ]]; then
   echo "⚠ event missing release tag — falling back to 'unknown'" >&2
   release="unknown"
