@@ -13,19 +13,31 @@ This runbook teaches an AI agent (Claude, Codex, or any future LLM) how to add a
 
 ### Service account & credentials
 
-The agent service account is a regular `User` row with `role=agent`, provisioned once on `.190` via `python -m scripts.bootstrap_agent --email agent@portal.local`. Credentials are a **password** (NOT a long-lived bearer token), stored on the agent host at `~/.config/3d-portal/agent.password`, mode `600`, owner `ezop`.
+The agent service account is a regular `User` row with `role=agent`, provisioned on `.190` via `python -m scripts.bootstrap_agent --email <agent-email>` (the operator picks the email at first bootstrap). Credentials live on the agent host at `~/.config/3d-portal/agent.token`, mode `600`, owner `ezop`. The file is a JSON credential bundle (NOT a long-lived bearer token):
+
+```json
+{
+  "email":         "<agent-email>",
+  "password":      "<32-char password printed once by bootstrap_agent>",
+  "access_token":  "<cached JWT — optional fast-path; may be empty/expired>",
+  "expires_at":    "<ISO timestamp for access_token>"
+}
+```
+
+The `password` is the source of truth — used for fresh login. The `access_token` + `expires_at` pair is an optional cache that lets long-running agents skip the login round-trip if the JWT is still valid; you can ignore both for the simple flow below and just login every session.
 
 ### Login (one-time per session)
 
-Read the password inline and POST it to the login endpoint, capturing cookies into a jar:
+Extract email + password from the JSON file and POST them to the login endpoint, capturing cookies into a jar:
 
 ```bash
-pw=$(cat ~/.config/3d-portal/agent.password)
+em=$(jq -r .email ~/.config/3d-portal/agent.token)
+pw=$(jq -r .password ~/.config/3d-portal/agent.token)
 curl -s -c /tmp/portal-cookies.txt \
   -X POST \
   -H 'X-Portal-Client: web' \
   -H 'Content-Type: application/json' \
-  -d '{"email":"agent@portal.local","password":"'"$pw"'"}' \
+  -d "{\"email\":\"$em\",\"password\":\"$pw\"}" \
   https://3d.ezop.ddns.net/api/auth/login
 ```
 
@@ -72,19 +84,31 @@ For batch / cron-style agents, the simpler model is to relogin once per run rath
 When the password leaks or is suspected compromised, rotate on `.190`:
 
 ```bash
-python -m scripts.bootstrap_agent --email agent@portal.local --rotate
+em=$(jq -r .email ~/.config/3d-portal/agent.token)
+python -m scripts.bootstrap_agent --email "$em" --rotate
 ```
 
-The script prints the new password to stdout exactly once. Capture it and replace the file content on every host where the agent runs (`chmod 600` preserved). No service restart needed.
+The script prints the new password to stdout exactly once. Update the JSON file on every host where the agent runs (`chmod 600` preserved). Convenience one-liner:
 
-**Rotation alone is NOT sufficient against a captured cookie.** `--rotate` changes the password hash only; any `portal_refresh` cookie an attacker captured before rotation can still mint new access cookies for the rest of its ~30-day TTL. After every credential compromise, the operator must ALSO revoke all active refresh families for the agent user. The simplest path: relogin with the new password (which gives you a fresh cookie jar), then call the logout-all endpoint to revoke every OTHER family for the same user:
+```bash
+new_pw="<paste-from-bootstrap-stdout>"
+jq --arg p "$new_pw" '.password = $p | .access_token = "" | .expires_at = ""' \
+  ~/.config/3d-portal/agent.token > ~/.config/3d-portal/agent.token.new \
+  && mv ~/.config/3d-portal/agent.token.new ~/.config/3d-portal/agent.token \
+  && chmod 600 ~/.config/3d-portal/agent.token
+```
+
+(The `access_token = ""` + `expires_at = ""` reset clears the cached JWT so the next call performs a fresh login.) No service restart needed.
+
+**Rotation alone is NOT sufficient against a captured cookie.** `--rotate` changes the password hash only; any `portal_refresh` cookie an attacker captured before rotation can still mint new access cookies for the rest of its ~30-day TTL. After every credential compromise, the operator must ALSO revoke all active refresh families for the agent user. The simplest path: relogin with the new password (which gives you a fresh cookie jar), then call the logout-others endpoint to revoke every OTHER family for the same user:
 
 ```bash
 # 1) Relogin with the new password (overwrites the cookie jar with a fresh access+refresh pair)
-pw=$(cat ~/.config/3d-portal/agent.password)
+em=$(jq -r .email ~/.config/3d-portal/agent.token)
+pw=$(jq -r .password ~/.config/3d-portal/agent.token)
 curl -s -c /tmp/portal-cookies.txt \
   -X POST -H 'X-Portal-Client: web' -H 'Content-Type: application/json' \
-  -d '{"email":"agent@portal.local","password":"'"$pw"'"}' \
+  -d "{\"email\":\"$em\",\"password\":\"$pw\"}" \
   https://3d.ezop.ddns.net/api/auth/login
 
 # 2) Revoke every OTHER refresh family for this user (keeps the just-logged-in session)
@@ -96,9 +120,9 @@ curl -s -b /tmp/portal-cookies.txt -X POST -H 'X-Portal-Client: web' \
 
 ### Don't-do list
 
-- Never `export PASSWORD=$(cat ...)` — persists in shell history. Use inline `$(cat ...)` directly inside the JSON body.
-- Never send `Authorization: Bearer <anything>` to admin or sot routes — they read the principal from the `portal_access` cookie, not from the header. Bearer headers are silently ignored, so the call falls back to "no auth" and 401s with `missing_access`.
-- Never write the password or the cookie jar contents to a tracked path (`docs/`, `_bmad-output/`, anywhere in a git working tree). Cookie jars belong under `/tmp/` or `~/.cache/`, never committed.
+- Never `export PASSWORD=$(jq -r .password ...)` — persists in shell history. Use inline `$(jq -r .password ...)` directly inside the JSON body of the login request.
+- Never send `Authorization: Bearer <anything>` to admin or sot routes — they read the principal from the `portal_access` cookie, not from the header. Bearer headers are silently ignored, so the call falls back to "no auth" and 401s with `missing_access`. The `access_token` field in `agent.token` is for OPTIONAL agent-side caching of the JWT — it's NOT meant to be sent as a Bearer header to this API.
+- Never write the password or the cookie jar contents to a tracked path (`docs/`, `_bmad-output/`, anywhere in a git working tree). Cookie jars belong under `/tmp/` or `~/.cache/`, never committed. The `agent.token` JSON file itself stays at `~/.config/3d-portal/` (mode 600) — never copy it.
 - Never mutate without `X-Portal-Client: web` — the CSRF middleware rejects unmarked writes with 403.
 - Never re-use an old refresh cookie thinking it's a backup. Refresh-token reuse triggers family invalidation; you'll lose all sessions for the agent user and have to rotate.
 
@@ -178,21 +202,21 @@ Response shape:
 
 ### Worked example
 
-For Printables model `661995` (Stanford Bunny — a long-lived public model that is safe to pin as an example):
+For Printables model `1000` (Prusa MK3 LED Lamp by Prusa — a long-lived public model uploaded ~2018 with three small STLs, safe to pin as a stable example):
 
 ```bash
 # 1) List files
 curl -s -X POST -H 'Content-Type: application/json' \
-  -d '{"query":"{ print(id: \"661995\") { stls { id name fileSize } } }"}' \
+  -d '{"query":"{ print(id: 1000) { stls { id name fileSize } } }"}' \
   https://api.printables.com/graphql/
 
-# 2) Get download link for one of the returned STL ids
+# 2) Get download link for one of the returned STL ids (e.g. id 3613, ledtray.stl, ~2 KB)
 curl -s -X POST -H 'Content-Type: application/json' \
-  -d '{"query":"mutation { getDownloadLink(id: \"<STL_ID>\", printId: \"661995\", fileType: stl, source: model_detail) { ok output { link } } }"}' \
+  -d '{"query":"mutation { getDownloadLink(id: 3613, printId: 1000, fileType: stl, source: model_detail) { ok output { link } } }"}' \
   https://api.printables.com/graphql/
 ```
 
-Replace `<STL_ID>` with the value from step 1's response.
+The `id` and `printId` arguments accept GraphQL Int (no quotes); the runbook examples use bare integers. If a future Printables API change returns a `data.errors` array on this shape, surface the error payload to the operator rather than guessing a new shape — Story 4.5 smoke-test (2026-05-11) verified the integer form works against print 1000.
 
 ### Fetch the file
 
@@ -278,7 +302,7 @@ These are behaviors the OpenAPI surface cannot fully express — they affect how
 
 ## Putting It Together — Worked Flow
 
-For a Printables URL `https://www.printables.com/model/661995-stanford-bunny`:
+For a Printables URL `https://www.printables.com/model/1000-prusa-mk3-led-lamp`:
 
 1. **Login once.** Run the login `curl` from § "Auth & Login Flow → Login".
 2. **Source detection.** Host is `printables.com` → GraphQL recipe.
