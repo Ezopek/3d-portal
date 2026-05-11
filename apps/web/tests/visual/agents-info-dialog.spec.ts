@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { stubSotList } from "./api-stubs";
 import { waitForReady } from "./helpers";
 import type { Page, Route } from "@playwright/test";
 
@@ -18,9 +19,20 @@ async function stubAdminAuth(page: Page) {
   );
 }
 
+// Catalog/SoT endpoints fire on `/` (which redirects through to the catalog
+// route). Without stubs the visual test would either time out on networkidle
+// or — if a real backend is reachable — fetch live data and violate the
+// no-real-network contract (project-context.md). The dialog/menu screenshots
+// are scoped to the popup/dialog locator so the catalog payload itself does
+// not affect baselines; the stub is purely about determinism.
+async function stubVisualEnvironment(page: Page) {
+  await stubAdminAuth(page);
+  await stubSotList(page);
+}
+
 test.describe("UserMenu — TB-006 admin agents entry", () => {
   test("user menu open with 'For agents' item visible", async ({ page }) => {
-    await stubAdminAuth(page);
+    await stubVisualEnvironment(page);
     await page.goto("/");
     await page.waitForSelector("text=Ezop", { state: "visible" });
     await waitForReady(page);
@@ -33,7 +45,7 @@ test.describe("UserMenu — TB-006 admin agents entry", () => {
   });
 
   test("agents dialog renders with three copy blocks + two external links", async ({ page }) => {
-    await stubAdminAuth(page);
+    await stubVisualEnvironment(page);
     await page.goto("/");
     await page.waitForSelector("text=Ezop", { state: "visible" });
     await waitForReady(page);
