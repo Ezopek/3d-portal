@@ -133,8 +133,11 @@ dsn_key=$(sed -E 's|.*//([^@]+)@.*|\1|' <<<"$VITE_SENTRY_DSN")
 project_id=$(sed -E 's|.*/||' <<<"$VITE_SENTRY_DSN")
 envelope_url="${GLITCHTIP_URL}/api/${project_id}/envelope/"
 
-# 30s wall-clock deadline — applies from script start, not just the poll
-# loop. NFR-P3 codifies this as an SLO consumed by Story 3.2's deploy chain.
+# 30s wall-clock deadline — applies from script start to the OK/FAILED
+# tripwire write, not to total script runtime. NFR-P3 codifies this as an
+# SLO consumed by Story 3.2's deploy chain. Best-effort smoke cleanup
+# (TB-001) runs AFTER the deadline is irrelevant (verify status is
+# already settled) and is bounded only by its own `--max-time` caps.
 deadline=$(( $(date +%s) + 30 ))
 smoke_run_id="$(uuidgen)"
 
@@ -257,7 +260,14 @@ cleanup_smoke_issue() {
     404) echo "→ smoke issue id=$id already gone (404 on meta GET)"; return 0 ;;
     *)   echo "⚠ smoke cleanup: meta GET returned $http_code (issue id=$id retained)" >&2; return 0 ;;
   esac
-  title=$(jq -r '.title // empty' < "$meta_out")
+  # Defensive parse — an empty or malformed body on a 20x response would
+  # propagate jq's non-zero exit under `set -e` and abort the script even
+  # though verify status is already OK. Treat any parse failure as a
+  # cleanup warning and return 0 (non-fatal contract).
+  if ! title=$(jq -r '.title // empty' < "$meta_out" 2>/dev/null); then
+    echo "⚠ smoke cleanup: meta body parse failed (issue id=$id retained)" >&2
+    return 0
+  fi
   if [[ "$title" != "Error: smoke ${smoke_run_id}" ]]; then
     echo "⚠ smoke cleanup: issue id=$id title mismatch ('${title}' != 'Error: smoke ${smoke_run_id}'); skipping DELETE" >&2
     return 0
