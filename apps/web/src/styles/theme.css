@@ -24,10 +24,17 @@
   --color-warning: hsl(38 92% 50%);
   --color-destructive: hsl(0 84% 60%);
   --color-chip-foreground: hsl(215 25% 35%);
-  --color-viewer-mesh-paint: hsl(220 9% 60%);
-  --color-viewer-mesh-edge: hsl(220 14% 28%);
-  --color-viewer-grid: hsl(220 14% 80%);
-  --color-viewer-measure: hsl(217 91% 60%);
+  /* Viewer3D tokens use legacy comma-separated HSL because three.js Color
+     constructor (r0.171) does not parse the modern space-separated CSS Color
+     Module 4 syntax (`hsl(H S% L%)`) — it falls back to white. Browsers handle
+     both syntaxes fine, so consumers via `bg-*`/`text-*` Tailwind classes are
+     unaffected; the comma form keeps three.js consumers (readMeshTokens.ts)
+     working. Don't switch back to space-separated without first verifying
+     three.js parses it (see TB-012 root cause). */
+  --color-viewer-mesh-paint: hsl(220, 9%, 60%);
+  --color-viewer-mesh-edge: hsl(220, 14%, 28%);
+  --color-viewer-grid: hsl(220, 14%, 80%);
+  --color-viewer-measure: hsl(217, 91%, 60%);
 
   --radius-sm: 0.25rem;
   --radius-md: 0.5rem;
@@ -53,10 +60,10 @@
   --color-input: hsl(217 33% 20%);
   --color-ring: hsl(217 91% 60%);
   --color-chip-foreground: hsl(215 25% 75%);
-  --color-viewer-mesh-paint: hsl(220 9% 65%);
-  --color-viewer-mesh-edge: hsl(220 14% 18%);
-  --color-viewer-grid: hsl(220 14% 22%);
-  --color-viewer-measure: hsl(217 91% 65%);
+  --color-viewer-mesh-paint: hsl(220, 9%, 65%);
+  --color-viewer-mesh-edge: hsl(220, 14%, 18%);
+  --color-viewer-grid: hsl(220, 14%, 22%);
+  --color-viewer-measure: hsl(217, 91%, 65%);
 }
 
 @layer base {

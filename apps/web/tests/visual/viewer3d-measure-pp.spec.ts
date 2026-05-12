@@ -27,9 +27,14 @@ test.describe("viewer3d — point-to-point measurement", () => {
     await page.getByRole("button", { name: /expand|powiększ/i }).click();
     await page.getByRole("dialog").waitFor({ state: "visible" });
 
+    // Locale-dependent: post-refactor toolbar exposes 4 mode buttons (p2p,
+    // p2pl, pl2pl, diameter — deprecated `viewer3d.tooltip.measure` removed).
+    // p2p is the point-to-point mode; PL label "Pomiar punkt-do-punktu"
+    // (`viewer3d.measure.mode.p2p`). Anchored regex disambiguates from the
+    // 3 sibling modes that all begin with "Pomiar".
     const ruler = page
       .getByRole("dialog")
-      .getByRole("button", { name: /pomiar|measure/i });
+      .getByRole("button", { name: /^pomiar punkt-do-punktu$/i });
     await ruler.click();
     await expect(ruler).toHaveAttribute("aria-pressed", "true");
     await page.waitForTimeout(300);
@@ -46,8 +51,13 @@ test.describe("viewer3d — point-to-point measurement", () => {
     });
     await page.waitForTimeout(500);
 
+    // Layout was refactored in 34125a4 (MeasureSummary swatches): the row
+    // is now two adjacent spans `#1` and `5.2 mm` (no em-dash separator).
+    // Assert via the in-canvas floating label which carries the full
+    // composite text (e.g. "#1 4.8 mm" or "#1 4.8 mm (przybliżone)") —
+    // unique enough to disambiguate from the summary's bare "#1" span.
     await expect(
-      page.locator("[role=dialog]").getByText(/#1\s*[—-]\s*\d+\.\d\s*mm/i),
+      page.locator("[role=dialog]").getByText(/^#1\s+\d+\.\d\s*mm/i),
     ).toBeVisible();
 
     await expect(page).toHaveScreenshot("viewer3d-measure-pp.png", {

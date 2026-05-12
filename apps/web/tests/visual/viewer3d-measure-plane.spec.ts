@@ -31,7 +31,7 @@ test.describe("viewer3d — plane-aware measurement", () => {
   test("p2pl mode button highlights when active", async ({ page }) => {
     const btn = page
       .getByRole("dialog")
-      .getByRole("button", { name: /point.to.plane|p2pl/i });
+      .getByRole("button", { name: /punkt-do-płaszczyzny/i });
     await btn.click();
     await expect(btn).toHaveAttribute("aria-pressed", "true");
     await expect(page).toHaveScreenshot("viewer3d-mode-buttons-p2pl.png", {
@@ -42,7 +42,7 @@ test.describe("viewer3d — plane-aware measurement", () => {
   test("clicking a cube face shows cluster overlay + step banner", async ({ page }) => {
     const btn = page
       .getByRole("dialog")
-      .getByRole("button", { name: /point.to.plane|p2pl/i });
+      .getByRole("button", { name: /punkt-do-płaszczyzny/i });
     await btn.click();
     const canvas = page.locator("[role=dialog] canvas").first();
     const box = await canvas.boundingBox();
@@ -59,7 +59,7 @@ test.describe("viewer3d — plane-aware measurement", () => {
   test("tolerance popover opens", async ({ page }) => {
     await page
       .getByRole("dialog")
-      .getByRole("button", { name: /point.to.plane|p2pl/i })
+      .getByRole("button", { name: /punkt-do-płaszczyzny/i })
       .click();
     const toleranceBtn = page
       .getByRole("dialog")

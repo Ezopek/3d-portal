@@ -31,12 +31,12 @@ function hasSel2(m: Measurement): boolean {
 
 export function MeasureSummary({ measurements, onClear, onDelete }: Props) {
   const { t } = useTranslation();
+  // Render nothing when empty: the floating wrapper is positioned at top-left
+  // of the dialog where it would overlap the file-selector dropdown's search
+  // field. The active-mode step banner already supplies the "click N points"
+  // hint when the user has actually entered measurement mode (TB-012 fix).
   if (measurements.length === 0) {
-    return (
-      <p className="px-2 py-1 text-xs text-muted-foreground">
-        {t("viewer3d.measure.summary.empty")}
-      </p>
-    );
+    return null;
   }
   return (
     <div className="rounded-md border border-border bg-card/85 backdrop-blur-md text-xs">
