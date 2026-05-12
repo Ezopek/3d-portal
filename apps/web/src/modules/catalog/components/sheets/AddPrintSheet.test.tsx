@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PrintRead } from "@/lib/api-types";
+import "@/locales/i18n";
 
 import { AddPrintSheet } from "./AddPrintSheet";
 

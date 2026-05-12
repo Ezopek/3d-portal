@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import type { NoteKind, NoteRead } from "@/lib/api-types";
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export function AddNoteSheet({ modelId, note, open, onOpenChange }: Props) {
+  const { t } = useTranslation();
   const [kind, setKind] = useState<NoteKind>(
     (note?.kind === "description" ? "operational" : note?.kind) ?? "operational",
   );
@@ -38,7 +40,7 @@ export function AddNoteSheet({ modelId, note, open, onOpenChange }: Props) {
         { model_id: modelId, kind, body },
         {
           onSuccess: () => {
-            toast.success("Note added");
+            toast.success(t("catalog.notes.added"));
             onOpenChange(false);
           },
           onError: (e) => toast.error(e.message),
@@ -49,7 +51,7 @@ export function AddNoteSheet({ modelId, note, open, onOpenChange }: Props) {
         { kind, body },
         {
           onSuccess: () => {
-            toast.success("Note updated");
+            toast.success(t("catalog.notes.updated"));
             onOpenChange(false);
           },
           onError: (e) => toast.error(e.message),
@@ -63,11 +65,13 @@ export function AddNoteSheet({ modelId, note, open, onOpenChange }: Props) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-md">
         <SheetHeader>
-          <SheetTitle>{note === null ? "Add note" : "Edit note"}</SheetTitle>
+          <SheetTitle>
+            {note === null ? t("catalog.notes.add") : t("catalog.notes.edit")}
+          </SheetTitle>
         </SheetHeader>
         <div className="mt-4 space-y-3 px-4">
           <label className="block text-sm">
-            Kind
+            {t("catalog.notes.kind")}
             <Select value={kind} onValueChange={(v) => setKind(v as NoteKind)}>
               <SelectTrigger className="mt-1">
                 <SelectValue />
@@ -75,14 +79,14 @@ export function AddNoteSheet({ modelId, note, open, onOpenChange }: Props) {
               <SelectContent>
                 {KINDS.map((k) => (
                   <SelectItem key={k} value={k}>
-                    {k}
+                    {t(`catalog.notes.kinds.${k}`)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </label>
           <label className="block text-sm">
-            Body
+            {t("catalog.notes.body")}
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
@@ -93,10 +97,10 @@ export function AddNoteSheet({ modelId, note, open, onOpenChange }: Props) {
         </div>
         <SheetFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button onClick={save} disabled={pending}>
-            Save
+            {t("common.save")}
           </Button>
         </SheetFooter>
       </SheetContent>

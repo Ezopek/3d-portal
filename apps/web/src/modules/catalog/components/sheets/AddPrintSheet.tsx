@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import type { PrintRead } from "@/lib/api-types";
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export function AddPrintSheet({ modelId, print, open, onOpenChange }: Props) {
+  const { t } = useTranslation();
   const [date, setDate] = useState(print?.printed_at ?? "");
   const [note, setNote] = useState(print?.note ?? "");
   const create = useCreatePrint(modelId);
@@ -38,7 +40,7 @@ export function AddPrintSheet({ modelId, print, open, onOpenChange }: Props) {
         { model_id: modelId, ...payload },
         {
           onSuccess: () => {
-            toast.success("Print added");
+            toast.success(t("catalog.prints.added"));
             onOpenChange(false);
           },
           onError: (e) => toast.error(e.message),
@@ -47,7 +49,7 @@ export function AddPrintSheet({ modelId, print, open, onOpenChange }: Props) {
     } else {
       update.mutate(payload, {
         onSuccess: () => {
-          toast.success("Print updated");
+          toast.success(t("catalog.prints.updated"));
           onOpenChange(false);
         },
         onError: (e) => toast.error(e.message),
@@ -60,11 +62,13 @@ export function AddPrintSheet({ modelId, print, open, onOpenChange }: Props) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-md">
         <SheetHeader>
-          <SheetTitle>{print === null ? "Add print" : "Edit print"}</SheetTitle>
+          <SheetTitle>
+            {print === null ? t("catalog.prints.add") : t("catalog.prints.edit")}
+          </SheetTitle>
         </SheetHeader>
         <div className="mt-4 space-y-3 px-4">
           <label className="block text-sm">
-            Date
+            {t("catalog.prints.date")}
             <Input
               type="date"
               value={date}
@@ -73,7 +77,7 @@ export function AddPrintSheet({ modelId, print, open, onOpenChange }: Props) {
             />
           </label>
           <label className="block text-sm">
-            Note
+            {t("catalog.prints.note")}
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -84,10 +88,10 @@ export function AddPrintSheet({ modelId, print, open, onOpenChange }: Props) {
         </div>
         <SheetFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button onClick={save} disabled={pending}>
-            Save
+            {t("common.save")}
           </Button>
         </SheetFooter>
       </SheetContent>

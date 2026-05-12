@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { NoteRead } from "@/lib/api-types";
+import "@/locales/i18n";
 
 import { AddNoteSheet } from "./AddNoteSheet";
 
