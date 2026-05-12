@@ -51,7 +51,9 @@ test.describe("/settings/sessions desktop", () => {
   test("desktop layout matches baseline", async ({ page }) => {
     await stubSessionsPage(page);
     await page.goto("/settings/sessions");
-    await page.waitForSelector("text=Active sessions");
+    // Role-only heading match; sessions.tsx renders a single <h1>, so this is
+    // locale-agnostic (works under playwright.config.ts locale="pl-PL").
+    await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
     await waitForReady(page);
     await expect(page).toHaveScreenshot("sessions-desktop.png", {
       fullPage: true,
@@ -64,7 +66,9 @@ test.describe("/settings/sessions mobile", () => {
   test("mobile layout matches baseline", async ({ page }) => {
     await stubSessionsPage(page);
     await page.goto("/settings/sessions");
-    await page.waitForSelector("text=Active sessions");
+    // Role-only heading match; sessions.tsx renders a single <h1>, so this is
+    // locale-agnostic (works under playwright.config.ts locale="pl-PL").
+    await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
     await waitForReady(page);
     await expect(page).toHaveScreenshot("sessions-mobile.png", {
       fullPage: true,

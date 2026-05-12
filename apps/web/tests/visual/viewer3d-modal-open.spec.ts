@@ -19,7 +19,9 @@ test.describe("viewer3d — modal open selector", () => {
     await stubViewerStl(page, MODEL_ID, STL_ID);
     await page.goto(`/catalog/${MODEL_ID}`);
     await waitForReady(page);
-    await page.getByRole("tab", { name: /^files\b/i }).click();
+    // Locale-dependent: SecondaryTabs renders 3-5 sibling tabs, so role-only
+    // is ambiguous; match the PL render under playwright.config.ts locale="pl-PL".
+    await page.getByRole("tab", { name: /^pliki\b/i }).click();
     await page
       .getByRole("button", { name: /toggle 3d preview for cube\.stl/i })
       .click();
