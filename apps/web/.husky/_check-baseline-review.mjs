@@ -57,31 +57,34 @@ if (stagedPngs.length === 0) process.exit(0);
 
 const pngBasenames = stagedPngs.map((p) => basename(p));
 
-// Try to read the commit message file passed by git (commit-msg-style invocation
-// passes the path as argv[2]; pre-commit-style does not). Fall back to
-// .git/COMMIT_EDITMSG which git writes before pre-commit fires when -m is used.
-const commitMsgPath = process.argv[2] || ".git/COMMIT_EDITMSG";
+// Commit-msg hook invocation passes the message file path as argv[2].
+// Pre-commit invocation does NOT — and .git/COMMIT_EDITMSG at that point
+// still holds the PREVIOUS commit's message (git updates it after pre-commit
+// fires). So we can only enforce reliably in commit-msg mode. Pre-commit
+// emits an informational warning naming the staged PNGs and exits 0;
+// commit-msg does the actual rejection.
+const commitMsgPath = process.argv[2];
+if (!commitMsgPath) {
+  console.warn(
+    "[baseline-acceptance-gate] INFO: pre-commit detected " +
+      `${stagedPngs.length} staged baseline PNG(s). ` +
+      "Final enforcement happens in commit-msg hook. Required sign-off format per PNG:",
+  );
+  for (const b of pngBasenames) {
+    console.warn(`    baseline-reviewed: ${b}, <reviewer>, YYYY-MM-DD`);
+  }
+  process.exit(0);
+}
+
 let commitMsg = "";
 try {
   const fs = await import("node:fs");
   commitMsg = fs.readFileSync(commitMsgPath, "utf8");
-} catch {
-  // Commit message not yet readable — pre-commit fires too early in some
-  // flows. Emit a warning and let commit-msg hook do the actual enforcement.
+} catch (err) {
   console.error(
-    "[baseline-acceptance-gate] WARN: commit message not yet readable.",
+    `[baseline-acceptance-gate] ERROR: cannot read commit message at ${commitMsgPath}: ${err.message}`,
   );
-  console.error(
-    "  Staged baseline PNGs need sign-off in commit message:",
-  );
-  for (const b of pngBasenames) console.error(`    - ${b}`);
-  console.error(
-    "  Format per PNG: `baseline-reviewed: <basename>, <reviewer>, <YYYY-MM-DD>`",
-  );
-  console.error(
-    "  Final enforcement happens in apps/web/.husky/commit-msg.",
-  );
-  process.exit(0);
+  process.exit(1);
 }
 
 const missing = [];
