@@ -17,6 +17,8 @@ export default tseslint.config(
       "**/playwright.config.ts",
       "tests/visual/__snapshots__/**",
       "test-results/**",
+      // Husky hook scripts are Node-side; lint via their own conventions.
+      ".husky/**",
     ],
   },
   js.configs.recommended,
