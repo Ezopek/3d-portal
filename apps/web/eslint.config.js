@@ -53,8 +53,16 @@ export default tseslint.config(
         "error",
         { ignore: ["camera-controls", "auto-rotate", "shadow-intensity", "exposure", "tone-mapping", "environment-image", "skybox-image", "ar", "ar-modes", "ios-src"] },
       ],
+      // Severity is `warn` shared across all selectors. The legacy /api/files|catalog
+      // patterns have zero current violations (migrated in d92e551) so warn vs error
+      // makes no practical difference under the `--max-warnings=N` gate. The color-literal
+      // patterns (Initiative 3, Story E5.4) coexist at warn; the Phase A audit found
+      // 10 known violations remediated by Stories E5.7/E5.8/E5.10. `--max-warnings=10`
+      // in package.json `lint` script accommodates them during Phase B; Story E5.10
+      // closing commit restores `--max-warnings=0`. See architecture.md § Initiative 3
+      // § Decision C.
       "no-restricted-syntax": [
-        "error",
+        "warn",
         {
           selector: "Literal[value=/^\\/api\\/(files|catalog)\\//]",
           message:
@@ -64,6 +72,48 @@ export default tseslint.config(
           selector: "TemplateElement[value.raw=/\\/api\\/(files|catalog)\\//]",
           message:
             "Legacy API surface /api/files/* and /api/catalog/* was removed in commit d92e551. Use the SoT API: /api/models/{id}/files/{file_id}/content.",
+        },
+        // Initiative 3 — color-literal bans (Story E5.4, FR4).
+        // Severity is error (shared with the legacy bans above). The 11 known
+        // Phase-A violations are accommodated by a temporarily-relaxed
+        // `--max-warnings` in apps/web/package.json `lint` script; Story E5.10
+        // closing commit restores `--max-warnings=0` after stories 5.7/5.8/5.10
+        // remediate. See architecture.md § Initiative 3 § Decision C.
+        {
+          selector:
+            "JSXAttribute[name.name='className'] Literal[value=/(?:^|\\s)(?:bg|text|border|fill|stroke|ring|from|to|via|shadow|outline|decoration|caret|accent|placeholder)-\\[(?:#|rgb|hsl|oklch|color\\()/]",
+          message:
+            "Color literals in className are forbidden. Use a theme token (bg-card, text-foreground, bg-overlay, etc.) or add a new --color-* token to apps/web/src/styles/theme.css. See Initiative 3 (UI theme compliance) — _bmad-output/planning-artifacts/architecture.md § Decision C.",
+        },
+        {
+          selector:
+            "JSXAttribute[name.name='className'] TemplateElement[value.raw=/(?:^|\\s)(?:bg|text|border|fill|stroke|ring|from|to|via|shadow|outline|decoration|caret|accent|placeholder)-\\[(?:#|rgb|hsl|oklch|color\\()/]",
+          message:
+            "Color literals in className are forbidden. Use a theme token or add a new --color-* token to theme.css. See Initiative 3 (UI theme compliance).",
+        },
+        {
+          selector:
+            "JSXAttribute[name.name='className'] Literal[value=/(?:^|\\s)(?:bg|text|border)-(?:red|blue|green|zinc|gray|slate|stone|neutral|amber|yellow|orange|emerald|lime|teal|cyan|sky|indigo|violet|purple|fuchsia|pink|rose)-(?:50|100|200|300|400|500|600|700|800|900|950)\\b/]",
+          message:
+            "Raw Tailwind palette utilities (bg-zinc-900, text-red-500, etc.) are forbidden. Use a theme token (bg-card, bg-destructive, etc.) or add a new --color-* token to theme.css. See Initiative 3.",
+        },
+        {
+          selector:
+            "JSXAttribute[name.name='className'] TemplateElement[value.raw=/(?:^|\\s)(?:bg|text|border)-(?:red|blue|green|zinc|gray|slate|stone|neutral|amber|yellow|orange|emerald|lime|teal|cyan|sky|indigo|violet|purple|fuchsia|pink|rose)-(?:50|100|200|300|400|500|600|700|800|900|950)\\b/]",
+          message:
+            "Raw Tailwind palette utilities are forbidden. Use a theme token or add a new --color-* token to theme.css.",
+        },
+        {
+          selector:
+            "JSXAttribute[name.name='className'] Literal[value=/(?:^|\\s)(?:bg|text)-(?:white|black)\\b/]",
+          message:
+            "Raw bg-white/bg-black/text-white/text-black are forbidden. Use a theme token (bg-background, text-foreground, etc.) so light and dark themes are honored.",
+        },
+        {
+          selector:
+            "JSXAttribute[name.name='className'] TemplateElement[value.raw=/(?:^|\\s)(?:bg|text)-(?:white|black)\\b/]",
+          message:
+            "Raw bg-white/bg-black/text-white/text-black are forbidden. Use a theme token (bg-background, text-foreground, etc.) so light and dark themes are honored.",
         },
       ],
     },

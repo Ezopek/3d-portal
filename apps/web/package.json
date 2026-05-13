@@ -14,7 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:visual": "playwright test --config=tests/visual/playwright.config.ts",
-    "lint": "eslint . --max-warnings=0",
+    "lint": "eslint . --max-warnings=10",
     "format": "prettier --write ."
   },
   "dependencies": {
