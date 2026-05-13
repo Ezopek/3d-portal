@@ -22,7 +22,7 @@
  * additions during Phase B require explicit operator approval.
  */
 
-import { test } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { loginAsAdmin, waitForReady } from "./helpers";
 
@@ -46,21 +46,22 @@ for (const { path, label, needsAuth } of PAGES) {
       // Per Decision I: one-line WHY comment per entry. Currently empty.
       .analyze();
 
-    if (result.violations.length > 0) {
-      // Story E5.6: warn level. Do NOT fail the test — Phase B remediation
-      // is allowed to land while violations exist. Story E5.17 promotes
-      // this to a hard assertion (expect(...).toHaveLength(0)).
-      console.warn(
-        `[axe color-contrast WARN ${label}] ${result.violations.length} violation(s):\n` +
-          result.violations
-            .map(
-              (v) =>
-                `  - ${v.id}: ${v.description}\n    nodes: ${v.nodes
-                  .map((n) => n.target.join(" > "))
-                  .join(", ")}`,
-            )
-            .join("\n"),
-      );
-    }
+    // Story E5.17 PROMOTION (closing gate for Epic 5): hard assertion.
+    // Phase B remediation is complete; the baseline at this point is zero
+    // violations across all 4 projects × 5 pages. Any regression breaks
+    // the visual-regression suite contract. Use AxeBuilder.exclude(...)
+    // above per architecture Decision I if a real false-positive emerges.
+    expect(
+      result.violations,
+      `[axe color-contrast ${label}] violation(s):\n` +
+        result.violations
+          .map(
+            (v) =>
+              `  - ${v.id}: ${v.description}\n    nodes: ${v.nodes
+                .map((n) => n.target.join(" > "))
+                .join(", ")}`,
+          )
+          .join("\n"),
+    ).toHaveLength(0);
   });
 }
