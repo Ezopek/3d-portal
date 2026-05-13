@@ -1,0 +1,19 @@
+/* Viewer3D color tokens. Legacy comma-separated HSL because three.js Color
+   r0.171 does not parse modern space-separated CSS Color Module 4 syntax.
+   See Initiative 3 Story E5.5, architecture Decision B, and
+   feedback_threejs_hsl_parsing.md for context. Per-file Stylelint override
+   in .stylelintrc.json pins color-function-notation to legacy for this file. */
+
+@theme {
+  --color-viewer-mesh-paint: hsl(220, 9%, 60%);
+  --color-viewer-mesh-edge: hsl(220, 14%, 28%);
+  --color-viewer-grid: hsl(220, 14%, 80%);
+  --color-viewer-measure: hsl(217, 91%, 60%);
+}
+
+.dark {
+  --color-viewer-mesh-paint: hsl(220, 9%, 65%);
+  --color-viewer-mesh-edge: hsl(220, 14%, 18%);
+  --color-viewer-grid: hsl(220, 14%, 22%);
+  --color-viewer-measure: hsl(217, 91%, 65%);
+}
