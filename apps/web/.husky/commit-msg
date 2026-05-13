@@ -1,0 +1,11 @@
+#!/bin/sh
+# Initiative 3 / Epic 5 commit-msg hook (Story E5.13 / FR13).
+# Final-stage enforcement of the Baseline Acceptance Gate. Runs after the
+# commit message is finalized (commit-msg-style hook receives the message
+# path as $1) and rejects commits touching
+# apps/web/tests/visual/__snapshots__/**/*.png without per-PNG sign-off
+# lines in the message.
+
+set -e
+
+node apps/web/.husky/_check-baseline-review.mjs "$1"

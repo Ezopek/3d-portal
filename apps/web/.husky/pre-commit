@@ -1,0 +1,21 @@
+#!/bin/sh
+# Initiative 3 / Epic 5 pre-commit gates (Stories E5.13 + E5.14).
+# Runs from the repo root because git core.hooksPath = apps/web/.husky.
+#
+# Check 1 (E5.13 / FR13): when staged set touches
+#   apps/web/tests/visual/__snapshots__/**/*.png, the commit message MUST
+#   contain a `baseline-reviewed: <basename>, <reviewer>, <YYYY-MM-DD>` line
+#   per changed PNG. Enforces the Baseline Acceptance Gate.
+#
+# Check 2 (E5.14 / FR14): when staged set adds a new
+#   apps/web/src/ui/*.tsx, the same commit MUST also stage a matching
+#   apps/web/tests/visual/<basename>.spec.ts (or <basename>-*.spec.ts).
+#   Enforces the Visual Coverage Contract.
+#
+# Both delegate to Node helpers under apps/web/.husky/ (underscore-prefixed
+# marks them as private; pre-commit is the only public entry point).
+
+set -e
+
+node apps/web/.husky/_check-baseline-review.mjs
+node apps/web/.husky/_check-visual-coverage.mjs

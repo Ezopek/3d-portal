@@ -15,7 +15,8 @@
     "test:watch": "vitest",
     "test:visual": "playwright test --config=tests/visual/playwright.config.ts",
     "lint": "eslint . --max-warnings=10 && stylelint \"src/styles/*.css\"",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "prepare": "cd ../.. && git config core.hooksPath apps/web/.husky"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
@@ -69,6 +70,7 @@
     "eslint-plugin-react-hooks": "^5.0.0",
     "eslint-plugin-react-refresh": "^0.4.16",
     "globals": "^15.13.0",
+    "husky": "^9.1.7",
     "jsdom": "^25.0.1",
     "postcss": "^8.4.49",
     "prettier": "^3.4.0",
