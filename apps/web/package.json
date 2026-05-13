@@ -16,7 +16,7 @@
     "test:visual": "playwright test --config=tests/visual/playwright.config.ts",
     "lint": "eslint . --max-warnings=0 && stylelint \"src/styles/*.css\"",
     "format": "prettier --write .",
-    "prepare": "cd ../.. && git config core.hooksPath apps/web/.husky"
+    "prepare": "cd ../.. && (git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git config core.hooksPath apps/web/.husky) || true"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
