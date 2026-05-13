@@ -238,8 +238,16 @@ If a future Printables API change returns a `data.errors` array on this shape, s
 
 ### Fetch the file
 
+Generic shape — substitute your STL filename and signed link:
+
 ```bash
-curl -L -o /tmp/cali_cat.stl '<link-from-mutation-response>'
+curl -L -o /tmp/<filename>.stl '<link-from-mutation-response>'
+```
+
+For the print-1000 worked example above (`ledtray.stl`):
+
+```bash
+curl -L -o /tmp/ledtray.stl '<link-from-getDownloadLink-step-2>'
 ```
 
 Use single quotes around the link — the signed URL contains `&` and `?` characters that the shell would otherwise interpret.
@@ -276,13 +284,21 @@ Verify all five items BEFORE the first portal write call. If any item is false, 
    ```bash
    curl -s -b /tmp/portal-cookies.txt https://3d.ezop.ddns.net/api/categories | jq '.. | objects | .slug? // empty'
    ```
-   The portal's `category_id` field on the model-create payload requires a valid UUID; you must pick from the existing tree, not invent a slug. The tree is recursive (`roots[].children[].children[]...`), so map slug → UUID in one shot with `jq`'s `..` recursive descent — works at any depth:
+   The portal's `category_id` field on the model-create payload requires a valid UUID; you must pick from the existing tree, not invent a slug. The tree is recursive (`roots[].children[].children[]...`) and slugs are unique only **per parent** (DB constraint `(parent_id, slug)`), so the same slug can appear under multiple parents. Map slug → UUID with a guarded `jq` that errors on ambiguity instead of silently returning multiple IDs:
    ```bash
    slug=cats   # the slug you want
-   curl -s -b /tmp/portal-cookies.txt https://3d.ezop.ddns.net/api/categories \
-     | jq -r --arg s "$slug" '.. | objects | select(.slug? == $s) | .id'
+   CATEGORY_ID=$(
+     curl -s -b /tmp/portal-cookies.txt https://3d.ezop.ddns.net/api/categories \
+       | jq -er --arg s "$slug" '
+           [.. | objects | select(.slug? == $s) | .id]
+           | if length == 1 then .[0]
+             elif length == 0 then error("category slug not found: " + $s)
+             else error("ambiguous category slug: " + $s + " (" + (length|tostring) + " matches — disambiguate by parent path)")
+             end'
+   ) || exit 1
+   echo "$CATEGORY_ID"
    ```
-   Empty stdout = slug not found anywhere in the tree (stop and ask the operator).
+   On ambiguity, dump the tree (`jq '.'`) and pick the right `id` by walking the parent chain manually, then ask the operator to rename one of the colliding slugs.
 2. **Model name sanitized.** No Polish diacritics in `name_en`, no leading/trailing whitespace, no file extension. Polish translations belong in `name_pl`. **How to derive `name_en` per source:**
    - **Printables URL slug** (`/model/<id>-<slug-words>`): strip the leading numeric id and the trailing dash, replace `-` with spaces, title-case. Example: `1000-prusa-mk3-led-lamp` → `Prusa MK3 LED Lamp`. One-liner:
      ```bash
@@ -294,13 +310,17 @@ Verify all five items BEFORE the first portal write call. If any item is false, 
 3. **At least one STL ready to upload.** After any 3MF conversion (above) or OBJ/STEP conversion (use `trimesh.load(path, force='mesh').export(out, file_type='stl')`), the working directory must contain at least one `.stl` file. Verify case-insensitively (some legacy assets are `.STL`): `find . -maxdepth 1 -type f -iname '*.stl'`.
 4. **Duplicate check via external links.** The source URL is NOT stored on the model row itself — it lives on a separate `ExternalLink` row attached to the model. Use the `external_url` query parameter on `GET /api/models` for a one-shot lookup; a hit returns the existing model row(s), a miss returns `items: []` and `total: 0` so the agent proceeds with a fresh import. The model's `source` field is an enum (`printables`, `thangs`, `unknown`, etc.) and does NOT carry the URL. **Pass `include_deleted=true`** so a previously-imported-then-soft-deleted model is surfaced too — otherwise the dedup check returns 0 and you risk creating a duplicate (or hitting a unique-slug conflict downstream); on hit, inspect the row's `deleted_at` field to decide: restore the existing model vs. proceed with a fresh import.
    ```bash
+   # Use the SAME canonical URL the upcoming external-link create call will store.
+   # `external_url` is exact-match (no normalization), so query and stored value
+   # must be byte-identical. Canonical form for Printables = full slugged URL.
+   SRC_URL="https://www.printables.com/model/1000-prusa-mk3-led-lamp"
    curl -s -b /tmp/portal-cookies.txt --get \
-     --data-urlencode "external_url=https://www.printables.com/model/1000" \
+     --data-urlencode "external_url=$SRC_URL" \
      --data-urlencode "include_deleted=true" \
      https://3d.ezop.ddns.net/api/models \
      | jq '{total, items: [.items[] | {id, slug, deleted_at}]}'
    ```
-   Typically returns 0 or 1 row. URL-encode the source URL via `--data-urlencode` so `?` `&` `#` characters in the URL don't corrupt the query string.
+   Typically returns 0 or 1 row. URL-encode the source URL via `--data-urlencode` so `?` `&` `#` characters in the URL don't corrupt the query string. Pick one canonical form for a given source (always with the slug suffix for Printables; whatever the share-button copies for browser-only sources) and reuse it in BOTH the dedup query and the external-link create payload — the API does NOT canonicalize for you.
 5. **No leftover transient files.** No `.3mf`, no `.zip`, no `.7z` in the working directory after extraction + conversion. Only the source files (STL, optional OBJ/STEP keep-original) remain.
 
 ## Endpoint Discovery via OpenAPI
@@ -385,11 +405,11 @@ For a Printables URL `https://www.printables.com/model/1000-prusa-mk3-led-lamp`:
      -d '{"source":"printables","external_id":"1000","url":"https://www.printables.com/model/1000-prusa-mk3-led-lamp"}' \
      "https://3d.ezop.ddns.net/api/admin/models/$MODEL_ID/external-links"
    ```
-10. **Upload each STL** via the file-upload endpoint scoped to the new model UUID; multipart `file` part + form `kind=stl`. The first STL upload auto-enqueues the render. (`$MODEL_ID` is the variable set in step 8.)
+10. **Upload each STL** via the file-upload endpoint scoped to the new model UUID; multipart `file` part + form `kind=stl`. The first STL upload auto-enqueues the render. (`$MODEL_ID` is the variable set in step 8; `/tmp/ledtray.stl` is the file fetched in step 4 — substitute your own path per upload.)
     ```bash
     curl -s -b /tmp/portal-cookies.txt -c /tmp/portal-cookies.txt \
       -X POST -H 'X-Portal-Client: web' \
-      -F 'file=@/tmp/cali_cat.stl' \
+      -F 'file=@/tmp/ledtray.stl' \
       -F 'kind=stl' \
       "https://3d.ezop.ddns.net/api/admin/models/$MODEL_ID/files"
     ```
@@ -401,8 +421,8 @@ For a Printables URL `https://www.printables.com/model/1000-prusa-mk3-led-lamp`:
       if [ -n "$tid" ]; then echo "render done after ${i}x5s: $tid"; break; fi
       sleep 5
     done
-    [ -z "$tid" ] && echo "render did not land in 60s — check workers/render logs on .190" >&2
+    [ -z "$tid" ] && echo "render did not land in 60s — check the worker service log on .190" >&2
     ```
-    If the loop times out, the worker log on `.190` (`docker compose logs render --tail 200`) is the next stop — the most common causes are (a) arq pool not connected to redis, (b) the selected STL has zero triangles, (c) the worker container OOM-killed by Docker.
+    If the loop times out, the worker log on `.190` is the next stop — the render worker runs as the `worker` service in `infra/docker-compose.yml` (image `portal-render`, code at `workers/render/`). SSH into `.190` then `docker compose -f /mnt/raid/docker-compose/3d-portal/docker-compose.yml logs worker --tail 200` (or whatever path holds the live compose file). The most common causes are (a) arq pool not connected to redis, (b) the selected STL has zero triangles, (c) the worker container OOM-killed by Docker.
 
 If anything in step 6 fails, stop and ask the operator. If anything in steps 8–11 returns 4xx, read the response body — the API returns descriptive `detail` strings (e.g. `"category not found"`, `"slug already exists"`); fix the input and retry, do not blanket-retry the same payload.
