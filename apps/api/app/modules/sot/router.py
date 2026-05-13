@@ -118,9 +118,9 @@ def get_models(
     summary="Get a single model's full detail",
     description=(
         "Returns `ModelDetail` including category, tags, files, notes, prints, external "
-        "links, and the `thumbnail` field (non-null once a render lands). 404 if the "
-        "model is not found OR is soft-deleted (use `?include_deleted=true` to include). "
-        "Public, unauthenticated."
+        "links, and the `thumbnail_file_id` field (non-null UUID once a render lands). "
+        "404 if the model is not found OR is soft-deleted (use `?include_deleted=true` "
+        "to include). Public, unauthenticated."
     ),
     response_model=ModelDetail,
 )
