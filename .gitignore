@@ -66,8 +66,15 @@ _bmad-output/
 
 tmp/
 
-# Orchestration logs (local-only operational state)
-.codex/
+# Orchestration logs (local-only operational state).
+# Initiative 3 / Story E5.16 carves out review-prompts/ and bin/ — those are
+# committed agent-tooling artifacts (architecture Decision J). Everything else
+# under .codex/ stays local (session logs, scratch state).
+.codex/*
+!.codex/review-prompts/
+!.codex/review-prompts/**
+!.codex/bin/
+!.codex/bin/**
 
 # Brainstorming companion (local mockups + state)
 .superpowers/

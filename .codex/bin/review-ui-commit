@@ -1,0 +1,55 @@
+#!/bin/sh
+# Codex review wrapper for UI commits (Initiative 3 / Epic 5 / Story E5.16).
+# Detects whether the named commit touches the UI surface and chooses the
+# review invocation accordingly:
+#   - UI commit  → cat ui-theme-checks.md _tail.md | codex exec - (enriched prompt)
+#   - non-UI     → codex review --commit <SHA> (default bare review)
+#
+# Usage:
+#   .codex/bin/review-ui-commit <commit-sha>
+#   .codex/bin/review-ui-commit                    # defaults to HEAD
+#
+# Path heuristic for UI detection:
+#   apps/web/src/(ui|styles|modules/.*/components)/.*
+#   apps/web/tests/visual/.*
+#   apps/web/.husky/.*
+#   apps/web/eslint.config.js
+#   apps/web/.stylelintrc.json
+#   apps/web/package.json  (when devDeps related to UI tooling churn)
+#
+# False positives (running the enriched prompt on a non-UI commit) cost a few
+# Codex tokens. False negatives (missing a UI commit) miss the value but don't
+# break anything.
+#
+# Acceptance: replaying against historical commit 10bc3de (the TB-010 partial
+# that baked black-mesh + summary-overlap into 14 baselines) surfaces at least
+# one of those two defects.
+
+set -e
+
+SHA="${1:-HEAD}"
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ -z "$ROOT" ]; then
+  echo "[review-ui-commit] not in a git repo — aborting" >&2
+  exit 1
+fi
+cd "$ROOT"
+
+CHANGED="$(git diff --name-only "$SHA^" "$SHA" 2>/dev/null || true)"
+if [ -z "$CHANGED" ]; then
+  echo "[review-ui-commit] no diff against $SHA^ (root commit?) — aborting" >&2
+  exit 1
+fi
+
+UI_TOUCHED=$(
+  printf "%s\n" "$CHANGED" | grep -E "^apps/web/(src/(ui|styles|modules/.*/components)|tests/visual|\\.husky|eslint\\.config\\.js|\\.stylelintrc\\.json)" -q && echo "yes" || echo "no"
+)
+
+if [ "$UI_TOUCHED" = "yes" ]; then
+  echo "[review-ui-commit] UI commit detected — running enriched Codex review for $SHA" >&2
+  cat .codex/review-prompts/ui-theme-checks.md .codex/review-prompts/_tail.md \
+    | codex exec - "Review commit $SHA at $ROOT against the checks above. Use \`git show $SHA\` and surrounding file context as needed."
+else
+  echo "[review-ui-commit] non-UI commit — running default Codex review for $SHA" >&2
+  codex review --commit "$SHA"
+fi
