@@ -14,7 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:visual": "playwright test --config=tests/visual/playwright.config.ts",
-    "lint": "eslint . --max-warnings=10 && stylelint \"src/styles/*.css\"",
+    "lint": "eslint . --max-warnings=0 && stylelint \"src/styles/*.css\"",
     "format": "prettier --write .",
     "prepare": "cd ../.. && git config core.hooksPath apps/web/.husky"
   },

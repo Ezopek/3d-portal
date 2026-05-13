@@ -155,7 +155,7 @@ export function CardCarousel({ modelId, fileIds, alt }: Props) {
             aria-label="previous image"
             data-testid="card-carousel-prev"
             onClick={(e) => step(-1, e)}
-            className="absolute left-1 top-1/2 -translate-y-1/2 grid h-8 w-8 place-items-center rounded-full bg-black/40 text-white opacity-0 transition-opacity hover:bg-black/60 focus-visible:opacity-100 group-hover:opacity-100"
+            className="absolute left-1 top-1/2 -translate-y-1/2 grid h-8 w-8 place-items-center rounded-full bg-gallery-control/40 text-gallery-control-foreground opacity-0 transition-opacity hover:bg-gallery-control/60 focus-visible:opacity-100 group-hover:opacity-100"
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
@@ -164,7 +164,7 @@ export function CardCarousel({ modelId, fileIds, alt }: Props) {
             aria-label="next image"
             data-testid="card-carousel-next"
             onClick={(e) => step(1, e)}
-            className="absolute right-1 top-1/2 -translate-y-1/2 grid h-8 w-8 place-items-center rounded-full bg-black/40 text-white opacity-0 transition-opacity hover:bg-black/60 focus-visible:opacity-100 group-hover:opacity-100"
+            className="absolute right-1 top-1/2 -translate-y-1/2 grid h-8 w-8 place-items-center rounded-full bg-gallery-control/40 text-gallery-control-foreground opacity-0 transition-opacity hover:bg-gallery-control/60 focus-visible:opacity-100 group-hover:opacity-100"
           >
             <ChevronRight className="h-5 w-5" />
           </button>
@@ -183,7 +183,9 @@ export function CardCarousel({ modelId, fileIds, alt }: Props) {
                 <span
                   className={cn(
                     "block h-1.5 w-1.5 rounded-full transition-colors",
-                    i === active ? "bg-white" : "bg-white/40 hover:bg-white/70",
+                    i === active
+                      ? "bg-gallery-control-foreground"
+                      : "bg-gallery-control-foreground/40 hover:bg-gallery-control-foreground/70",
                   )}
                 />
               </button>

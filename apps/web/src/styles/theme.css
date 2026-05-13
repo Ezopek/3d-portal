@@ -47,6 +47,12 @@
      because the labels float over the WebGL canvas which has its own bg. */
   --color-viewer-tooltip: hsl(222 47% 9%);
   --color-viewer-tooltip-foreground: hsl(210 40% 98%);
+  /* Gallery-control tokens (Initiative 3 / Epic 5 / Story E5.10 / FR10). Used by
+     image carousel nav arrows + dot indicators (CardCarousel, ModelGallery). The
+     controls float over arbitrary photo content, so they're theme-invariant —
+     same value in both themes — black backdrop with /N opacity over the image. */
+  --color-gallery-control: hsl(0 0% 0%);
+  --color-gallery-control-foreground: hsl(0 0% 100%);
 
   --radius-sm: 0.25rem;
   --radius-md: 0.5rem;
