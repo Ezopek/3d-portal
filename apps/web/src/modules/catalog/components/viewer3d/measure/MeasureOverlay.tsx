@@ -13,7 +13,7 @@ type Props = {
 };
 
 const LABEL_CLASS =
-  "whitespace-nowrap rounded bg-zinc-900/95 px-2 py-0.5 text-xs font-medium text-white shadow-md ring-1 ring-white/15";
+  "whitespace-nowrap rounded bg-viewer-tooltip/95 px-2 py-0.5 text-xs font-medium text-viewer-tooltip-foreground shadow-md ring-1 ring-viewer-tooltip-foreground/15";
 
 function projectPointToPlane(point: Vector3, centroid: Vector3, normal: Vector3): Vector3 {
   const dx = point.x - centroid.x;

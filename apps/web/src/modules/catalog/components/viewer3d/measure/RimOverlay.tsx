@@ -5,7 +5,7 @@ import type { Rim } from "./circleFit";
 import { cn } from "@/lib/utils";
 
 const LABEL_CLASS =
-  "whitespace-nowrap rounded bg-zinc-900/95 px-2 py-0.5 text-xs font-medium text-white shadow-md ring-1 ring-white/15";
+  "whitespace-nowrap rounded bg-viewer-tooltip/95 px-2 py-0.5 text-xs font-medium text-viewer-tooltip-foreground shadow-md ring-1 ring-viewer-tooltip-foreground/15";
 
 type Props = {
   rim: Rim;

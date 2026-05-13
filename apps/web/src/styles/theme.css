@@ -35,6 +35,13 @@
      consumer (bg-overlay/30) so the base token is fully opaque. */
   --color-overlay: hsl(222 47% 11%);
   --color-overlay-foreground: hsl(210 40% 98%);
+  /* Viewer-tooltip tokens (Initiative 3 / Epic 5 / Story E5.8 / FR8). Used by
+     RimOverlay + MeasureOverlay drei <Html> labels (DOM-rendered, NOT
+     three.js Color consumers — so they live here in theme.css with modern
+     HSL syntax, not in viewer-tokens.css). Same value across light/dark
+     because the labels float over the WebGL canvas which has its own bg. */
+  --color-viewer-tooltip: hsl(222 47% 9%);
+  --color-viewer-tooltip-foreground: hsl(210 40% 98%);
 
   --radius-sm: 0.25rem;
   --radius-md: 0.5rem;
