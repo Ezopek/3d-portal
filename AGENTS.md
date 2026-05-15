@@ -115,11 +115,13 @@ Every BMAD story is implemented on its own short-lived branch — *not* in a ser
    ff-only is mandatory because per-commit history is what `codex review --commit <SHA>` consumes; squashing destroys that context.
 5. If `main` advanced and ff is no longer possible, rebase the branch onto `main` first, then ff-merge.
 
-### Deploy gate
+### Deploy gate (planned — design under review)
 
-`infra/scripts/deploy.sh` runs on every push to `main` (per `feedback_auto_deploy_dev.md`), **but skips** if the HEAD commit message starts with one of: `docs:`, `chore:`, `wip:`. This keeps doc-only / config-only / in-progress pushes from rebuilding and redeploying `.190`. The skip-rule lives in `deploy.sh` itself — adding new skip-prefixes is a deploy.sh change, not an out-of-band convention.
+The eventual goal: `infra/scripts/deploy.sh` should skip the build/push cycle when a push to `main` is non-deploying. The first attempt (skip if HEAD commit prefix is `docs:` / `chore:` / `wip:`) was reverted on 2026-05-16 — multi-commit ff-merges ending in a `chore:` catch-up commit would silently swallow earlier code commits in the same push, which is exactly the failure pattern the gate is meant to prevent. Correct fix is range-based: check `<last-deploy-sha>..HEAD` and skip only when **every** commit in range is skip-prefixed, backed by a new `infra/.last-deploy-sha` state file written at the end of each successful deploy. Design + implementation deferred to a future iteration.
 
-Story branches never trigger a deploy: their commits don't touch `main` until the final ff-merge.
+**Until the gate ships:** `feedback_auto_deploy_dev.md` continues to govern. The operator (or agent) decides per-push whether to invoke `deploy.sh` — doc-only pushes are skipped manually, code/infra pushes are deployed by hand.
+
+Story branches still never trigger a deploy directly: their commits don't touch `main` until the final ff-merge.
 
 ### Trivial commits direct to main
 
