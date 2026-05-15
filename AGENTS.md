@@ -80,7 +80,104 @@ not inside any module.
 
 ## Branching and workflow
 
-Single-developer repo, trunk-only `main`, fast-forward merges only. Topic branches `feat/`, `fix/`, `docs/`, `chore/`. Same model as `~/repos/orca-profiles/AGENTS.md`. No remote at the time of writing — first push is gated on Michał's decision.
+Single-developer repo with GitHub remote at `git@github.com:Ezopek/3d-portal.git`.
+
+### Trunk
+
+`main` is the only long-lived branch. History is linear (no merge commits) — use fast-forward merges only. Never force-push to `main`.
+
+### Story branches (the unit of work)
+
+Every BMAD story is implemented on its own short-lived branch — *not* in a series of commits directly on `main`. This prevents partial features from reaching `.190` via auto-deploy and lets `codex review --commit <SHA>` see complete context.
+
+**Branch naming:** `feat/E{epic}.{story}-<kebab-slug>` (e.g. `feat/E5.14-catalog-filters`, `feat/E6.2-worker-snapshot-render`). For bug fixes and triage-backlog items the same shape with a different prefix: `fix/E5.11-deploy-hook` or `fix/TB-013-api-stubs`.
+
+**Lifecycle:**
+
+1. `bmad-dev-story` (or `bmad-quick-dev`) starts → create branch from `main`:
+   ```bash
+   git checkout main && git pull
+   git checkout -b feat/E5.14-catalog-filters
+   ```
+2. Work happens on the branch — atomic commits per logical unit, fix-up commits stay on the branch (no longer pollute `main`).
+3. Quality gates must all be green before merge:
+   - `ruff format --check` + `ruff check` clean on `apps/api/` and `workers/render/`
+   - `pytest` full suite green on `apps/api/`
+   - `npm run lint --max-warnings=0` and `npm run test:visual` green on `apps/web/`
+   - Codex review pass: `codex review --commit <HEAD-of-branch>` (per the review-fix-commit close-out pattern)
+   - Pre-commit hook itself working (it has broken before — verify before relying on it)
+4. Merge to `main` with fast-forward only — never a merge commit, never a squash:
+   ```bash
+   git checkout main && git merge --ff-only feat/E5.14-catalog-filters
+   git branch -d feat/E5.14-catalog-filters
+   git push origin main
+   ```
+   ff-only is mandatory because per-commit history is what `codex review --commit <SHA>` consumes; squashing destroys that context.
+5. If `main` advanced and ff is no longer possible, rebase the branch onto `main` first, then ff-merge.
+
+### Deploy gate
+
+`infra/scripts/deploy.sh` runs on every push to `main` (per `feedback_auto_deploy_dev.md`), **but skips** if the HEAD commit message starts with one of: `docs:`, `chore:`, `wip:`. This keeps doc-only / config-only / in-progress pushes from rebuilding and redeploying `.190`. The skip-rule lives in `deploy.sh` itself — adding new skip-prefixes is a deploy.sh change, not an out-of-band convention.
+
+Story branches never trigger a deploy: their commits don't touch `main` until the final ff-merge.
+
+### Trivial commits direct to main
+
+Direct-to-main is allowed in three narrow cases — everything else goes through a story branch:
+
+| Case | Commit prefix | Rule |
+|---|---|---|
+| Doc-only | `docs:` | Only `*.md`, `AGENTS.md`, `CLAUDE.md`, `_bmad-output/` docs. No code, no config, no infra. |
+| Config-only without runtime effect | `chore:` | E.g. `_bmad/_config/`, `.gitignore`, formatter config. If it changes how the app runs, it's not a chore — it's a fix or feat and goes on a branch. |
+| Hotfix | `fix:` + `# hotfix-rationale: <reason>` in body | Production-level urgency only. Run Codex review inline (`codex review --commit <SHA>`) immediately after pushing. |
+
+Threshold check before committing direct: *would I want this in its own grouping in `git log` looking back?* If yes — story branch. If no — direct commit OK.
+
+### Parallel story work — deferred
+
+The team considered enabling parallel work on two stories at once (e.g. Ezop on a frontend story interactively while Claude/Codex runs a worker story autonomously). **Deferred** — current single-developer pace doesn't justify the tooling cost. If parallel work becomes a real bottleneck, the minimum viable setup is:
+
+1. `git worktree add ../3d-portal-E{N}.{M} feat/E{N}.{M}-<slug>` — one working dir per story; avoids file conflicts.
+2. `_bmad-output/implementation-artifacts/sprint-status.yaml` — multiple `in-progress` slots simultaneously; resolve any merge conflict manually at close-out.
+3. `flock /tmp/3d-portal-deploy.lock infra/scripts/deploy.sh` — serialize deploys so two near-simultaneous merges to `main` can't race on `.190`.
+
+Until then: one story `in-progress` at a time, serial merges.
+
+### Don't
+
+- Don't force-push `main`.
+- Don't create merge commits on `main` (always ff). If you can't ff, rebase the branch first.
+- Don't squash-merge story branches — per-commit history is what Codex reviews.
+- Don't keep stale story branches after merge — delete them with `git branch -d`.
+- Don't bypass the story-branch flow for code/infra changes just because "this one is small". The threshold is in the table above — code changes outside `docs:` / `chore:` always go on a branch.
+- Don't commit secrets just because the remote is private. Hostnames and IPs already in committed docs (`docs/operations.md`, `infra/`) are acceptable; never add API tokens, passwords, or fresh keys.
+
+## Workflow expectations
+
+BMAD owns planning + execution + review in this repo. Skill catalog: `_bmad/_config/bmad-help.csv`.
+
+- Agents with BMAD skills (e.g. Claude Code) invoke `bmad-help` when unsure where to start.
+- Agents without BMAD skills (e.g. Codex, Gemini) read `_bmad-output/project-context.md` for execution rules and the relevant story spec in `_bmad-output/` before implementing.
+
+Typical routing for Claude Code:
+
+- New feature → BMAD planning chain (PRD → architecture → epics & stories → sprint planning → story cycle).
+- Small change or bugfix → `bmad-quick-dev`.
+- Tests on existing code → BMAD `tea` module (`bmad-testarch-test-design`, `bmad-testarch-framework`, etc.).
+
+### Execution discipline
+
+These rules apply to every agent regardless of platform:
+
+- **TDD for logic-bearing code** — red → green → refactor. New behavior lands with a failing test first, not a "tests can come later" promise.
+- **Verification before completion** — never claim "done", "fixed", or "passing" without running the actual command and reading its output. If verification isn't possible in the current environment, say so explicitly rather than asserting success on inference.
+- **Evidence before assertions** — cite real file paths, line numbers, command output, log lines. "Should work" is not a status; "I ran X and it returned Y" is.
+- **Mandatory visual regression for UI changes** — `npm run test:visual` from `apps/web/` before any commit that touches the frontend.
+- **Plan before non-trivial implementation** — multi-step features need a spec or story; ad-hoc dives are reserved for one-shot fixes.
+- **Systematic debugging on any bug, test failure, or unexpected behavior** — reproduce → narrow → root-cause → fix → verify. No fix-first guesses.
+- **No silent scope creep** — a bug fix doesn't carry a refactor; a feature doesn't carry unrelated cleanup. Surface collateral work and let Michał decide.
+
+Full execution rules and project-specific gotchas: `_bmad-output/project-context.md` — read it before implementing.
 
 ## External repos this depends on
 
