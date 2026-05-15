@@ -20,10 +20,10 @@ It is **not** a marketplace, not multi-tenant, not for sharing models to the pub
 
 **Primary user — Michał (Ezop), the owner-operator.**
 
-- Solo DevOps engineer (banking IT), homelab hobbyist, 3D-printing enthusiast.
-- Browses his own collection from desktop or phone, occasionally curates metadata (tags, categories, notes, prints log, external links).
+- **Self-described identity** (voice-validated 2026-05-15): *"AI-loop operator + pasjonat druku 3D"*. Identity: someone who orchestrates AI agents to ship code, with home 3D printing as the domain the agents work in. "Solo dev" is increasingly past tense — *"w czasach agentów wolę delegować bardziej doświadczonym"*.
+- Browses his own collection from desktop or phone (the **"aha moment"** — opening `/catalog` on his phone outside the house, rotating an STL in the 3D viewer); occasionally curates metadata (tags, categories, notes, prints log, external links).
 - Triggers thumbnail renders when adding new models. Reviews audit log when something seems off.
-- Generates share links to send a single model (STL + photos + renders) to a friend/family member outside the household.
+- Generates share links to send a single model (STL + photos + renders) to a friend/family member outside the household (lifecycle works; volume is sporadic).
 
 **Secondary user — household members (read-only catalog browsers).**
 
