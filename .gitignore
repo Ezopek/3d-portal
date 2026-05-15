@@ -86,3 +86,6 @@ tmp/
 # Claude scheduled task locks (session-only)
 .claude/scheduled_tasks.lock
 infra/.last-verify-runbook
+
+# Deploy skip-gate state (range pointer; written on deploy-success only)
+infra/.last-deploy-sha

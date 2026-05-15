@@ -11,6 +11,54 @@ SSH_PORT="${PORTAL_SSH_PORT:-30022}"
 VERSION="${PORTAL_VERSION:-0.1.0}"
 LOCAL_ENV="$REPO_DIR/infra/.env"
 
+# --- Deploy skip-gate (AGENTS.md § Deploy gate) ---------------------------
+# Range-based: skip the deploy only when EVERY commit in
+# <last-deploy-sha>..HEAD is skip-prefixed (docs:/chore:/wip:). Any single
+# non-skip commit in range forces a deploy. State file is updated on
+# deploy-success only — skipped runs leave it unchanged, so consecutive
+# skip pushes accumulate in the next non-skip push's range. Failure modes
+# (missing/empty/unresolved state) degrade to WARN+deploy; never trust
+# HEAD-only as a fallback (that flaw is why a previous HEAD-only design
+# was reverted on 2026-05-16; see AGENTS.md § Deploy gate for context).
+SKIP_PREFIXES=("docs:" "chore:" "wip:")
+last_deploy_path="$REPO_DIR/infra/.last-deploy-sha"
+head_short="$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+
+if [[ ! -f "$last_deploy_path" ]]; then
+  echo "[deploy-skip-gate] WARN: $last_deploy_path missing — first run, proceeding with deploy" >&2
+else
+  last_deploy_sha="$(tr -d '[:space:]' < "$last_deploy_path")"
+  if ! git -C "$REPO_DIR" rev-parse --verify "${last_deploy_sha}^{commit}" >/dev/null 2>&1; then
+    echo "[deploy-skip-gate] WARN: last-deploy-sha '$last_deploy_sha' unresolved (rebased or GC'd), proceeding with deploy" >&2
+  else
+    range="${last_deploy_sha}..HEAD"
+    last_short="$(git -C "$REPO_DIR" rev-parse --short "$last_deploy_sha")"
+    short_range="${last_short}..${head_short}"
+    subjects="$(git -C "$REPO_DIR" log --format=%s "$range" 2>/dev/null || true)"
+    if [[ -z "$subjects" ]]; then
+      echo "[deploy-skip] no new commits since last deploy ($short_range), skipping"
+      exit 0
+    fi
+    commit_count="$(git -C "$REPO_DIR" rev-list --count "$range" 2>/dev/null || echo 0)"
+    all_skip=true
+    while IFS= read -r subject; do
+      [[ -z "$subject" ]] && continue
+      matched=false
+      for prefix in "${SKIP_PREFIXES[@]}"; do
+        [[ "$subject" == "$prefix"* ]] && { matched=true; break; }
+      done
+      if ! $matched; then
+        all_skip=false
+        break
+      fi
+    done <<< "$subjects"
+    if $all_skip; then
+      echo "[deploy-skip] all $commit_count commits in $short_range are skip-prefixed, skipping deploy"
+      exit 0
+    fi
+  fi
+fi
+
 # Captured before `docker compose build` so verify-symbolication.sh (TB-005)
 # can compare against the resulting web image's `.Created` timestamp: a
 # cached web image (API-only / doc-only deploys) leaves it older than this
@@ -172,5 +220,16 @@ fi
 # in the same shell (e.g. after `source` rather than `bash` invocation) does
 # not silently inherit the gate and SKIP unexpectedly.
 unset DEPLOY_START_TS PORTAL_VERSION || true
+
+# --- Record successful deploy SHA for next run's skip-gate ----------------
+# Best-effort: a write failure here must NOT fail the deploy (it's already
+# done). The state file is local-only (gitignored) — host-specific
+# runtime tracking, never committed. Skipped runs do not advance this
+# pointer; only completed deploys do.
+deploy_sha_full="$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || true)"
+if [[ -n "$deploy_sha_full" ]]; then
+  echo "$deploy_sha_full" > "$last_deploy_path" 2>/dev/null || \
+    echo "[deploy-skip-gate] WARN: failed to update $last_deploy_path (non-fatal)" >&2
+fi
 
 echo "Done."

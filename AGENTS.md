@@ -115,13 +115,29 @@ Every BMAD story is implemented on its own short-lived branch — *not* in a ser
    ff-only is mandatory because per-commit history is what `codex review --commit <SHA>` consumes; squashing destroys that context.
 5. If `main` advanced and ff is no longer possible, rebase the branch onto `main` first, then ff-merge.
 
-### Deploy gate (planned — design under review)
+### Deploy gate (active)
 
-The eventual goal: `infra/scripts/deploy.sh` should skip the build/push cycle when a push to `main` is non-deploying. The first attempt (skip if HEAD commit prefix is `docs:` / `chore:` / `wip:`) was reverted on 2026-05-16 — multi-commit ff-merges ending in a `chore:` catch-up commit would silently swallow earlier code commits in the same push, which is exactly the failure pattern the gate is meant to prevent. Correct fix is range-based: check `<last-deploy-sha>..HEAD` and skip only when **every** commit in range is skip-prefixed, backed by a new `infra/.last-deploy-sha` state file written at the end of each successful deploy. Design + implementation deferred to a future iteration.
+`infra/scripts/deploy.sh` evaluates a **range-based skip-gate** before any build/push work. It compares each commit in `<last-deploy-sha>..HEAD` against `SKIP_PREFIXES=("docs:" "chore:" "wip:")` and skips the deploy **only when every commit in the range is skip-prefixed**. Any single non-skip commit (e.g. `feat:`, `fix:`) forces the full deploy.
 
-**Until the gate ships:** `feedback_auto_deploy_dev.md` continues to govern. The operator (or agent) decides per-push whether to invoke `deploy.sh` — doc-only pushes are skipped manually, code/infra pushes are deployed by hand.
+**State file:** `infra/.last-deploy-sha` — local, gitignored, holds the full SHA of the last successfully deployed commit. Written **only** at the end of a successful deploy run; skipped pushes leave it unchanged. That "no update on skip" property makes the gate composable: three consecutive `docs:` pushes still let a subsequent `feat:` push see the whole accumulated range.
 
-Story branches still never trigger a deploy directly: their commits don't touch `main` until the final ff-merge.
+**Lifecycle:**
+
+| Situation | Behavior |
+|---|---|
+| First run after this gate lands (state file missing) | stderr `WARN`, deploy normally, write HEAD on success |
+| `HEAD == last-deploy-sha` (empty range) | stdout `[deploy-skip] no new commits since last deploy`, exit 0 |
+| All commits in range skip-prefixed | stdout `[deploy-skip] all N commits ... skip-prefixed`, exit 0, state file unchanged |
+| At least one non-skip commit in range | Full deploy; on success write new HEAD to state file |
+| State SHA unresolved (rebased / GC'd) | stderr `WARN: unresolved`, deploy normally, overwrite state on success |
+
+**Match rules:** prefix match is exact, case-sensitive, includes the trailing colon. `docs:` matches `docs: x`; `Docs:`, `documentation`, and `chore(release):` do **NOT** match (scoped Conventional Commits bypass the gate and deploy — extending to `chore(*):` is a future call).
+
+**No bypass flag.** "Deploy state of `.190` = main HEAD" invariant is preserved by design. The escape hatch when a skip-prefixed commit really needs to deploy: amend the commit message to a non-skip prefix.
+
+Story branches still never trigger a deploy directly — their commits don't touch `main` until the final ff-merge.
+
+The design history (including the abandoned HEAD-only first attempt that swallowed code commits in mixed ff-merges) is in `_bmad-output/implementation-artifacts/spec-deploy-skip-gate.md` (status `abandoned`) and the active spec `spec-deploy-skip-gate-range.md`.
 
 ### Trivial commits direct to main
 
