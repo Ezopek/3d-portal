@@ -47,8 +47,17 @@ UI_TOUCHED=$(
 
 if [ "$UI_TOUCHED" = "yes" ]; then
   echo "[review-ui-commit] UI commit detected — running enriched Codex review for $SHA" >&2
-  cat .codex/review-prompts/ui-theme-checks.md .codex/review-prompts/_tail.md \
-    | codex exec - "Review commit $SHA at $ROOT against the checks above. Use \`git show $SHA\` and surrounding file context as needed."
+  # `codex exec` accepts a positional [PROMPT] OR `-` for stdin, but NOT both
+  # (verified on codex-cli 0.129.0: `codex exec - "extra"` errors with
+  # "unexpected argument"). Concatenate everything into a single stdin stream
+  # so "the checks above" stays directionally accurate, and pass `-` as the
+  # single positional. `--sandbox read-only` because reviews must never
+  # mutate the workspace.
+  {
+    cat .codex/review-prompts/ui-theme-checks.md
+    cat .codex/review-prompts/_tail.md
+    printf '\n## Target commit\n\nReview commit %s at %s against the checks above. Use `git show %s` and surrounding file context as needed.\n' "$SHA" "$ROOT" "$SHA"
+  } | codex exec --sandbox read-only -
 else
   echo "[review-ui-commit] non-UI commit — running default Codex review for $SHA" >&2
   codex review --commit "$SHA"
