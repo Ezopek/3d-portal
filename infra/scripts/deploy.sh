@@ -28,7 +28,14 @@ if [[ ! -f "$last_deploy_path" ]]; then
   echo "[deploy-skip-gate] WARN: $last_deploy_path missing — first run, proceeding with deploy" >&2
 else
   last_deploy_sha="$(tr -d '[:space:]' < "$last_deploy_path")"
-  if ! git -C "$REPO_DIR" rev-parse --verify "${last_deploy_sha}^{commit}" >/dev/null 2>&1; then
+  # Validate the stripped content is a full 40-char hex SHA BEFORE handing it
+  # to `rev-parse --verify`. Without this guard, an empty string would let
+  # `rev-parse --verify "^{commit}"` succeed (git peels HEAD by default), and
+  # a value containing `^N` could resolve to an unintended ancestor — both
+  # would bypass the WARN+deploy path the spec promises for invalid state.
+  if [[ ! "$last_deploy_sha" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "[deploy-skip-gate] WARN: $last_deploy_path content '${last_deploy_sha:0:40}' is not a valid 40-char hex SHA, proceeding with deploy" >&2
+  elif ! git -C "$REPO_DIR" rev-parse --verify "${last_deploy_sha}^{commit}" >/dev/null 2>&1; then
     echo "[deploy-skip-gate] WARN: last-deploy-sha '$last_deploy_sha' unresolved (rebased or GC'd), proceeding with deploy" >&2
   else
     range="${last_deploy_sha}..HEAD"
