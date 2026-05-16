@@ -41,7 +41,7 @@ curl -s -c /tmp/portal-cookies.txt \
   https://3d.ezop.ddns.net/api/auth/login
 ```
 
-The server responds with the user record in the body and sets two cookies:
+The server responds with `{"user": {...}}` in the body (note the wrapper — `jq .user.email`, not `jq .email`) and sets two cookies:
 
 - `portal_access` — `Path=/api`, `HttpOnly`, `Secure`, `SameSite=Strict`, JWT TTL ~10 min. Carries the principal for admin/sot calls.
 - `portal_refresh` — `Path=/api/auth`, `HttpOnly`, `Secure`, `SameSite=Strict`, ~30-day TTL. Used only by the refresh endpoint.
@@ -136,9 +136,10 @@ URL host → fetch strategy:
 | `thangs.com`         | `agent-browser` CLI against the operator's logged-in Windows-host Chrome.                          | Browser session must be logged in already. |
 | `thingiverse.com`    | `agent-browser` CLI against the operator's logged-in Windows-host Chrome.                          | Browser session must be logged in already. |
 | `makerworld.com`     | `agent-browser` CLI against the operator's logged-in Windows-host Chrome.                          | Browser session must be logged in already. |
+| `cults3d.com`        | `agent-browser` CLI against the operator's logged-in Windows-host Chrome.                          | Browser session must be logged in already. |
 | `crealitycloud.com`  | `agent-browser` CLI against the operator's logged-in Windows-host Chrome.                          | Browser session must be logged in already. |
 
-For the four browser-only sources: the `agent-browser` CLI navigates to the model URL, clicks Download, the file lands in `D:\` on the Windows host. Move it into a temporary working directory via PowerShell, then upload via the portal flow. See `~/.claude/CLAUDE.md` § "Browser automation — agent-browser" on the operator's machine for connection setup (mirrored networking, CDP on `localhost:9222`).
+For the five browser-only sources: the `agent-browser` CLI navigates to the model URL, clicks Download, the file lands in `D:\` on the Windows host. Move it into a temporary working directory via PowerShell, then upload via the portal flow. See `~/.claude/CLAUDE.md` § "Browser automation — agent-browser" on the operator's machine for connection setup (mirrored networking, CDP on `localhost:9222`).
 
 ### Host → `source` enum mapping
 

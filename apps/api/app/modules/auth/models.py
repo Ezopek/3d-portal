@@ -3,6 +3,8 @@ import uuid
 
 from pydantic import BaseModel, EmailStr
 
+from app.core.db.models._enums import UserRole
+
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -13,7 +15,7 @@ class MeResponse(BaseModel):
     id: uuid.UUID
     email: str
     display_name: str
-    role: str
+    role: UserRole
 
 
 class LoginResponse(BaseModel):

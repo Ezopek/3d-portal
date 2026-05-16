@@ -367,7 +367,7 @@ def admin_reorder_photos(
     description=(
         'Async render enqueue. Returns 202 + `{"status": "queued", "status_key": '
         '"<key>"}`. The worker (`workers/render/`) consumes from arq; poll via '
-        "`GET /models/{model_id}` and watch the `thumbnail` field flip non-null. Empty "
+        "`GET /models/{model_id}` and watch the `thumbnail_file_id` field flip non-null. Empty "
         "`selected_stl_file_ids` lets the worker pick the first STL automatically. 404 "
         "if model not found. 400 if any selected STL id doesn't belong to this model or "
         "isn't `kind=stl`. **Note:** the first STL upload to a fresh model AUTO-enqueues "
