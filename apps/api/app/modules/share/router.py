@@ -56,9 +56,7 @@ async def resolve_share(
 
     thumbnail_url = None
     if model.thumbnail_file_id is not None:
-        thumbnail_url = (
-            f"/api/models/{model.id}/files/{model.thumbnail_file_id}/content"
-        )
+        thumbnail_url = f"/api/models/{model.id}/files/{model.thumbnail_file_id}/content"
     elif images:
         thumbnail_url = images[0]
 

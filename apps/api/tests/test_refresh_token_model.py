@@ -1,4 +1,5 @@
 """RefreshToken model — round-trip and constraints."""
+
 import datetime
 import string
 import uuid
@@ -6,16 +7,13 @@ import uuid
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.core.db.models import RefreshToken, User
 from app.core.auth.refresh import (
+    REFRESH_TTL_DAYS,
     generate_refresh_secret,
     hash_refresh_secret,
     new_refresh_row,
-    rotate_refresh,
-    RotationOutcome,
-    GRACE_SECONDS,
-    REFRESH_TTL_DAYS,
 )
+from app.core.db.models import RefreshToken, User
 
 
 @pytest.fixture
@@ -78,15 +76,26 @@ def test_new_refresh_row_sets_invariants(engine):
     """new_refresh_row populates issued_at/expires_at/family_issued_at correctly."""
     with Session(engine) as s:
         u = User(
-            id=uuid.uuid4(), email="u@x", display_name="U", role="admin",
-            password_hash="x", created_at=datetime.datetime.now(datetime.UTC),
+            id=uuid.uuid4(),
+            email="u@x",
+            display_name="U",
+            role="admin",
+            password_hash="x",
+            created_at=datetime.datetime.now(datetime.UTC),
         )
-        s.add(u); s.commit(); s.refresh(u)
+        s.add(u)
+        s.commit()
+        s.refresh(u)
         secret, row = new_refresh_row(
-            user_id=u.id, family_id=None,  # None → start a new family
-            family_issued_at=None, ip="127.0.0.1", user_agent="UA",
+            user_id=u.id,
+            family_id=None,  # None → start a new family
+            family_issued_at=None,
+            ip="127.0.0.1",
+            user_agent="UA",
         )
-        s.add(row); s.commit(); s.refresh(row)
+        s.add(row)
+        s.commit()
+        s.refresh(row)
         assert row.family_id is not None
         assert row.family_issued_at == row.issued_at
         delta = row.expires_at - row.issued_at

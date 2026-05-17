@@ -1,4 +1,5 @@
 """apps/api/app/core/auth/refresh.py — refresh-token rotation helpers."""
+
 from __future__ import annotations
 
 import datetime
@@ -6,7 +7,7 @@ import hashlib
 import secrets
 import uuid
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 from sqlmodel import Session, select
 
@@ -16,12 +17,12 @@ REFRESH_TTL_DAYS = 30
 GRACE_SECONDS = 30
 
 
-class RotationOutcome(str, Enum):
-    rotated = "rotated"          # happy path
-    grace_returned = "grace_returned"   # within 30 s, UA matched, returned active descendant
+class RotationOutcome(StrEnum):
+    rotated = "rotated"  # happy path
+    grace_returned = "grace_returned"  # within 30 s, UA matched, returned active descendant
     grace_ua_mismatch = "grace_ua_mismatch"  # within 30 s but UA mismatch — denied without burn
-    race_lost = "race_lost"      # within grace, no active descendant — benign race, nothing burned
-    reuse_detected = "reuse_detected"   # outside grace (or non-rotated revoke), family burned
+    race_lost = "race_lost"  # within grace, no active descendant — benign race, nothing burned
+    reuse_detected = "reuse_detected"  # outside grace (or non-rotated revoke), family burned
     not_found = "not_found"
     expired = "expired"
 
@@ -81,7 +82,7 @@ def find_by_secret(session: Session, secret: str) -> RefreshToken | None:
 
 
 def find_active_in_family(session: Session, family_id: uuid.UUID) -> RefreshToken | None:
-    """Return the (single) active token in the family, or None if the family has no live descendant."""
+    """Return the (single) active token in the family, or None if the family has no live descendant."""  # noqa: E501
     return session.exec(
         select(RefreshToken)
         .where(RefreshToken.family_id == family_id)
@@ -90,7 +91,7 @@ def find_active_in_family(session: Session, family_id: uuid.UUID) -> RefreshToke
 
 
 def burn_family(session: Session, family_id: uuid.UUID) -> int:
-    """Revoke every active row in the family with reason='reuse_detected'. Returns the number of rows revoked."""
+    """Revoke every active row in the family with reason='reuse_detected'. Returns the number of rows revoked."""  # noqa: E501
     now = datetime.datetime.now(datetime.UTC)
     rows = session.exec(
         select(RefreshToken)
@@ -125,7 +126,8 @@ def rotate_refresh(
             active = find_active_in_family(session, presented.family_id)
             if active is None:
                 return RotationResult(
-                    outcome=RotationOutcome.race_lost, family_id=presented.family_id,
+                    outcome=RotationOutcome.race_lost,
+                    family_id=presented.family_id,
                 )
             if (active.user_agent or "") != (user_agent or ""):
                 return RotationResult(

@@ -1,4 +1,5 @@
 """Auth router — cookie-based sessions with refresh-token rotation."""
+
 import datetime
 import logging
 import uuid
@@ -10,7 +11,6 @@ from sqlmodel import Session, select
 
 from app.core.audit import record_event
 from app.core.auth.cookies import (
-    ACCESS_COOKIE,
     REFRESH_COOKIE,
     clear_session_cookies,
     set_session_cookies,
@@ -41,9 +41,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 def _client_meta(request: Request) -> tuple[str | None, str | None]:
-    ip = (
-        request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-        or (request.client.host if request.client else None)
+    ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (
+        request.client.host if request.client else None
     )
     ua = request.headers.get("user-agent")
     return (ip or None), (ua or None)
@@ -71,8 +70,11 @@ def login(
 
     ip, ua = _client_meta(request)
     secret, row = new_refresh_row(
-        user_id=user.id, family_id=None, family_issued_at=None,
-        ip=ip, user_agent=ua,
+        user_id=user.id,
+        family_id=None,
+        family_issued_at=None,
+        ip=ip,
+        user_agent=ua,
     )
     session.add(row)
     session.commit()
@@ -318,9 +320,7 @@ def revoke_session(
     session: Annotated[Session, Depends(get_session)],
     user_id: uuid.UUID = current_user,
 ) -> Response:
-    rows = session.exec(
-        select(RefreshToken).where(RefreshToken.family_id == family_id)
-    ).all()
+    rows = session.exec(select(RefreshToken).where(RefreshToken.family_id == family_id)).all()
     if not rows:
         response.status_code = status.HTTP_204_NO_CONTENT
         return response  # idempotent

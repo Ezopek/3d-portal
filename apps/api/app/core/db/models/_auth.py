@@ -1,4 +1,5 @@
 """apps/api/app/core/db/models/_auth.py"""
+
 import datetime
 import uuid
 
@@ -32,13 +33,19 @@ class RefreshToken(SQLModel, table=True):
     token_hash: str = Field(unique=True)
     issued_at: datetime.datetime = Field(sa_column=Column(UTCDateTime, nullable=False))
     expires_at: datetime.datetime = Field(sa_column=Column(UTCDateTime, nullable=False))
-    replaced_at: datetime.datetime | None = Field(default=None, sa_column=Column(UTCDateTime, nullable=True))
+    replaced_at: datetime.datetime | None = Field(
+        default=None, sa_column=Column(UTCDateTime, nullable=True)
+    )
     replaced_by_id: uuid.UUID | None = Field(
         default=None,
         sa_column=uuid_fk("refresh_tokens.id", ondelete="SET NULL", nullable=True),
     )
-    revoked_at: datetime.datetime | None = Field(default=None, sa_column=Column(UTCDateTime, nullable=True))
+    revoked_at: datetime.datetime | None = Field(
+        default=None, sa_column=Column(UTCDateTime, nullable=True)
+    )
     revoke_reason: str | None = None
-    last_used_at: datetime.datetime | None = Field(default=None, sa_column=Column(UTCDateTime, nullable=True))
+    last_used_at: datetime.datetime | None = Field(
+        default=None, sa_column=Column(UTCDateTime, nullable=True)
+    )
     ip: str | None = None
     user_agent: str | None = None

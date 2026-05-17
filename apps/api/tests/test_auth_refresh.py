@@ -1,4 +1,5 @@
 """apps/api/tests/test_auth_refresh.py"""
+
 import datetime
 
 import pytest
@@ -19,12 +20,12 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("COOKIE_SECURE", "false")
     from app.core.config import get_settings
     from app.core.db.session import get_engine
+
     get_settings.cache_clear()
     get_engine.cache_clear()
     with TestClient(create_app()) as c:
         c.headers.update({"X-Portal-Client": "web"})
-        c.post("/api/auth/login",
-               json={"email": "admin@example.com", "password": "p"})
+        c.post("/api/auth/login", json={"email": "admin@example.com", "password": "p"})
         yield c
     get_settings.cache_clear()
     get_engine.cache_clear()
@@ -66,6 +67,7 @@ def test_refresh_with_garbage_returns_invalid_refresh(client):
 def test_refresh_with_expired_returns_refresh_expired(client):
     """Backdate expires_at on the active row."""
     from app.core.db.session import get_engine
+
     with Session(get_engine()) as s:
         row = s.exec(select(RefreshToken)).first()
         row.expires_at = datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=1)
@@ -104,10 +106,9 @@ def test_grace_returns_active_descendant_on_ua_match(client):
 
     # And the family is NOT burned — exactly one active row.
     from app.core.db.session import get_engine
+
     with Session(get_engine()) as s:
-        active = s.exec(
-            select(RefreshToken).where(RefreshToken.revoked_at.is_(None))
-        ).all()
+        active = s.exec(select(RefreshToken).where(RefreshToken.revoked_at.is_(None))).all()
         assert len(active) == 1
 
 
@@ -124,10 +125,9 @@ def test_grace_ua_mismatch_denies_without_burning_family(client):
     assert r.json()["detail"] == "force_relogin"
     # Family NOT burned — active row still alive.
     from app.core.db.session import get_engine
+
     with Session(get_engine()) as s:
-        active = s.exec(
-            select(RefreshToken).where(RefreshToken.revoked_at.is_(None))
-        ).all()
+        active = s.exec(select(RefreshToken).where(RefreshToken.revoked_at.is_(None))).all()
         assert len(active) == 1
 
 
@@ -138,6 +138,7 @@ def test_reuse_outside_grace_burns_family(client):
 
     # Backdate the rotated row's replaced_at past the grace window.
     from app.core.db.session import get_engine
+
     with Session(get_engine()) as s:
         rotated = s.exec(
             select(RefreshToken).where(RefreshToken.revoke_reason == "rotated")
@@ -156,15 +157,14 @@ def test_reuse_outside_grace_burns_family(client):
 
     # All rows in the family are revoked.
     with Session(get_engine()) as s:
-        active = s.exec(
-            select(RefreshToken).where(RefreshToken.revoked_at.is_(None))
-        ).all()
+        active = s.exec(select(RefreshToken).where(RefreshToken.revoked_at.is_(None))).all()
         assert active == []
 
 
 def test_concurrent_refresh_one_wins(client):
     """Two parallel rotations on the same refresh — both succeed (one rotates, one grace)."""
     import threading
+
     results: list[int] = []
     cookies_snapshot = dict(client.cookies)
 
@@ -178,15 +178,16 @@ def test_concurrent_refresh_one_wins(client):
 
     t1 = threading.Thread(target=_hit)
     t2 = threading.Thread(target=_hit)
-    t1.start(); t2.start()
-    t1.join(); t2.join()
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
     # At least one must succeed (200). The other can be 200 (grace) or 401 race-lost.
     # The CRITICAL invariant is that the family ends with exactly one active token.
     assert 200 in results
 
     from app.core.db.session import get_engine
+
     with Session(get_engine()) as s:
-        active = s.exec(
-            select(RefreshToken).where(RefreshToken.revoked_at.is_(None))
-        ).all()
+        active = s.exec(select(RefreshToken).where(RefreshToken.revoked_at.is_(None))).all()
         assert len(active) == 1, f"expected 1 active row, got {len(active)}"

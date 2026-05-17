@@ -1,10 +1,11 @@
 """apps/api/tests/test_auth_login_logout.py"""
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 from app.core.auth.cookies import ACCESS_COOKIE, REFRESH_COOKIE
-from app.core.db.models import RefreshToken, User
+from app.core.db.models import RefreshToken
 from app.main import create_app
 
 
@@ -17,6 +18,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("COOKIE_SECURE", "false")
     from app.core.config import get_settings
     from app.core.db.session import get_engine
+
     get_settings.cache_clear()
     get_engine.cache_clear()
     app = create_app()
@@ -28,8 +30,7 @@ def client(tmp_path, monkeypatch):
 
 
 def test_login_sets_both_cookies(client):
-    r = client.post("/api/auth/login",
-                    json={"email": "admin@example.com", "password": "pw"})
+    r = client.post("/api/auth/login", json={"email": "admin@example.com", "password": "pw"})
     assert r.status_code == 200
     assert ACCESS_COOKIE in r.cookies
     assert REFRESH_COOKIE in r.cookies
@@ -40,9 +41,9 @@ def test_login_sets_both_cookies(client):
 
 
 def test_login_creates_active_refresh_row(client):
-    client.post("/api/auth/login",
-                json={"email": "admin@example.com", "password": "pw"})
+    client.post("/api/auth/login", json={"email": "admin@example.com", "password": "pw"})
     from app.core.db.session import get_engine
+
     with Session(get_engine()) as s:
         rows = s.exec(select(RefreshToken)).all()
         assert len(rows) == 1
@@ -51,14 +52,12 @@ def test_login_creates_active_refresh_row(client):
 
 
 def test_login_bad_password_rejects(client):
-    r = client.post("/api/auth/login",
-                    json={"email": "admin@example.com", "password": "wrong"})
+    r = client.post("/api/auth/login", json={"email": "admin@example.com", "password": "wrong"})
     assert r.status_code == 401
 
 
 def test_me_returns_current_user_via_cookie(client):
-    client.post("/api/auth/login",
-                json={"email": "admin@example.com", "password": "pw"})
+    client.post("/api/auth/login", json={"email": "admin@example.com", "password": "pw"})
     r = client.get("/api/auth/me")
     assert r.status_code == 200
     assert r.json()["email"] == "admin@example.com"
@@ -71,15 +70,22 @@ def test_me_no_cookie_returns_missing_access(client):
 
 
 def test_logout_revokes_family_and_clears_cookies(client):
-    client.post("/api/auth/login",
-                json={"email": "admin@example.com", "password": "pw"})
+    client.post("/api/auth/login", json={"email": "admin@example.com", "password": "pw"})
     r = client.post("/api/auth/logout")
     assert r.status_code == 204
-    set_cookies = r.headers.get_list("set-cookie") if hasattr(r.headers, "get_list") else [
-        v for k, v in r.headers.items() if k.lower() == "set-cookie"
-    ]
-    assert any(("portal_access" in c) and ("Max-Age=0" in c or 'expires=' in c.lower()) for c in set_cookies)
-    assert any(("portal_refresh" in c) and ("Max-Age=0" in c or 'expires=' in c.lower()) for c in set_cookies)
+    set_cookies = (
+        r.headers.get_list("set-cookie")
+        if hasattr(r.headers, "get_list")
+        else [v for k, v in r.headers.items() if k.lower() == "set-cookie"]
+    )
+    assert any(
+        ("portal_access" in c) and ("Max-Age=0" in c or "expires=" in c.lower())
+        for c in set_cookies
+    )
+    assert any(
+        ("portal_refresh" in c) and ("Max-Age=0" in c or "expires=" in c.lower())
+        for c in set_cookies
+    )
     r2 = client.get("/api/auth/me")
     assert r2.status_code == 401
 
@@ -90,8 +96,7 @@ def test_logout_with_no_cookies_returns_204(client):
 
 
 def test_logout_idempotent_double_call(client):
-    client.post("/api/auth/login",
-                json={"email": "admin@example.com", "password": "pw"})
+    client.post("/api/auth/login", json={"email": "admin@example.com", "password": "pw"})
     a = client.post("/api/auth/logout")
     b = client.post("/api/auth/logout")
     assert a.status_code == 204

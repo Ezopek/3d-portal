@@ -1,4 +1,5 @@
 """apps/api/tests/test_auth_dependencies.py"""
+
 import uuid
 
 import pytest
@@ -15,6 +16,7 @@ def app_with_protected_routes(monkeypatch):
     monkeypatch.setenv("JWT_SECRET", "test")
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
     from app.core.config import get_settings
+
     get_settings.cache_clear()
 
     app = FastAPI()

@@ -35,11 +35,7 @@ def upgrade() -> None:
     # one statement across versions, so we drive the backfill from Python.
     bind = op.get_bind()
     rows = bind.execute(
-        sa.text(
-            "SELECT id, model_id, original_name "
-            "FROM model_file "
-            "WHERE kind = 'stl'"
-        )
+        sa.text("SELECT id, model_id, original_name FROM model_file WHERE kind = 'stl'")
     ).all()
     first_per_model: dict[str, tuple[str, str]] = {}
     for file_id, model_id, original_name in rows:

@@ -153,10 +153,7 @@ def test_resolve_returns_stl_url_when_stl_present(client):
     ).json()
     body = c.get(f"/api/share/{created['token']}").json()
     assert body["has_3d"] is True
-    assert (
-        body["stl_url"]
-        == f"/api/models/{ids['full']}/files/{ids['stl']}/content?download=1"
-    )
+    assert body["stl_url"] == f"/api/models/{ids['full']}/files/{ids['stl']}/content?download=1"
 
 
 def test_resolve_no_files_returns_empty(client):

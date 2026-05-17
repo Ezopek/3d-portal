@@ -1,4 +1,5 @@
 """apps/api/tests/test_cleanup_refresh_tokens.py"""
+
 import datetime
 import uuid
 
@@ -15,7 +16,10 @@ def engine_with_user():
     SQLModel.metadata.create_all(e)
     with Session(e) as s:
         u = User(
-            id=uuid.uuid4(), email="a@example.com", display_name="a", role="admin",
+            id=uuid.uuid4(),
+            email="a@example.com",
+            display_name="a",
+            role="admin",
             password_hash="x",
             created_at=datetime.datetime.now(datetime.UTC),
         )
@@ -44,10 +48,10 @@ def test_cleanup_deletes_old_revoked_and_expired(engine_with_user):
     long_ago = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=10)
     just_now = datetime.datetime.now(datetime.UTC)
     with Session(engine) as s:
-        s.add(_row(user_id, revoked_at=long_ago, revoke_reason="logout"))   # delete (old revoke)
-        s.add(_row(user_id, revoked_at=just_now, revoke_reason="logout"))   # keep (recent revoke)
-        s.add(_row(user_id, expires_at=long_ago))                            # delete (old expiry)
-        s.add(_row(user_id))                                                 # keep (active)
+        s.add(_row(user_id, revoked_at=long_ago, revoke_reason="logout"))  # delete (old revoke)
+        s.add(_row(user_id, revoked_at=just_now, revoke_reason="logout"))  # keep (recent revoke)
+        s.add(_row(user_id, expires_at=long_ago))  # delete (old expiry)
+        s.add(_row(user_id))  # keep (active)
         s.commit()
 
     deleted = cleanup_refresh_tokens_sync(engine)

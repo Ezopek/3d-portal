@@ -1,4 +1,5 @@
 """Round-trip Alembic migration 0009 — refresh_tokens."""
+
 import os
 import subprocess
 import sys
@@ -38,6 +39,7 @@ def test_migration_0009_partial_unique_invariant(tmp_path):
     """Two active rows in the same family must violate the partial UNIQUE."""
     import sqlite3
     import uuid
+
     db_path = tmp_path / "inv.db"
     env = {"DATABASE_URL": f"sqlite:///{db_path}"}
     assert _alembic(env, "upgrade", "head").returncode == 0
@@ -64,6 +66,7 @@ def test_migration_0009_partial_unique_invariant(tmp_path):
     conn.commit()
 
     import pytest
+
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute(
             "INSERT INTO refresh_tokens "

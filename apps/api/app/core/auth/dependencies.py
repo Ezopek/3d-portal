@@ -1,4 +1,5 @@
 """apps/api/app/core/auth/dependencies.py"""
+
 import uuid
 from typing import Annotated
 
@@ -11,9 +12,7 @@ from app.core.config import Settings, get_settings
 _ALLOWED_ROLES: frozenset[str] = frozenset({"admin", "agent", "member"})
 
 
-def _decode(
-    token: str | None, settings: Settings
-) -> dict[str, object]:
+def _decode(token: str | None, settings: Settings) -> dict[str, object]:
     if token is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "missing_access")
     try:

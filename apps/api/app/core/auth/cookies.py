@@ -1,4 +1,5 @@
 """apps/api/app/core/auth/cookies.py"""
+
 from fastapi import Response
 
 from app.core.config import Settings
@@ -9,7 +10,7 @@ REFRESH_COOKIE = "portal_refresh"
 ACCESS_PATH = "/api"
 REFRESH_PATH = "/api/auth"
 
-ACCESS_MAX_AGE = 10 * 60          # 10 min
+ACCESS_MAX_AGE = 10 * 60  # 10 min
 REFRESH_MAX_AGE = 30 * 24 * 60 * 60  # 30 d
 
 
@@ -37,9 +38,7 @@ def set_refresh_cookie(resp: Response, secret: str, settings: Settings) -> None:
     )
 
 
-def set_session_cookies(
-    resp: Response, *, access: str, refresh: str, settings: Settings
-) -> None:
+def set_session_cookies(resp: Response, *, access: str, refresh: str, settings: Settings) -> None:
     set_access_cookie(resp, access, settings)
     set_refresh_cookie(resp, refresh, settings)
 

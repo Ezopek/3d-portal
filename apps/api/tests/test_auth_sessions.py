@@ -1,4 +1,5 @@
 """apps/api/tests/test_auth_sessions.py"""
+
 import datetime
 import uuid
 
@@ -20,13 +21,16 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("COOKIE_SECURE", "false")
     from app.core.config import get_settings
     from app.core.db.session import get_engine
+
     get_settings.cache_clear()
     get_engine.cache_clear()
     with TestClient(create_app()) as c:
         c.headers.update({"X-Portal-Client": "web"})
-        c.post("/api/auth/login",
-               json={"email": "admin@example.com", "password": "p"},
-               headers={"User-Agent": "device-A"})
+        c.post(
+            "/api/auth/login",
+            json={"email": "admin@example.com", "password": "p"},
+            headers={"User-Agent": "device-A"},
+        )
         yield c
     get_settings.cache_clear()
     get_engine.cache_clear()
@@ -36,9 +40,11 @@ def _login_other_device(app) -> tuple[TestClient, str]:
     """Log in a second session in a separate client, return (client, refresh_cookie_value)."""
     sub = TestClient(app)
     sub.headers.update({"X-Portal-Client": "web"})
-    sub.post("/api/auth/login",
-             json={"email": "admin@example.com", "password": "p"},
-             headers={"User-Agent": "device-B"})
+    sub.post(
+        "/api/auth/login",
+        json={"email": "admin@example.com", "password": "p"},
+        headers={"User-Agent": "device-B"},
+    )
     return sub, sub.cookies.get(REFRESH_COOKIE)
 
 
@@ -73,18 +79,26 @@ def test_sessions_delete_other_users_family_returns_403(client, tmp_path, monkey
     from app.core.auth.password import hash_password
     from app.core.db.models import User
     from app.core.db.session import get_engine
+
     with Session(get_engine()) as s:
-        s.add(User(
-            id=uuid.uuid4(), email="b@example.com", display_name="B", role="admin",
-            password_hash=hash_password("p"),
-            created_at=datetime.datetime.now(datetime.UTC),
-        ))
+        s.add(
+            User(
+                id=uuid.uuid4(),
+                email="b@example.com",
+                display_name="B",
+                role="admin",
+                password_hash=hash_password("p"),
+                created_at=datetime.datetime.now(datetime.UTC),
+            )
+        )
         s.commit()
     sub = TestClient(client.app)
     sub.headers.update({"X-Portal-Client": "web"})
-    sub.post("/api/auth/login",
-             json={"email": "b@example.com", "password": "p"},
-             headers={"User-Agent": "device-C"})
+    sub.post(
+        "/api/auth/login",
+        json={"email": "b@example.com", "password": "p"},
+        headers={"User-Agent": "device-C"},
+    )
     r = sub.delete(f"/api/auth/sessions/{family_id}")
     assert r.status_code == 403
 
@@ -105,6 +119,7 @@ def test_logout_all_revokes_every_family(client):
     assert r.status_code == 204
     # Both families gone.
     from app.core.db.session import get_engine
+
     with Session(get_engine()) as s:
         active = s.exec(select(RefreshToken).where(RefreshToken.revoked_at.is_(None))).all()
         assert active == []
@@ -129,5 +144,3 @@ def test_logout_others_with_no_other_returns_204(client):
     r = client.post("/api/auth/logout-others")
     assert r.status_code == 204
     assert client.get("/api/auth/me").status_code == 200
-
-

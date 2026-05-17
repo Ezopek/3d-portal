@@ -94,12 +94,7 @@ def test_render_model_inserts_4_modelfile_rows(tmp_db_engine):
     with Session(engine) as s:
         from app.core.db.models import Model, ModelFile, ModelFileKind
 
-        files = list(
-            s.exec(
-                select(ModelFile)
-                .where(ModelFile.kind == ModelFileKind.image)
-            ).all()
-        )
+        files = list(s.exec(select(ModelFile).where(ModelFile.kind == ModelFileKind.image)).all())
         names = {f.original_name for f in files}
         assert names == {"iso-render.png", "front-render.png", "side-render.png", "top-render.png"}
         m = s.exec(select(Model).where(Model.slug == "t")).one()
@@ -108,12 +103,8 @@ def test_render_model_inserts_4_modelfile_rows(tmp_db_engine):
         assert m.thumbnail_file_id == iso.id
 
     # Status flow: running then done
-    redis.set.assert_any_await(
-        "render:status:" + model_id, b"running", ex=60 * 60
-    )
-    redis.set.assert_any_await(
-        "render:status:" + model_id, b"done", ex=60 * 60
-    )
+    redis.set.assert_any_await("render:status:" + model_id, b"running", ex=60 * 60)
+    redis.set.assert_any_await("render:status:" + model_id, b"done", ex=60 * 60)
 
 
 def test_render_model_replaces_old_auto_renders(tmp_db_engine):
@@ -199,11 +190,7 @@ def test_render_model_replaces_old_auto_renders(tmp_db_engine):
 
     assert result["status"] == "done"
     with Session(engine) as s:
-        files = list(
-            s.exec(
-                select(ModelFile).where(ModelFile.kind == ModelFileKind.image)
-            ).all()
-        )
+        files = list(s.exec(select(ModelFile).where(ModelFile.kind == ModelFileKind.image)).all())
         # Old row gone, 4 new rows
         old_present = any(f.id == old_uuid for f in files)
         assert not old_present
@@ -299,7 +286,7 @@ def test_render_model_falls_back_to_first_stl_when_none_selected(tmp_db_engine):
     content_dir = tmp_root / "content"
     content_dir.mkdir()
 
-    model_id, a_id, b_id = _seed_two_stls(engine, content_dir, flags=(False, False))
+    model_id, _a_id, _b_id = _seed_two_stls(engine, content_dir, flags=(False, False))
 
     redis = MagicMock()
     redis.set = AsyncMock(return_value=None)

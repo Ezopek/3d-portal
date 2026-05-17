@@ -1,4 +1,5 @@
 """apps/api/tests/test_csrf_middleware.py"""
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -14,6 +15,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("COOKIE_SECURE", "false")
     from app.core.config import get_settings
     from app.core.db.session import get_engine
+
     get_settings.cache_clear()
     get_engine.cache_clear()
     with TestClient(create_app()) as c:
@@ -22,16 +24,17 @@ def client(tmp_path, monkeypatch):
 
 
 def test_post_without_header_blocked(client):
-    r = client.post("/api/auth/login",
-                    json={"email": "admin@example.com", "password": "p"})
+    r = client.post("/api/auth/login", json={"email": "admin@example.com", "password": "p"})
     assert r.status_code == 403
     assert r.json()["detail"] == "csrf_required"
 
 
 def test_post_with_header_allowed(client):
-    r = client.post("/api/auth/login",
-                    json={"email": "admin@example.com", "password": "p"},
-                    headers={"X-Portal-Client": "web"})
+    r = client.post(
+        "/api/auth/login",
+        json={"email": "admin@example.com", "password": "p"},
+        headers={"X-Portal-Client": "web"},
+    )
     assert r.status_code == 200
 
 

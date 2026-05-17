@@ -1,4 +1,5 @@
 """apps/api/tests/test_auth_jwt.py"""
+
 from app.core.auth.jwt import decode_token, encode_token
 
 

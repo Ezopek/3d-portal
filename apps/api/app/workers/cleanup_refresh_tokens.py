@@ -1,4 +1,5 @@
 """apps/api/app/workers/cleanup_refresh_tokens.py — daily cleanup of old refresh_tokens rows."""
+
 from __future__ import annotations
 
 import datetime
@@ -21,10 +22,7 @@ def cleanup_refresh_tokens_sync(engine) -> int:
     cutoff = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=7)
     with Session(engine) as s:
         stmt = delete(RefreshToken).where(
-            (
-                (RefreshToken.revoked_at.is_not(None))
-                & (RefreshToken.revoked_at < cutoff)
-            )
+            ((RefreshToken.revoked_at.is_not(None)) & (RefreshToken.revoked_at < cutoff))
             | (RefreshToken.expires_at < cutoff)
         )
         result = s.exec(stmt)

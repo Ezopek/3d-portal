@@ -25,8 +25,6 @@ from app.core.db.session import get_engine
 JWT_SECRET = "test-secret-not-real"
 
 
-
-
 def _admin_token(user_id: uuid.UUID) -> str:
     return encode_token(subject=str(user_id), role="admin", secret=JWT_SECRET, ttl_minutes=30)
 
