@@ -1,4 +1,4 @@
-import { test } from "@playwright/test";
+import { test } from "./_test";
 
 // Legacy admin file selection (render-selection checkboxes) was removed
 // in Slice 3C. The new admin file-management UX lands in Slice 3E.

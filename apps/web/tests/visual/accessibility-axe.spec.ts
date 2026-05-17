@@ -22,7 +22,7 @@
  * additions during Phase B require explicit operator approval.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./_test";
 import AxeBuilder from "@axe-core/playwright";
 import { loginAsAdmin, waitForReady } from "./helpers";
 

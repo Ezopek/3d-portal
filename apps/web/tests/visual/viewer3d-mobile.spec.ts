@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./_test";
 
 import { stubSotList, stubViewerModelDetail } from "./api-stubs";
 import { waitForReady } from "./helpers";

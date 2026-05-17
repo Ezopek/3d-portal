@@ -1,4 +1,4 @@
-import { test } from "@playwright/test";
+import { test } from "./_test";
 
 // Admin actions on catalog detail (thumbnail picker, render selection,
 // share button) were removed in Slice 3C and return in Slice 3E with

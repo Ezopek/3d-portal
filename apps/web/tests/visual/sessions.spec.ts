@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./_test";
 
 import { waitForReady } from "./helpers";
 import type { Page, Route } from "@playwright/test";
