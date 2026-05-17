@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Opt-in pre-push hook: runs every per-story quality gate against the working
+# tree before allowing the push. Enable once per clone:
+#
+#     git config core.hooksPath .githooks
+#
+# Disable with `git config --unset core.hooksPath` or skip a single push with
+# `git push --no-verify` (use sparingly — bypassing the gate is the path that
+# put the project in the "pre-existing test failure" mess this hook prevents).
+#
+# Skip individual stages inline:
+#     SKIP_VISUAL=1 git push          # visual regression takes ~35 s, opt out
+#     SKIP_VISUAL=1 SKIP_PYTEST=1 git push   # both backends
+exec "$(git rev-parse --show-toplevel)/infra/scripts/check-all.sh"

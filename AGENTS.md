@@ -103,9 +103,13 @@ Every BMAD story is implemented on its own short-lived branch — *not* in a ser
 3. Quality gates must all be green before merge:
    - `ruff format --check` + `ruff check` clean on `apps/api/` and `workers/render/`
    - `pytest` full suite green on `apps/api/`
-   - `npm run lint --max-warnings=0` and `npm run test:visual` green on `apps/web/`
+   - `npm run lint --max-warnings=0`, `npm run typecheck`, `npm run test`, and `npm run test:visual` green on `apps/web/`
    - Codex review pass: `codex review --commit <HEAD-of-branch>` (per the review-fix-commit close-out pattern)
    - Pre-commit hook itself working (it has broken before — verify before relying on it)
+
+   One-shot wrapper: `infra/scripts/check-all.sh` runs every gate above (skip
+   individual stages with `SKIP_VISUAL=1`, `SKIP_PYTEST=1`, etc.). Opt in to
+   auto-run on push with `git config core.hooksPath .githooks`.
 4. Merge to `main` with fast-forward only — never a merge commit, never a squash:
    ```bash
    git checkout main && git merge --ff-only feat/E5.14-catalog-filters
