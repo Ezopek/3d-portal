@@ -178,14 +178,31 @@ Until then: one story `in-progress` at a time, serial merges.
 
 BMAD owns planning + execution + review in this repo. Skill catalog: `_bmad/_config/bmad-help.csv`.
 
-- Agents with BMAD skills (e.g. Claude Code) invoke `bmad-help` when unsure where to start.
+- **Agents with BMAD skills (e.g. Claude Code) MUST invoke `bmad-help` at the start of every session before any planning or implementation work.** `bmad-help` reads `_bmad/_config/bmad-help.csv` (the skill catalog with `phase` + `after` dependencies) and recommends the canonical entry skill for the current lifecycle stage. Skipping it is the most common BMAD drift trigger and is the single biggest cause of agents reaching for the wrong skill by name-match. The only exempt sessions are trivial single-shot tasks where no BMAD ceremony applies (typo fix, single-file Q&A); when in doubt, run it — cost is ~30s.
 - Agents without BMAD skills (e.g. Codex, Gemini) read `_bmad-output/project-context.md` for execution rules and the relevant story spec in `_bmad-output/` before implementing.
 
 Typical routing for Claude Code:
 
-- New feature → BMAD planning chain (PRD → architecture → epics & stories → sprint planning → story cycle).
+- New feature in **greenfield context** (no prior PRD/architecture artifacts) → full BMAD planning chain (PRD → architecture → epics & stories → sprint planning → story cycle).
+- New feature in **brownfield context** (PRD/architecture already exist — the normal case here) → `bmad-correct-course` FIRST. It analyzes the change and routes to the right ceremony (PRD edit, architecture rerun, new epics, sprint planning update). The full planning chain is for greenfield only — do not invoke `bmad-create-prd` on a finished `prd.md`.
 - Small change or bugfix → `bmad-quick-dev`.
 - Tests on existing code → BMAD `tea` module (`bmad-testarch-test-design`, `bmad-testarch-framework`, etc.).
+- **Mid-session scope pivot → re-invoke `bmad-help`.** If the work shifts (was planning, now implementing; was bug-fix, now feature; surprised by an unfamiliar artifact state), the session-start call no longer covers the new task — re-run `bmad-help` to confirm the new canonical entry.
+
+### BMAD vanilla-first
+
+**Vanilla BMAD ceremony is the default. Any deviation from standard skill flow is treated as a bug** unless there is a documented, operator-approved strong reason. Repo precedent that diverges from vanilla — examples observed in this repo: multi-section single `prd.md` with `## Initiative N` H2 sections appended per feature, direct edits to `architecture.md` instead of rerunning `bmad-create-architecture` via `bmad-correct-course`, routing-around a protesting skill — MUST be flagged to the operator with both options surfaced. **Never silently follow repo precedent that breaks vanilla**, even when prior initiatives have done so.
+
+The fact that a divergent pattern has shipped through multiple prior initiatives is NOT evidence of correctness — it is evidence that the drift wasn't caught earlier. The existing `## Initiative 0/1/2/3` H2 sections in `_bmad-output/planning-artifacts/{prd,architecture}.md` are legacy non-vanilla state; do NOT extend that pattern in new work.
+
+**Skill discovery checklist for any non-trivial BMAD task:**
+
+1. Confirm `bmad-help` has been called for the current session (mandatory at session start per the rule above; re-call after any mid-session scope pivot). If somehow skipped, run it NOW before proceeding.
+2. Check `_bmad/_config/bmad-help.csv` for `phase` + `after` dependencies before invoking any skill. Misalignment with current project state → reconsider.
+3. `bmad-correct-course` is the canonical entry point for ANY post-ship scope change — PRD edits, architecture changes, scope corrections, new features after MVP, mid-sprint adjustments. Per its catalog description: *"May recommend start over, update PRD, redo architecture, sprint planning, or correct epics and stories."* It is not just for emergencies.
+4. If a skill rejects the current state (e.g. `bmad-create-prd` detects `step-12-complete` and refuses), STOP and consult the operator before routing to a different skill. Never silently switch skills to work around a protest.
+
+Background: the 2026-05-18 retro on the (since-reverted) user-accounts initiative caught a recurring drift pattern — the agent treats BMAD as a library of named skills (matching operator verbs to skill names: *"create PRD"* → `bmad-create-prd`) rather than as a methodology with phase ordering and routing. `bmad-help` and `bmad-correct-course` exist precisely to short-circuit that pattern.
 
 ### Execution discipline
 
