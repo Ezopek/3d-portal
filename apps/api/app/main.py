@@ -5,6 +5,12 @@ from arq.connections import RedisSettings
 from fastapi import FastAPI
 
 from app.core.auth.csrf import install_csrf_middleware
+from app.core.auth.ratelimit import (
+    RateLimitMiddleware,
+    login_ratelimit_key,
+    refresh_ratelimit_key,
+    register_ratelimit_key,
+)
 from app.core.config import get_settings
 from app.core.db.seed import seed_admin
 from app.core.db.session import get_engine, init_schema
@@ -65,6 +71,35 @@ def create_app() -> FastAPI:
         openapi_url="/api/openapi.json",
     )
     instrument_app(app)
+    # Story 6.6: rate-limit middleware (Decision G). Behavioral order required:
+    # incoming request → CSRF check → rate-limit (one of three) → route handler.
+    # Starlette wraps middleware LIFO: the LAST add_middleware call is the
+    # OUTERMOST layer. So the install order in code is the INVERSE of the
+    # execution order — rate-limit is added FIRST, then CSRF last, so CSRF
+    # wraps outermost and a 403 csrf_required does NOT burn rate-limit budget.
+    # The trio's relative order is irrelevant because their key_fn callables
+    # are mutually exclusive on path.
+    app.add_middleware(
+        RateLimitMiddleware,
+        scope="login",
+        key_fn=login_ratelimit_key,
+        window_seconds=settings.ratelimit_login_window_seconds,
+        threshold=settings.ratelimit_login_threshold,
+    )
+    app.add_middleware(
+        RateLimitMiddleware,
+        scope="refresh",
+        key_fn=refresh_ratelimit_key,
+        window_seconds=settings.ratelimit_refresh_window_seconds,
+        threshold=settings.ratelimit_refresh_threshold,
+    )
+    app.add_middleware(
+        RateLimitMiddleware,
+        scope="register",
+        key_fn=register_ratelimit_key,
+        window_seconds=settings.ratelimit_register_window_seconds,
+        threshold=settings.ratelimit_register_threshold,
+    )
     install_csrf_middleware(app)
 
     @app.get("/api/health")

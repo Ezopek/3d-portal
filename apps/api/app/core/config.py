@@ -39,6 +39,14 @@ class Settings(BaseSettings):
     admin_email: str = "admin@local"
     admin_password: str = "change-me"
 
+    # Rate-limiting (Story 6.6, Decision G)
+    ratelimit_login_window_seconds: int = 60
+    ratelimit_login_threshold: int = 5
+    ratelimit_refresh_window_seconds: int = 60
+    ratelimit_refresh_threshold: int = 10
+    ratelimit_register_window_seconds: int = 60
+    ratelimit_register_threshold: int = 3
+
     # Observability
     otel_exporter_otlp_endpoint: str | None = None
     otel_exporter_otlp_headers: str | None = None  # e.g. "authorization=Bearer <token>"
