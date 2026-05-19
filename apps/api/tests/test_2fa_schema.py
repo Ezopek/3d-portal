@@ -300,19 +300,32 @@ def test_seed_admin_unchanged_after_2fa_columns(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_totp_fernet_key_required_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_totp_fernet_key_missing_in_production_warns_does_not_raise(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Story 7.1 production-incident relax (2026-05-19).
+
+    Original Story 7.1 fail-fast on missing key in production blocked deploy
+    on `.190` (no key in infra/.env, no encryption ops run yet — schema-only
+    story). Relaxed to warning; the actual fail-fast belongs in Story 7.2
+    where the key is first consumed by enrollment endpoint.
+    """
+    import warnings
+
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("JWT_SECRET", "real-jwt-secret")
     monkeypatch.setenv("ADMIN_PASSWORD", "real-admin-password")
     monkeypatch.delenv("TOTP_FERNET_KEY", raising=False)
     get_settings.cache_clear()
     try:
-        with pytest.raises(ValidationError) as excinfo:
-            get_settings()
-        message = str(excinfo.value)
-        assert "totp_fernet_key must be set" in message
-        assert "python -c" in message
-        assert "from cryptography.fernet import" in message
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            settings = get_settings()
+            assert settings.totp_fernet_key == ""
+            messages = [str(w.message) for w in caught]
+            assert any("TOTP_FERNET_KEY is unset" in m for m in messages), (
+                f"expected production-without-key warning, got: {messages}"
+            )
     finally:
         get_settings.cache_clear()
 

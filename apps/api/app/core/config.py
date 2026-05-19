@@ -108,13 +108,20 @@ class Settings(BaseSettings):
                     "admin_password must be set to a real value in production; "
                     "the default placeholder is not allowed."
                 )
+            # NOTE: Story 7.1 originally fail-fast on missing key in production.
+            # Relaxed 2026-05-19 (production incident response): Story 7.1 only
+            # adds schema columns and audit registry entries — no encryption ops
+            # run until Story 7.2 ships the enrollment endpoint. Re-tighten this
+            # gate in Story 7.2 where the key is first actually consumed.
             if not self.totp_fernet_key:
-                raise ValueError(
-                    "totp_fernet_key must be set to a real Fernet key in production; "
-                    'generate one with: python -c "from cryptography.fernet import '
-                    'Fernet; print(Fernet.generate_key().decode())". '
-                    "An unconfigured TOTP_FERNET_KEY would cause Story 7.2 enroll-confirm "
-                    "to silently fail at first 2FA enrollment attempt."
+                import warnings
+
+                warnings.warn(
+                    "TOTP_FERNET_KEY is unset in production — Story 7.2 enrollment "
+                    "endpoint will fail until this is provisioned. Generate one "
+                    'with: python -c "from cryptography.fernet import Fernet; '
+                    'print(Fernet.generate_key().decode())"',
+                    stacklevel=2,
                 )
         # Shape-validate whenever a key is provided so a malformed value fails
         # fast at startup, not later when the first 2FA enrollment attempts to
