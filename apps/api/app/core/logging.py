@@ -14,49 +14,64 @@ _HOST = socket.gethostname()
 _TOKEN_URL_REGEX = re.compile(r"\btoken=[^&\s\"']+")
 _TOKEN_REDACTED = "token=<redacted>"
 
+# Structured-log field names that JsonFormatter surfaces by pass-through.
+# Kept module-level so TokenRedactionFilter and JsonFormatter agree on which
+# keys leak to stdout (and therefore need redacting).
+_PASSTHROUGH_EXACT = frozenset(
+    {
+        "http.request.method",
+        "http.response.status_code",
+        "url.path",
+        "url.original",
+        "client.address",
+        "user.name",
+    }
+)
+
+
+def _is_passthrough_key(key: str) -> bool:
+    return key in _PASSTHROUGH_EXACT or key.startswith("labels.") or key.startswith("event.")
+
 
 class TokenRedactionFilter(logging.Filter):
     """Strip cleartext invite tokens from log records before formatting.
 
-    Three surfaces are covered:
+    Four surfaces are covered:
 
-    * ``record.msg`` — the format string (or pre-rendered text). Substituted
-      via ``_TOKEN_URL_REGEX``.
-    * ``record.args`` — positional / keyword arguments fed to ``%`` formatting.
-      Each string element is run through the same substitution; non-string
-      args are left alone.
-    * ``record.token`` — surfaced when the caller passes ``extra={"token":
-      "..."}``. Replaced with the literal ``"<redacted>"`` so the value never
-      reaches the formatter's pass-through dict.
+    * The fully rendered message. ``record.getMessage()`` resolves the
+      format string against ``record.args``; we then run the regex on
+      the result, assign it back as ``record.msg``, and clear
+      ``record.args`` so JsonFormatter never re-renders (which would
+      otherwise either reintroduce a cleartext token or raise
+      ``TypeError`` if we had only mutated ``record.msg``).
+    * ``record.token`` — set when callers pass ``extra={"token": "..."}``.
+      Replaced with the literal ``"<redacted>"``.
+    * Structured pass-through fields surfaced via ``extra={...}`` whose
+      keys JsonFormatter copies through verbatim (``url.original``,
+      ``event.action``, ``labels.tenant``, etc.). Each matching
+      string-valued attribute is run through the regex so cleartext
+      tokens never reach stdout via this side channel.
 
     The filter always returns ``True`` (it never drops records); it exists
     purely to mutate the record in place.
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
-        record.msg = _TOKEN_URL_REGEX.sub(_TOKEN_REDACTED, str(record.msg))
-        if record.args:
-            record.args = _redact_args(record.args)
+        try:
+            rendered = record.getMessage()
+        except TypeError:
+            # Format-string args desync (caller bug). Fall back to the raw
+            # msg so we still redact something rather than letting the
+            # record blow up downstream in the formatter.
+            rendered = str(record.msg)
+        record.msg = _TOKEN_URL_REGEX.sub(_TOKEN_REDACTED, rendered)
+        record.args = ()
         if hasattr(record, "token"):
             record.token = "<redacted>"
+        for key, value in record.__dict__.items():
+            if _is_passthrough_key(key) and isinstance(value, str):
+                record.__dict__[key] = _TOKEN_URL_REGEX.sub(_TOKEN_REDACTED, value)
         return True
-
-
-def _redact_args(args: object) -> object:
-    """Apply token redaction across the args container the logger handed us."""
-    if isinstance(args, dict):
-        return {key: _redact_one(value) for key, value in args.items()}
-    if isinstance(args, tuple):
-        return tuple(_redact_one(item) for item in args)
-    if isinstance(args, list):
-        return [_redact_one(item) for item in args]
-    return _redact_one(args)
-
-
-def _redact_one(value: object) -> object:
-    if isinstance(value, str):
-        return _TOKEN_URL_REGEX.sub(_TOKEN_REDACTED, value)
-    return value
 
 
 class JsonFormatter(logging.Formatter):
@@ -91,16 +106,10 @@ class JsonFormatter(logging.Formatter):
             payload["span.id"] = span_id
             payload["spanId"] = span_id
         # Pass-through structured fields commonly set via logger.info(..., extra={...}).
-        passthrough_keys = {
-            "http.request.method",
-            "http.response.status_code",
-            "url.path",
-            "url.original",
-            "client.address",
-            "user.name",
-        }
+        # Key set is shared with TokenRedactionFilter so both agree on what
+        # gets surfaced (and therefore what needs redacting).
         for key, value in record.__dict__.items():
-            if key.startswith("labels.") or key.startswith("event.") or key in passthrough_keys:
+            if _is_passthrough_key(key):
                 payload[key] = value
         if record.exc_info is not None:
             payload["error.type"] = record.exc_info[0].__name__ if record.exc_info[0] else None

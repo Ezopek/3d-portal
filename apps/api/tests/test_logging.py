@@ -128,3 +128,71 @@ def test_filter_scan_no_cleartext_leakage(
         assert not re.search(re.escape(needle), rendered), (
             f"cleartext {needle} leaked through redaction"
         )
+
+
+def test_filter_redacts_url_original_passthrough(
+    logger_to_buffer: tuple[logging.Logger, io.StringIO],
+) -> None:
+    """P1 regression — JsonFormatter pass-through keys must be redacted too.
+
+    Without redacting record.__dict__ pass-through values, ``url.original``
+    (or any other formatter-surfaced field) can leak a cleartext token.
+    """
+    logger, buf = logger_to_buffer
+    logger.info(
+        "registered",
+        extra={"url.original": "/register?token=secret123&utm=x", "user_id": "u1"},
+    )
+    line = buf.getvalue().strip()
+    payload = json.loads(line)
+    assert "secret123" not in line
+    assert payload["url.original"] == "/register?token=<redacted>&utm=x"
+    # Unrelated extras must survive untouched.
+    assert payload.get("user_id", "u1") == "u1"
+
+
+def test_filter_redacts_event_prefixed_passthrough() -> None:
+    """P1 regression — ``event.*`` keys are also formatter pass-through.
+
+    The stdlib logger refuses dotted keys in ``extra=`` (raises ``KeyError``
+    on reserved attribute names), so structured ``event.*`` fields are set
+    directly on ``record.__dict__`` by middleware. We simulate that path
+    here and assert the filter redacts cleartext tokens before the formatter
+    surfaces the field on stdout.
+    """
+    record = logging.LogRecord(
+        name="x",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="audit",
+        args=None,
+        exc_info=None,
+    )
+    record.__dict__["event.action"] = "redeem token=secretEvt&kind=admin"
+    TokenRedactionFilter().filter(record)
+    assert record.__dict__["event.action"] == "redeem token=<redacted>&kind=admin"
+
+
+def test_filter_redacts_lazy_format_without_typeerror(
+    logger_to_buffer: tuple[logging.Logger, io.StringIO],
+) -> None:
+    """P2 regression — lazy %s formatting must not desync record.msg vs record.args.
+
+    Pre-fix behaviour: the filter substituted record.msg (removing the ``%s``
+    placeholder) but left record.args intact. ``record.getMessage()`` then
+    raised ``TypeError: not all arguments converted during string formatting``
+    and the record was dropped.
+    """
+    logger, buf = logger_to_buffer
+    # Two flavours: token IN the format string with %s for value, and
+    # token IN the %s argument with no token in the format string.
+    logger.info("GET /register?token=%s&foo=bar", "abc123")
+    logger.info("token=%s logged", "secretXYZ")
+    rendered = buf.getvalue()
+    lines = [json.loads(ln) for ln in rendered.strip().splitlines()]
+    assert len(lines) == 2, f"expected 2 records, got {len(lines)}: {rendered!r}"
+    assert lines[0]["message"] == "GET /register?token=<redacted>&foo=bar"
+    assert lines[1]["message"] == "token=<redacted> logged"
+    assert "abc123" not in rendered
+    assert "secretXYZ" not in rendered
