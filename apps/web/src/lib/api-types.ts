@@ -22,9 +22,19 @@ export interface LoginRequest {
 }
 
 export interface LoginResponse {
-  access_token: string;
-  token_type: "bearer";
-  expires_in: number;
+  partial_auth: false;  // discriminator — always false on this shape
+  user: MeResponse;
+}
+
+export interface PartialAuthResponse {
+  partial_auth: true;
+  totp_required: true;
+  partial_token: string;
+}
+
+export interface VerifyRequest {
+  partial_token: string;
+  code: string;  // ^(\d{6}|[0-9a-f]{8})$
 }
 
 // --- Categories ---

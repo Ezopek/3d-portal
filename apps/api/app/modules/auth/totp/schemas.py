@@ -65,3 +65,15 @@ class StatusResponse(BaseModel):
     batch_id: uuid.UUID | None = None
     generated_at: datetime.datetime | None = None
     codes_remaining: int | None = None
+
+
+class VerifyRequest(BaseModel):
+    """Body of POST /api/auth/2fa/verify.
+
+    ``code`` accepts EITHER a 6-digit TOTP code OR an 8-char lowercase
+    hex recovery code; the regex below matches both shapes and the
+    server-side handler routes by shape (Story 7.3 AC-3 step 4).
+    """
+
+    partial_token: str = Field(min_length=20, max_length=64)
+    code: str = Field(pattern=r"^(\d{6}|[0-9a-f]{8})$")

@@ -1,9 +1,12 @@
-"""TOTP 2FA enrollment router (Story 7.2) — three endpoints under /api/auth/2fa/*.
+"""TOTP 2FA enrollment + verify router — four endpoints under /api/auth/2fa/*.
 
 * ``POST /api/auth/2fa/enroll`` — mint secret + QR + Redis-stashed token.
 * ``POST /api/auth/2fa/enroll/confirm`` — verify code, persist Fernet-encrypted
   secret, mint 8 recovery codes, emit ``auth.totp.enrolled`` audit row.
 * ``GET /api/auth/2fa/status`` — return enrollment + active-batch metadata.
+* ``POST /api/auth/2fa/verify`` — Story 7.3 partial-auth → full-auth exchange
+  (TOTP code OR recovery code; sets session cookies; emits
+  ``auth.totp.verify.{success,fail}`` + ``auth.recovery_code.used``).
 
 Audit emission lives in this module so the service stays a pure
 encryption-and-persistence boundary (Decision D §1509). The Fernet-key gate
@@ -13,23 +16,34 @@ Settings validator was relaxed to warn-only in Story 7.1 commit 2266721.
 
 from __future__ import annotations
 
+import datetime
+import json
+import re
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlmodel import Session
+import bcrypt
+from cryptography.fernet import InvalidToken
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlmodel import Session, select
 
 from app.core.audit import record_event
+from app.core.auth.cookies import set_session_cookies
 from app.core.auth.dependencies import current_user
+from app.core.auth.jwt import encode_token
+from app.core.auth.refresh import new_refresh_row
 from app.core.config import Settings, get_settings
-from app.core.db.models import User
+from app.core.db.models import RecoveryCode, User
 from app.core.db.models._enums import UserRole
 from app.core.db.session import get_engine, get_session
+from app.modules.auth.models import LoginResponse, MeResponse
+from app.modules.auth.router import client_meta
 from app.modules.auth.totp.schemas import (
     ConfirmRequest,
     ConfirmResponse,
     EnrollResponse,
     StatusResponse,
+    VerifyRequest,
 )
 from app.modules.auth.totp.service import (
     EnrollmentTokenInvalid,
@@ -37,7 +51,12 @@ from app.modules.auth.totp.service import (
     InvalidTotpCode,
     Settings2faService,
     _assert_fernet_key_configured,
+    decrypt_secret,
+    verify_totp_code,
 )
+
+_PARTIAL_KEY_PREFIX = "totp:partial:"
+_TOTP_CODE_REGEX = re.compile(r"^\d{6}$")
 
 router = APIRouter(prefix="/api/auth", tags=["auth", "2fa"])
 
@@ -177,4 +196,179 @@ def read_status(
         batch_id=payload.batch_id,
         generated_at=payload.generated_at,
         codes_remaining=payload.codes_remaining,
+    )
+
+
+@router.post(
+    "/2fa/verify",
+    response_model=LoginResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Verify second factor — TOTP or recovery code — and issue cookies",
+    description=(
+        "Exchange a partial_token (issued by POST /api/auth/login for "
+        "users with totp_enabled_at IS NOT NULL) plus either a 6-digit "
+        "TOTP code OR an 8-char hex recovery code for a fully "
+        "authenticated session. On success: issues portal_access + "
+        "portal_refresh cookies, creates a new RefreshToken family row, "
+        "consumes the partial_token, emits auth.totp.verify.success "
+        "and (if recovery_code) auth.recovery_code.used audit rows."
+    ),
+)
+async def verify_second_factor(
+    payload: VerifyRequest,
+    request: Request,
+    response: Response,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> LoginResponse:
+    redis = request.app.state.redis.get()
+    request_id = request.headers.get("x-request-id")
+    partial_key = f"{_PARTIAL_KEY_PREFIX}{payload.partial_token}"
+
+    # Step 1 — read the Redis stash. Miss / expired → 401, no audit
+    # emission (no safe user_id attribution).
+    raw = await redis.get(partial_key)
+    if raw is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "partial_token_invalid")
+    try:
+        stash = json.loads(raw)
+        stash_user_id = uuid.UUID(stash["user_id"])
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "partial_token_invalid") from exc
+
+    # Step 2 — load user and re-verify TOTP-enabled invariant.
+    user = session.get(User, stash_user_id)
+    if user is None or user.totp_enabled_at is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "partial_token_invalid")
+
+    # Step 3 — defense-in-depth against impossible-by-Story-7.2 state.
+    if user.totp_secret is None:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "totp_corrupt_state")
+
+    # Step 4 — branch by code shape. Pydantic regex guarantees the input
+    # matches ``^(\d{6}|[0-9a-f]{8})$`` so the negative branch is the
+    # recovery-code path by elimination.
+    is_totp_path = _TOTP_CODE_REGEX.fullmatch(payload.code) is not None
+    matched_row: RecoveryCode | None = None
+    method: str
+
+    if is_totp_path:
+        method = "totp"
+        try:
+            secret = decrypt_secret(user.totp_secret, settings)
+        except InvalidToken:
+            record_event(
+                get_engine(),
+                action="auth.totp.verify.fail",
+                entity_type="user",
+                entity_id=user.id,
+                actor_user_id=user.id,
+                after={"method": "totp", "reason": "fernet_invalid_token"},
+                request_id=request_id,
+            )
+            raise HTTPException(  # noqa: B904 — explicit 401, original cause not actionable
+                status.HTTP_401_UNAUTHORIZED, "invalid_code"
+            )
+        if not verify_totp_code(secret, payload.code):
+            record_event(
+                get_engine(),
+                action="auth.totp.verify.fail",
+                entity_type="user",
+                entity_id=user.id,
+                actor_user_id=user.id,
+                after={"method": "totp"},
+                request_id=request_id,
+            )
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_code")
+    else:
+        method = "recovery_code"
+        rows = list(
+            session.exec(
+                select(RecoveryCode)
+                .where(RecoveryCode.user_id == user.id)
+                .where(RecoveryCode.invalidated_at.is_(None))
+                .where(RecoveryCode.used_at.is_(None))
+                .order_by(RecoveryCode.generated_at.desc())
+            ).all()
+        )
+        for row in rows:
+            if bcrypt.checkpw(payload.code.encode(), row.code_hash.encode()):
+                matched_row = row
+                break
+        if matched_row is None:
+            record_event(
+                get_engine(),
+                action="auth.totp.verify.fail",
+                entity_type="user",
+                entity_id=user.id,
+                actor_user_id=user.id,
+                after={"method": "recovery_code"},
+                request_id=request_id,
+            )
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_code")
+
+    # Step 5 — consume the matched recovery-code row (recovery-code path).
+    used_at_value: datetime.datetime | None = None
+    if matched_row is not None:
+        used_at_value = datetime.datetime.now(datetime.UTC)
+        matched_row.used_at = used_at_value
+        session.add(matched_row)
+
+    # Step 6 — mint refresh-token family + access token (both paths).
+    ip, ua = client_meta(request)
+    refresh_secret, refresh_row = new_refresh_row(
+        user_id=user.id,
+        family_id=None,
+        family_issued_at=None,
+        ip=ip,
+        user_agent=ua,
+    )
+    session.add(refresh_row)
+
+    # Step 7 — atomic commit covering the RefreshToken INSERT and the
+    # recovery_codes.used_at UPDATE (recovery-code path only).
+    session.commit()
+
+    if matched_row is not None:
+        record_event(
+            get_engine(),
+            action="auth.recovery_code.used",
+            entity_type="recovery_code",
+            entity_id=matched_row.id,
+            actor_user_id=user.id,
+            after={
+                "batch_id": str(matched_row.batch_id),
+                "used_at": (used_at_value or matched_row.used_at).isoformat(),
+            },
+            request_id=request_id,
+        )
+    record_event(
+        get_engine(),
+        action="auth.totp.verify.success",
+        entity_type="user",
+        entity_id=user.id,
+        actor_user_id=user.id,
+        after={"method": method},
+        request_id=request_id,
+    )
+
+    # Step 8 — issue cookies, delete partial_token, return LoginResponse.
+    access = encode_token(
+        subject=str(user.id),
+        role=user.role.value,
+        secret=settings.jwt_secret,
+        ttl_minutes=settings.jwt_ttl_minutes,
+    )
+    set_session_cookies(response, access=access, refresh=refresh_secret, settings=settings)
+    # Best-effort delete; the TTL expires it within 5 minutes regardless.
+    await redis.delete(partial_key)
+
+    return LoginResponse(
+        partial_auth=False,
+        user=MeResponse(
+            id=user.id,
+            email=user.email,
+            display_name=user.display_name,
+            role=user.role.value,
+        ),
     )

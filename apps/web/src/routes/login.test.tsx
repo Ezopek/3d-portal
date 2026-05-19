@@ -13,11 +13,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import "@/locales/i18n";
 
-vi.mock("@/lib/api", () => ({
-  api: vi.fn(),
-}));
+vi.mock("@/lib/api", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
+  return {
+    ...actual,
+    api: vi.fn(),
+  };
+});
 
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { Route as LoginRoute } from "./login";
 
 async function renderLogin(node: ReactNode) {
@@ -99,5 +103,132 @@ describe("Login form", () => {
       expect(submit.textContent).toMatch(/signing in|logowanie/i);
     });
     resolveLogin();
+  });
+});
+
+describe("Login partial-auth flow (Story 7.3)", () => {
+  async function submitEmailPassword(): Promise<void> {
+    const email = screen.getByLabelText(/email/i) as HTMLInputElement;
+    const password = screen.getByLabelText(/password|hasło/i) as HTMLInputElement;
+    fireEvent.change(email, { target: { value: "anna@example.com" } });
+    fireEvent.change(password, { target: { value: "secret" } });
+    const submit = screen.getAllByRole("button", { name: /sign in|zaloguj/i })[0];
+    if (submit === undefined) throw new Error("submit button not found");
+    fireEvent.click(submit);
+  }
+
+  it("renders second-factor prompt after partial-auth login response", async () => {
+    vi.mocked(api).mockResolvedValueOnce({
+      partial_auth: true,
+      totp_required: true,
+      partial_token: "fixture-partial-token",
+    });
+    const Component = LoginRoute.options.component as React.ComponentType;
+    await renderLogin(<Component />);
+
+    await submitEmailPassword();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^code|^kod/i)).toBeDefined();
+    });
+    // Email/password form is no longer visible.
+    expect(screen.queryByLabelText(/email/i)).toBeNull();
+    expect(screen.queryByLabelText(/password|hasło/i)).toBeNull();
+    // Verify + Back buttons present.
+    expect(screen.getByRole("button", { name: /verify|zweryfikuj/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /back to sign in|powrót/i })).toBeDefined();
+  });
+
+  it("submits verify call and navigates to next on success", async () => {
+    vi.mocked(api)
+      .mockResolvedValueOnce({
+        partial_auth: true,
+        totp_required: true,
+        partial_token: "fixture-partial-token",
+      })
+      .mockResolvedValueOnce({
+        partial_auth: false,
+        user: {
+          id: "00000000-0000-0000-0000-000000000001",
+          email: "anna@example.com",
+          display_name: "Anna",
+          role: "member",
+        },
+      });
+    const Component = LoginRoute.options.component as React.ComponentType;
+    await renderLogin(<Component />);
+
+    await submitEmailPassword();
+    await waitFor(() => screen.getByLabelText(/^code|^kod/i));
+
+    const code = screen.getByLabelText(/^code|^kod/i) as HTMLInputElement;
+    fireEvent.change(code, { target: { value: "123456" } });
+    const verify = screen.getByRole("button", { name: /verify|zweryfikuj/i });
+    fireEvent.click(verify);
+
+    await waitFor(() => {
+      // The 2nd api() call is the /auth/2fa/verify POST.
+      expect(vi.mocked(api).mock.calls[1]?.[0]).toBe("/auth/2fa/verify");
+    });
+    const verifyInit = vi.mocked(api).mock.calls[1]?.[1] as RequestInit;
+    expect(verifyInit.method).toBe("POST");
+    const verifyBody = JSON.parse(verifyInit.body as string);
+    expect(verifyBody).toEqual({
+      partial_token: "fixture-partial-token",
+      code: "123456",
+    });
+  });
+
+  it("shows invalid-code error on verify 401 and preserves partial-token state", async () => {
+    vi.mocked(api)
+      .mockResolvedValueOnce({
+        partial_auth: true,
+        totp_required: true,
+        partial_token: "fixture-partial-token",
+      })
+      .mockRejectedValueOnce(
+        new ApiError(401, { detail: "invalid_code" }, "401 Unauthorized"),
+      );
+    const Component = LoginRoute.options.component as React.ComponentType;
+    await renderLogin(<Component />);
+
+    await submitEmailPassword();
+    await waitFor(() => screen.getByLabelText(/^code|^kod/i));
+
+    const code = screen.getByLabelText(/^code|^kod/i) as HTMLInputElement;
+    fireEvent.change(code, { target: { value: "000000" } });
+    const verify = screen.getByRole("button", { name: /verify|zweryfikuj/i });
+    fireEvent.click(verify);
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toMatch(
+        /incorrect code|nieprawidłowy kod/i,
+      );
+    });
+    // Still on second-factor sub-state: code input present, email/password not.
+    expect(screen.getByLabelText(/^code|^kod/i)).toBeDefined();
+    expect(screen.queryByLabelText(/email/i)).toBeNull();
+  });
+
+  it("resets to email_password sub-state on back-button click", async () => {
+    vi.mocked(api).mockResolvedValueOnce({
+      partial_auth: true,
+      totp_required: true,
+      partial_token: "fixture-partial-token",
+    });
+    const Component = LoginRoute.options.component as React.ComponentType;
+    await renderLogin(<Component />);
+
+    await submitEmailPassword();
+    await waitFor(() => screen.getByLabelText(/^code|^kod/i));
+
+    const back = screen.getByRole("button", { name: /back to sign in|powrót/i });
+    fireEvent.click(back);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/email/i)).toBeDefined();
+    });
+    expect(screen.queryByLabelText(/^code|^kod/i)).toBeNull();
+    expect(screen.getByLabelText(/password|hasło/i)).toBeDefined();
   });
 });

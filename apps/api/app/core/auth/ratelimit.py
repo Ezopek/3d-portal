@@ -78,7 +78,10 @@ def _client_ip(request: Request) -> str:
 
 
 def login_ratelimit_key(request: Request) -> str | None:
-    if request.method == "POST" and request.url.path == "/api/auth/login":
+    if request.method == "POST" and request.url.path in {
+        "/api/auth/login",
+        "/api/auth/2fa/verify",
+    }:
         return f"ip:{_client_ip(request)}"
     return None
 

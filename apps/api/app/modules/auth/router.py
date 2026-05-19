@@ -1,7 +1,9 @@
 """Auth router — cookie-based sessions with refresh-token rotation."""
 
 import datetime
+import json
 import logging
+import secrets
 import uuid
 from typing import Annotated
 
@@ -31,6 +33,7 @@ from app.modules.auth.models import (
     LoginRequest,
     LoginResponse,
     MeResponse,
+    PartialAuthResponse,
     SessionRow,
     SessionsResponse,
 )
@@ -39,8 +42,11 @@ _LOG = logging.getLogger("app.auth.refresh")
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+_PARTIAL_KEY_PREFIX = "totp:partial:"
+_PARTIAL_TTL_SECONDS = 300  # 5 minutes (epics.md §1694)
 
-def _client_meta(request: Request) -> tuple[str | None, str | None]:
+
+def client_meta(request: Request) -> tuple[str | None, str | None]:
     ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (
         request.client.host if request.client else None
     )
@@ -48,14 +54,19 @@ def _client_meta(request: Request) -> tuple[str | None, str | None]:
     return (ip or None), (ua or None)
 
 
-@router.post("/login", response_model=LoginResponse)
-def login(
+# Backward-compatible alias for callers in this module that still use the
+# original underscore-prefixed name (refresh / sessions handlers).
+_client_meta = client_meta
+
+
+@router.post("/login", response_model=LoginResponse | PartialAuthResponse)
+async def login(
     payload: LoginRequest,
     request: Request,
     response: Response,
     session: Annotated[Session, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
-) -> LoginResponse:
+) -> LoginResponse | PartialAuthResponse:
     user = session.exec(select(User).where(User.email == payload.email)).first()
     if user is None or not verify_password(payload.password, user.password_hash):
         record_event(
@@ -68,7 +79,28 @@ def login(
         )
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_credentials")
 
-    ip, ua = _client_meta(request)
+    ip, ua = client_meta(request)
+
+    if user.totp_enabled_at is not None:
+        partial_token = secrets.token_urlsafe(32)
+        stash = json.dumps(
+            {
+                "user_id": str(user.id),
+                "ip": ip or "",
+                "ua": ua or "",
+            }
+        )
+        await request.app.state.redis.get().set(
+            f"{_PARTIAL_KEY_PREFIX}{partial_token}",
+            stash.encode(),
+            ex=_PARTIAL_TTL_SECONDS,
+        )
+        return PartialAuthResponse(
+            partial_auth=True,
+            totp_required=True,
+            partial_token=partial_token,
+        )
+
     secret, row = new_refresh_row(
         user_id=user.id,
         family_id=None,
