@@ -17,6 +17,7 @@ Settings validator was relaxed to warn-only in Story 7.1 commit 2266721.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import datetime
 import json
 import re
@@ -58,6 +59,7 @@ from app.modules.auth.totp.service import (
 )
 
 _PARTIAL_KEY_PREFIX = "totp:partial:"
+_PARTIAL_TTL_SECONDS = 300  # mirror of auth/router.py constant (5 min per epics.md §1694)
 _TOTP_CODE_REGEX = re.compile(r"^\d{6}$")
 
 router = APIRouter(prefix="/api/auth", tags=["auth", "2fa"])
@@ -331,90 +333,106 @@ async def verify_second_factor(
     if claimed is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "partial_token_invalid")
 
-    used_at_value: datetime.datetime | None = None
-    if matched_row is not None:
-        # Story 7.3 Codex P2-4: conditional UPDATE with ``used_at IS NULL``
-        # in the WHERE clause — the race-narrow consumption check now
-        # lives in the DB, not in Python. Two concurrent /verify calls on
-        # DIFFERENT partial_tokens (P2-2 cannot help here — they're
-        # separate keys) but the SAME recovery code can both pass the
-        # bcrypt match; only one wins this UPDATE (rowcount == 1). The
-        # loser surfaces 401 invalid_code; their partial_token was already
-        # GETDEL-claimed so re-login is required (acceptable rarity).
-        used_at_value = datetime.datetime.now(datetime.UTC)
-        result = session.execute(
-            update(RecoveryCode)
-            .where(RecoveryCode.id == matched_row.id)
-            .where(RecoveryCode.used_at.is_(None))
-            .values(used_at=used_at_value)
+    # Story 7.3 Codex P2 follow-up (mirrors Story 7.2 restore-on-fail
+    # pattern): wrap the post-claim path so a DB stall, audit failure,
+    # or worker termination after GETDEL restores the partial_token to
+    # Redis (best-effort). Otherwise a transient error after successful
+    # 2FA leaves user stuck — would have to re-do password login.
+    try:
+        used_at_value: datetime.datetime | None = None
+        if matched_row is not None:
+            # Story 7.3 Codex P2-4: conditional UPDATE with ``used_at IS NULL``
+            # — race-narrow consumption check lives in the DB. Two concurrent
+            # /verify on DIFFERENT partial_tokens with SAME recovery code
+            # can both pass bcrypt match; only one wins this UPDATE
+            # (rowcount == 1). Loser surfaces 401 invalid_code (their
+            # partial_token was already GETDEL-claimed → re-login required).
+            used_at_value = datetime.datetime.now(datetime.UTC)
+            result = session.execute(
+                update(RecoveryCode)
+                .where(RecoveryCode.id == matched_row.id)
+                .where(RecoveryCode.used_at.is_(None))
+                .values(used_at=used_at_value)
+            )
+            if result.rowcount == 0:
+                session.rollback()
+                record_event(
+                    get_engine(),
+                    action="auth.totp.verify.fail",
+                    entity_type="user",
+                    entity_id=user.id,
+                    actor_user_id=user.id,
+                    after={"method": "recovery_code", "reason": "already_consumed"},
+                    request_id=request_id,
+                )
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_code")
+
+        # Step 6 — mint refresh-token family + access token (both paths).
+        ip, ua = client_meta(request)
+        refresh_secret, refresh_row = new_refresh_row(
+            user_id=user.id,
+            family_id=None,
+            family_issued_at=None,
+            ip=ip,
+            user_agent=ua,
         )
-        if result.rowcount == 0:
-            session.rollback()
+        session.add(refresh_row)
+
+        # Step 7 — atomic commit covering the RefreshToken INSERT and the
+        # recovery_codes.used_at UPDATE (recovery-code path only).
+        session.commit()
+
+        if matched_row is not None:
             record_event(
                 get_engine(),
-                action="auth.totp.verify.fail",
-                entity_type="user",
-                entity_id=user.id,
+                action="auth.recovery_code.used",
+                entity_type="recovery_code",
+                entity_id=matched_row.id,
                 actor_user_id=user.id,
-                after={"method": "recovery_code", "reason": "already_consumed"},
+                after={
+                    "batch_id": str(matched_row.batch_id),
+                    "used_at": used_at_value.isoformat() if used_at_value else "",
+                },
                 request_id=request_id,
             )
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_code")
-
-    # Step 6 — mint refresh-token family + access token (both paths).
-    ip, ua = client_meta(request)
-    refresh_secret, refresh_row = new_refresh_row(
-        user_id=user.id,
-        family_id=None,
-        family_issued_at=None,
-        ip=ip,
-        user_agent=ua,
-    )
-    session.add(refresh_row)
-
-    # Step 7 — atomic commit covering the RefreshToken INSERT and the
-    # recovery_codes.used_at UPDATE (recovery-code path only).
-    session.commit()
-
-    if matched_row is not None:
         record_event(
             get_engine(),
-            action="auth.recovery_code.used",
-            entity_type="recovery_code",
-            entity_id=matched_row.id,
+            action="auth.totp.verify.success",
+            entity_type="user",
+            entity_id=user.id,
             actor_user_id=user.id,
-            after={
-                "batch_id": str(matched_row.batch_id),
-                "used_at": used_at_value.isoformat() if used_at_value else "",
-            },
+            after={"method": method},
             request_id=request_id,
         )
-    record_event(
-        get_engine(),
-        action="auth.totp.verify.success",
-        entity_type="user",
-        entity_id=user.id,
-        actor_user_id=user.id,
-        after={"method": method},
-        request_id=request_id,
-    )
 
-    # Step 8 — issue cookies and return LoginResponse. Partial_token was
-    # already consumed by the GETDEL claim above; no further Redis op.
-    access = encode_token(
-        subject=str(user.id),
-        role=user.role.value,
-        secret=settings.jwt_secret,
-        ttl_minutes=settings.jwt_ttl_minutes,
-    )
-    set_session_cookies(response, access=access, refresh=refresh_secret, settings=settings)
-
-    return LoginResponse(
-        partial_auth=False,
-        user=MeResponse(
-            id=user.id,
-            email=user.email,
-            display_name=user.display_name,
+        # Step 8 — issue cookies and return LoginResponse. Partial_token was
+        # already consumed by the GETDEL claim above; no further Redis op.
+        access = encode_token(
+            subject=str(user.id),
             role=user.role.value,
-        ),
-    )
+            secret=settings.jwt_secret,
+            ttl_minutes=settings.jwt_ttl_minutes,
+        )
+        set_session_cookies(response, access=access, refresh=refresh_secret, settings=settings)
+
+        return LoginResponse(
+            partial_auth=False,
+            user=MeResponse(
+                id=user.id,
+                email=user.email,
+                display_name=user.display_name,
+                role=user.role.value,
+            ),
+        )
+    except HTTPException:
+        # HTTPException is a controlled-failure response — no restore needed
+        # (already_consumed path rolls back DB inside the conditional UPDATE
+        # branch; partial_token is already gone from Redis). Re-raise as-is.
+        raise
+    except Exception:
+        # Unexpected failure (DB stall, audit insert error, etc.) — restore
+        # the claimed partial_token so the user can retry 2FA without
+        # re-entering password. Best-effort; never masks the original.
+        with contextlib.suppress(Exception):
+            await redis.set(partial_key, claimed, ex=_PARTIAL_TTL_SECONDS)
+        raise
