@@ -16,6 +16,7 @@ Settings validator was relaxed to warn-only in Story 7.1 commit 2266721.
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
 import re
@@ -25,6 +26,7 @@ from typing import Annotated
 import bcrypt
 from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlalchemy import update
 from sqlmodel import Session, select
 
 from app.core.audit import record_event
@@ -282,19 +284,29 @@ async def verify_second_factor(
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_code")
     else:
         method = "recovery_code"
-        rows = list(
-            session.exec(
-                select(RecoveryCode)
-                .where(RecoveryCode.user_id == user.id)
-                .where(RecoveryCode.invalidated_at.is_(None))
-                .where(RecoveryCode.used_at.is_(None))
-                .order_by(RecoveryCode.generated_at.desc())
-            ).all()
-        )
-        for row in rows:
-            if bcrypt.checkpw(payload.code.encode(), row.code_hash.encode()):
-                matched_row = row
-                break
+
+        # Story 7.3 Codex P2-3: bcrypt.checkpw at cost 12 blocks the event
+        # loop ~200ms per candidate row; an 8-code batch can stall the
+        # worker for >1.5s. Off-load the SELECT + the per-row checkpw loop
+        # to a threadpool worker (sync SQLModel session is safe here —
+        # ``check_same_thread=False`` for SQLite, and the caller awaits
+        # exclusively so the Session is single-threaded-at-a-time).
+        def _match_recovery_row() -> RecoveryCode | None:
+            rows = list(
+                session.exec(
+                    select(RecoveryCode)
+                    .where(RecoveryCode.user_id == user.id)
+                    .where(RecoveryCode.invalidated_at.is_(None))
+                    .where(RecoveryCode.used_at.is_(None))
+                    .order_by(RecoveryCode.generated_at.desc())
+                ).all()
+            )
+            for row in rows:
+                if bcrypt.checkpw(payload.code.encode(), row.code_hash.encode()):
+                    return row
+            return None
+
+        matched_row = await asyncio.to_thread(_match_recovery_row)
         if matched_row is None:
             record_event(
                 get_engine(),
@@ -307,12 +319,47 @@ async def verify_second_factor(
             )
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_code")
 
-    # Step 5 — consume the matched recovery-code row (recovery-code path).
+    # Story 7.3 Codex P2-2: atomic Redis GETDEL claim AFTER code verify.
+    # Mirrors the Story 7.2 enrollment-confirm pattern — read-then-delete
+    # on Step 1 + final ``delete`` would let two concurrent /verify on the
+    # same partial_token both pass the read and double-mint refresh
+    # families. GETDEL is a single indivisible op under Redis's
+    # single-threaded model; the loser sees ``None`` and gets a clean 401.
+    # Placed after code verify so invalid-code paths leave the token
+    # in place for retry (matches the prior Step-8-delete behaviour).
+    claimed = await redis.execute_command("GETDEL", partial_key)
+    if claimed is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "partial_token_invalid")
+
     used_at_value: datetime.datetime | None = None
     if matched_row is not None:
+        # Story 7.3 Codex P2-4: conditional UPDATE with ``used_at IS NULL``
+        # in the WHERE clause — the race-narrow consumption check now
+        # lives in the DB, not in Python. Two concurrent /verify calls on
+        # DIFFERENT partial_tokens (P2-2 cannot help here — they're
+        # separate keys) but the SAME recovery code can both pass the
+        # bcrypt match; only one wins this UPDATE (rowcount == 1). The
+        # loser surfaces 401 invalid_code; their partial_token was already
+        # GETDEL-claimed so re-login is required (acceptable rarity).
         used_at_value = datetime.datetime.now(datetime.UTC)
-        matched_row.used_at = used_at_value
-        session.add(matched_row)
+        result = session.execute(
+            update(RecoveryCode)
+            .where(RecoveryCode.id == matched_row.id)
+            .where(RecoveryCode.used_at.is_(None))
+            .values(used_at=used_at_value)
+        )
+        if result.rowcount == 0:
+            session.rollback()
+            record_event(
+                get_engine(),
+                action="auth.totp.verify.fail",
+                entity_type="user",
+                entity_id=user.id,
+                actor_user_id=user.id,
+                after={"method": "recovery_code", "reason": "already_consumed"},
+                request_id=request_id,
+            )
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_code")
 
     # Step 6 — mint refresh-token family + access token (both paths).
     ip, ua = client_meta(request)
@@ -338,7 +385,7 @@ async def verify_second_factor(
             actor_user_id=user.id,
             after={
                 "batch_id": str(matched_row.batch_id),
-                "used_at": (used_at_value or matched_row.used_at).isoformat(),
+                "used_at": used_at_value.isoformat() if used_at_value else "",
             },
             request_id=request_id,
         )
@@ -352,7 +399,8 @@ async def verify_second_factor(
         request_id=request_id,
     )
 
-    # Step 8 — issue cookies, delete partial_token, return LoginResponse.
+    # Step 8 — issue cookies and return LoginResponse. Partial_token was
+    # already consumed by the GETDEL claim above; no further Redis op.
     access = encode_token(
         subject=str(user.id),
         role=user.role.value,
@@ -360,8 +408,6 @@ async def verify_second_factor(
         ttl_minutes=settings.jwt_ttl_minutes,
     )
     set_session_cookies(response, access=access, refresh=refresh_secret, settings=settings)
-    # Best-effort delete; the TTL expires it within 5 minutes regardless.
-    await redis.delete(partial_key)
 
     return LoginResponse(
         partial_auth=False,

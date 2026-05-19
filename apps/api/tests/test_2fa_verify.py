@@ -545,3 +545,200 @@ def test_ratelimit_shared_budget_login_plus_verify_hits_429_at_6th_attempt(clien
     body = r6.json()
     assert body["scope"] == "login"
     assert "Retry-After" in r6.headers
+
+
+# ---------------------------------------------------------------------------
+# Story 7.3 Codex P2 race + bcrypt-off-event-loop regression tests
+# ---------------------------------------------------------------------------
+
+
+def test_login_bcrypt_runs_off_event_loop_thread(client, monkeypatch):
+    """Codex P2-1 regression — ``/api/auth/login`` became ``async def`` to
+    ``await`` the Redis SET on the partial-auth branch (Story 7.3). Cost-12
+    bcrypt + sync DB commit on the event-loop thread would serialize
+    concurrent logins under uvicorn. The fix wraps both in
+    ``asyncio.to_thread``; this regression asserts ``verify_password`` is
+    not invoked on the asyncio event-loop thread.
+
+    Detection works by trying ``asyncio.get_running_loop()`` from inside
+    the patched function — it raises ``RuntimeError`` only when called
+    from a non-asyncio thread (i.e. a threadpool worker spawned by
+    ``asyncio.to_thread``).
+    """
+    c, _ = client
+    user = _seed_user_no_totp(email_prefix="off-loop")
+
+    from app.modules.auth import router as auth_router
+
+    original_verify = auth_router.verify_password
+    state: dict[str, object] = {"on_event_loop": None}
+
+    def _wrapped(plain: str, hashed: str) -> bool:
+        try:
+            asyncio.get_running_loop()
+            state["on_event_loop"] = True
+        except RuntimeError:
+            state["on_event_loop"] = False
+        return original_verify(plain, hashed)
+
+    monkeypatch.setattr(auth_router, "verify_password", _wrapped)
+    r = c.post("/api/auth/login", json={"email": user.email, "password": PASSWORD})
+    assert r.status_code == 200, r.text
+    assert state["on_event_loop"] is False, (
+        "verify_password ran on the asyncio event-loop thread; "
+        "asyncio.to_thread wrapping was bypassed"
+    )
+
+
+def test_verify_partial_token_concurrent_only_one_succeeds(client):
+    """Codex P2-2 race regression — two concurrent ``/api/auth/2fa/verify``
+    calls with the same partial_token + same valid code must serialize via
+    atomic GETDEL. Exactly one issues cookies + a refresh-token family;
+    the other returns 401 partial_token_invalid.
+
+    The race window without the fix: both verifies pass Step-1
+    ``redis.get(partial_key)``, both pass code-verify, both reach the
+    legacy ``await redis.delete(partial_key)`` and both mint refresh
+    families. We force interleaving by patching ``fake.get`` with a
+    ``slow_get`` that yields via ``asyncio.sleep`` on the first hit so
+    the sibling coroutine can also reach the GETDEL.
+
+    Mirrors the Story 7.2 ``test_confirm_concurrent_gather_only_one_succeeds``
+    pattern but exercises the route handler over the ASGI transport
+    because the GETDEL claim is in the router, not the service.
+    """
+    import httpx
+
+    c, fake = client
+    user = _seed_user_with_totp(email_prefix="race-pt")
+    token = _redis_set_partial(c, fake, user.id)
+    code = pyotp.TOTP(KNOWN_TOTP_SECRET).now()
+
+    original_get = fake.get
+    state = {"yielded": False}
+
+    async def _slow_get(name, *args, **kwargs):
+        key_str = name.decode() if isinstance(name, bytes) else name
+        if not state["yielded"] and key_str.startswith("totp:partial:"):
+            state["yielded"] = True
+            result = await original_get(name, *args, **kwargs)
+            await asyncio.sleep(0.05)
+            return result
+        return await original_get(name, *args, **kwargs)
+
+    fake.get = _slow_get
+
+    async def _race():
+        transport = httpx.ASGITransport(app=c.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+            headers = {"X-Portal-Client": "web"}
+            body = {"partial_token": token, "code": code}
+            return await asyncio.gather(
+                ac.post("/api/auth/2fa/verify", json=body, headers=headers),
+                ac.post("/api/auth/2fa/verify", json=body, headers=headers),
+                return_exceptions=True,
+            )
+
+    try:
+        responses = c.portal.call(_race)
+    finally:
+        fake.get = original_get
+
+    assert all(not isinstance(r, BaseException) for r in responses), responses
+    statuses = sorted(r.status_code for r in responses)
+    assert statuses == [200, 401], statuses
+    loser = next(r for r in responses if r.status_code == 401)
+    assert loser.json()["detail"] == "partial_token_invalid"
+
+    # Exactly one refresh family created (no double-mint).
+    assert _refresh_count(user.id) == 1
+    # Partial_token consumed by the winner's GETDEL.
+    assert _redis_get_partial(c, fake, token) is None
+
+
+def test_verify_recovery_code_concurrent_only_one_consumes(client):
+    """Codex P2-4 race regression — two concurrent ``/api/auth/2fa/verify``
+    calls submitting the SAME recovery code via DIFFERENT partial_tokens
+    (so P2-2's GETDEL doesn't help — they're separate Redis keys) must
+    consume the row exactly once. The conditional UPDATE with
+    ``used_at IS NULL`` in the WHERE clause is the DB-side single-winner
+    gate; the loser sees ``rowcount == 0`` and returns 401 invalid_code.
+
+    Without the fix, both verifies SELECT the row with used_at IS NULL,
+    both bcrypt-match, both ``matched_row.used_at = NOW()`` + INSERT a
+    refresh family — recovery code consumed once but TWO refresh families
+    minted, defeating the single-use guarantee.
+    """
+    import httpx
+
+    c, fake = client
+    user = _seed_user_with_totp(email_prefix="race-rc")
+    _batch_id, cleartext_codes = _seed_recovery_batch(user.id)
+    pick = cleartext_codes[0]
+
+    # Two distinct partial_tokens, both for the same user.
+    token_a = _redis_set_partial(c, fake, user.id)
+    token_b = _redis_set_partial(c, fake, user.id)
+
+    # Force interleave: the first verify's bcrypt-match thread runs
+    # serially against fakeredis's GET; we slow the SECOND verify's GET
+    # so both verifies pass Step-1 / bcrypt-match before either reaches
+    # the conditional UPDATE.
+    original_get = fake.get
+    state = {"slow_count": 0}
+
+    async def _slow_get(name, *args, **kwargs):
+        key_str = name.decode() if isinstance(name, bytes) else name
+        if key_str.startswith("totp:partial:") and state["slow_count"] < 2:
+            state["slow_count"] += 1
+            result = await original_get(name, *args, **kwargs)
+            await asyncio.sleep(0.05)
+            return result
+        return await original_get(name, *args, **kwargs)
+
+    fake.get = _slow_get
+
+    async def _race():
+        transport = httpx.ASGITransport(app=c.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+            headers = {"X-Portal-Client": "web"}
+            return await asyncio.gather(
+                ac.post(
+                    "/api/auth/2fa/verify",
+                    json={"partial_token": token_a, "code": pick},
+                    headers=headers,
+                ),
+                ac.post(
+                    "/api/auth/2fa/verify",
+                    json={"partial_token": token_b, "code": pick},
+                    headers=headers,
+                ),
+                return_exceptions=True,
+            )
+
+    try:
+        responses = c.portal.call(_race)
+    finally:
+        fake.get = original_get
+
+    assert all(not isinstance(r, BaseException) for r in responses), responses
+    statuses = sorted(r.status_code for r in responses)
+    assert statuses == [200, 401], statuses
+    loser = next(r for r in responses if r.status_code == 401)
+    assert loser.json()["detail"] == "invalid_code"
+
+    # Exactly one recovery_codes row consumed (used_at IS NOT NULL).
+    engine = get_engine()
+    with Session(engine) as s:
+        used = list(
+            s.exec(
+                select(RecoveryCode)
+                .where(RecoveryCode.user_id == user.id)
+                .where(RecoveryCode.used_at.is_not(None))
+            ).all()
+        )
+    assert len(used) == 1
+    assert bcrypt.checkpw(pick.encode(), used[0].code_hash.encode())
+
+    # Exactly one refresh family minted (only the race winner).
+    assert _refresh_count(user.id) == 1

@@ -1,5 +1,6 @@
 """Auth router — cookie-based sessions with refresh-token rotation."""
 
+import asyncio
 import datetime
 import json
 import logging
@@ -67,8 +68,19 @@ async def login(
     session: Annotated[Session, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> LoginResponse | PartialAuthResponse:
-    user = session.exec(select(User).where(User.email == payload.email)).first()
-    if user is None or not verify_password(payload.password, user.password_hash):
+    # Story 7.3 Codex P2-1: the handler is async to ``await`` the Redis SET
+    # on the partial-auth branch, but cost-12 bcrypt + sync DB I/O would
+    # block the event loop hundreds of ms per call. Off-load both the
+    # password-verify lookup and the refresh-row commit to the threadpool
+    # so concurrent logins don't serialize the worker.
+    def _lookup_user() -> User | None:
+        candidate = session.exec(select(User).where(User.email == payload.email)).first()
+        if candidate is None or not verify_password(payload.password, candidate.password_hash):
+            return None
+        return candidate
+
+    user = await asyncio.to_thread(_lookup_user)
+    if user is None:
         record_event(
             get_engine(),
             action="auth.login.fail",
@@ -101,15 +113,19 @@ async def login(
             partial_token=partial_token,
         )
 
-    secret, row = new_refresh_row(
-        user_id=user.id,
-        family_id=None,
-        family_issued_at=None,
-        ip=ip,
-        user_agent=ua,
-    )
-    session.add(row)
-    session.commit()
+    def _mint_refresh_row() -> str:
+        new_secret, new_row = new_refresh_row(
+            user_id=user.id,
+            family_id=None,
+            family_issued_at=None,
+            ip=ip,
+            user_agent=ua,
+        )
+        session.add(new_row)
+        session.commit()
+        return new_secret
+
+    secret = await asyncio.to_thread(_mint_refresh_row)
 
     access = encode_token(
         subject=str(user.id),
