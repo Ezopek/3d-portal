@@ -318,7 +318,7 @@ def test_middleware_zadd_unique_score_member(minimal_app_client):
 
 def test_login_6th_call_returns_429_within_window(integration_client):
     c, _, _ = integration_client
-    headers = {"X-Forwarded-For": "10.0.0.1"}
+    headers = {"X-Real-IP": "10.0.0.1"}
     for _ in range(5):
         r = c.post(
             "/api/auth/login",
@@ -337,7 +337,7 @@ def test_login_6th_call_returns_429_within_window(integration_client):
 
 def test_login_429_body_shape(integration_client):
     c, _, _ = integration_client
-    headers = {"X-Forwarded-For": "10.0.0.2"}
+    headers = {"X-Real-IP": "10.0.0.2"}
     for _ in range(6):
         c.post(
             "/api/auth/login",
@@ -359,7 +359,7 @@ def test_login_429_body_shape(integration_client):
 
 def test_login_429_retry_after_header_value(integration_client):
     c, _, _ = integration_client
-    headers = {"X-Forwarded-For": "10.0.0.3"}
+    headers = {"X-Real-IP": "10.0.0.3"}
     for _ in range(6):
         c.post(
             "/api/auth/login",
@@ -376,7 +376,7 @@ def test_login_429_retry_after_header_value(integration_client):
 
 def test_login_window_clears_after_flush(integration_client):
     c, fake, _ = integration_client
-    headers = {"X-Forwarded-For": "10.0.0.4"}
+    headers = {"X-Real-IP": "10.0.0.4"}
     for _ in range(6):
         c.post(
             "/api/auth/login",
@@ -402,14 +402,14 @@ def test_login_different_ips_isolated(integration_client):
         r = c.post(
             "/api/auth/login",
             json={"email": "nobody@example.com", "password": "x"},
-            headers={"X-Forwarded-For": "1.1.1.1"},
+            headers={"X-Real-IP": "1.1.1.1"},
         )
         assert r.status_code == 401
     for _ in range(5):
         r = c.post(
             "/api/auth/login",
             json={"email": "nobody@example.com", "password": "x"},
-            headers={"X-Forwarded-For": "2.2.2.2"},
+            headers={"X-Real-IP": "2.2.2.2"},
         )
         assert r.status_code == 401
 
@@ -418,7 +418,7 @@ def test_login_csrf_rejection_does_not_burn_rate_limit(integration_client):
     c, _, _ = integration_client
     # Drop the CSRF header so each call returns 403 BEFORE rate-limit fires.
     del c.headers["X-Portal-Client"]
-    headers = {"X-Forwarded-For": "10.0.0.5"}
+    headers = {"X-Real-IP": "10.0.0.5"}
     for _ in range(10):
         r = c.post(
             "/api/auth/login",
@@ -444,7 +444,7 @@ def test_login_csrf_rejection_does_not_burn_rate_limit(integration_client):
 
 def test_refresh_11th_call_returns_429_within_window(integration_client):
     c, _, _ = integration_client
-    headers = {"X-Forwarded-For": "10.0.1.1"}
+    headers = {"X-Real-IP": "10.0.1.1"}
     for _ in range(10):
         r = c.post("/api/auth/refresh", headers=headers)
         assert r.status_code == 401
@@ -454,7 +454,7 @@ def test_refresh_11th_call_returns_429_within_window(integration_client):
 
 def test_refresh_429_body_shape(integration_client):
     c, _, _ = integration_client
-    headers = {"X-Forwarded-For": "10.0.1.2"}
+    headers = {"X-Real-IP": "10.0.1.2"}
     for _ in range(11):
         c.post("/api/auth/refresh", headers=headers)
     r = c.post("/api/auth/refresh", headers=headers)
@@ -473,7 +473,7 @@ def test_refresh_429_body_shape(integration_client):
 
 def test_register_4th_call_returns_429_within_window(integration_client):
     c, _, _ = integration_client
-    headers = {"X-Forwarded-For": "10.0.2.1"}
+    headers = {"X-Real-IP": "10.0.2.1"}
     for _ in range(3):
         r = c.post("/api/auth/register", json=REGISTER_BODY, headers=headers)
         assert r.status_code == 404, r.text
@@ -483,7 +483,7 @@ def test_register_4th_call_returns_429_within_window(integration_client):
 
 def test_register_429_body_shape(integration_client):
     c, _, _ = integration_client
-    headers = {"X-Forwarded-For": "10.0.2.2"}
+    headers = {"X-Real-IP": "10.0.2.2"}
     for _ in range(4):
         c.post("/api/auth/register", json=REGISTER_BODY, headers=headers)
     r = c.post("/api/auth/register", json=REGISTER_BODY, headers=headers)
@@ -507,7 +507,7 @@ def test_register_429_does_not_emit_register_fail_audit(integration_client):
     from app.core.db.session import get_engine
 
     c, _, _ = integration_client
-    headers = {"X-Forwarded-For": "10.0.2.3"}
+    headers = {"X-Real-IP": "10.0.2.3"}
     engine = get_engine()
     # Clear any pre-existing audit rows from app boot or earlier interactions.
     with Session(engine) as s:
@@ -550,7 +550,7 @@ def test_login_rate_limit_threshold_env_var_override(tmp_path, monkeypatch):
     with TestClient(app) as c:
         c.headers.update({"X-Portal-Client": "web"})
         app.state.redis = factory
-        headers = {"X-Forwarded-For": "10.0.5.1"}
+        headers = {"X-Real-IP": "10.0.5.1"}
         for _ in range(2):
             r = c.post(
                 "/api/auth/login",
@@ -600,7 +600,7 @@ def test_login_rate_limit_window_env_var_override(tmp_path, monkeypatch):
             await fake.zadd("ratelimit:login:ip:10.0.5.2", {"ancient": now_ms - 40_000})
 
         c.portal.call(_seed)
-        headers = {"X-Forwarded-For": "10.0.5.2"}
+        headers = {"X-Real-IP": "10.0.5.2"}
         for _ in range(5):
             r = c.post(
                 "/api/auth/login",
@@ -623,7 +623,7 @@ def test_login_redis_outage_allows_request_with_warning_log(integration_client, 
         r = c.post(
             "/api/auth/login",
             json={"email": "nobody@example.com", "password": "x"},
-            headers={"X-Forwarded-For": "10.0.6.1"},
+            headers={"X-Real-IP": "10.0.6.1"},
         )
     assert r.status_code == 401  # passes through, hits invalid-credentials
     records = [
@@ -640,7 +640,7 @@ def test_refresh_redis_outage_allows_request_with_warning_log(integration_client
     with patch.object(fake, "pipeline", side_effect=redis.exceptions.ConnectionError("down")):
         r = c.post(
             "/api/auth/refresh",
-            headers={"X-Forwarded-For": "10.0.6.2"},
+            headers={"X-Real-IP": "10.0.6.2"},
         )
     assert r.status_code == 401
     records = [
@@ -660,7 +660,7 @@ def test_register_redis_outage_allows_request_with_warning_log(
         r = c.post(
             "/api/auth/register",
             json=REGISTER_BODY,
-            headers={"X-Forwarded-For": "10.0.6.3"},
+            headers={"X-Real-IP": "10.0.6.3"},
         )
     assert r.status_code == 404  # passes through, hits token_invalid
     records = [
@@ -703,6 +703,27 @@ def test_login_ratelimit_key_returns_none_for_get_method():
     assert login_ratelimit_key(req) is None
 
 
+def test_client_ip_prefers_x_real_ip_over_xff():
+    # nginx sets X-Real-IP from $remote_addr (unforgeable across the proxy hop);
+    # X-Forwarded-For is attacker-controlled and must be ignored even when both
+    # headers are present.
+    req = MagicMock()
+    req.headers = {"x-real-ip": "5.6.7.8", "x-forwarded-for": "1.1.1.1, 2.2.2.2"}
+    req.client = MagicMock(host="ignored")
+    assert _client_ip(req) == "5.6.7.8"
+
+
+def test_client_ip_ignores_forged_xff_without_real_ip():
+    # Without X-Real-IP, a forged XFF still does NOT shift the bucket — the
+    # limiter falls back to the transport-level client host. This is the bypass
+    # the rewrite blocks: attacker spraying random first-XFF values lands in the
+    # same client.host bucket and trips the threshold.
+    req = MagicMock()
+    req.headers = {"x-forwarded-for": "1.1.1.1, 2.2.2.2, 3.3.3.3"}
+    req.client = MagicMock(host="10.0.0.1")
+    assert _client_ip(req) == "10.0.0.1"
+
+
 def test_client_ip_falls_back_to_request_client_host():
     req = MagicMock()
     req.headers = {}
@@ -710,8 +731,8 @@ def test_client_ip_falls_back_to_request_client_host():
     assert _client_ip(req) == "1.2.3.4"
 
 
-def test_client_ip_parses_xff_first_value():
+def test_client_ip_returns_unknown_when_no_headers_and_no_client():
     req = MagicMock()
-    req.headers = {"x-forwarded-for": "1.1.1.1, 2.2.2.2, 3.3.3.3"}
-    req.client = MagicMock(host="ignored")
-    assert _client_ip(req) == "1.1.1.1"
+    req.headers = {}
+    req.client = None
+    assert _client_ip(req) == "unknown"

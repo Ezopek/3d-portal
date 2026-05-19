@@ -34,10 +34,19 @@ _LOG = logging.getLogger("app.auth.ratelimit")
 
 
 def _client_ip(request: Request) -> str:
-    """Return the request's source IP, preferring first XFF then client host."""
-    xff = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-    if xff:
-        return xff
+    """Return the trusted client IP for per-IP rate-limit bucketing.
+
+    Trusts ``X-Real-IP`` only (nginx sets it from ``$remote_addr``, which the
+    attacker cannot forge across the proxy hop) and falls back to the
+    transport-level client host for dev / direct-access paths. ``X-Forwarded-For``
+    is deliberately ignored: nginx appends to the existing chain via
+    ``$proxy_add_x_forwarded_for``, so an attacker controls the first value and
+    can pick a fresh one per request to land in a fresh bucket and bypass
+    per-IP throttling.
+    """
+    real_ip = request.headers.get("x-real-ip", "").strip()
+    if real_ip:
+        return real_ip
     if request.client is not None and request.client.host:
         return request.client.host
     return "unknown"
