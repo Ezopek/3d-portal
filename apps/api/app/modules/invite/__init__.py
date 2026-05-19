@@ -6,6 +6,12 @@ Stories 6.3 (admin endpoints) and 6.4 (public ``/register?token=...``) wire
 the service into routers.
 """
 
+from app.modules.invite.admin_schemas import (
+    GenerateInviteRequest,
+    GenerateInviteResponse,
+    InviteListItem,
+    InviteListResponse,
+)
 from app.modules.invite.models import InviteToken, InviteTTLPreset, hash_token
 from app.modules.invite.service import (
     ActiveInvite,
@@ -19,9 +25,13 @@ from app.modules.invite.service import (
 
 __all__ = [
     "ActiveInvite",
+    "GenerateInviteRequest",
+    "GenerateInviteResponse",
     "GenerateInviteResult",
     "InviteAlreadyResolved",
     "InviteConsumed",
+    "InviteListItem",
+    "InviteListResponse",
     "InviteNotFound",
     "InviteService",
     "InviteServiceError",
