@@ -13,6 +13,7 @@ matching the existing ``app/core/auth/password.py`` precedent.
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import io
 import json
@@ -223,7 +224,7 @@ class Settings2faService:
         # Step 2: atomic claim — only at this point we know commit is going
         # to happen. Redis GETDEL is an indivisible operation; the second
         # concurrent confirm (across uvicorn workers) sees None and raises
-        # StalePendingEnrollment (no SETNX-lock TTL race possible because
+        # EnrollmentTokenInvalid (no SETNX-lock TTL race possible because
         # the claim is atomic-by-design, not lock-protected).
         claimed = await self._redis.execute_command("GETDEL", key)
         if claimed is None:
@@ -231,28 +232,47 @@ class Settings2faService:
             # our Step 1 read and this GETDEL — they will mint codes.
             raise EnrollmentTokenInvalid
 
-        ciphertext = encrypt_secret(secret, self._settings)
-        now = datetime.datetime.now(datetime.UTC)
-        batch_id, code_pairs = generate_recovery_codes_batch()
+        # Step 3: persistence path — wrap in try/except so a DB stall,
+        # encryption failure, or worker termination after the GETDEL claim
+        # restores the token to Redis (best-effort) and lets the user
+        # retry. The restore is non-atomic vs. a parallel claim, but the
+        # window is small (a fresh GETDEL is unlikely between failure +
+        # restore) and the alternative (lost token + forced re-enroll)
+        # is a strictly worse UX on transient errors.
+        try:
+            ciphertext = encrypt_secret(secret, self._settings)
+            now = datetime.datetime.now(datetime.UTC)
+            batch_id, code_pairs = generate_recovery_codes_batch()
 
-        with Session(self._engine) as session:
-            user = session.get(User, current_user_id)
-            if user is None:
-                # Defense-in-depth — current_user JWT was valid but row gone.
-                raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found")
-            user.totp_secret = ciphertext
-            user.totp_enabled_at = now
-            session.add(user)
-            for _cleartext, code_hash in code_pairs:
-                session.add(
-                    RecoveryCode(
-                        user_id=user.id,
-                        code_hash=code_hash,
-                        batch_id=batch_id,
-                        generated_at=now,
+            with Session(self._engine) as session:
+                user = session.get(User, current_user_id)
+                if user is None:
+                    # Defense-in-depth — current_user JWT was valid but row gone.
+                    raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found")
+                user.totp_secret = ciphertext
+                user.totp_enabled_at = now
+                session.add(user)
+                for _cleartext, code_hash in code_pairs:
+                    session.add(
+                        RecoveryCode(
+                            user_id=user.id,
+                            code_hash=code_hash,
+                            batch_id=batch_id,
+                            generated_at=now,
+                        )
                     )
+                session.commit()
+        except Exception:
+            # Best-effort restore so the user can retry on transient failure.
+            # The TTL is approximate (we lose the elapsed-time delta since
+            # the original SET) but tighter than expiring forever.
+            with contextlib.suppress(Exception):
+                await self._redis.set(
+                    key,
+                    claimed,
+                    ex=_ENROLLMENT_TTL_SECONDS,
                 )
-            session.commit()
+            raise
 
         return _ConfirmPayload(
             recovery_codes=[cleartext for cleartext, _h in code_pairs],
