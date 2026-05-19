@@ -46,12 +46,20 @@ function Register() {
     setPasswordError(null);
     setPending(true);
     try {
-      await api<RegisterResponse>("/auth/register", {
+      const res = await api<RegisterResponse>("/auth/register", {
         method: "POST",
         body: JSON.stringify({ token: search.token, email, password }),
       });
       await qc.invalidateQueries({ queryKey: ["auth", "me"] });
-      await navigate({ to: "/catalog" });
+      // Story 7.4 Codex P1 follow-up: when ENFORCE_2FA_FOR_ROLES contains
+      // the invite-bound role, the backend surfaces totp_enroll_required;
+      // mirror the login flow's redirect so first session does not bypass
+      // enforcement by landing in /catalog before enrollment.
+      if (res && (res as { totp_enroll_required?: boolean }).totp_enroll_required) {
+        await navigate({ to: "/settings/2fa" });
+      } else {
+        await navigate({ to: "/catalog" });
+      }
     } catch (err) {
       const apiErr = err instanceof ApiError ? err : null;
       const rawDetail = ((apiErr?.body as { detail?: unknown }) ?? {}).detail;
