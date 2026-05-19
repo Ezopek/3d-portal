@@ -1,11 +1,62 @@
 import json
 import logging
 import os
+import re
 import socket
 from datetime import UTC, datetime
 from typing import Any
 
 _HOST = socket.gethostname()
+
+# Match ``token=<value>`` in URL query strings (and form-encoded bodies). The
+# value is anything up to the next ``&``, whitespace, or quote — keeps the
+# regex defensive without trying to validate token shape.
+_TOKEN_URL_REGEX = re.compile(r"\btoken=[^&\s\"']+")
+_TOKEN_REDACTED = "token=<redacted>"
+
+
+class TokenRedactionFilter(logging.Filter):
+    """Strip cleartext invite tokens from log records before formatting.
+
+    Three surfaces are covered:
+
+    * ``record.msg`` — the format string (or pre-rendered text). Substituted
+      via ``_TOKEN_URL_REGEX``.
+    * ``record.args`` — positional / keyword arguments fed to ``%`` formatting.
+      Each string element is run through the same substitution; non-string
+      args are left alone.
+    * ``record.token`` — surfaced when the caller passes ``extra={"token":
+      "..."}``. Replaced with the literal ``"<redacted>"`` so the value never
+      reaches the formatter's pass-through dict.
+
+    The filter always returns ``True`` (it never drops records); it exists
+    purely to mutate the record in place.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.msg = _TOKEN_URL_REGEX.sub(_TOKEN_REDACTED, str(record.msg))
+        if record.args:
+            record.args = _redact_args(record.args)
+        if hasattr(record, "token"):
+            record.token = "<redacted>"
+        return True
+
+
+def _redact_args(args: object) -> object:
+    """Apply token redaction across the args container the logger handed us."""
+    if isinstance(args, dict):
+        return {key: _redact_one(value) for key, value in args.items()}
+    if isinstance(args, tuple):
+        return tuple(_redact_one(item) for item in args)
+    if isinstance(args, list):
+        return [_redact_one(item) for item in args]
+    return _redact_one(args)
+
+
+def _redact_one(value: object) -> object:
+    if isinstance(value, str):
+        return _TOKEN_URL_REGEX.sub(_TOKEN_REDACTED, value)
+    return value
 
 
 class JsonFormatter(logging.Formatter):
@@ -60,6 +111,9 @@ class JsonFormatter(logging.Formatter):
 
 def configure_logging(*, service_name: str, service_version: str, environment: str) -> None:
     handler = logging.StreamHandler()
+    # Attach the redaction filter before the formatter so it runs on every
+    # emit, regardless of which named logger ultimately produces the record.
+    handler.addFilter(TokenRedactionFilter())
     handler.setFormatter(
         JsonFormatter(
             service_name=service_name,

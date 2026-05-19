@@ -14,6 +14,7 @@ from app.core.db.models import AuditLog
 # the closed set.
 #   catalog              — admin.refresh_catalog (entity_id always None)
 #   category             — future category CRUD (Slice 2C.x)
+#   invite_token         — auth.invite.generated/used/revoked (entity_id = invite_tokens.id UUID)
 #   model                — admin.render.trigger + model CRUD (Slice 2C.1)
 #   model_external_link  — future link CRUD (Slice 2C.x)
 #   model_file           — file upload/delete (Slice 2C.2)
@@ -28,6 +29,7 @@ KNOWN_ENTITY_TYPES: frozenset[str] = frozenset(
     {
         "catalog",
         "category",
+        "invite_token",
         "model",
         "model_external_link",
         "model_file",

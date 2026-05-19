@@ -6,6 +6,7 @@ from sqlmodel import SQLModel
 
 from app.core.config import get_settings
 from app.core.db import models  # noqa: F401 -- import side-effect: register tables
+from app.modules.invite import models as _invite_models  # noqa: F401 -- register InviteToken
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_settings().database_url)

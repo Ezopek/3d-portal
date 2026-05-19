@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 from sqlmodel import Session, select
 
@@ -65,6 +67,7 @@ def test_known_entity_types_covers_all_call_site_resources():
     expected = {
         "catalog",
         "category",
+        "invite_token",
         "model",
         "model_external_link",
         "model_file",
@@ -77,3 +80,40 @@ def test_known_entity_types_covers_all_call_site_resources():
         "user",
     }
     assert expected == KNOWN_ENTITY_TYPES
+
+
+def test_record_event_accepts_invite_token_entity_type(tmp_path):
+    """Story 6.1 / Drift 2: ``invite_token`` is the entity_type for auth.invite.* actions."""
+    db_path = tmp_path / "invite_audit.db"
+    engine = create_engine_for_url(f"sqlite:///{db_path}")
+    init_schema(engine)
+
+    with Session(engine) as session:
+        admin = User(
+            email="admin@b.c",
+            display_name="Admin",
+            role=UserRole.admin,
+            password_hash="x",
+        )
+        session.add(admin)
+        session.commit()
+        session.refresh(admin)
+        admin_id = admin.id
+
+    invite_id = uuid.uuid4()
+    record_event(
+        engine,
+        action="auth.invite.generated",
+        entity_type="invite_token",
+        entity_id=invite_id,
+        actor_user_id=admin_id,
+    )
+
+    with Session(engine) as session:
+        events = session.exec(select(AuditLog)).all()
+
+    assert len(events) == 1
+    assert events[0].action == "auth.invite.generated"
+    assert events[0].entity_type == "invite_token"
+    assert events[0].entity_id == invite_id
+    assert events[0].actor_user_id == admin_id
