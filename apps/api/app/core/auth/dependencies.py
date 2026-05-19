@@ -10,6 +10,7 @@ from app.core.auth.jwt import TokenError, decode_token
 from app.core.config import Settings, get_settings
 
 _ALLOWED_ROLES: frozenset[str] = frozenset({"admin", "agent", "member"})
+_MEMBER_OR_ADMIN_ROLES: frozenset[str] = frozenset({"admin", "member"})
 
 
 def _decode(token: str | None, settings: Settings) -> dict[str, object]:
@@ -42,6 +43,15 @@ def _resolve_user(claims: dict[str, object]) -> uuid.UUID:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_access") from exc
 
 
+def _resolve_member_or_admin(claims: dict[str, object]) -> uuid.UUID:
+    if claims.get("role") not in _MEMBER_OR_ADMIN_ROLES:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "member_or_admin_required")
+    try:
+        return uuid.UUID(str(claims["sub"]))
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_access") from exc
+
+
 def _current_admin_dep(
     portal_access: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
     settings: Annotated[Settings, Depends(get_settings)] = None,  # type: ignore[assignment]
@@ -56,5 +66,13 @@ def _current_user_dep(
     return _resolve_user(_decode(portal_access, settings))
 
 
+def _current_member_or_admin_dep(
+    portal_access: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    settings: Annotated[Settings, Depends(get_settings)] = None,  # type: ignore[assignment]
+) -> uuid.UUID:
+    return _resolve_member_or_admin(_decode(portal_access, settings))
+
+
 current_admin = Depends(_current_admin_dep)
 current_user = Depends(_current_user_dep)
+current_member_or_admin = Depends(_current_member_or_admin_dep)

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlmodel import Session, select
 
 from app.core.audit import record_event
-from app.core.auth.dependencies import current_admin
+from app.core.auth.dependencies import current_admin, current_member_or_admin
 from app.core.db.models import Model
 from app.core.db.session import get_engine, get_session
 from app.modules.share.models import (
@@ -27,7 +27,7 @@ async def create_share(
     payload: CreateShareRequest,
     request: Request,
     session: Annotated[Session, Depends(get_session)],
-    user_id: uuid.UUID = current_admin,
+    user_id: uuid.UUID = current_member_or_admin,
 ) -> CreateShareResponse:
     model = session.exec(
         select(Model).where(Model.id == payload.model_id, Model.deleted_at.is_(None))

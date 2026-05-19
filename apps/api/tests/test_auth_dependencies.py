@@ -7,7 +7,11 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.auth.cookies import ACCESS_COOKIE
-from app.core.auth.dependencies import current_admin, current_user
+from app.core.auth.dependencies import (
+    current_admin,
+    current_member_or_admin,
+    current_user,
+)
 from app.core.auth.jwt import encode_token
 
 
@@ -27,6 +31,10 @@ def app_with_protected_routes(monkeypatch):
 
     @app.get("/user-only")
     def _user(uid: uuid.UUID = current_user):
+        return {"uid": str(uid)}
+
+    @app.get("/member-or-admin-only")
+    def _moa(uid: uuid.UUID = current_member_or_admin):
         return {"uid": str(uid)}
 
     return app
@@ -85,3 +93,85 @@ def test_unknown_role_blocked_from_user_route(app_with_protected_routes):
     r = c.get("/user-only")
     assert r.status_code == 403
     assert r.json()["detail"] == "forbidden_role"
+
+
+def test_no_cookie_returns_missing_access_on_member_or_admin_route(
+    app_with_protected_routes,
+):
+    c = TestClient(app_with_protected_routes)
+    r = c.get("/member-or-admin-only")
+    assert r.status_code == 401
+    assert r.json()["detail"] == "missing_access"
+
+
+def test_expired_cookie_returns_access_expired_on_member_or_admin_route(
+    app_with_protected_routes,
+):
+    uid = uuid.uuid4()
+    expired = encode_token(subject=str(uid), role="admin", secret="test", ttl_minutes=-1)
+    c = TestClient(app_with_protected_routes)
+    c.cookies.set(ACCESS_COOKIE, expired)
+    r = c.get("/member-or-admin-only")
+    assert r.status_code == 401
+    assert r.json()["detail"] == "access_expired"
+
+
+def test_invalid_cookie_returns_invalid_access_on_member_or_admin_route(
+    app_with_protected_routes,
+):
+    c = TestClient(app_with_protected_routes)
+    c.cookies.set(ACCESS_COOKIE, "not.a.jwt")
+    r = c.get("/member-or-admin-only")
+    assert r.status_code == 401
+    assert r.json()["detail"] == "invalid_access"
+
+
+def test_valid_admin_cookie_passes_member_or_admin_route(app_with_protected_routes):
+    uid = uuid.uuid4()
+    t = encode_token(subject=str(uid), role="admin", secret="test", ttl_minutes=10)
+    c = TestClient(app_with_protected_routes)
+    c.cookies.set(ACCESS_COOKIE, t)
+    r = c.get("/member-or-admin-only")
+    assert r.status_code == 200
+    assert r.json()["uid"] == str(uid)
+
+
+def test_valid_member_cookie_passes_member_or_admin_route(app_with_protected_routes):
+    uid = uuid.uuid4()
+    t = encode_token(subject=str(uid), role="member", secret="test", ttl_minutes=10)
+    c = TestClient(app_with_protected_routes)
+    c.cookies.set(ACCESS_COOKIE, t)
+    r = c.get("/member-or-admin-only")
+    assert r.status_code == 200
+    assert r.json()["uid"] == str(uid)
+
+
+def test_agent_role_blocked_from_member_or_admin_route(app_with_protected_routes):
+    uid = uuid.uuid4()
+    t = encode_token(subject=str(uid), role="agent", secret="test", ttl_minutes=10)
+    c = TestClient(app_with_protected_routes)
+    c.cookies.set(ACCESS_COOKIE, t)
+    r = c.get("/member-or-admin-only")
+    assert r.status_code == 403
+    assert r.json()["detail"] == "member_or_admin_required"
+
+
+def test_unknown_role_blocked_from_member_or_admin_route(app_with_protected_routes):
+    uid = uuid.uuid4()
+    t = encode_token(subject=str(uid), role="banana", secret="test", ttl_minutes=10)
+    c = TestClient(app_with_protected_routes)
+    c.cookies.set(ACCESS_COOKIE, t)
+    r = c.get("/member-or-admin-only")
+    assert r.status_code == 403
+    assert r.json()["detail"] == "member_or_admin_required"
+
+
+def test_non_uuid_sub_returns_invalid_access_on_member_or_admin_route(
+    app_with_protected_routes,
+):
+    t = encode_token(subject="not-a-uuid", role="member", secret="test", ttl_minutes=10)
+    c = TestClient(app_with_protected_routes)
+    c.cookies.set(ACCESS_COOKIE, t)
+    r = c.get("/member-or-admin-only")
+    assert r.status_code == 401
+    assert r.json()["detail"] == "invalid_access"
