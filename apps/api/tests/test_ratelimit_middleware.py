@@ -314,6 +314,14 @@ def test_middleware_zadd_unique_score_member(minimal_app_client):
 # ---------------------------------------------------------------------------
 # AC-5 integration tests — login scope
 # ---------------------------------------------------------------------------
+#
+# These tests set ``X-Real-IP`` directly on the FastAPI TestClient — i.e.,
+# they bypass nginx and exercise the API's view of the world AFTER the
+# proxy trust boundary. In production, web nginx (``apps/web/nginx.conf``)
+# only forwards ``X-Real-IP`` it has rewritten from a trusted forwarder
+# (the edge on 192.168.2.180); direct callers cannot spoof. The helper in
+# ``app.core.auth.ratelimit._client_ip`` therefore trusts the header at
+# face value, which is what these tests rely on.
 
 
 def test_login_6th_call_returns_429_within_window(integration_client):

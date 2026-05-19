@@ -40,20 +40,22 @@ def _client_ip(request: Request) -> str:
       - Edge nginx (``configs/nginx/3d.ezop.ddns.net.conf``) sets
         ``X-Real-IP $remote_addr`` from the TLS-terminating socket, which the
         attacker cannot forge across the proxy hop.
-      - Web nginx (``apps/web/nginx.conf`` ``/api/`` block) forwards the value
-        verbatim via ``X-Real-IP $http_x_real_ip`` (Story 6.6 codex fix-up #2 —
-        the earlier ``$remote_addr`` form here overwrote the edge-set value with
-        the docker-network IP and collapsed every HTTPS client into one bucket).
+      - Web nginx (``apps/web/nginx.conf``) enforces the trust boundary via
+        ``set_real_ip_from 192.168.2.180`` + ``real_ip_header X-Real-IP``
+        (Story 6.6 codex fix-up #3). Only X-Real-IP from the edge nginx is
+        trusted; direct callers reaching the exposed ``:8090`` port (operator
+        curls on the LAN, dev tests) have their caller-supplied X-Real-IP
+        discarded and ``$remote_addr`` used instead. The ``/api/`` block then
+        propagates the now-sanitized ``$remote_addr`` as ``X-Real-IP`` to
+        the API, so this helper sees a header it can trust at face value.
 
     Resolution order:
-      1. ``X-Real-IP`` — trusted across the chain when both proxies cooperate.
-      2. Left-most entry of ``X-Forwarded-For`` — canonical original-client
-         position. Safe under the trust assumption that the proxy chain
-         *appends* to the list (nginx ``$proxy_add_x_forwarded_for`` does so)
-         and that direct attacker traffic cannot reach the API: the edge nginx
-         is the only public-facing surface, internal Docker networking shields
-         everything else. This branch is exercised only when X-Real-IP is
-         absent (dev fixtures, debugging, or a proxy misconfiguration).
+      1. ``X-Real-IP`` — trusted across the chain because nginx is the trust
+         boundary upstream.
+      2. Left-most entry of ``X-Forwarded-For`` — fallback for dev fixtures
+         or proxy misconfigurations where X-Real-IP is absent. Direct-attacker
+         traffic from outside cannot reach the API (web nginx is the only
+         exposed surface), so the left-most-XFF assumption is safe.
       3. ``request.client.host`` — dev / direct-access path with no proxy.
     """
     real_ip = request.headers.get("x-real-ip", "").strip()
