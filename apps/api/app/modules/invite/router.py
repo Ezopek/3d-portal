@@ -270,11 +270,20 @@ async def register(
         },
         request_id=request_id,
     )
+    # Story 7.4 Codex P2 follow-up: registration that creates a user whose
+    # role is in settings.enforce_2fa_for_roles must surface
+    # totp_enroll_required=True so the frontend redirects to /settings/2fa.
+    # Without this, the first cookie session bypasses enforcement until
+    # the user logs out + uses /login.
+    totp_enroll_required = (
+        user.role in settings.enforce_2fa_for_roles and user.totp_enabled_at is None
+    )
     return LoginResponse(
+        totp_enroll_required=totp_enroll_required,
         user=MeResponse(
             id=user.id,
             email=user.email,
             display_name=user.display_name,
             role=user.role,
-        )
+        ),
     )
