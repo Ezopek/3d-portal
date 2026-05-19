@@ -56,7 +56,10 @@ function Register() {
       // mirror the login flow's redirect so first session does not bypass
       // enforcement by landing in /catalog before enrollment.
       if (res && (res as { totp_enroll_required?: boolean }).totp_enroll_required) {
-        await navigate({ to: "/settings/2fa" });
+        // Pass next=/catalog so Settings2faPage enters forced-mode (shows
+        // the banner) + redirects to /catalog after enrollment confirms.
+        // Mirrors the login flow's forced-enrollment redirect contract.
+        await navigate({ to: "/settings/2fa", search: { next: "/catalog" } });
       } else {
         await navigate({ to: "/catalog" });
       }
