@@ -23,6 +23,7 @@ from sqlmodel import Session, select
 
 from app.core.audit import record_event
 from app.core.auth.dependencies import current_admin
+from app.core.db.models._enums import UserRole
 from app.core.db.session import get_engine, get_session
 from app.modules.invite import (
     GenerateInviteRequest,
@@ -65,7 +66,7 @@ async def generate_invite(
     ttl_seconds = payload.resolve_ttl_seconds()
     try:
         result = await _service(request).generate_invite(
-            role=payload.role,
+            role=UserRole(payload.role),
             ttl_seconds=ttl_seconds,
             generated_by_user_id=user_id,
         )

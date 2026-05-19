@@ -16,32 +16,26 @@ import datetime
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.db.models._enums import UserRole
 from app.modules.invite.models import InviteTTLPreset
 
 StatusLiteral = Literal["active", "used", "expired", "revoked"]
+# Request-only role contract: NFR5-INT-1 binds the endpoint to reject `agent`
+# at the input layer, so the OpenAPI schema advertises only the accepted set
+# (admin UI / codegen pick this up — UserRole would mislead).
+InviteRoleRequestLiteral = Literal["member", "admin"]
+# Wire contract for ttl_preset: enum NAMES per AC-1, not IntEnum values.
+# Names resolve to seconds in ``resolve_ttl_seconds()``.
+InviteTTLPresetNameLiteral = Literal["ONE_DAY", "THREE_DAYS", "SEVEN_DAYS", "THIRTY_DAYS"]
 
 
 class GenerateInviteRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    role: UserRole
-    ttl_preset: InviteTTLPreset | None = None
+    role: InviteRoleRequestLiteral
+    ttl_preset: InviteTTLPresetNameLiteral | None = None
     ttl_seconds: int | None = Field(default=None, ge=60, le=7776000)
-
-    @field_validator("ttl_preset", mode="before")
-    @classmethod
-    def _coerce_preset_name(cls, v: object) -> object:
-        # Accept the enum member NAME (e.g. "ONE_DAY") in addition to the
-        # int VALUE — AC-1 binds the API contract to string-name input.
-        if isinstance(v, str):
-            try:
-                return InviteTTLPreset[v]
-            except KeyError:
-                # Fall through; Pydantic will raise its own validation error.
-                return v
-        return v
 
     @model_validator(mode="after")
     def _exactly_one_ttl(self) -> GenerateInviteRequest:
@@ -51,7 +45,7 @@ class GenerateInviteRequest(BaseModel):
 
     def resolve_ttl_seconds(self) -> int:
         if self.ttl_preset is not None:
-            return self.ttl_preset.value
+            return InviteTTLPreset[self.ttl_preset].value
         assert self.ttl_seconds is not None  # validated above
         return self.ttl_seconds
 
