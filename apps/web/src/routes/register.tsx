@@ -54,7 +54,8 @@ function Register() {
       await navigate({ to: "/catalog" });
     } catch (err) {
       const apiErr = err instanceof ApiError ? err : null;
-      const detail = ((apiErr?.body as { detail?: string }) ?? {}).detail ?? "";
+      const rawDetail = ((apiErr?.body as { detail?: unknown }) ?? {}).detail;
+      const detail = typeof rawDetail === "string" ? rawDetail : "";
       if (apiErr?.status === 404) {
         setFullPageError("token_invalid");
       } else if (apiErr?.status === 410) {
@@ -62,7 +63,10 @@ function Register() {
       } else if (apiErr?.status === 409) {
         setEmailError(t("auth.register.error.email_taken"));
       } else if (apiErr?.status === 422) {
-        setPasswordError(detail || t("auth.register.error.unexpected"));
+        // FastAPI emits string detail for our explicit weak_password reasons,
+        // but pydantic body-validation surfaces detail as an array of objects.
+        // Only the string form is safe to render directly.
+        setPasswordError(detail || t("auth.register.error.validation_failed"));
       } else {
         setPasswordError(t("auth.register.error.unexpected"));
       }

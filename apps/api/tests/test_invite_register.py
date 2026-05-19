@@ -554,6 +554,71 @@ def test_register_email_taken_does_not_consume_invite(client):
     assert _audit_rows("auth.invite.used") == []
 
 
+def test_register_duplicate_email_race_returns_409_and_audits(client, monkeypatch):
+    """Race: another writer inserts a user with the same email AFTER our
+    uniqueness SELECT passes but BEFORE the commit. The unique constraint
+    must convert that into the same 409 + audit signature as the SELECT
+    path — not a 500."""
+    c, admin_uuid, fake = client
+    token, _ = _gen_invite(c, fake, generated_by_user_id=admin_uuid)
+
+    racer_id = uuid.uuid4()
+    real_hash_password = hash_password
+
+    def _hash_then_seed_competitor(plaintext):
+        """Hook called between SELECT and commit inside the register handler.
+
+        Mirrors the timing of a real concurrent register call by inserting
+        a competing user with the same email on a fresh Session — the
+        request's own Session won't see it until commit time, when the
+        UNIQUE constraint fires."""
+        engine = get_engine()
+        with Session(engine) as competing:
+            already = competing.exec(select(User).where(User.email == "race@example.com")).first()
+            if already is None:
+                competing.add(
+                    User(
+                        id=racer_id,
+                        email="race@example.com",
+                        display_name="race",
+                        role="member",
+                        password_hash=real_hash_password("racer_password_strong"),
+                    )
+                )
+                competing.commit()
+        return real_hash_password(plaintext)
+
+    monkeypatch.setattr(
+        "app.modules.invite.router.hash_password",
+        _hash_then_seed_competitor,
+    )
+
+    r = c.post(
+        "/api/auth/register",
+        json={"token": token, "email": "race@example.com", "password": PASSWORD_STRONG},
+    )
+    assert r.status_code == 409, r.text
+    assert r.json() == {"detail": "email_taken"}
+
+    failed = _audit_rows("auth.register.fail")
+    assert len(failed) == 1
+    audit = failed[0]
+    assert audit.entity_type == "user"
+    assert audit.entity_id == racer_id
+    payload = json.loads(audit.after_json)
+    assert payload == {"reason": "email_taken", "email": "race@example.com"}
+
+    # The would-be user row never persisted — only the racer remains.
+    engine = get_engine()
+    with Session(engine) as s:
+        users = list(s.exec(select(User).where(User.email == "race@example.com")).all())
+    assert len(users) == 1
+    assert users[0].id == racer_id
+
+    # Invite token must not have been consumed.
+    assert _audit_rows("auth.invite.used") == []
+
+
 def test_register_email_taken_does_not_mutate_existing_user(client):
     c, admin_uuid, fake = client
     engine = get_engine()

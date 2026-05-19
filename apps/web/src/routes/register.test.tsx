@@ -170,6 +170,47 @@ describe("Register form", () => {
     expect(screen.getByLabelText(/password|hasło/i)).toBeDefined();
   });
 
+  it("does not crash and renders fallback message when 422 detail is a FastAPI validation array", async () => {
+    vi.mocked(api).mockRejectedValueOnce(
+      new ApiError(
+        422,
+        {
+          detail: [
+            {
+              loc: ["body", "email"],
+              msg: "value is not a valid email address",
+              type: "value_error.email",
+            },
+          ],
+        },
+        "422 Unprocessable",
+      ),
+    );
+    await renderRegister(<Component />, `/register?token=${TEST_TOKEN}`);
+
+    // Use an HTML5-valid email so jsdom doesn't short-circuit the submit
+    // before our mocked API call fires — the regression we care about is
+    // server-side validation rejection (array-shaped detail), not client.
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: "user@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/password|hasło/i), {
+      target: { value: "correct horse battery staple" },
+    });
+    {
+      const btn = screen.getAllByRole("button")[0];
+      if (btn === undefined) throw new Error("submit button not found");
+      fireEvent.click(btn);
+    }
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("alert").length).toBeGreaterThan(0);
+    });
+    // Form is still rendered (no crash, no fullPageError)
+    expect(screen.getByLabelText(/email/i)).toBeDefined();
+    expect(screen.getByLabelText(/password|hasło/i)).toBeDefined();
+  });
+
   it("surfaces 409 email_taken as inline error below email input", async () => {
     vi.mocked(api).mockRejectedValueOnce(
       new ApiError(409, { detail: "email_taken" }, "409 Conflict"),

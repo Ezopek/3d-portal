@@ -65,6 +65,7 @@
   "auth.register.error.token_consumed": "This invite has already been used or was revoked. Ask the administrator for a fresh invite.",
   "auth.register.error.token_missing": "This page requires an invite link. Ask the administrator for one.",
   "auth.register.error.email_taken": "An account with this email already exists. Sign in instead.",
+  "auth.register.error.validation_failed": "Validation failed — check your email and password format.",
   "auth.register.error.unexpected": "Could not create your account. Try again in a moment.",
   "catalog.title": "Model catalog",
   "catalog.empty": "No models match the filter.",

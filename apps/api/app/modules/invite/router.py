@@ -24,6 +24,7 @@ from typing import Annotated
 
 import zxcvbn
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.core.audit import record_event
@@ -187,7 +188,25 @@ async def register(
         password_hash=hash_password(payload.password),
     )
     session.add(user)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        # Race: a concurrent register call inserted a user with the same
+        # email between our uniqueness SELECT and this commit. Compensate
+        # by surfacing the same 409 + audit signature as the SELECT path —
+        # entity_id is re-resolved from the row that won the race so the
+        # audit chain remains traceable.
+        session.rollback()
+        raced = session.exec(select(User).where(User.email == payload.email)).first()
+        _emit_fail(
+            engine=engine,
+            reason="email_taken",
+            email=payload.email,
+            actor_user_id=None,
+            entity_id=raced.id if raced is not None else None,
+            request_id=request_id,
+        )
+        raise HTTPException(status.HTTP_409_CONFLICT, "email_taken") from None
     session.refresh(user)
 
     # Step 5: consume invite (atomic predicate; raises InviteConsumed on race-lost).
