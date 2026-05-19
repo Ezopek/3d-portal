@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     ratelimit_refresh_threshold: int = 10
     ratelimit_register_window_seconds: int = 60
     ratelimit_register_threshold: int = 3
+    # Rate-limiting (Story 6.7, Decision H — per-member share cap)
+    ratelimit_share_window_seconds: int = 86400
+    ratelimit_share_threshold: int = 20
+    ratelimit_share_soft_alert_threshold: int = 10
 
     # Observability
     otel_exporter_otlp_endpoint: str | None = None

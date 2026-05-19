@@ -21,16 +21,22 @@ import logging
 import time
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import redis.exceptions
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
+from app.core.auth.cookies import ACCESS_COOKIE
+from app.core.auth.jwt import TokenError, decode_token
+from app.core.config import get_settings
+
 if TYPE_CHECKING:
     from starlette.types import ASGIApp, Receive, Scope, Send
 
 _LOG = logging.getLogger("app.auth.ratelimit")
+_SHARE_LOG = logging.getLogger("app.share.ratelimit")
 
 
 def _client_ip(request: Request) -> str:
@@ -89,6 +95,58 @@ def register_ratelimit_key(request: Request) -> str | None:
     return None
 
 
+def share_ratelimit_key(request: Request) -> str | None:
+    """Per-member daily share-creation key + admin exemption (Decision H).
+
+    Returns ``None`` for any non-POST / non-``/api/admin/share`` request,
+    missing or invalid JWT, admin role (Decision H operator-self-DoS
+    exemption), or non-member/non-admin roles (the auth dependency rejects
+    those with 403). Returns ``user:{user_id}:day:{YYYY-MM-DD}`` (UTC day
+    boundary — no DST math) for valid member requests, so the middleware's
+    final Redis key is ``ratelimit:share:user:{user_id}:day:{YYYY-MM-DD}``.
+
+    The architecture's "single ``if user.role == Role.admin`` line" lives
+    here, not inside ``RateLimitMiddleware.__call__`` — keeps the middleware
+    class scope-agnostic and lets the key_fn short-circuit the Redis
+    pipeline before the count is incremented.
+
+    ``get_settings()`` is invoked at call time (not module import) so the
+    ``monkeypatch.setenv + get_settings.cache_clear()`` test pattern picks
+    up per-test overrides.
+    """
+    if request.method != "POST" or request.url.path != "/api/admin/share":
+        return None
+    token = request.cookies.get(ACCESS_COOKIE)
+    if not token:
+        return None
+    try:
+        claims = decode_token(token, secret=get_settings().jwt_secret)
+    except TokenError:
+        return None
+    role = claims.get("role")
+    if role == "admin":
+        return None
+    if role != "member":
+        return None
+    user_id = claims.get("sub")
+    if not user_id:
+        return None
+    today_utc = datetime.now(UTC).strftime("%Y-%m-%d")
+    return f"user:{user_id}:day:{today_utc}"
+
+
+def share_retry_after_seconds() -> int:
+    """Seconds remaining until the next UTC midnight (next day boundary).
+
+    Clamps to a minimum of 1 to keep ``Retry-After: 0`` (which HTTP clients
+    interpret as "retry immediately") out of the response — a microsecond
+    race against the rollover would otherwise give us a non-positive value.
+    """
+    now = datetime.now(UTC)
+    tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return max(int((tomorrow - now).total_seconds()), 1)
+
+
 class RateLimitMiddleware:
     """Sliding-window rate-limit middleware (one Redis pipeline per request)."""
 
@@ -100,12 +158,16 @@ class RateLimitMiddleware:
         key_fn: Callable[[Request], str | None],
         window_seconds: int,
         threshold: int,
+        soft_alert_threshold: int | None = None,
+        retry_after_seconds_fn: Callable[[], int] | None = None,
     ) -> None:
         self.app = app
         self.scope_name = scope
         self.key_fn = key_fn
         self.window_seconds = window_seconds
         self.threshold = threshold
+        self.soft_alert_threshold = soft_alert_threshold
+        self.retry_after_seconds_fn = retry_after_seconds_fn
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -149,15 +211,33 @@ class RateLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
+        if self.soft_alert_threshold is not None and count == self.soft_alert_threshold:
+            _SHARE_LOG.warning(
+                "share.ratelimit.soft_alert",
+                extra={
+                    "event.action": "share.ratelimit.soft_alert",
+                    "labels.scope": self.scope_name,
+                    "labels.key": redis_key,
+                    "labels.count": count,
+                    "labels.threshold": self.threshold,
+                    "labels.soft_alert_threshold": self.soft_alert_threshold,
+                },
+            )
+
         if count > self.threshold:
+            retry_after_seconds = (
+                self.retry_after_seconds_fn()
+                if self.retry_after_seconds_fn is not None
+                else self.window_seconds
+            )
             response = JSONResponse(
                 {
                     "detail": "rate_limited",
                     "scope": self.scope_name,
-                    "retry_after_seconds": self.window_seconds,
+                    "retry_after_seconds": retry_after_seconds,
                 },
                 status_code=429,
-                headers={"Retry-After": str(self.window_seconds)},
+                headers={"Retry-After": str(retry_after_seconds)},
             )
             await response(scope, receive, send)
             return

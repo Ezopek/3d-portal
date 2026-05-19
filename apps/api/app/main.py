@@ -10,6 +10,8 @@ from app.core.auth.ratelimit import (
     login_ratelimit_key,
     refresh_ratelimit_key,
     register_ratelimit_key,
+    share_ratelimit_key,
+    share_retry_after_seconds,
 )
 from app.core.config import get_settings
 from app.core.db.seed import seed_admin
@@ -99,6 +101,21 @@ def create_app() -> FastAPI:
         key_fn=register_ratelimit_key,
         window_seconds=settings.ratelimit_register_window_seconds,
         threshold=settings.ratelimit_register_threshold,
+    )
+    # Story 6.7: per-member share-token cap (Decision H). Reuses the Story 6.6
+    # middleware class with two new optional params for soft-alert + dynamic
+    # Retry-After. Admin exemption + JWT-cookie role check live inside
+    # share_ratelimit_key (returns None for admin / anon / non-member roles,
+    # short-circuiting the Redis pipeline). Scope: POST /api/admin/share only;
+    # DELETE + GET on the same prefix are method-filtered out by the key_fn.
+    app.add_middleware(
+        RateLimitMiddleware,
+        scope="share",
+        key_fn=share_ratelimit_key,
+        window_seconds=settings.ratelimit_share_window_seconds,
+        threshold=settings.ratelimit_share_threshold,
+        soft_alert_threshold=settings.ratelimit_share_soft_alert_threshold,
+        retry_after_seconds_fn=share_retry_after_seconds,
     )
     install_csrf_middleware(app)
 
