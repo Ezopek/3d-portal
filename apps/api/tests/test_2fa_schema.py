@@ -329,6 +329,38 @@ def test_totp_fernet_key_empty_ok_in_dev(monkeypatch: pytest.MonkeyPatch) -> Non
         get_settings.cache_clear()
 
 
+def test_totp_fernet_key_invalid_shape_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fix-up for Story 7.1 Codex P2 — malformed Fernet key must fail at
+    Settings instantiation, not deferred to first enroll-confirm use."""
+    monkeypatch.setenv("ENVIRONMENT", "dev")
+    monkeypatch.setenv("TOTP_FERNET_KEY", "not-a-fernet-key")
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(ValidationError) as excinfo:
+            get_settings()
+        message = str(excinfo.value)
+        assert "TOTP_FERNET_KEY must be a valid Fernet key" in message
+    finally:
+        get_settings.cache_clear()
+
+
+def test_totp_fernet_key_generated_key_passes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Companion to the invalid-shape test — a freshly generated Fernet key
+    must instantiate Settings cleanly."""
+    from cryptography.fernet import Fernet
+
+    monkeypatch.setenv("ENVIRONMENT", "dev")
+    monkeypatch.setenv("TOTP_FERNET_KEY", Fernet.generate_key().decode())
+    get_settings.cache_clear()
+    try:
+        settings = get_settings()
+        assert settings.totp_fernet_key  # non-empty
+        # Round-trip: the stored value must reconstruct a working Fernet.
+        Fernet(settings.totp_fernet_key.encode())
+    finally:
+        get_settings.cache_clear()
+
+
 # ---------------------------------------------------------------------------
 # AC-9 — KNOWN_ENTITY_TYPES + record_event recovery_code roundtrip (T13..T14)
 # ---------------------------------------------------------------------------

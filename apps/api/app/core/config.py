@@ -116,6 +116,20 @@ class Settings(BaseSettings):
                     "An unconfigured TOTP_FERNET_KEY would cause Story 7.2 enroll-confirm "
                     "to silently fail at first 2FA enrollment attempt."
                 )
+        # Shape-validate whenever a key is provided so a malformed value fails
+        # fast at startup, not later when the first 2FA enrollment attempts to
+        # encrypt a TOTP secret (cryptography.fernet.Fernet rejects bad keys at
+        # construction).
+        if self.totp_fernet_key:
+            from cryptography.fernet import Fernet
+
+            try:
+                Fernet(self.totp_fernet_key.encode())
+            except (ValueError, TypeError) as e:
+                raise ValueError(
+                    "TOTP_FERNET_KEY must be a valid Fernet key "
+                    f"(url-safe base64-encoded 32-byte key): {e}"
+                ) from e
         return self
 
 
