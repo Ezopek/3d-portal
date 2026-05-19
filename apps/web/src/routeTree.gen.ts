@@ -18,6 +18,7 @@ import { Route as QueueIndexRouteImport } from './routes/queue/index'
 import { Route as PrinterIndexRouteImport } from './routes/printer/index'
 import { Route as CatalogIndexRouteImport } from './routes/catalog/index'
 import { Route as SettingsSessionsRouteImport } from './routes/settings/sessions'
+import { Route as Settings2faRouteImport } from './routes/settings/2fa'
 import { Route as DevComponentsRouteImport } from './routes/dev/components'
 import { Route as CatalogIdRouteImport } from './routes/catalog/$id'
 
@@ -66,6 +67,11 @@ const SettingsSessionsRoute = SettingsSessionsRouteImport.update({
   path: '/settings/sessions',
   getParentRoute: () => rootRouteImport,
 } as any)
+const Settings2faRoute = Settings2faRouteImport.update({
+  id: '/settings/2fa',
+  path: '/settings/2fa',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DevComponentsRoute = DevComponentsRouteImport.update({
   id: '/dev/components',
   path: '/dev/components',
@@ -83,6 +89,7 @@ export interface FileRoutesByFullPath {
   '/register': typeof RegisterRoute
   '/catalog/$id': typeof CatalogIdRoute
   '/dev/components': typeof DevComponentsRoute
+  '/settings/2fa': typeof Settings2faRoute
   '/settings/sessions': typeof SettingsSessionsRoute
   '/catalog/': typeof CatalogIndexRoute
   '/printer/': typeof PrinterIndexRoute
@@ -96,6 +103,7 @@ export interface FileRoutesByTo {
   '/register': typeof RegisterRoute
   '/catalog/$id': typeof CatalogIdRoute
   '/dev/components': typeof DevComponentsRoute
+  '/settings/2fa': typeof Settings2faRoute
   '/settings/sessions': typeof SettingsSessionsRoute
   '/catalog': typeof CatalogIndexRoute
   '/printer': typeof PrinterIndexRoute
@@ -110,6 +118,7 @@ export interface FileRoutesById {
   '/register': typeof RegisterRoute
   '/catalog/$id': typeof CatalogIdRoute
   '/dev/components': typeof DevComponentsRoute
+  '/settings/2fa': typeof Settings2faRoute
   '/settings/sessions': typeof SettingsSessionsRoute
   '/catalog/': typeof CatalogIndexRoute
   '/printer/': typeof PrinterIndexRoute
@@ -125,6 +134,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/catalog/$id'
     | '/dev/components'
+    | '/settings/2fa'
     | '/settings/sessions'
     | '/catalog/'
     | '/printer/'
@@ -138,6 +148,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/catalog/$id'
     | '/dev/components'
+    | '/settings/2fa'
     | '/settings/sessions'
     | '/catalog'
     | '/printer'
@@ -151,6 +162,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/catalog/$id'
     | '/dev/components'
+    | '/settings/2fa'
     | '/settings/sessions'
     | '/catalog/'
     | '/printer/'
@@ -165,6 +177,7 @@ export interface RootRouteChildren {
   RegisterRoute: typeof RegisterRoute
   CatalogIdRoute: typeof CatalogIdRoute
   DevComponentsRoute: typeof DevComponentsRoute
+  Settings2faRoute: typeof Settings2faRoute
   SettingsSessionsRoute: typeof SettingsSessionsRoute
   CatalogIndexRoute: typeof CatalogIndexRoute
   PrinterIndexRoute: typeof PrinterIndexRoute
@@ -238,6 +251,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsSessionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/2fa': {
+      id: '/settings/2fa'
+      path: '/settings/2fa'
+      fullPath: '/settings/2fa'
+      preLoaderRoute: typeof Settings2faRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dev/components': {
       id: '/dev/components'
       path: '/dev/components'
@@ -261,6 +281,7 @@ const rootRouteChildren: RootRouteChildren = {
   RegisterRoute: RegisterRoute,
   CatalogIdRoute: CatalogIdRoute,
   DevComponentsRoute: DevComponentsRoute,
+  Settings2faRoute: Settings2faRoute,
   SettingsSessionsRoute: SettingsSessionsRoute,
   CatalogIndexRoute: CatalogIndexRoute,
   PrinterIndexRoute: PrinterIndexRoute,

@@ -18,6 +18,8 @@ dependencies = [
     "bcrypt>=4.0",
     "pyjwt>=2.10",
     "python-multipart>=0.0.20",
+    "pyotp>=2.9",
+    "qrcode[pil]>=8.0",
     "httpx>=0.28",
     # OTel contrib/instrumentation packages have no stable 1.x yet; 0.5xb pins are intentional.
     "opentelemetry-distro>=0.50b0",

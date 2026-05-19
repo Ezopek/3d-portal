@@ -185,6 +185,32 @@ export interface SessionsResponse {
   items: Session[];
 }
 
+// --- TOTP 2FA (Story 7.2) ---
+
+export interface TotpEnrollResponse {
+  qr_svg: string;
+  manual_secret: string;
+  enrollment_token: string;
+}
+
+export interface TotpConfirmRequest {
+  enrollment_token: string;
+  code: string;
+}
+
+export interface TotpConfirmResponse {
+  recovery_codes: string[];
+  batch_id: string;
+  generated_at: string;
+}
+
+export interface TotpStatusResponse {
+  enabled: boolean;
+  batch_id: string | null;
+  generated_at: string | null;
+  codes_remaining: number | null;
+}
+
 // --- Audit log ---
 
 export interface AuditLogEntry {
