@@ -204,6 +204,26 @@ Typical routing for Claude Code:
 
 Background: the 2026-05-18 retro on the (since-reverted) user-accounts initiative caught a recurring drift pattern — the agent treats BMAD as a library of named skills (matching operator verbs to skill names: *"create PRD"* → `bmad-create-prd`) rather than as a methodology with phase ordering and routing. `bmad-help` and `bmad-correct-course` exist precisely to short-circuit that pattern. A subsequent recalibration pass (2026-05-18 v2) corrected an earlier-in-this-section misframing: the H2-append doc pattern is a vanilla-compatible pragmatic workaround, NOT a drift. Only procedural skill-discipline violations are drifts.
 
+### Autonomous development mode (ITCM rule, effective 2026-05-19)
+
+**Once the business side is settled — brief, PRD, architecture, epics aligned and approved (or a bug report has enough context to start root-causing) — Claude takes full operational ownership of development and coordination.** Ezop's role flips to operator-level intake: receive results, decide on real product blockers, sign off at initiative completion. Procedural confirmation prompts ("which skill next?", "should I commit?", "ready for next session?", "spawn subagent or inline?") are OFF the table. Same rule for bug-fix work — Claude leads investigation + reproduction + fix + verification; asks ONE focused question if external incident details are genuinely missing, never a guided walkthrough.
+
+**Tools to use autonomously:** subagents (`Agent` tool — `Explore`, `Plan`, `general-purpose`, BMAD subagents per the skill catalog), Codex (`codex review --commit <SHA>` / `codex exec --output-schema ... -` per `~/.claude/codex-invocation-guide.md`), 1M-context window for full repo + planning-artifact folds in a single session. `~/.claude/bin/check-usage.sh` before heavyweight autonomous work; at 5h ≥ 80% sleep through reset rather than burning `extra_usage` without explicit operator opt-in.
+
+**What counts as a "real product blocker" (acceptable to surface mid-flight):**
+
+- Architectural decision the operator must own (security tradeoff, cross-repo cutover, irreversible deploy step).
+- Cross-repo coordination requiring action in a sibling repo (`~/repos/configs/` nginx edit, Windows catalog write, agent-token rotation).
+- Hardware / homelab / network state Claude cannot inspect (printer down, `.180` edge unreachable, VPN dropped).
+- Truly load-bearing scope ambiguity — a planning-artifact contradiction with no code-grounded resolution that would force a guess the operator might disagree with. Drifts that have an unambiguous code-grounded answer (path mismatch, type mismatch, naming alignment) get encoded in-story + flagged for `bmad-correct-course` follow-up; they are NOT blockers.
+- Initiative completion (full retrospective ready for operator review).
+
+**What does NOT count as a blocker** (own the call autonomously): "which skill next" (answer: `bmad-help` + bmad-help.csv `phase`/`after`), "commit / merge / deploy now" (AGENTS.md § Branching + § Deploy + auto-deploy memory rule), "run bmad-correct-course now or later" (default deferred unless next-story path-collision risk), "spawn subagent or inline" (own it), "Codex review now or after batch" (own it per batch-close-out memory rule), procedural BMAD methodology questions in general.
+
+**BMAD vanilla-first stays in force, no exceptions.** ITCM autonomy is *operational ownership of when/how to invoke skills*, not *license to bypass skills*. Every action still routes through the canonical chain; protests still trigger STOP not route-around; `bmad-correct-course` is still the canonical entry for post-ship scope changes. The mandatory session-start `bmad-help` handshake is the only operator-visible procedural check; everything between session start and initiative close runs on ITCM autonomy.
+
+Background: 2026-05-19, after Sesja G of Initiative 5 spec-creation cycle. Operator surfaced the pattern of being dragged into procedural micro-decisions (which session boundary, accept/proceed prompts, methodology routing questions) and stated the new rule: *"po obgadaniu/brainstormingu i dogadaniu wszystkich BIZNESOWYCH zagwostek TY W PEŁNI PRZEJMUJESZ PRACE NAD CAŁYM DEVELOPMENTEM"* and *"dla mnie Ty jesteś ITCMem który mnie obsługuje a samemu tylko delegujesz i koordynujesz"*. Encoded as a project rule binding for every BMAD-aware agent (Claude Code primarily; mirrored in agent-specific memory for cross-session recall).
+
 ### Execution discipline
 
 These rules apply to every agent regardless of platform:
