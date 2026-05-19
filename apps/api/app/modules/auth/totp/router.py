@@ -596,9 +596,16 @@ async def regenerate_recovery_codes(
             ).all()
         )
         if active_ids:
+            # Keep active-only predicates on the UPDATE so a recovery-code
+            # login consuming one of these IDs between the snapshot SELECT
+            # and this UPDATE cannot have its used_at row stomped to
+            # invalidated_at. Audit-trail contract:
+            # used_at IS NULL AND invalidated_at IS NULL.
             session.execute(
                 update(RecoveryCode)
                 .where(RecoveryCode.id.in_(active_ids))
+                .where(RecoveryCode.used_at.is_(None))
+                .where(RecoveryCode.invalidated_at.is_(None))
                 .values(invalidated_at=now)
             )
         for _cleartext, code_hash in code_pairs:
