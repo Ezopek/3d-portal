@@ -36,17 +36,34 @@ _LOG = logging.getLogger("app.auth.ratelimit")
 def _client_ip(request: Request) -> str:
     """Return the trusted client IP for per-IP rate-limit bucketing.
 
-    Trusts ``X-Real-IP`` only (nginx sets it from ``$remote_addr``, which the
-    attacker cannot forge across the proxy hop) and falls back to the
-    transport-level client host for dev / direct-access paths. ``X-Forwarded-For``
-    is deliberately ignored: nginx appends to the existing chain via
-    ``$proxy_add_x_forwarded_for``, so an attacker controls the first value and
-    can pick a fresh one per request to land in a fresh bucket and bypass
-    per-IP throttling.
+    Trust chain (production): browser → edge nginx → web nginx → API.
+      - Edge nginx (``configs/nginx/3d.ezop.ddns.net.conf``) sets
+        ``X-Real-IP $remote_addr`` from the TLS-terminating socket, which the
+        attacker cannot forge across the proxy hop.
+      - Web nginx (``apps/web/nginx.conf`` ``/api/`` block) forwards the value
+        verbatim via ``X-Real-IP $http_x_real_ip`` (Story 6.6 codex fix-up #2 —
+        the earlier ``$remote_addr`` form here overwrote the edge-set value with
+        the docker-network IP and collapsed every HTTPS client into one bucket).
+
+    Resolution order:
+      1. ``X-Real-IP`` — trusted across the chain when both proxies cooperate.
+      2. Left-most entry of ``X-Forwarded-For`` — canonical original-client
+         position. Safe under the trust assumption that the proxy chain
+         *appends* to the list (nginx ``$proxy_add_x_forwarded_for`` does so)
+         and that direct attacker traffic cannot reach the API: the edge nginx
+         is the only public-facing surface, internal Docker networking shields
+         everything else. This branch is exercised only when X-Real-IP is
+         absent (dev fixtures, debugging, or a proxy misconfiguration).
+      3. ``request.client.host`` — dev / direct-access path with no proxy.
     """
     real_ip = request.headers.get("x-real-ip", "").strip()
     if real_ip:
         return real_ip
+    xff = request.headers.get("x-forwarded-for", "").strip()
+    if xff:
+        leftmost = xff.split(",", 1)[0].strip()
+        if leftmost:
+            return leftmost
     if request.client is not None and request.client.host:
         return request.client.host
     return "unknown"

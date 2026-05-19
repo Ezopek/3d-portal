@@ -703,28 +703,35 @@ def test_login_ratelimit_key_returns_none_for_get_method():
     assert login_ratelimit_key(req) is None
 
 
-def test_client_ip_prefers_x_real_ip_over_xff():
-    # nginx sets X-Real-IP from $remote_addr (unforgeable across the proxy hop);
-    # X-Forwarded-For is attacker-controlled and must be ignored even when both
-    # headers are present.
+def test_client_ip_prefers_x_real_ip_over_xff_from_edge_proxy():
+    # Production: edge nginx sets X-Real-IP = browser IP and appends to
+    # X-Forwarded-For; web nginx (post Story 6.6 codex fix-up #2) now
+    # forwards X-Real-IP via $http_x_real_ip so the edge-set value reaches
+    # the API verbatim. With both headers present, the bucket MUST follow
+    # X-Real-IP (1.2.3.4), not the right-most XFF hop (10.0.0.1 = web
+    # nginx's view of the edge proxy).
     req = MagicMock()
-    req.headers = {"x-real-ip": "5.6.7.8", "x-forwarded-for": "1.1.1.1, 2.2.2.2"}
+    req.headers = {"x-real-ip": "1.2.3.4", "x-forwarded-for": "1.2.3.4, 10.0.0.1"}
     req.client = MagicMock(host="ignored")
-    assert _client_ip(req) == "5.6.7.8"
+    assert _client_ip(req) == "1.2.3.4"
 
 
-def test_client_ip_ignores_forged_xff_without_real_ip():
-    # Without X-Real-IP, a forged XFF still does NOT shift the bucket — the
-    # limiter falls back to the transport-level client host. This is the bypass
-    # the rewrite blocks: attacker spraying random first-XFF values lands in the
-    # same client.host bucket and trips the threshold.
+def test_client_ip_uses_leftmost_xff_when_real_ip_absent():
+    # X-Real-IP missing → fall back to LEFT-most XFF entry (canonical
+    # original-client position). Trust assumption: the proxy chain only
+    # APPENDS to X-Forwarded-For (nginx $proxy_add_x_forwarded_for) and the
+    # API is not directly reachable from the public internet, so attacker
+    # control over the first XFF value would require breaching the edge.
     req = MagicMock()
     req.headers = {"x-forwarded-for": "1.1.1.1, 2.2.2.2, 3.3.3.3"}
     req.client = MagicMock(host="10.0.0.1")
-    assert _client_ip(req) == "10.0.0.1"
+    assert _client_ip(req) == "1.1.1.1"
 
 
-def test_client_ip_falls_back_to_request_client_host():
+def test_client_ip_dev_path_falls_back_to_request_client_host():
+    # Dev / direct-access path: no proxy headers at all → bucket on the
+    # transport-level peer address. Exercises the bare ``uvicorn`` flow
+    # that operators hit when running the API outside docker-compose.
     req = MagicMock()
     req.headers = {}
     req.client = MagicMock(host="1.2.3.4")
