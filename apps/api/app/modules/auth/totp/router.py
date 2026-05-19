@@ -338,6 +338,14 @@ async def verify_second_factor(
     # or worker termination after GETDEL restores the partial_token to
     # Redis (best-effort). Otherwise a transient error after successful
     # 2FA leaves user stuck — would have to re-do password login.
+    # _commit_done flips True only after session.commit() returns. A
+    # post-commit failure (audit insert, cookie encode error, network
+    # blip while writing response) MUST NOT restore the partial_token
+    # because the RefreshToken row is already durable — restoring would
+    # let a retry mint a second session family. Pre-commit failures
+    # (DB stall, integrity error, exception inside session.execute)
+    # restore the token so user can retry without re-entering password.
+    _commit_done = False
     try:
         used_at_value: datetime.datetime | None = None
         if matched_row is not None:
@@ -381,6 +389,7 @@ async def verify_second_factor(
         # Step 7 — atomic commit covering the RefreshToken INSERT and the
         # recovery_codes.used_at UPDATE (recovery-code path only).
         session.commit()
+        _commit_done = True
 
         if matched_row is not None:
             record_event(
@@ -430,9 +439,13 @@ async def verify_second_factor(
         # branch; partial_token is already gone from Redis). Re-raise as-is.
         raise
     except Exception:
-        # Unexpected failure (DB stall, audit insert error, etc.) — restore
-        # the claimed partial_token so the user can retry 2FA without
-        # re-entering password. Best-effort; never masks the original.
-        with contextlib.suppress(Exception):
-            await redis.set(partial_key, claimed, ex=_PARTIAL_TTL_SECONDS)
+        # Unexpected failure — restore the partial_token ONLY when the DB
+        # commit has not yet occurred. Post-commit failures (audit insert,
+        # cookie encode, etc.) MUST NOT restore the token because the
+        # RefreshToken row is already durable — restoring would let a retry
+        # mint a second session family from the same partial_token.
+        # Best-effort restore; never masks the original exception.
+        if not _commit_done:
+            with contextlib.suppress(Exception):
+                await redis.set(partial_key, claimed, ex=_PARTIAL_TTL_SECONDS)
         raise
