@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     cookie_secure: bool = True
     admin_email: str = "admin@local"
     admin_password: str = "change-me"
+    totp_fernet_key: str = ""
 
     # Rate-limiting (Story 6.6, Decision G)
     ratelimit_login_window_seconds: int = 60
@@ -106,6 +107,14 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "admin_password must be set to a real value in production; "
                     "the default placeholder is not allowed."
+                )
+            if not self.totp_fernet_key:
+                raise ValueError(
+                    "totp_fernet_key must be set to a real Fernet key in production; "
+                    'generate one with: python -c "from cryptography.fernet import '
+                    'Fernet; print(Fernet.generate_key().decode())". '
+                    "An unconfigured TOTP_FERNET_KEY would cause Story 7.2 enroll-confirm "
+                    "to silently fail at first 2FA enrollment attempt."
                 )
         return self
 

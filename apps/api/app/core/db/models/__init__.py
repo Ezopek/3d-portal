@@ -34,6 +34,7 @@ from ._enums import (
     UserRole,
 )
 from ._helpers import UTCDateTime, _now_utc, sa_uuid_type, uuid_fk
+from ._recovery import RecoveryCode
 from ._user import User
 
 __all__ = [
@@ -50,6 +51,7 @@ __all__ = [
     "ModelStatus",
     "ModelTag",
     "NoteKind",
+    "RecoveryCode",
     "RefreshToken",
     "Tag",
     "UTCDateTime",

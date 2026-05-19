@@ -38,6 +38,9 @@ def _isolated_db():
     os.environ["ADMIN_EMAIL"] = "admin@localhost.localdomain"
     os.environ["ADMIN_PASSWORD"] = "test-admin-pw"
     os.environ["JWT_SECRET"] = "test-secret-not-real"
+    # Story 7.1 / Decision D — deterministic Fernet key for TOTP tests.
+    # 32 url-safe-base64-encoded bytes; trailing "=" pads to 44 chars total.
+    os.environ["TOTP_FERNET_KEY"] = "ZmFrZS10ZXN0LWtleS0zMi1ieXRlcy1mb3ItdGVzdHM="
     os.environ["PORTAL_CONTENT_DIR"] = str(content_dir)
     os.environ["COOKIE_SECURE"] = "false"  # TestClient uses http://testserver (not HTTPS)
     # Clear any cached settings or engine that read env at import time

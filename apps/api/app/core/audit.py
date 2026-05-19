@@ -20,6 +20,7 @@ from app.core.db.models import AuditLog
 #   model_file           — file upload/delete (Slice 2C.2)
 #   model_note           — note CRUD (Slice 2C.x)
 #   model_print          — print record CRUD (Slice 2C.x)
+#   recovery_code        — auth.recovery_code.used (entity_id = recovery_codes.id UUID)
 #   render_selection     — admin.render.selection.set/delete (entity_id None: legacy str model_id)
 #   share_token          — admin.share.create/delete (entity_id None: keyed by token string)
 #   tag                  — future tag CRUD (Slice 2C.x)
@@ -35,6 +36,7 @@ KNOWN_ENTITY_TYPES: frozenset[str] = frozenset(
         "model_file",
         "model_note",
         "model_print",
+        "recovery_code",
         "render_selection",
         "share_token",
         "tag",

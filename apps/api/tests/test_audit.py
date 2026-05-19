@@ -73,6 +73,7 @@ def test_known_entity_types_covers_all_call_site_resources():
         "model_file",
         "model_note",
         "model_print",
+        "recovery_code",
         "render_selection",
         "share_token",
         "tag",

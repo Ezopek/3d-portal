@@ -21,6 +21,7 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
+      TOTP_FERNET_KEY: ${TOTP_FERNET_KEY}
       DATABASE_URL: sqlite:////data/state/portal.db
       REDIS_URL: redis://redis:6379/0
       CATALOG_DATA_DIR: /data/catalog
