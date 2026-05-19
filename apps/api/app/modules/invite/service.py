@@ -208,22 +208,36 @@ class InviteService:
     async def revoke(self, invite_id: uuid.UUID) -> InviteToken:
         """Admin-initiated revocation by row id.
 
-        DB UPDATE first (state authority), then Redis key DEL via SCAN+JSON
-        match. An already-expired Redis key is benign.
+        Conditional UPDATE on ``used_at IS NULL AND revoked_at IS NULL`` is the
+        state-resolution guard: a racing consume that commits between a naive
+        read and write would otherwise leave both ``used_at`` and ``revoked_at``
+        populated, violating AC-4's single-resolution invariant. Redis key DEL
+        follows DB commit; an already-expired Redis key is benign.
 
         Caller is responsible for emitting the ``auth.invite.revoked`` audit
         event after this returns.
         """
+        now = datetime.datetime.now(datetime.UTC)
         with Session(self._engine) as session:
-            row = session.get(InviteToken, invite_id)
-            if row is None:
-                raise InviteNotFound
-            if row.used_at is not None or row.revoked_at is not None:
+            stmt = (
+                update(InviteToken)
+                .where(
+                    InviteToken.id == invite_id,
+                    InviteToken.used_at.is_(None),
+                    InviteToken.revoked_at.is_(None),
+                )
+                .values(revoked_at=now)
+            )
+            result = session.exec(stmt)
+            if result.rowcount == 0:
+                # Disambiguate "not found" from "already used/revoked" so the
+                # admin API surface keeps its existing two-error contract.
+                existing = session.get(InviteToken, invite_id)
+                if existing is None:
+                    raise InviteNotFound
                 raise InviteAlreadyResolved
-            row.revoked_at = datetime.datetime.now(datetime.UTC)
-            session.add(row)
             session.commit()
-            session.refresh(row)
+            row = session.get(InviteToken, invite_id)
 
         redis_key = await self._find_redis_key_for_invite(invite_id)
         if redis_key is not None:

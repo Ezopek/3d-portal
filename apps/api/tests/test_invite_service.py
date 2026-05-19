@@ -430,3 +430,72 @@ async def test_revoke_already_consumed_raises_invite_already_resolved(service):
 async def test_revoke_unknown_id_raises_invite_not_found(service):
     with pytest.raises(InviteNotFound):
         await service.revoke(uuid.uuid4())
+
+
+# ---------------------------------------------------------------------------
+# revoke()/consume() race regression — Story 6.2 P2 fix (AC-4 atomicity)
+# ---------------------------------------------------------------------------
+
+
+async def test_revoke_loses_race_to_consume_raises_already_resolved(service):
+    """If consume commits between admin revoke's read and write, the
+    conditional UPDATE must reject the revoke instead of clobbering used_at."""
+    result = await service.generate_invite(
+        role=UserRole.member, ttl_seconds=86400, generated_by_user_id=_ADMIN
+    )
+
+    # Simulate the racing consume committing first: directly set used_at on
+    # the DB row, leaving revoked_at NULL. A naive read-then-write revoke
+    # would happily proceed and populate revoked_at on top of used_at.
+    now = datetime.datetime.now(datetime.UTC)
+    with Session(get_engine()) as s:
+        row = s.get(InviteToken, result.invite.id)
+        row.used_at = now
+        row.used_by_user_id = _USER
+        row.used_from_ip = "9.9.9.9"
+        s.add(row)
+        s.commit()
+
+    with pytest.raises(InviteAlreadyResolved):
+        await service.revoke(result.invite.id)
+
+    # Used state preserved, revoked_at never set -- single resolution invariant.
+    with Session(get_engine()) as s:
+        row = s.get(InviteToken, result.invite.id)
+        assert row.used_at is not None
+        assert row.used_by_user_id == _USER
+        assert row.revoked_at is None
+
+
+async def test_consume_loses_race_to_revoke_raises_appropriate_error(service, fake_redis):
+    """If revoke commits between consume's Redis read and DB write, the
+    conditional UPDATE on used_at/revoked_at IS NULL must reject the consume.
+
+    Public-facing error stays InviteConsumed (token-status enumeration guard --
+    consumed/revoked/expired all surface uniformly per FR5-INVITE-4)."""
+    result = await service.generate_invite(
+        role=UserRole.member, ttl_seconds=86400, generated_by_user_id=_ADMIN
+    )
+
+    # Simulate the racing revoke committing first: set revoked_at directly on
+    # the DB row but leave the Redis key in place (the real race window --
+    # revoke's `await self._redis.delete(...)` hasn't run yet when consume
+    # does its Redis GET).
+    now = datetime.datetime.now(datetime.UTC)
+    with Session(get_engine()) as s:
+        row = s.get(InviteToken, result.invite.id)
+        row.revoked_at = now
+        s.add(row)
+        s.commit()
+
+    assert (await fake_redis.get(f"invite:token:{result.token}")) is not None
+
+    with pytest.raises(InviteConsumed):
+        await service.consume(result.token, used_by_user_id=_OTHER, used_from_ip="4.4.4.4")
+
+    # Revoked state preserved, used_at never set -- single resolution invariant.
+    with Session(get_engine()) as s:
+        row = s.get(InviteToken, result.invite.id)
+        assert row.revoked_at is not None
+        assert row.used_at is None
+        assert row.used_by_user_id is None
