@@ -21,6 +21,9 @@ class MeResponse(BaseModel):
 class LoginResponse(BaseModel):
     partial_auth: bool = False  # discriminator — always False on this shape
     user: MeResponse
+    totp_enroll_required: bool = (
+        False  # Story 7.4 — true when Decision F enforcement requires enrollment
+    )
 
 
 class PartialAuthResponse(BaseModel):

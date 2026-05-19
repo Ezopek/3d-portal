@@ -183,10 +183,11 @@ def test_register_happy_path_creates_user_and_consumes_invite(client):
     assert r.status_code == 201, r.text
     body = r.json()
     # Story 7.3 added the ``partial_auth`` discriminator to LoginResponse;
-    # the register endpoint returns the same shape, so the discriminator
-    # is present and set to False on full-auth responses.
-    assert set(body.keys()) == {"partial_auth", "user"}
+    # Story 7.4 added ``totp_enroll_required``. Both are present on every
+    # LoginResponse, set to False on plain full-auth (non-enrolling) responses.
+    assert set(body.keys()) == {"partial_auth", "user", "totp_enroll_required"}
     assert body["partial_auth"] is False
+    assert body["totp_enroll_required"] is False
     user_payload = body["user"]
     assert user_payload["email"] == "newbie@example.com"
     assert user_payload["display_name"] == "newbie"

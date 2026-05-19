@@ -5,6 +5,8 @@ from typing import Annotated
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from app.core.db.models._enums import UserRole
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -39,6 +41,9 @@ class Settings(BaseSettings):
     admin_email: str = "admin@local"
     admin_password: str = "change-me"
     totp_fernet_key: str = ""
+
+    # 2FA enforcement (Story 7.4, Decision F)
+    enforce_2fa_for_roles: Annotated[list[UserRole], NoDecode] = Field(default_factory=list)
 
     # Rate-limiting (Story 6.6, Decision G)
     ratelimit_login_window_seconds: int = 60
@@ -83,6 +88,32 @@ class Settings(BaseSettings):
                 if not ext.startswith("."):
                     ext = "." + ext
                 normalized.append(ext)
+            return normalized
+        return v
+
+    @field_validator("enforce_2fa_for_roles", mode="before")
+    @classmethod
+    def _parse_roles(cls, v: object) -> object:
+        if isinstance(v, str):
+            v = [item for item in v.split(",")]
+        if isinstance(v, list):
+            normalized: list[UserRole] = []
+            for item in v:
+                if isinstance(item, UserRole):
+                    normalized.append(item)
+                    continue
+                if not isinstance(item, str):
+                    continue
+                candidate = item.strip().lower()
+                if not candidate:
+                    continue
+                try:
+                    normalized.append(UserRole(candidate))
+                except ValueError as exc:
+                    raise ValueError(
+                        f"enforce_2fa_for_roles contains unknown role "
+                        f"{item!r}; valid roles are: {', '.join(r.value for r in UserRole)}"
+                    ) from exc
             return normalized
         return v
 

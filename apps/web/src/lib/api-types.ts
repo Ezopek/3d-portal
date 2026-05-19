@@ -24,6 +24,7 @@ export interface LoginRequest {
 export interface LoginResponse {
   partial_auth: false;  // discriminator — always false on this shape
   user: MeResponse;
+  totp_enroll_required: boolean;  // Story 7.4 — true when Decision F enforcement requires enrollment
 }
 
 export interface PartialAuthResponse {

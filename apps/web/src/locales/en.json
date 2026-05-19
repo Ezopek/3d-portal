@@ -73,6 +73,7 @@
   "auth.2fa.enroll.code_label": "Enter the 6-digit code from your app",
   "auth.2fa.enroll.verify_button": "Verify",
   "auth.2fa.enroll.restart_button": "Restart",
+  "auth.2fa.enroll.forced_banner": "Your role requires two-factor authentication. Please complete enrollment below to continue.",
   "auth.2fa.qr_alt": "QR code containing your TOTP enrollment URI",
   "auth.2fa.show_codes.title": "Save your recovery codes",
   "auth.2fa.show_codes.description": "Each code can be used once if you lose access to your authenticator app. Store them somewhere safe — they cannot be shown again.",

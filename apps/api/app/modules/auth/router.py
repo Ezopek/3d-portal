@@ -113,6 +113,17 @@ async def login(
             partial_token=partial_token,
         )
 
+    # Story 7.4 — forced-enrollment branch for roles in enforce_2fa_for_roles.
+    # The user IS authenticated by password (verified above) but has not yet
+    # enrolled 2FA. Issue cookies and mark the response so the frontend
+    # navigates to /settings/2fa enrollment screen. Order matters: this
+    # check fires AFTER the Story 7.3 totp_enabled_at-IS-NOT-NULL branch
+    # so totp-enabled users still go through the verify flow; this branch
+    # only fires for users who have NOT yet enrolled.
+    totp_enroll_required = (
+        user.totp_enabled_at is None and user.role in settings.enforce_2fa_for_roles
+    )
+
     def _mint_refresh_row() -> str:
         new_secret, new_row = new_refresh_row(
             user_id=user.id,
@@ -134,13 +145,16 @@ async def login(
         ttl_minutes=settings.jwt_ttl_minutes,
     )
     set_session_cookies(response, access=access, refresh=secret, settings=settings)
+    after_payload: dict[str, object] = {"email": user.email}
+    if totp_enroll_required:
+        after_payload["totp_enroll_required"] = True
     record_event(
         get_engine(),
         action="auth.login.success",
         entity_type="user",
         entity_id=user.id,
         actor_user_id=user.id,
-        after={"email": user.email},
+        after=after_payload,
     )
     return LoginResponse(
         user=MeResponse(
@@ -148,7 +162,8 @@ async def login(
             email=user.email,
             display_name=user.display_name,
             role=user.role.value,
-        )
+        ),
+        totp_enroll_required=totp_enroll_required,
     )
 
 

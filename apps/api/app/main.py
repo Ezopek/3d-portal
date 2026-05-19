@@ -14,6 +14,7 @@ from app.core.auth.ratelimit import (
     share_retry_after_seconds,
 )
 from app.core.config import get_settings
+from app.core.db.models._enums import UserRole
 from app.core.db.seed import seed_admin
 from app.core.db.session import get_engine, init_schema
 from app.core.logging import configure_logging
@@ -27,6 +28,12 @@ from app.router import api_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    if UserRole.agent in settings.enforce_2fa_for_roles:
+        raise RuntimeError(
+            "agent role MUST NEVER appear in enforce_2fa_for_roles "
+            "(it is a service account; forcing 2FA would brick AI ingestion). "
+            "Edit apps/api/app/core/config.py or infra/.env to remove it."
+        )
     configure_logging(
         service_name=settings.app_name,
         service_version=settings.app_version,

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -31,6 +31,9 @@ interface CodesState {
 export function Settings2faPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const search = useSearch({ from: "/settings/2fa" });
+  const forcedEnrollmentMode = Boolean(search.next && search.next.length > 0);
   const codeInputId = useId();
   const savedCheckboxId = useId();
   const manualSecretId = useId();
@@ -149,6 +152,11 @@ export function Settings2faPage() {
   function continueToDone() {
     setCodesState(null);
     void qc.invalidateQueries({ queryKey: ["auth", "2fa", "status"] });
+    if (forcedEnrollmentMode && search.next) {
+      const next = decodeURIComponent(search.next);
+      void navigate({ to: next as "/" });
+      return;
+    }
     setStep("done");
   }
 
@@ -156,6 +164,14 @@ export function Settings2faPage() {
     return (
       <div className="mx-auto max-w-3xl space-y-4 p-6">
         <h1 className="text-xl font-semibold">{t("auth.2fa.title")}</h1>
+        {forcedEnrollmentMode && !status.data?.enabled && (
+          <div
+            role="alert"
+            className="rounded-md border border-warning bg-warning/10 p-3 text-sm"
+          >
+            {t("auth.2fa.enroll.forced_banner")}
+          </div>
+        )}
         {status.isLoading ? (
           <LoadingState variant="spinner" />
         ) : status.data?.enabled ? (

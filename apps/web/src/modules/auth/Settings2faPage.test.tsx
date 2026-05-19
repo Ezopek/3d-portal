@@ -43,23 +43,55 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-function mount(node: ReactNode) {
-  const root = createRootRoute({ component: () => <>{node}</> });
+function buildRouter(node: ReactNode, initialPath: string) {
+  const root = createRootRoute();
+  const settings2faRoute = createRoute({
+    getParentRoute: () => root,
+    path: "/settings/2fa",
+    component: () => <>{node}</>,
+    validateSearch: (raw: Record<string, unknown>) =>
+      typeof raw.next === "string" && raw.next.length > 0
+        ? { next: raw.next }
+        : {},
+  });
+  const queueRoute = createRoute({
+    getParentRoute: () => root,
+    path: "/queue",
+    component: () => <div>queue</div>,
+  });
   const sessionsRoute = createRoute({
     getParentRoute: () => root,
     path: "/settings/sessions",
     component: () => <div>sessions</div>,
   });
-  const router = createRouter({
-    routeTree: root.addChildren([sessionsRoute]),
-    history: createMemoryHistory({ initialEntries: ["/"] }),
+  return createRouter({
+    routeTree: root.addChildren([settings2faRoute, queueRoute, sessionsRoute]),
+    history: createMemoryHistory({ initialEntries: [initialPath] }),
   });
+}
+
+function mount(node: ReactNode) {
+  const router = buildRouter(node, "/settings/2fa");
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
+}
+
+function mountAtSettings2fa(node: ReactNode, next: string) {
+  const router = buildRouter(
+    node,
+    `/settings/2fa?next=${encodeURIComponent(next)}`,
+  );
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+  return { router };
 }
 
 describe("Settings2faPage — Restart wizard regression (Codex P2 UX)", () => {
@@ -155,5 +187,87 @@ describe("Settings2faPage — Restart wizard regression (Codex P2 UX)", () => {
       screen.queryByText(/two-factor authentication enabled|włączone/i),
     ).toBeNull();
     expect(calls.filter((c) => c === "/auth/2fa/enroll")).toHaveLength(2);
+  });
+});
+
+describe("Settings2faPage — forced-enrollment mode (Story 7.4)", () => {
+  it("renders forced-enrollment banner when next URL param is present", async () => {
+    // S1 — banner is visible when arriving from the forced-enrollment login branch.
+    vi.mocked(api).mockImplementation(async (path: string) => {
+      if (path === "/auth/2fa/status") {
+        return {
+          enabled: false,
+          batch_id: null,
+          generated_at: null,
+          codes_remaining: null,
+        };
+      }
+      throw new Error(`unexpected api path: ${path}`);
+    });
+    mountAtSettings2fa(<Settings2faPage />, "/queue");
+    await waitFor(() => {
+      const alerts = screen.getAllByRole("alert");
+      const forced = alerts.find((el) =>
+        el.textContent?.includes("Your role requires two-factor"),
+      );
+      expect(forced).toBeTruthy();
+    });
+  });
+
+  it("navigates to next after enrollment-confirm success when forced-enrollment mode", async () => {
+    // S2 — after the user finishes the wizard, the page hands them back to `next`.
+    vi.mocked(api).mockImplementation(async (path: string) => {
+      if (path === "/auth/2fa/status") {
+        return {
+          enabled: false,
+          batch_id: null,
+          generated_at: null,
+          codes_remaining: null,
+        };
+      }
+      if (path === "/auth/2fa/enroll") {
+        return {
+          qr_svg: '<svg><title>fixture</title></svg>',
+          manual_secret: "AAAA1111BBBB2222CCCC3333DDDD4444",
+          enrollment_token: "tok-s2",
+        };
+      }
+      if (path === "/auth/2fa/enroll/confirm") {
+        return {
+          recovery_codes: ["aaaa1111", "bbbb2222"],
+          batch_id: "batch-s2",
+          generated_at: "2026-05-19T00:00:00Z",
+        };
+      }
+      throw new Error(`unexpected api path: ${path}`);
+    });
+    const { router } = mountAtSettings2fa(<Settings2faPage />, "/queue");
+
+    // Step 1: status → click Enable.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /enable|włącz/i })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /enable|włącz/i }));
+
+    // Step 2: enroll panel → type code + click Verify.
+    await waitFor(() => {
+      expect(screen.getByTestId("totp-qr")).toBeTruthy();
+    });
+    const codeInput = screen.getByLabelText(/6-digit|6-cyfrowy/i) as HTMLInputElement;
+    fireEvent.change(codeInput, { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: /verify|zweryfikuj/i }));
+
+    // Step 3: show-codes → check the "saved" box + click Continue.
+    await waitFor(() => {
+      expect(screen.getByTestId("totp-recovery-codes")).toBeTruthy();
+    });
+    const savedCheckbox = screen.getByRole("checkbox") as HTMLInputElement;
+    fireEvent.click(savedCheckbox);
+    fireEvent.click(screen.getByRole("button", { name: /continue|kontynuuj/i }));
+
+    // Forced-enrollment mode → router should now be at /queue, not the done panel.
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/queue");
+    });
   });
 });

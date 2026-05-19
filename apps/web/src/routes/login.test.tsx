@@ -232,3 +232,106 @@ describe("Login partial-auth flow (Story 7.3)", () => {
     expect(screen.getByLabelText(/password|hasło/i)).toBeDefined();
   });
 });
+
+describe("Login forced-enrollment flow (Story 7.4)", () => {
+  async function renderLoginWithNext(node: ReactNode, next: string) {
+    const root = createRootRoute({ component: () => <Outlet /> });
+    const loginRoute = createRoute({
+      getParentRoute: () => root,
+      path: "/login",
+      component: () => <>{node}</>,
+      validateSearch: (raw: Record<string, unknown>) =>
+        typeof raw.next === "string" && raw.next.length > 0
+          ? { next: raw.next }
+          : {},
+    });
+    const settings2faRoute = createRoute({
+      getParentRoute: () => root,
+      path: "/settings/2fa",
+      component: () => <div>settings-2fa</div>,
+      validateSearch: (raw: Record<string, unknown>) =>
+        typeof raw.next === "string" && raw.next.length > 0
+          ? { next: raw.next }
+          : {},
+    });
+    const queueRoute = createRoute({
+      getParentRoute: () => root,
+      path: "/queue",
+      component: () => <div>queue</div>,
+    });
+    const indexRoute = createRoute({
+      getParentRoute: () => root,
+      path: "/",
+      component: () => <div>home</div>,
+    });
+    const router = createRouter({
+      routeTree: root.addChildren([loginRoute, settings2faRoute, queueRoute, indexRoute]),
+      history: createMemoryHistory({
+        initialEntries: [`/login?next=${encodeURIComponent(next)}`],
+      }),
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await router.load();
+    render(
+      <QueryClientProvider client={qc}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+    return router;
+  }
+
+  async function submitEmailPassword(): Promise<void> {
+    const email = screen.getByLabelText(/email/i) as HTMLInputElement;
+    const password = screen.getByLabelText(/password|hasło/i) as HTMLInputElement;
+    fireEvent.change(email, { target: { value: "anna@example.com" } });
+    fireEvent.change(password, { target: { value: "secret" } });
+    const submit = screen.getAllByRole("button", { name: /sign in|zaloguj/i })[0];
+    if (submit === undefined) throw new Error("submit button not found");
+    fireEvent.click(submit);
+  }
+
+  it("navigates to /settings/2fa when login response has totp_enroll_required=true", async () => {
+    // V5 — Story 7.4 forced-enrollment branch.
+    vi.mocked(api).mockResolvedValueOnce({
+      partial_auth: false,
+      user: {
+        id: "00000000-0000-0000-0000-000000000001",
+        email: "anna@example.com",
+        display_name: "Anna",
+        role: "member",
+      },
+      totp_enroll_required: true,
+    });
+    const Component = LoginRoute.options.component as React.ComponentType;
+    const router = await renderLoginWithNext(<Component />, "/queue");
+
+    await submitEmailPassword();
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/settings/2fa");
+    });
+    expect(router.state.location.search).toEqual({ next: "/queue" });
+  });
+
+  it("navigates directly to next when login response has totp_enroll_required=false", async () => {
+    // V6 — baseline regression: single-factor success path still navigates to next.
+    vi.mocked(api).mockResolvedValueOnce({
+      partial_auth: false,
+      user: {
+        id: "00000000-0000-0000-0000-000000000001",
+        email: "anna@example.com",
+        display_name: "Anna",
+        role: "member",
+      },
+      totp_enroll_required: false,
+    });
+    const Component = LoginRoute.options.component as React.ComponentType;
+    const router = await renderLoginWithNext(<Component />, "/queue");
+
+    await submitEmailPassword();
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/queue");
+    });
+  });
+});

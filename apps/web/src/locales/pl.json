@@ -73,6 +73,7 @@
   "auth.2fa.enroll.code_label": "Wprowadź 6-cyfrowy kod z aplikacji",
   "auth.2fa.enroll.verify_button": "Zweryfikuj",
   "auth.2fa.enroll.restart_button": "Zacznij od nowa",
+  "auth.2fa.enroll.forced_banner": "Twoja rola wymaga uwierzytelniania dwuskładnikowego. Proszę dokończyć konfigurację poniżej, aby kontynuować.",
   "auth.2fa.qr_alt": "Kod QR z Twoim URI rejestracji TOTP",
   "auth.2fa.show_codes.title": "Zapisz swoje kody odzyskiwania",
   "auth.2fa.show_codes.description": "Każdy kod można użyć tylko raz, jeśli utracisz dostęp do aplikacji uwierzytelniającej. Przechowuj je w bezpiecznym miejscu — nie będą wyświetlone ponownie.",

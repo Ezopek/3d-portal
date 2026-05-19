@@ -45,6 +45,16 @@ function Login() {
         setPending(false);
         return;
       }
+      // Story 7.4 — forced-enrollment for Decision F roles (totp_enroll_required).
+      // Cookies ARE set by this branch; the user is single-factor authenticated.
+      // Navigate to /settings/2fa carrying the original `next` so the page can
+      // hand them back after enrollment completes.
+      if (resp.totp_enroll_required === true) {
+        await qc.invalidateQueries({ queryKey: ["auth", "me"] });
+        const next = search.next ? decodeURIComponent(search.next) : "/";
+        await navigate({ to: "/settings/2fa", search: { next } });
+        return;
+      }
       await qc.invalidateQueries({ queryKey: ["auth", "me"] });
       const next = search.next ? decodeURIComponent(search.next) : "/";
       await navigate({ to: next as "/" });
