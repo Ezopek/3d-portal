@@ -32,7 +32,6 @@ from app.modules.auth.totp.schemas import (
     StatusResponse,
 )
 from app.modules.auth.totp.service import (
-    ConcurrentEnrollmentInProgress,
     EnrollmentTokenInvalid,
     EnrollmentTokenUserMismatch,
     InvalidTotpCode,
@@ -127,16 +126,16 @@ async def confirm_enrollment(
             current_user_id=user.id,
         )
     except EnrollmentTokenInvalid as exc:
+        # Note: also raised by the atomic GETDEL claim loser when a second
+        # concurrent /confirm beats us between code-verify and consumption.
+        # The race-winner's commit is authoritative; the loser must not
+        # advance state. Same 404 surface as a genuinely expired/missing
+        # token since user-visible recovery is identical (re-enroll).
         raise HTTPException(status.HTTP_404_NOT_FOUND, "enrollment_token_invalid") from exc
     except EnrollmentTokenUserMismatch as exc:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "enrollment_token_user_mismatch") from exc
     except InvalidTotpCode as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "invalid_code") from exc
-    except ConcurrentEnrollmentInProgress as exc:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "concurrent_enrollment_in_progress",
-        ) from exc
 
     record_event(
         get_engine(),
