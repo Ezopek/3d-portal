@@ -477,6 +477,71 @@ describe("Settings2faPage — Regenerate + Disable flows (Story 7.5)", () => {
     expect(statusCalls).toBe(1);
   });
 
+  it("V12 — Cancel during a pending regenerate submit no-ops the late onSuccess (does not advance to show-codes) — Codex P2-2", async () => {
+    let resolveRegenerate: (value: unknown) => void = () => undefined;
+    vi.mocked(api).mockImplementation(async (path: string) => {
+      if (path === "/auth/2fa/status") return statusEnabledFixture();
+      if (path === "/auth/2fa/recovery-codes/regenerate") {
+        return new Promise((res) => {
+          resolveRegenerate = res;
+        });
+      }
+      throw new Error(`unexpected api path: ${path}`);
+    });
+
+    mount(<Settings2faPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /regenerate codes|wygeneruj nowe kody/i }),
+      ).toBeTruthy();
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /regenerate codes|wygeneruj nowe kody/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("reauth-2fa-modal")).toBeTruthy();
+    });
+    await fillReauthModal("Sup3rPassword!", "123456");
+    fireEvent.click(
+      screen.getByRole("button", { name: /generate new codes|wygeneruj nowe kody/i }),
+    );
+
+    // Mutation is now pending. Click Cancel — modal hides immediately.
+    fireEvent.click(screen.getByRole("button", { name: /cancel|anuluj/i }));
+    await waitFor(() => {
+      expect(screen.queryByTestId("reauth-2fa-modal")).toBeNull();
+    });
+
+    // Resolve the in-flight request AFTER cancel. The cancelled-ref guard
+    // must prevent onSuccess from setting codesState / advancing to
+    // show-codes.
+    await act(async () => {
+      resolveRegenerate({
+        recovery_codes: [
+          "aaaa1111",
+          "bbbb2222",
+          "cccc3333",
+          "dddd4444",
+          "eeee5555",
+          "ffff6666",
+          "00007777",
+          "11118888",
+        ],
+        batch_id: "batch-cancelled",
+        generated_at: "2026-05-19T00:00:00Z",
+      });
+    });
+
+    // Page must still be on the status screen, NOT show-codes.
+    expect(screen.queryByTestId("totp-recovery-codes")).toBeNull();
+    expect(screen.queryByText(/aaaa1111/)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /regenerate codes|wygeneruj nowe kody/i }),
+    ).toBeTruthy();
+  });
+
   it("V11 — Cancel button in reauth modal closes modal without firing API call", async () => {
     const calls: string[] = [];
     vi.mocked(api).mockImplementation(async (path: string) => {

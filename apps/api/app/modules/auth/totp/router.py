@@ -570,35 +570,54 @@ async def regenerate_recovery_codes(
     )
 
     now = datetime.datetime.now(datetime.UTC)
-    batch_id, code_pairs = generate_recovery_codes_batch()
 
-    def _commit_batch() -> int:
-        # Decision E §1533 — one-statement UPDATE invalidates the prior
-        # batch's still-active rows. Consumed rows (``used_at IS NOT NULL``)
-        # are intentionally UNTOUCHED so the audit trail preserves
-        # "which codes did the user actually consume" history per Story 7.5
-        # AC-7 T-REGEN-3: ``invalidated_count`` reflects active-only rows.
-        result = session.execute(
-            update(RecoveryCode)
-            .where(RecoveryCode.user_id == user.id)
-            .where(RecoveryCode.invalidated_at.is_(None))
-            .where(RecoveryCode.used_at.is_(None))
-            .values(invalidated_at=now)
+    def _commit_batch() -> tuple[int, uuid.UUID, list[str]]:
+        # Story 7.5 Codex P2-3: ``generate_recovery_codes_batch`` performs
+        # eight cost-12 bcrypt hashes (~250ms each); running it inside this
+        # threadpool worker keeps the event loop free for other requests.
+        batch_id_inner, code_pairs = generate_recovery_codes_batch()
+
+        # Story 7.5 Codex P2-1: snapshot the IDs of currently-active rows
+        # BEFORE inserting the fresh batch and pin the UPDATE to those IDs.
+        # If a concurrent regenerate (double-click, network retry) commits
+        # its own INSERT between our snapshot and our UPDATE, its rows are
+        # absent from ``active_ids`` so we cannot invalidate codes the
+        # competing request just returned. Decision E §1533
+        # invalidate-active-only semantics is preserved: consumed rows
+        # (``used_at IS NOT NULL``) are excluded from the snapshot and
+        # remain intact for audit trail. AC-7 T-REGEN-3 contract:
+        # ``invalidated_count`` reflects active-only rows.
+        active_ids = list(
+            session.exec(
+                select(RecoveryCode.id)
+                .where(RecoveryCode.user_id == user.id)
+                .where(RecoveryCode.invalidated_at.is_(None))
+                .where(RecoveryCode.used_at.is_(None))
+            ).all()
         )
-        rowcount = result.rowcount
+        if active_ids:
+            session.execute(
+                update(RecoveryCode)
+                .where(RecoveryCode.id.in_(active_ids))
+                .values(invalidated_at=now)
+            )
         for _cleartext, code_hash in code_pairs:
             session.add(
                 RecoveryCode(
                     user_id=user.id,
                     code_hash=code_hash,
-                    batch_id=batch_id,
+                    batch_id=batch_id_inner,
                     generated_at=now,
                 )
             )
         session.commit()
-        return rowcount
+        return (
+            len(active_ids),
+            batch_id_inner,
+            [cleartext for cleartext, _h in code_pairs],
+        )
 
-    invalidated_count = await asyncio.to_thread(_commit_batch)
+    invalidated_count, batch_id, recovery_codes = await asyncio.to_thread(_commit_batch)
 
     record_event(
         get_engine(),
@@ -615,7 +634,7 @@ async def regenerate_recovery_codes(
     )
 
     return RegenerateResponse(
-        recovery_codes=[cleartext for cleartext, _h in code_pairs],
+        recovery_codes=recovery_codes,
         batch_id=batch_id,
         generated_at=now,
     )

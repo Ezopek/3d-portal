@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ApiError, api } from "@/lib/api";
@@ -50,6 +50,13 @@ export function Settings2faPage() {
   const [codeError, setCodeError] = useState<string | null>(null);
   const [confirmedSaved, setConfirmedSaved] = useState(false);
   const [reauthModal, setReauthModal] = useState<ReauthModalMode>(null);
+  // Story 7.5 Codex P2-2: when the user clicks Cancel on the reauth modal
+  // while a destructive submit is in flight, hiding the modal alone leaves
+  // ``onSuccess`` free to mutate page state (show codes / disable 2FA) once
+  // the request settles. These refs flag the in-flight mutation as
+  // user-cancelled so its ``onSuccess`` becomes a no-op.
+  const regenerateCancelledRef = useRef(false);
+  const disableCancelledRef = useRef(false);
 
   const status = useQuery<TotpStatusResponse>({
     queryKey: ["auth", "2fa", "status"],
@@ -81,6 +88,10 @@ export function Settings2faPage() {
         body: JSON.stringify(body),
       }),
     onSuccess: (data) => {
+      if (regenerateCancelledRef.current) {
+        regenerateCancelledRef.current = false;
+        return;
+      }
       setCodesState({
         recovery_codes: data.recovery_codes,
         batch_id: data.batch_id,
@@ -101,6 +112,10 @@ export function Settings2faPage() {
         body: JSON.stringify(body),
       }),
     onSuccess: () => {
+      if (disableCancelledRef.current) {
+        disableCancelledRef.current = false;
+        return;
+      }
       setReauthModal(null);
       void qc.invalidateQueries({ queryKey: ["auth", "2fa", "status"] });
       setStep("status");
@@ -260,12 +275,23 @@ export function Settings2faPage() {
             }
             onSubmit={(password, totp_code) => {
               if (reauthModal === "regenerate") {
+                regenerateCancelledRef.current = false;
                 regenerate.mutate({ password, totp_code });
               } else {
+                disableCancelledRef.current = false;
                 disable.mutate({ password, totp_code });
               }
             }}
-            onCancel={() => setReauthModal(null)}
+            onCancel={() => {
+              // Mark BOTH destructive mutations as cancelled. ``isPending``
+              // read in this closure can be stale right after ``mutate()``
+              // — React batches the re-render that flips it to true.
+              // Unconditional set is safe because ``onSubmit`` resets the
+              // ref before kicking off the next mutation.
+              regenerateCancelledRef.current = true;
+              disableCancelledRef.current = true;
+              setReauthModal(null);
+            }}
           />
         )}
       </div>
