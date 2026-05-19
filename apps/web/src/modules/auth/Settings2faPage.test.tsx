@@ -271,3 +271,244 @@ describe("Settings2faPage — forced-enrollment mode (Story 7.4)", () => {
     });
   });
 });
+
+describe("Settings2faPage — Regenerate + Disable flows (Story 7.5)", () => {
+  function statusEnabledFixture() {
+    return {
+      enabled: true,
+      batch_id: "batch-existing",
+      generated_at: "2026-05-19T00:00:00Z",
+      codes_remaining: 5,
+    };
+  }
+
+  async function fillReauthModal(password: string, code: string) {
+    const passwordInput = screen.getByLabelText(/password|hasło/i) as HTMLInputElement;
+    const codeInput = screen.getByLabelText(/6-digit|6-cyfrowy/i) as HTMLInputElement;
+    fireEvent.change(passwordInput, { target: { value: password } });
+    fireEvent.change(codeInput, { target: { value: code } });
+  }
+
+  it("V7 — Regenerate flow: clicking regenerate button opens reauth modal; submit transitions to show-codes step displaying new cleartext codes", async () => {
+    vi.mocked(api).mockImplementation(async (path: string) => {
+      if (path === "/auth/2fa/status") return statusEnabledFixture();
+      if (path === "/auth/2fa/recovery-codes/regenerate") {
+        return {
+          recovery_codes: [
+            "aaaa1111",
+            "bbbb2222",
+            "cccc3333",
+            "dddd4444",
+            "eeee5555",
+            "ffff6666",
+            "00007777",
+            "11118888",
+          ],
+          batch_id: "batch-new",
+          generated_at: "2026-05-19T00:00:00Z",
+        };
+      }
+      throw new Error(`unexpected api path: ${path}`);
+    });
+
+    mount(<Settings2faPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /regenerate codes|wygeneruj nowe kody/i }),
+      ).toBeTruthy();
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /regenerate codes|wygeneruj nowe kody/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("reauth-2fa-modal")).toBeTruthy();
+    });
+    await fillReauthModal("Sup3rPassword!", "123456");
+    fireEvent.click(
+      screen.getByRole("button", { name: /generate new codes|wygeneruj nowe kody/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("totp-recovery-codes")).toBeTruthy();
+    });
+    expect(screen.getByText(/aaaa1111/)).toBeTruthy();
+    expect(screen.queryByTestId("reauth-2fa-modal")).toBeNull();
+  });
+
+  it("V8 — Regenerate 401 keeps modal open with error message; does NOT advance to show-codes", async () => {
+    vi.mocked(api).mockImplementation(async (path: string) => {
+      if (path === "/auth/2fa/status") return statusEnabledFixture();
+      if (path === "/auth/2fa/recovery-codes/regenerate") {
+        const { ApiError } = await import("@/lib/api");
+        throw new ApiError(401, { detail: "invalid_credentials" }, "401");
+      }
+      throw new Error(`unexpected api path: ${path}`);
+    });
+
+    mount(<Settings2faPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /regenerate codes|wygeneruj nowe kody/i }),
+      ).toBeTruthy();
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /regenerate codes|wygeneruj nowe kody/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("reauth-2fa-modal")).toBeTruthy();
+    });
+    await fillReauthModal("wrong-pw", "123456");
+    fireEvent.click(
+      screen.getByRole("button", { name: /generate new codes|wygeneruj nowe kody/i }),
+    );
+
+    await waitFor(() => {
+      const alerts = screen.getAllByRole("alert");
+      const credErr = alerts.find((el) =>
+        el.textContent?.match(/incorrect password or code|nieprawidłowe hasło/i),
+      );
+      expect(credErr).toBeTruthy();
+    });
+    // Modal still open + we did NOT advance to show-codes.
+    expect(screen.getByTestId("reauth-2fa-modal")).toBeTruthy();
+    expect(screen.queryByTestId("totp-recovery-codes")).toBeNull();
+  });
+
+  it("V9 — Disable flow: clicking disable button opens reauth modal; submit closes modal, invalidates status query, resets to status step", async () => {
+    let statusCalls = 0;
+    vi.mocked(api).mockImplementation(async (path: string) => {
+      if (path === "/auth/2fa/status") {
+        statusCalls += 1;
+        // First call returns enabled; subsequent (post-invalidate) returns disabled.
+        return statusCalls === 1
+          ? statusEnabledFixture()
+          : {
+              enabled: false,
+              batch_id: null,
+              generated_at: null,
+              codes_remaining: null,
+            };
+      }
+      if (path === "/auth/2fa/disable") {
+        return undefined;
+      }
+      throw new Error(`unexpected api path: ${path}`);
+    });
+
+    mount(<Settings2faPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /disable 2fa|wyłącz 2fa/i }),
+      ).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /disable 2fa|wyłącz 2fa/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("reauth-2fa-modal")).toBeTruthy();
+    });
+    await fillReauthModal("Sup3rPassword!", "123456");
+    // The modal renders TWO "Disable 2FA" buttons (the enabled-panel button
+    // behind it + the modal submit). Pick the submit by querying inside the
+    // dialog.
+    const dialog = screen.getByTestId("reauth-2fa-modal");
+    const submit = dialog.querySelectorAll("button");
+    // Last button inside the form is the submit (Cancel + Submit pair).
+    fireEvent.click(submit[submit.length - 1] as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("reauth-2fa-modal")).toBeNull();
+    });
+    // Status query refetched -> disabled panel CTA rendered.
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", {
+          name: /enable two-factor|włącz uwierzytelnianie/i,
+        }),
+      ).toBeTruthy();
+    });
+    expect(statusCalls).toBeGreaterThanOrEqual(2);
+  });
+
+  it("V10 — Disable 401 keeps modal open with error message; status query is NOT invalidated", async () => {
+    let statusCalls = 0;
+    vi.mocked(api).mockImplementation(async (path: string) => {
+      if (path === "/auth/2fa/status") {
+        statusCalls += 1;
+        return statusEnabledFixture();
+      }
+      if (path === "/auth/2fa/disable") {
+        const { ApiError } = await import("@/lib/api");
+        throw new ApiError(401, { detail: "invalid_credentials" }, "401");
+      }
+      throw new Error(`unexpected api path: ${path}`);
+    });
+
+    mount(<Settings2faPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /disable 2fa|wyłącz 2fa/i }),
+      ).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /disable 2fa|wyłącz 2fa/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("reauth-2fa-modal")).toBeTruthy();
+    });
+    await fillReauthModal("wrong-pw", "123456");
+    const dialog = screen.getByTestId("reauth-2fa-modal");
+    const formButtons = dialog.querySelectorAll("button");
+    fireEvent.click(formButtons[formButtons.length - 1] as HTMLButtonElement);
+
+    await waitFor(() => {
+      const alerts = screen.getAllByRole("alert");
+      const credErr = alerts.find((el) =>
+        el.textContent?.match(/incorrect password or code|nieprawidłowe hasło/i),
+      );
+      expect(credErr).toBeTruthy();
+    });
+    expect(screen.getByTestId("reauth-2fa-modal")).toBeTruthy();
+    // Status query was NOT invalidated -> still exactly one call.
+    expect(statusCalls).toBe(1);
+  });
+
+  it("V11 — Cancel button in reauth modal closes modal without firing API call", async () => {
+    const calls: string[] = [];
+    vi.mocked(api).mockImplementation(async (path: string) => {
+      calls.push(path);
+      if (path === "/auth/2fa/status") return statusEnabledFixture();
+      throw new Error(`unexpected api path: ${path}`);
+    });
+
+    mount(<Settings2faPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /regenerate codes|wygeneruj nowe kody/i }),
+      ).toBeTruthy();
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /regenerate codes|wygeneruj nowe kody/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("reauth-2fa-modal")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /cancel|anuluj/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("reauth-2fa-modal")).toBeNull();
+    });
+    expect(
+      calls.filter(
+        (p) =>
+          p === "/auth/2fa/recovery-codes/regenerate" || p === "/auth/2fa/disable",
+      ),
+    ).toHaveLength(0);
+  });
+});

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import { ApiError, api } from "@/lib/api";
 import type {
+  ReauthRequest,
   TotpConfirmRequest,
   TotpConfirmResponse,
   TotpEnrollResponse,
@@ -14,7 +15,11 @@ import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import { LoadingState } from "@/ui/custom/LoadingState";
 
+import { Reauth2faModal } from "./Reauth2faModal";
+
 type WizardStep = "status" | "enroll" | "show-codes" | "done";
+
+type ReauthModalMode = "regenerate" | "disable" | null;
 
 interface EnrollState {
   qr_svg: string;
@@ -44,6 +49,7 @@ export function Settings2faPage() {
   const [codeInput, setCodeInput] = useState("");
   const [codeError, setCodeError] = useState<string | null>(null);
   const [confirmedSaved, setConfirmedSaved] = useState(false);
+  const [reauthModal, setReauthModal] = useState<ReauthModalMode>(null);
 
   const status = useQuery<TotpStatusResponse>({
     queryKey: ["auth", "2fa", "status"],
@@ -66,6 +72,40 @@ export function Settings2faPage() {
     onError: (err) => {
       setCodeError(mapEnrollError(err, t));
     },
+  });
+
+  const regenerate = useMutation<TotpConfirmResponse, ApiError, ReauthRequest>({
+    mutationFn: (body) =>
+      api<TotpConfirmResponse>("/auth/2fa/recovery-codes/regenerate", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (data) => {
+      setCodesState({
+        recovery_codes: data.recovery_codes,
+        batch_id: data.batch_id,
+        generated_at: data.generated_at,
+      });
+      setConfirmedSaved(false);
+      setReauthModal(null);
+      setStep("show-codes");
+    },
+    // onError is intentionally NOT set — error is surfaced inside the
+    // Reauth2faModal via the mutation's `error` state through mapReauthError.
+  });
+
+  const disable = useMutation<void, ApiError, ReauthRequest>({
+    mutationFn: (body) =>
+      api<void>("/auth/2fa/disable", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      setReauthModal(null);
+      void qc.invalidateQueries({ queryKey: ["auth", "2fa", "status"] });
+      setStep("status");
+    },
+    // onError handled inside Reauth2faModal via mutation state.
   });
 
   const confirm = useMutation<TotpConfirmResponse, ApiError, TotpConfirmRequest>({
@@ -178,6 +218,8 @@ export function Settings2faPage() {
           <EnabledPanel
             data={status.data}
             t={t}
+            onRegenerateClick={() => setReauthModal("regenerate")}
+            onDisableClick={() => setReauthModal("disable")}
           />
         ) : (
           <div className="space-y-3">
@@ -193,6 +235,38 @@ export function Settings2faPage() {
               </p>
             )}
           </div>
+        )}
+        {reauthModal && (
+          <Reauth2faModal
+            title={
+              reauthModal === "regenerate"
+                ? t("auth.2fa.reauth.regenerate_title")
+                : t("auth.2fa.reauth.disable_title")
+            }
+            submitLabel={
+              reauthModal === "regenerate"
+                ? t("auth.2fa.reauth.regenerate_submit")
+                : t("auth.2fa.reauth.disable_submit")
+            }
+            pending={
+              reauthModal === "regenerate"
+                ? regenerate.isPending
+                : disable.isPending
+            }
+            error={
+              reauthModal === "regenerate"
+                ? mapReauthError(regenerate.error, t)
+                : mapReauthError(disable.error, t)
+            }
+            onSubmit={(password, totp_code) => {
+              if (reauthModal === "regenerate") {
+                regenerate.mutate({ password, totp_code });
+              } else {
+                disable.mutate({ password, totp_code });
+              }
+            }}
+            onCancel={() => setReauthModal(null)}
+          />
         )}
       </div>
     );
@@ -346,9 +420,16 @@ export function Settings2faPage() {
 interface EnabledPanelProps {
   data: TotpStatusResponse;
   t: ReturnType<typeof useTranslation>["t"];
+  onRegenerateClick: () => void;
+  onDisableClick: () => void;
 }
 
-function EnabledPanel({ data, t }: EnabledPanelProps) {
+function EnabledPanel({
+  data,
+  t,
+  onRegenerateClick,
+  onDisableClick,
+}: EnabledPanelProps) {
   const generatedText = data.generated_at
     ? new Date(data.generated_at).toLocaleString()
     : "";
@@ -368,18 +449,10 @@ function EnabledPanel({ data, t }: EnabledPanelProps) {
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        <Button
-          variant="secondary"
-          disabled
-          title={t("auth.2fa.status.enabled.coming_in_75")}
-        >
+        <Button variant="secondary" onClick={onRegenerateClick}>
           {t("auth.2fa.status.enabled.regenerate_button")}
         </Button>
-        <Button
-          variant="secondary"
-          disabled
-          title={t("auth.2fa.status.enabled.coming_in_75")}
-        >
+        <Button variant="secondary" onClick={onDisableClick}>
           {t("auth.2fa.status.enabled.disable_button")}
         </Button>
       </div>
@@ -395,5 +468,16 @@ function mapEnrollError(
     if (err.status === 500) return t("auth.2fa.error.totp_not_configured");
     if (err.status === 409) return t("auth.2fa.error.enrollment_expired");
   }
+  return t("auth.2fa.error.network");
+}
+
+function mapReauthError(
+  err: ApiError | null,
+  t: ReturnType<typeof useTranslation>["t"],
+): string | null {
+  if (!err) return null;
+  if (err.status === 401) return t("auth.2fa.reauth.error.invalid_credentials");
+  if (err.status === 429) return t("auth.2fa.reauth.error.rate_limited");
+  if (err.status === 500) return t("auth.2fa.error.totp_not_configured");
   return t("auth.2fa.error.network");
 }

@@ -9,6 +9,8 @@ from app.modules.auth.totp.schemas import (
     ConfirmRequest,
     ConfirmResponse,
     EnrollResponse,
+    ReauthRequest,
+    RegenerateResponse,
     StatusResponse,
 )
 from app.modules.auth.totp.service import Settings2faService
@@ -20,6 +22,8 @@ __all__ = [
     "ConfirmResponse",
     "EnrollResponse",
     "Enrollment2faPayload",
+    "ReauthRequest",
+    "RegenerateResponse",
     "Settings2faService",
     "StatusResponse",
     "enroll_router",

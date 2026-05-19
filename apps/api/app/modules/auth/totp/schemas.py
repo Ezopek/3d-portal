@@ -77,3 +77,34 @@ class VerifyRequest(BaseModel):
 
     partial_token: str = Field(min_length=20, max_length=64)
     code: str = Field(pattern=r"^(\d{6}|[0-9a-f]{8})$")
+
+
+class ReauthRequest(BaseModel):
+    """Body of POST /api/auth/2fa/recovery-codes/regenerate AND
+    POST /api/auth/2fa/disable.
+
+    Both endpoints re-auth on (password + totp_code) before mutating
+    recovery_codes / users.totp_enabled_at. Sharing one request model
+    across both endpoints is binding (Story 7.5 AC-3) — operators
+    reading the OpenAPI doc see the same shape twice, reinforcing the
+    symmetric re-auth contract.
+
+    ``totp_code`` regex ``^\\d{6}$`` INTENTIONALLY rejects the recovery
+    code shape ``[0-9a-f]{8}`` (which VerifyRequest accepts). A stolen
+    or screenshotted recovery code MUST NOT pass the re-auth gate —
+    the user must prove possession of the authenticator-app device.
+    """
+
+    password: str = Field(min_length=1, max_length=128)
+    totp_code: str = Field(pattern=r"^\d{6}$")
+
+
+class RegenerateResponse(ConfirmResponse):
+    """Returned by POST /api/auth/2fa/recovery-codes/regenerate.
+
+    Wire shape IDENTICAL to ConfirmResponse (Story 7.2 enroll/confirm)
+    — same fields, same types. The subclass exists as a distinct
+    OpenAPI symbol so endpoint readers can navigate from the path to
+    a dedicated response model name. Adding fields to RegenerateResponse
+    in the future must NOT change ConfirmResponse semantics.
+    """

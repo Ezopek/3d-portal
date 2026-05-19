@@ -1,4 +1,4 @@
-"""TOTP 2FA enrollment + verify router — four endpoints under /api/auth/2fa/*.
+"""TOTP 2FA enrollment + verify router — six endpoints under /api/auth/2fa/*.
 
 * ``POST /api/auth/2fa/enroll`` — mint secret + QR + Redis-stashed token.
 * ``POST /api/auth/2fa/enroll/confirm`` — verify code, persist Fernet-encrypted
@@ -7,6 +7,13 @@
 * ``POST /api/auth/2fa/verify`` — Story 7.3 partial-auth → full-auth exchange
   (TOTP code OR recovery code; sets session cookies; emits
   ``auth.totp.verify.{success,fail}`` + ``auth.recovery_code.used``).
+* ``POST /api/auth/2fa/recovery-codes/regenerate`` — Story 7.5 re-auth gated
+  batch invalidation + mint fresh 8-code batch (emits
+  ``auth.recovery_codes.regenerated``).
+* ``POST /api/auth/2fa/disable`` — Story 7.5 re-auth gated 2FA teardown
+  (clears ``users.totp_enabled_at`` + invalidates active recovery codes;
+  RETAINS the Fernet ciphertext in ``users.totp_secret`` per epics §1719;
+  emits ``auth.totp.disabled``).
 
 Audit emission lives in this module so the service stays a pure
 encryption-and-persistence boundary (Decision D §1509). The Fernet-key gate
@@ -34,6 +41,7 @@ from app.core.audit import record_event
 from app.core.auth.cookies import set_session_cookies
 from app.core.auth.dependencies import current_user
 from app.core.auth.jwt import encode_token
+from app.core.auth.password import verify_password
 from app.core.auth.refresh import new_refresh_row
 from app.core.config import Settings, get_settings
 from app.core.db.models import RecoveryCode, User
@@ -45,6 +53,8 @@ from app.modules.auth.totp.schemas import (
     ConfirmRequest,
     ConfirmResponse,
     EnrollResponse,
+    ReauthRequest,
+    RegenerateResponse,
     StatusResponse,
     VerifyRequest,
 )
@@ -55,6 +65,7 @@ from app.modules.auth.totp.service import (
     Settings2faService,
     _assert_fernet_key_configured,
     decrypt_secret,
+    generate_recovery_codes_batch,
     verify_totp_code,
 )
 
@@ -449,3 +460,240 @@ async def verify_second_factor(
             with contextlib.suppress(Exception):
                 await redis.set(partial_key, claimed, ex=_PARTIAL_TTL_SECONDS)
         raise
+
+
+async def _reauth_gate(
+    *,
+    user: User,
+    payload: ReauthRequest,
+    settings: Settings,
+    method: str,
+    request_id: str | None,
+) -> None:
+    """Shared re-auth gate for Story 7.5 regenerate + disable endpoints.
+
+    Verifies ``payload.password`` against ``user.password_hash`` (bcrypt; off-
+    loaded to a threadpool worker per Story 7.3 Codex P2-1 pattern) AND
+    ``payload.totp_code`` against the Fernet-decrypted ``user.totp_secret``.
+    Either single failure raises ``HTTPException(401, "invalid_credentials")``
+    after emitting an ``auth.totp.verify.fail`` audit row with
+    ``after.method == method`` (``"regenerate_reauth"`` or ``"disable_reauth"``)
+    and ``after.reason in {"password", "fernet_invalid_token", "totp"}``.
+
+    Both branches surface the SAME ``"invalid_credentials"`` detail to
+    prevent oracle distinction (Init 0 login precedent — never reveal which
+    factor was wrong).
+    """
+    password_ok = await asyncio.to_thread(verify_password, payload.password, user.password_hash)
+    if not password_ok:
+        record_event(
+            get_engine(),
+            action="auth.totp.verify.fail",
+            entity_type="user",
+            entity_id=user.id,
+            actor_user_id=user.id,
+            after={"method": method, "reason": "password"},
+            request_id=request_id,
+        )
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_credentials")
+
+    try:
+        secret = decrypt_secret(user.totp_secret, settings)
+    except InvalidToken:
+        record_event(
+            get_engine(),
+            action="auth.totp.verify.fail",
+            entity_type="user",
+            entity_id=user.id,
+            actor_user_id=user.id,
+            after={"method": method, "reason": "fernet_invalid_token"},
+            request_id=request_id,
+        )
+        raise HTTPException(  # noqa: B904 — explicit 401, original cause not actionable
+            status.HTTP_401_UNAUTHORIZED, "invalid_credentials"
+        )
+    if not verify_totp_code(secret, payload.totp_code):
+        record_event(
+            get_engine(),
+            action="auth.totp.verify.fail",
+            entity_type="user",
+            entity_id=user.id,
+            actor_user_id=user.id,
+            after={"method": method, "reason": "totp"},
+            request_id=request_id,
+        )
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_credentials")
+
+
+@router.post(
+    "/2fa/recovery-codes/regenerate",
+    response_model=RegenerateResponse,
+    status_code=status.HTTP_200_OK,
+    summary=(
+        "Regenerate recovery codes — invalidates prior batch, returns 8 new cleartext codes ONCE"
+    ),
+    description=(
+        "Re-auth gated body {password, totp_code}. On success: "
+        "invalidates the prior batch via UPDATE ... WHERE invalidated_at "
+        "IS NULL, mints a fresh 8-code batch, emits "
+        "auth.recovery_codes.regenerated audit row, returns the 8 "
+        "cleartext codes ONCE. Subsequent /status reads return only "
+        "the new batch's metadata. The Fernet-encrypted users.totp_secret "
+        "column is unchanged."
+    ),
+)
+async def regenerate_recovery_codes(
+    payload: ReauthRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    user_id: uuid.UUID = current_user,
+) -> RegenerateResponse:
+    _assert_fernet_key_configured(settings)
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found")
+    if user.role == UserRole.agent:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "agent_role_forbidden")
+    if user.totp_enabled_at is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "totp_not_enrolled")
+    if user.totp_secret is None:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "totp_corrupt_state")
+
+    request_id = request.headers.get("x-request-id")
+    await _reauth_gate(
+        user=user,
+        payload=payload,
+        settings=settings,
+        method="regenerate_reauth",
+        request_id=request_id,
+    )
+
+    now = datetime.datetime.now(datetime.UTC)
+    batch_id, code_pairs = generate_recovery_codes_batch()
+
+    def _commit_batch() -> int:
+        # Decision E §1533 — one-statement UPDATE invalidates the prior
+        # batch's still-active rows. Consumed rows (``used_at IS NOT NULL``)
+        # are intentionally UNTOUCHED so the audit trail preserves
+        # "which codes did the user actually consume" history per Story 7.5
+        # AC-7 T-REGEN-3: ``invalidated_count`` reflects active-only rows.
+        result = session.execute(
+            update(RecoveryCode)
+            .where(RecoveryCode.user_id == user.id)
+            .where(RecoveryCode.invalidated_at.is_(None))
+            .where(RecoveryCode.used_at.is_(None))
+            .values(invalidated_at=now)
+        )
+        rowcount = result.rowcount
+        for _cleartext, code_hash in code_pairs:
+            session.add(
+                RecoveryCode(
+                    user_id=user.id,
+                    code_hash=code_hash,
+                    batch_id=batch_id,
+                    generated_at=now,
+                )
+            )
+        session.commit()
+        return rowcount
+
+    invalidated_count = await asyncio.to_thread(_commit_batch)
+
+    record_event(
+        get_engine(),
+        action="auth.recovery_codes.regenerated",
+        entity_type="user",
+        entity_id=user.id,
+        actor_user_id=user.id,
+        after={
+            "batch_id": str(batch_id),
+            "codes_count": 8,
+            "invalidated_count": invalidated_count,
+        },
+        request_id=request_id,
+    )
+
+    return RegenerateResponse(
+        recovery_codes=[cleartext for cleartext, _h in code_pairs],
+        batch_id=batch_id,
+        generated_at=now,
+    )
+
+
+@router.post(
+    "/2fa/disable",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Disable 2FA — clears users.totp_enabled_at, invalidates recovery codes",
+    description=(
+        "Re-auth gated body {password, totp_code}. On success: clears "
+        "users.totp_enabled_at, invalidates all active recovery_codes "
+        "rows for the user, emits auth.totp.disabled audit row. The "
+        "Fernet-encrypted users.totp_secret column is intentionally "
+        "RETAINED (epics §1719) — disable does not delete the secret, "
+        "only the timestamp; this enables future 'I re-enrolled with "
+        "the same authenticator app' UX without secret rotation."
+    ),
+)
+async def disable_2fa(
+    payload: ReauthRequest,
+    request: Request,
+    response: Response,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    user_id: uuid.UUID = current_user,
+) -> Response:
+    _assert_fernet_key_configured(settings)
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found")
+    if user.role == UserRole.agent:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "agent_role_forbidden")
+    if user.totp_enabled_at is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "totp_not_enrolled")
+    if user.totp_secret is None:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "totp_corrupt_state")
+
+    request_id = request.headers.get("x-request-id")
+    await _reauth_gate(
+        user=user,
+        payload=payload,
+        settings=settings,
+        method="disable_reauth",
+        request_id=request_id,
+    )
+
+    now = datetime.datetime.now(datetime.UTC)
+
+    def _commit_disable() -> int:
+        # CRITICAL: ``user.totp_secret`` is NOT mutated here — the Fernet
+        # ciphertext column stays populated per epics §1719 retention
+        # rationale (enables future 'I re-enrolled with the same
+        # authenticator app' UX without secret rotation). Verified by
+        # AC-9 grep check 4 + T-DISABLE-2.
+        result = session.execute(
+            update(RecoveryCode)
+            .where(RecoveryCode.user_id == user.id)
+            .where(RecoveryCode.invalidated_at.is_(None))
+            .values(invalidated_at=now)
+        )
+        rowcount = result.rowcount
+        user.totp_enabled_at = None
+        session.add(user)
+        session.commit()
+        return rowcount
+
+    invalidated_count = await asyncio.to_thread(_commit_disable)
+
+    record_event(
+        get_engine(),
+        action="auth.totp.disabled",
+        entity_type="user",
+        entity_id=user.id,
+        actor_user_id=user.id,
+        after={"invalidated_count": invalidated_count},
+        request_id=request_id,
+    )
+
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response

@@ -90,6 +90,34 @@ async function stubConfirm(page: Page) {
   );
 }
 
+const REGENERATED_BATCH_ID = "22222222-2222-4222-8222-222222222222";
+const REGENERATED_CODES = [
+  "ab000001",
+  "ab000002",
+  "ab000003",
+  "ab000004",
+  "ab000005",
+  "ab000006",
+  "ab000007",
+  "ab000008",
+];
+
+async function stubRegenerate(page: Page) {
+  await page.route(
+    "**/api/auth/2fa/recovery-codes/regenerate",
+    (route: Route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          recovery_codes: REGENERATED_CODES,
+          batch_id: REGENERATED_BATCH_ID,
+          generated_at: FIXED_GENERATED_AT,
+        }),
+      }),
+  );
+}
+
 test("2fa-status-disabled matches baseline", async ({ page }) => {
   await stubAuthMe(page);
   await stubStatus(page, { enabled: false });
@@ -147,6 +175,54 @@ test("2fa-status-enabled matches baseline", async ({ page }) => {
   await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
   await waitForReady(page);
   await expect(page).toHaveScreenshot("2fa-status-enabled.png", {
+    fullPage: true,
+  });
+});
+
+test("2fa-reauth-modal matches baseline", async ({ page }) => {
+  await stubAuthMe(page);
+  await stubStatus(page, {
+    enabled: true,
+    batch_id: FIXED_BATCH_ID,
+    generated_at: FIXED_GENERATED_AT,
+    codes_remaining: 8,
+  });
+  await page.goto("/settings/2fa");
+  await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
+  await page
+    .getByRole("button", { name: /Wygeneruj nowe kody|Regenerate codes/ })
+    .click();
+  await page.getByTestId("reauth-2fa-modal").waitFor({ state: "visible" });
+  await waitForReady(page);
+  await expect(page).toHaveScreenshot("2fa-reauth-modal.png", {
+    fullPage: true,
+  });
+});
+
+test("2fa-after-regenerate matches baseline", async ({ page }) => {
+  await stubAuthMe(page);
+  await stubStatus(page, {
+    enabled: true,
+    batch_id: FIXED_BATCH_ID,
+    generated_at: FIXED_GENERATED_AT,
+    codes_remaining: 8,
+  });
+  await stubRegenerate(page);
+  await page.goto("/settings/2fa");
+  await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
+  await page
+    .getByRole("button", { name: /Wygeneruj nowe kody|Regenerate codes/ })
+    .click();
+  await page.getByTestId("reauth-2fa-modal").waitFor({ state: "visible" });
+  await page.locator('input[type="password"]').fill("Sup3rPassword!");
+  await page.locator('input[inputmode="numeric"]').fill("123456");
+  await page
+    .locator('[data-testid="reauth-2fa-modal"]')
+    .getByRole("button", { name: /Wygeneruj nowe kody|Generate new codes/ })
+    .click();
+  await page.getByTestId("totp-recovery-codes").waitFor({ state: "visible" });
+  await waitForReady(page);
+  await expect(page).toHaveScreenshot("2fa-after-regenerate.png", {
     fullPage: true,
   });
 });

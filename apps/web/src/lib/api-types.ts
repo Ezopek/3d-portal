@@ -222,6 +222,15 @@ export interface TotpStatusResponse {
   codes_remaining: number | null;
 }
 
+// --- TOTP 2FA re-auth (Story 7.5) ---
+
+export interface ReauthRequest {
+  password: string;
+  totp_code: string;
+}
+
+export type RegenerateResponse = TotpConfirmResponse;
+
 // --- Audit log ---
 
 export interface AuditLogEntry {

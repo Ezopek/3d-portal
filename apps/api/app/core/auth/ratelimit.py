@@ -78,9 +78,20 @@ def _client_ip(request: Request) -> str:
 
 
 def login_ratelimit_key(request: Request) -> str | None:
+    """Per-IP rate-limit key for the shared login / 2FA-verify /
+    re-auth-gated endpoints (Story 7.3 + Story 7.5).
+
+    All four paths share the same ``ratelimit:login:ip:{ip}`` 5-failures-
+    per-60s budget per epics §1694 — second-factor failures and re-auth
+    failures count against the same scope key as the password-login
+    surface, so an attacker cannot spend their login budget then move to
+    verify / regenerate / disable for fresh attempts.
+    """
     if request.method == "POST" and request.url.path in {
         "/api/auth/login",
         "/api/auth/2fa/verify",
+        "/api/auth/2fa/recovery-codes/regenerate",
+        "/api/auth/2fa/disable",
     }:
         return f"ip:{_client_ip(request)}"
     return None

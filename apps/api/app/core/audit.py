@@ -25,7 +25,11 @@ from app.core.db.models import AuditLog
 #   share_token          — admin.share.create/delete (entity_id None: keyed by token string)
 #   tag                  — future tag CRUD (Slice 2C.x)
 #   thumbnail_override   — admin.thumbnail.set/unset (entity_id None: legacy str model_id)
-#   user                 — auth.login.success/fail
+#   user                 — auth.login.success/fail; auth.totp.enrolled (Story 7.2);
+#                          auth.totp.verify.success/auth.totp.verify.fail (Story 7.3 +
+#                          7.5 re-auth gates use method=regenerate_reauth/disable_reauth);
+#                          auth.recovery_codes.regenerated (Story 7.5);
+#                          auth.totp.disabled (Story 7.5)
 KNOWN_ENTITY_TYPES: frozenset[str] = frozenset(
     {
         "catalog",
