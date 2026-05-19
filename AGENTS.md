@@ -208,6 +208,8 @@ Background: the 2026-05-18 retro on the (since-reverted) user-accounts initiativ
 
 Once the business surface of an initiative is closed — brief, PRD, architecture, epics aligned and the readiness check has passed (or a bug report carries enough context to start root-causing) — the BMAD-aware agent takes full operational ownership of the dev-and-fix pipeline. The operator's role at that point is intake, not steering: receive results, sign off at initiative close, intervene on a real product blocker. Procedural confirmation traffic ("which skill next", "should I commit", "ready for next session", "spawn subagent or run inline") is off the table — the agent owns those calls.
 
+**Self-triggering.** The agent also owns the decision *when* to fire an autonomous run, not only *how* to execute one. On session start, a state check (business alignment closed + active initiative present + ready stories + tooling available) is sufficient signal to initiate the run on the agent's own initiative — no explicit "go" prompt from the operator is required. Same for bug-fix sessions: an operator-reported incident with adequate context is the trigger; the agent does not wait for "OK, start fixing" confirmation. The only inputs that still gate operator decision are the blockers listed below (greenfield biznesowy scope, security trade-off, irreversible deploy decision, etc.).
+
 **Same shape for bug-fix work.** The agent owns the investigation → reproduce → root-cause → fix → verify chain. A single focused question is fair if external context is genuinely missing (production log only the operator can pull, hardware screenshot, network state). A guided walkthrough is not.
 
 **Tools the agent should reach for autonomously:**
