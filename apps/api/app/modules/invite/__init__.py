@@ -13,6 +13,7 @@ from app.modules.invite.admin_schemas import (
     InviteListResponse,
 )
 from app.modules.invite.models import InviteToken, InviteTTLPreset, hash_token
+from app.modules.invite.schemas import RegisterRequest
 from app.modules.invite.service import (
     ActiveInvite,
     GenerateInviteResult,
@@ -37,5 +38,6 @@ __all__ = [
     "InviteServiceError",
     "InviteTTLPreset",
     "InviteToken",
+    "RegisterRequest",
     "hash_token",
 ]

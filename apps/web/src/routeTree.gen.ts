@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as RegisterRouteImport } from './routes/register'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SpoolsIndexRouteImport } from './routes/spools/index'
@@ -20,6 +21,11 @@ import { Route as SettingsSessionsRouteImport } from './routes/settings/sessions
 import { Route as DevComponentsRouteImport } from './routes/dev/components'
 import { Route as CatalogIdRouteImport } from './routes/catalog/$id'
 
+const RegisterRoute = RegisterRouteImport.update({
+  id: '/register',
+  path: '/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -74,6 +80,7 @@ const CatalogIdRoute = CatalogIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/register': typeof RegisterRoute
   '/catalog/$id': typeof CatalogIdRoute
   '/dev/components': typeof DevComponentsRoute
   '/settings/sessions': typeof SettingsSessionsRoute
@@ -86,6 +93,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/register': typeof RegisterRoute
   '/catalog/$id': typeof CatalogIdRoute
   '/dev/components': typeof DevComponentsRoute
   '/settings/sessions': typeof SettingsSessionsRoute
@@ -99,6 +107,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/register': typeof RegisterRoute
   '/catalog/$id': typeof CatalogIdRoute
   '/dev/components': typeof DevComponentsRoute
   '/settings/sessions': typeof SettingsSessionsRoute
@@ -113,6 +122,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/register'
     | '/catalog/$id'
     | '/dev/components'
     | '/settings/sessions'
@@ -125,6 +135,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/login'
+    | '/register'
     | '/catalog/$id'
     | '/dev/components'
     | '/settings/sessions'
@@ -137,6 +148,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/login'
+    | '/register'
     | '/catalog/$id'
     | '/dev/components'
     | '/settings/sessions'
@@ -150,6 +162,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
+  RegisterRoute: typeof RegisterRoute
   CatalogIdRoute: typeof CatalogIdRoute
   DevComponentsRoute: typeof DevComponentsRoute
   SettingsSessionsRoute: typeof SettingsSessionsRoute
@@ -162,6 +175,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/register': {
+      id: '/register'
+      path: '/register'
+      fullPath: '/register'
+      preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -238,6 +258,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
+  RegisterRoute: RegisterRoute,
   CatalogIdRoute: CatalogIdRoute,
   DevComponentsRoute: DevComponentsRoute,
   SettingsSessionsRoute: SettingsSessionsRoute,
