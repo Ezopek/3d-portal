@@ -35,7 +35,17 @@ from app.core.db.models import RecoveryCode, User
 from app.core.db.models._enums import UserRole
 
 _KEY_PREFIX = "totp:enroll:"
+_LOCK_PREFIX = "totp:confirm-lock:"
 _ENROLLMENT_TTL_SECONDS = 600  # 10 minutes (epics.md §1676)
+# The Dockerfile runs ``uvicorn --workers 2``; two concurrent /confirm hits
+# on the same enrollment_token can otherwise both pass the GET-then-commit
+# path and double-mint recovery batches (Story 7.2 Codex P2 race). A short
+# SETNX lock keyed by enrollment_token serializes the critical section
+# without breaking retry-on-invalid-code (the lock is released in finally
+# regardless of outcome, while the enrollment-secret redis key only gets
+# deleted on a successful commit). 30s ceiling covers worst-case 8-code
+# bcrypt cost-12 hashing on slow hosts.
+_LOCK_TTL_SECONDS = 30
 _ISSUER_NAME = "3d-portal"
 _RECOVERY_BATCH_SIZE = 8
 _BCRYPT_ROUNDS = 12
@@ -164,6 +174,16 @@ class InvalidTotpCode(Exception):
     """pyotp.verify returned False."""
 
 
+class ConcurrentEnrollmentInProgress(Exception):
+    """Another /confirm call is already running for this enrollment_token.
+
+    Raised when the SETNX lock guarding the confirm critical section is
+    already held — typically a second uvicorn worker handling a duplicate
+    /confirm submission on the same enrollment_token. The loser must not
+    advance state; the winner's commit is authoritative.
+    """
+
+
 class Settings2faService:
     """Owns the encryption boundary + the enroll-confirm DB transaction."""
 
@@ -199,47 +219,64 @@ class Settings2faService:
     ) -> _ConfirmPayload:
         """Verify code, persist Fernet ciphertext, mint 8 recovery codes."""
         key = f"{_KEY_PREFIX}{enrollment_token}"
-        raw = await self._redis.get(key)
-        if raw is None:
-            raise EnrollmentTokenInvalid
-        payload = json.loads(raw)
-        stash_user_id = uuid.UUID(payload["user_id"])
-        if stash_user_id != current_user_id:
-            raise EnrollmentTokenUserMismatch
-        secret = payload["secret"]
-        if not verify_totp_code(secret, code):
-            raise InvalidTotpCode
+        lock_key = f"{_LOCK_PREFIX}{enrollment_token}"
 
-        ciphertext = encrypt_secret(secret, self._settings)
-        now = datetime.datetime.now(datetime.UTC)
-        batch_id, code_pairs = generate_recovery_codes_batch()
-
-        with Session(self._engine) as session:
-            user = session.get(User, current_user_id)
-            if user is None:
-                # Defense-in-depth — current_user JWT was valid but row gone.
-                raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found")
-            user.totp_secret = ciphertext
-            user.totp_enabled_at = now
-            session.add(user)
-            for _cleartext, code_hash in code_pairs:
-                session.add(
-                    RecoveryCode(
-                        user_id=user.id,
-                        code_hash=code_hash,
-                        batch_id=batch_id,
-                        generated_at=now,
-                    )
-                )
-            session.commit()
-
-        await self._redis.delete(key)
-
-        return _ConfirmPayload(
-            recovery_codes=[cleartext for cleartext, _h in code_pairs],
-            batch_id=batch_id,
-            generated_at=now,
+        # SETNX claim — only the winner enters the verify+commit critical
+        # section. Held briefly (TTL ceiling) and released in finally so a
+        # 422 (invalid code) still lets the user retry with the same token.
+        acquired = await self._redis.set(
+            lock_key,
+            b"1",
+            nx=True,
+            ex=_LOCK_TTL_SECONDS,
         )
+        if not acquired:
+            raise ConcurrentEnrollmentInProgress
+
+        try:
+            raw = await self._redis.get(key)
+            if raw is None:
+                raise EnrollmentTokenInvalid
+            payload = json.loads(raw)
+            stash_user_id = uuid.UUID(payload["user_id"])
+            if stash_user_id != current_user_id:
+                raise EnrollmentTokenUserMismatch
+            secret = payload["secret"]
+            if not verify_totp_code(secret, code):
+                raise InvalidTotpCode
+
+            ciphertext = encrypt_secret(secret, self._settings)
+            now = datetime.datetime.now(datetime.UTC)
+            batch_id, code_pairs = generate_recovery_codes_batch()
+
+            with Session(self._engine) as session:
+                user = session.get(User, current_user_id)
+                if user is None:
+                    # Defense-in-depth — current_user JWT was valid but row gone.
+                    raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found")
+                user.totp_secret = ciphertext
+                user.totp_enabled_at = now
+                session.add(user)
+                for _cleartext, code_hash in code_pairs:
+                    session.add(
+                        RecoveryCode(
+                            user_id=user.id,
+                            code_hash=code_hash,
+                            batch_id=batch_id,
+                            generated_at=now,
+                        )
+                    )
+                session.commit()
+
+            await self._redis.delete(key)
+
+            return _ConfirmPayload(
+                recovery_codes=[cleartext for cleartext, _h in code_pairs],
+                batch_id=batch_id,
+                generated_at=now,
+            )
+        finally:
+            await self._redis.delete(lock_key)
 
     def read_status(self, *, user_id: uuid.UUID) -> _StatusPayload:
         """Synchronous read of users.totp_enabled_at + active batch."""

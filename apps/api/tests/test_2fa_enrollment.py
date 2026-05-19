@@ -11,6 +11,7 @@ state across tests.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from unittest.mock import MagicMock
@@ -29,6 +30,7 @@ from app.core.db.models._enums import UserRole
 from app.core.db.session import get_engine
 from app.main import create_app
 from app.modules.auth.totp.service import (
+    ConcurrentEnrollmentInProgress,
     Settings2faService,
     decrypt_secret,
     encrypt_secret,
@@ -458,6 +460,133 @@ def test_status_agent_role_always_disabled(client):
         "generated_at": None,
         "codes_remaining": None,
     }
+
+
+# ---------------------------------------------------------------------------
+# Codex P2 race regression — concurrent /confirm under uvicorn --workers 2
+# ---------------------------------------------------------------------------
+
+
+def test_confirm_409_when_concurrent_lock_held(client):
+    """Codex P2 race fix: confirm fails with 409 when another /confirm flow
+    for the same enrollment_token is already mid-execution.
+
+    Deterministic lock-contract test: pre-acquires the SETNX lock manually
+    (as a stand-in for a second uvicorn worker that's currently inside the
+    critical section), then asserts the next /confirm hits a 409 and leaves
+    DB state untouched (no totp_secret, no recovery codes, no audit row)."""
+    c, fake = client
+    user = _seed_user(role=UserRole.member, email_prefix="m")
+    token, secret = _enroll_and_get_token(c, fake, user)
+    code = pyotp.TOTP(secret).now()
+
+    async def _grab_lock():
+        ok = await fake.set(f"totp:confirm-lock:{token}", b"1", nx=True, ex=30)
+        assert ok is True
+
+    c.portal.call(_grab_lock)
+
+    r = c.post(
+        "/api/auth/2fa/enroll/confirm",
+        json={"enrollment_token": token, "code": code},
+    )
+    assert r.status_code == 409
+    assert r.json()["detail"] == "concurrent_enrollment_in_progress"
+
+    engine = get_engine()
+    with Session(engine) as s:
+        u = s.get(User, user.id)
+        assert u.totp_enabled_at is None
+        assert u.totp_secret is None
+        rows = list(s.exec(select(RecoveryCode).where(RecoveryCode.user_id == u.id)).all())
+        assert rows == []
+        audits = list(s.exec(select(AuditLog).where(AuditLog.action == "auth.totp.enrolled")).all())
+        assert audits == []
+
+
+def test_confirm_concurrent_gather_only_one_succeeds(client):
+    """Codex P2 race regression: two parallel ``service.confirm_enrollment``
+    calls on the same enrollment_token must serialize — exactly one wins.
+
+    We force the race by patching ``redis.get`` to yield control mid-read on
+    the first call so the second coroutine can enter the critical section
+    before the first reaches its delete. Without the SETNX lock both calls
+    would commit (16 RecoveryCode rows, 2 batch_ids); with the fix the second
+    raises ``ConcurrentEnrollmentInProgress`` before reading the secret."""
+    c, fake = client
+    user = _seed_user(role=UserRole.member, email_prefix="m")
+    token, secret = _enroll_and_get_token(c, fake, user)
+    code = pyotp.TOTP(secret).now()
+
+    original_get = fake.get
+    state = {"yielded": False}
+
+    async def _slow_get(name, *args, **kwargs):
+        key_str = name.decode() if isinstance(name, bytes) else name
+        if not state["yielded"] and key_str.startswith("totp:enroll:"):
+            state["yielded"] = True
+            result = await original_get(name, *args, **kwargs)
+            # Hand the event loop to the sibling coroutine so it can attempt
+            # to grab the lock + read the same secret.
+            await asyncio.sleep(0.05)
+            return result
+        return await original_get(name, *args, **kwargs)
+
+    fake.get = _slow_get
+
+    async def _race():
+        svc = Settings2faService(redis=fake, engine=get_engine(), settings=get_settings())
+        return await asyncio.gather(
+            svc.confirm_enrollment(enrollment_token=token, code=code, current_user_id=user.id),
+            svc.confirm_enrollment(enrollment_token=token, code=code, current_user_id=user.id),
+            return_exceptions=True,
+        )
+
+    try:
+        results = c.portal.call(_race)
+    finally:
+        fake.get = original_get
+
+    successes = [r for r in results if not isinstance(r, BaseException)]
+    failures = [r for r in results if isinstance(r, BaseException)]
+    assert len(successes) == 1
+    assert len(failures) == 1
+    assert isinstance(failures[0], ConcurrentEnrollmentInProgress)
+
+    engine = get_engine()
+    with Session(engine) as s:
+        rows = list(s.exec(select(RecoveryCode).where(RecoveryCode.user_id == user.id)).all())
+        assert len(rows) == 8
+        assert len({row.batch_id for row in rows}) == 1
+
+
+def test_confirm_lock_released_after_invalid_code_allows_retry(client):
+    """Lock invariant: a 422 (invalid code) must release the lock so the
+    user can retry with the same enrollment_token. Otherwise a fat-finger
+    typo would force the user to restart the whole QR flow."""
+    c, fake = client
+    user = _seed_user(role=UserRole.member, email_prefix="m")
+    token, secret = _enroll_and_get_token(c, fake, user)
+    real = pyotp.TOTP(secret).now()
+    wrong = "000000" if real != "000000" else "111111"
+
+    r1 = c.post(
+        "/api/auth/2fa/enroll/confirm",
+        json={"enrollment_token": token, "code": wrong},
+    )
+    assert r1.status_code == 422
+
+    # Lock must be released — otherwise the retry would 409.
+    async def _lock_state():
+        return await fake.get(f"totp:confirm-lock:{token}")
+
+    assert c.portal.call(_lock_state) is None
+
+    r2 = c.post(
+        "/api/auth/2fa/enroll/confirm",
+        json={"enrollment_token": token, "code": real},
+    )
+    assert r2.status_code == 200, r2.text
 
 
 # ---------------------------------------------------------------------------

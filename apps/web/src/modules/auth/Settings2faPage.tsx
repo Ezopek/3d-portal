@@ -113,7 +113,11 @@ export function Settings2faPage() {
   }
 
   function restartEnrollment() {
-    setEnrollState(null);
+    // Keep enrollState in place until the new /enroll response arrives —
+    // clearing it eagerly with step still "enroll" makes the next render
+    // skip both the enroll branch (no state) and the show-codes branch,
+    // falling through to the "2FA enabled" done panel. If /enroll is slow
+    // or fails the user would then see a false success state.
     setCodeInput("");
     setCodeError(null);
     enroll.mutate();
@@ -233,7 +237,12 @@ export function Settings2faPage() {
             </p>
           )}
           <div className="flex gap-2">
-            <Button type="submit" disabled={confirm.isPending || codeInput.length !== 6}>
+            <Button
+              type="submit"
+              disabled={
+                confirm.isPending || enroll.isPending || codeInput.length !== 6
+              }
+            >
               {t("auth.2fa.enroll.verify_button")}
             </Button>
             <Button

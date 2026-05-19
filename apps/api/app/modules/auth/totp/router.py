@@ -32,6 +32,7 @@ from app.modules.auth.totp.schemas import (
     StatusResponse,
 )
 from app.modules.auth.totp.service import (
+    ConcurrentEnrollmentInProgress,
     EnrollmentTokenInvalid,
     EnrollmentTokenUserMismatch,
     InvalidTotpCode,
@@ -131,6 +132,11 @@ async def confirm_enrollment(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "enrollment_token_user_mismatch") from exc
     except InvalidTotpCode as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "invalid_code") from exc
+    except ConcurrentEnrollmentInProgress as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "concurrent_enrollment_in_progress",
+        ) from exc
 
     record_event(
         get_engine(),
