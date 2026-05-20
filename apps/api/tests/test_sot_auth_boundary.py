@@ -16,9 +16,9 @@ Story 11.1 ships that intent and adds these mechanical tests to prevent
 regression to the 64447ff P1-2 pattern.
 """
 
+import contextlib
 import hashlib
 import uuid
-from pathlib import Path
 
 import pytest
 from sqlmodel import Session
@@ -97,10 +97,8 @@ def seeded_model(client) -> tuple[uuid.UUID, uuid.UUID]:
         yield model.id, file_row.id
 
     # Cleanup
-    try:
+    with contextlib.suppress(OSError):
         blob_path.unlink()
-    except OSError:
-        pass
 
 
 # ---------------------------------------------------------------------------

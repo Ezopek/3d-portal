@@ -23,6 +23,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime
 import hashlib
 import json
@@ -107,14 +108,49 @@ def _do_login(http_client: Any, portal_url: str, email: str, password: str) -> s
     return body["access_token"], body.get("expires_in", 1800)
 
 
+def _set_portal_access_cookie(http_client: Any, token: str) -> None:
+    """Populate `portal_access` cookie on the http_client from the bearer token.
+
+    Initiative 6 Story 11.1 — SoT GET endpoints require authenticated user via
+    `current_user` dependency (architecture.md § Initiative 6 Decision M).
+    `current_user` reads ONLY the `portal_access` cookie; it does not honor the
+    `Authorization: Bearer ...` header. The hydrate script's bearer-token CLI
+    path (Init 2 baseline) cached the access_token across runs and sent it only
+    as an Authorization header. Post-default-deny, that path 401s on the first
+    `/api/categories` call when no login happened in the current run.
+
+    Setting the cookie mirrors the production agent service-account flow
+    (Init 2 cookie+password login response sets `portal_access` automatically).
+    httpx-style clients (httpx.Client + fastapi.testclient.TestClient) both
+    expose a `.cookies` attribute that supports `.set(name, value)`. If the
+    client lacks a cookies attribute (e.g. a custom mock), the call is a
+    no-op — the Authorization header still flows for backwards-compatible
+    callers that have not yet adopted the cookie path.
+    """
+    if hasattr(http_client, "cookies"):
+        # Defensive: never block hydrate on cookie-set failure (the bearer
+        # header remains as a fallback for any caller that still honors it
+        # server-side).
+        with contextlib.suppress(Exception):
+            http_client.cookies.set("portal_access", token)
+
+
 def ensure_token(http_client: Any, portal_url: str, token_data: dict) -> str:
     """Return a valid bearer token, refreshing if necessary.
 
     Mutates `token_data` in-place if a new token is obtained.  The caller is
     responsible for writing `token_data` back to disk.
+
+    Side effect (Initiative 6 Story 11.1): also populates the http_client's
+    `portal_access` cookie with the returned token, so that downstream
+    requests against SoT GET endpoints (post-default-deny) authenticate via
+    `current_user` cookie path. See `_set_portal_access_cookie` docstring
+    for the rationale.
     """
     if _token_valid(token_data):
-        return token_data["access_token"]
+        token = token_data["access_token"]
+        _set_portal_access_cookie(http_client, token)
+        return token
 
     access_token, expires_in = _do_login(
         http_client, portal_url, token_data["email"], token_data["password"]
@@ -123,6 +159,11 @@ def ensure_token(http_client: Any, portal_url: str, token_data: dict) -> str:
     exp = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=expires_in - 60)
     token_data["access_token"] = access_token
     token_data["expires_at"] = exp.isoformat()
+    # _do_login already set the cookie via the response Set-Cookie header on
+    # successful login, but populate it explicitly for symmetry with the
+    # cached-token branch above (defense-in-depth against httpx clients that
+    # might not auto-persist cookies from POST responses).
+    _set_portal_access_cookie(http_client, access_token)
     return access_token
 
 
