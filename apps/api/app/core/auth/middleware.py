@@ -150,17 +150,29 @@ class LastActiveMiddleware:
         if not acquired:
             return
 
-        # Fire-and-forget DB write AFTER the response is yielded. The throttle
-        # column is best-effort signal, not transactional state — wrap in
-        # try/except + log a single warning so a DB hiccup never leaks back
-        # as a 5xx (the response has already been sent to the client by now).
-        try:
+        # Codex P2 fix-ups (Story 8.1 follow-up):
+        # 1. Capture write_now AFTER the handler returns so a slow request can't
+        #    write a stale "now" captured pre-handler (would move column back).
+        # 2. Constrain UPDATE with last_active_at IS NULL OR last_active_at <
+        #    :write_now so the column is monotonic even under race.
+        # 3. Wrap the synchronous engine.begin()/conn.execute() in
+        #    asyncio.to_thread so a busy DB / slow disk does NOT block the
+        #    event loop after the response is yielded.
+        import asyncio  # local to keep top-of-file imports minimal
+
+        write_now = datetime.datetime.now(datetime.UTC)
+
+        def _commit_last_active() -> None:
             engine = get_engine()
-            stmt = sa.text("UPDATE user SET last_active_at = :now WHERE id = :user_id").bindparams(
-                sa.bindparam("user_id", type_=sa_uuid_type())
-            )
+            stmt = sa.text(
+                "UPDATE user SET last_active_at = :now WHERE id = :user_id "
+                "AND (last_active_at IS NULL OR last_active_at < :now)"
+            ).bindparams(sa.bindparam("user_id", type_=sa_uuid_type()))
             with engine.begin() as conn:
-                conn.execute(stmt, {"now": now, "user_id": user_id})
+                conn.execute(stmt, {"now": write_now, "user_id": user_id})
+
+        try:
+            await asyncio.to_thread(_commit_last_active)
         except Exception as exc:
             _LOG.warning(
                 "last_active.db_write_failed",
