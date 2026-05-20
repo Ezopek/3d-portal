@@ -23,6 +23,7 @@ from app.core.auth.jwt import encode_token
 from app.core.auth.password import verify_password
 from app.core.auth.refresh import (
     RotationOutcome,
+    burn_family,
     find_by_secret,
     new_refresh_row,
     rotate_refresh,
@@ -90,6 +91,20 @@ async def login(
             after={"email": payload.email},
         )
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_credentials")
+
+    # Decision I §1622: deactivated users cannot log in even with valid
+    # credentials. Fires AFTER password-verify so the `is_active` flag
+    # cannot be probed as a user-enumeration oracle without the password.
+    if not user.is_active:
+        record_event(
+            get_engine(),
+            action="auth.login.fail",
+            entity_type="user",
+            entity_id=user.id,
+            actor_user_id=None,
+            after={"email": user.email, "reason": "account_deactivated"},
+        )
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "account_deactivated")
 
     ip, ua = client_meta(request)
 
@@ -307,6 +322,21 @@ def refresh(
     user = session.get(User, target.user_id)
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "force_relogin")
+    # Decision I §1622: a deactivated user MUST NOT receive a fresh JWT.
+    # Burn the rotated family in the same transaction so the access-token
+    # window collapses to its natural ≤10 min expiry.
+    if not user.is_active:
+        burn_family(session, target.family_id)
+        session.commit()
+        record_event(
+            get_engine(),
+            action="auth.login.fail",
+            entity_type="user",
+            entity_id=user.id,
+            actor_user_id=user.id,
+            after={"reason": "account_deactivated", "family_id": str(target.family_id)},
+        )
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "account_deactivated")
     target.last_used_at = datetime.datetime.now(datetime.UTC)
     session.add(target)
     session.commit()

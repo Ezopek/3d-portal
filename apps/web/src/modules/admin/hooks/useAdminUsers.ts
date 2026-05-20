@@ -1,10 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import type {
   AdminUserSortBy,
   AdminUserSortOrder,
   AdminUsersListResponse,
+  UserMutationRequest,
 } from "@/lib/api-types";
 
 export interface UseAdminUsersParams {
@@ -31,5 +32,39 @@ export function useAdminUsers(params: UseAdminUsersParams) {
     queryFn: () =>
       api<AdminUsersListResponse>(`/admin/users?${buildQueryString(params)}`),
     staleTime: 30 * 1000,
+  });
+}
+
+// --- Admin users mutations (Story 8.3) ---
+
+export interface UseUpdateAdminUserVariables {
+  user_id: string;
+  body: UserMutationRequest;
+}
+
+export function useUpdateAdminUser() {
+  const queryClient = useQueryClient();
+  return useMutation<void, ApiError, UseUpdateAdminUserVariables>({
+    mutationFn: ({ user_id, body }) =>
+      api<void>(`/admin/users/${user_id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
+  });
+}
+
+export function useForceLogoutAdminUser() {
+  const queryClient = useQueryClient();
+  return useMutation<void, ApiError, string>({
+    mutationFn: (user_id) =>
+      api<void>(`/admin/users/${user_id}/force-logout`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
   });
 }

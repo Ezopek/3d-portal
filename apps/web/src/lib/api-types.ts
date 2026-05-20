@@ -219,6 +219,13 @@ export interface AdminUsersListResponse {
   page_size: number;
 }
 
+// --- Admin users mutations (Story 8.3) ---
+
+export interface UserMutationRequest {
+  role?: Role;
+  is_active?: boolean;
+}
+
 // --- TOTP 2FA (Story 7.2) ---
 
 export interface TotpEnrollResponse {

@@ -1,11 +1,32 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useId } from "react";
+import { MoreVertical } from "lucide-react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { AdminUserSortBy, AdminUserSortOrder } from "@/lib/api-types";
+import { ApiError } from "@/lib/api";
+import type {
+  AdminUser,
+  AdminUserSortBy,
+  AdminUserSortOrder,
+  Role,
+} from "@/lib/api-types";
 import { AdminTabs } from "@/modules/admin/AdminTabs";
-import { useAdminUsers } from "@/modules/admin/hooks/useAdminUsers";
+import { ChangeRoleModal } from "@/modules/admin/ChangeRoleModal";
+import {
+  useAdminUsers,
+  useForceLogoutAdminUser,
+  useUpdateAdminUser,
+} from "@/modules/admin/hooks/useAdminUsers";
+import { useAuth } from "@/shell/AuthContext";
+import { Button } from "@/ui/button";
+import { ConfirmDialog } from "@/ui/custom/ConfirmDialog";
 import { LoadingState } from "@/ui/custom/LoadingState";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/ui/dropdown-menu";
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200] as const;
 const SORTABLE_COLUMNS: AdminUserSortBy[] = [
@@ -14,6 +35,14 @@ const SORTABLE_COLUMNS: AdminUserSortBy[] = [
   "created_at",
   "last_active_at",
 ];
+
+const KNOWN_ERROR_CODES = new Set([
+  "cannot_target_self",
+  "cannot_target_agent",
+  "cannot_promote_to_agent",
+  "no_mutation_provided",
+  "user_not_found",
+]);
 
 function formatDateTime(iso: string | null): string {
   if (!iso) return "—";
@@ -33,12 +62,21 @@ function nextSortOrder(
   return { sort_by: undefined, sort_order: undefined };
 }
 
+function detailFromApiError(err: unknown): string | null {
+  if (!(err instanceof ApiError)) return null;
+  const body = err.body as { detail?: unknown } | null | undefined;
+  if (body && typeof body.detail === "string") return body.detail;
+  return null;
+}
+
 export function UsersPage() {
   const { t } = useTranslation();
   const search = useSearch({ from: "/admin/users" });
   const navigate = useNavigate();
   const searchId = useId();
   const pageSizeId = useId();
+  const auth = useAuth();
+  const currentUserId = auth.user?.id ?? null;
 
   const page = search.page ?? 1;
   const pageSize = search.page_size ?? 50;
@@ -51,6 +89,76 @@ export function UsersPage() {
     sort_by: search.sort_by,
     sort_order: search.sort_order,
   });
+
+  const updateUser = useUpdateAdminUser();
+  const forceLogout = useForceLogoutAdminUser();
+
+  const [changeRoleTarget, setChangeRoleTarget] = useState<AdminUser | null>(null);
+  const [confirmDeactivateTarget, setConfirmDeactivateTarget] =
+    useState<AdminUser | null>(null);
+  const [confirmReactivateTarget, setConfirmReactivateTarget] =
+    useState<AdminUser | null>(null);
+  const [confirmForceLogoutTarget, setConfirmForceLogoutTarget] =
+    useState<AdminUser | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+
+  function clearError() {
+    setErrorCode(null);
+  }
+
+  function handleMutationError(err: unknown) {
+    const detail = detailFromApiError(err);
+    if (detail && KNOWN_ERROR_CODES.has(detail)) {
+      setErrorCode(detail);
+    } else {
+      setErrorCode("generic");
+    }
+  }
+
+  function handleChangeRoleConfirm(newRole: Role) {
+    if (!changeRoleTarget) return;
+    clearError();
+    updateUser.mutate(
+      { user_id: changeRoleTarget.id, body: { role: newRole } },
+      {
+        onSuccess: () => setChangeRoleTarget(null),
+        onError: handleMutationError,
+      },
+    );
+  }
+
+  function handleDeactivateConfirm() {
+    if (!confirmDeactivateTarget) return;
+    clearError();
+    updateUser.mutate(
+      { user_id: confirmDeactivateTarget.id, body: { is_active: false } },
+      {
+        onSuccess: () => setConfirmDeactivateTarget(null),
+        onError: handleMutationError,
+      },
+    );
+  }
+
+  function handleReactivateConfirm() {
+    if (!confirmReactivateTarget) return;
+    clearError();
+    updateUser.mutate(
+      { user_id: confirmReactivateTarget.id, body: { is_active: true } },
+      {
+        onSuccess: () => setConfirmReactivateTarget(null),
+        onError: handleMutationError,
+      },
+    );
+  }
+
+  function handleForceLogoutConfirm() {
+    if (!confirmForceLogoutTarget) return;
+    clearError();
+    forceLogout.mutate(confirmForceLogoutTarget.id, {
+      onSuccess: () => setConfirmForceLogoutTarget(null),
+      onError: handleMutationError,
+    });
+  }
 
   function updateSearchParams(
     next: Partial<{
@@ -98,6 +206,7 @@ export function UsersPage() {
   const items = data?.items ?? [];
   const first = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const last = Math.min(page * pageSize, total);
+  const pending = updateUser.isPending || forceLogout.isPending;
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-6">
@@ -109,6 +218,12 @@ export function UsersPage() {
       </header>
 
       <AdminTabs activeTab="users" />
+
+      {errorCode !== null && (
+        <p role="alert" className="text-sm text-destructive">
+          {t(`admin.users.errors.${errorCode}`)}
+        </p>
+      )}
 
       <div className="flex flex-wrap items-end gap-3">
         <div className="grid gap-1.5">
@@ -196,42 +311,121 @@ export function UsersPage() {
                   {t("admin.users.column_last_active_at")}
                   {sortIndicator("last_active_at")}
                 </th>
+                <th className="px-3 py-2 text-left">
+                  {t("admin.users.column_actions")}
+                </th>
               </tr>
             </thead>
             <tbody>
               {items.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={SORTABLE_COLUMNS.length + 3}
+                    colSpan={SORTABLE_COLUMNS.length + 4}
                     className="px-3 py-6 text-center text-muted-foreground"
                   >
                     {t("admin.users.empty")}
                   </td>
                 </tr>
               ) : (
-                items.map((user) => (
-                  <tr key={user.id} className="border-t border-border">
-                    <td className="px-3 py-2">{user.email}</td>
-                    <td className="px-3 py-2">{user.display_name}</td>
-                    <td className="px-3 py-2">{user.role}</td>
-                    <td className="px-3 py-2">
-                      {user.totp_enabled
-                        ? t("admin.users.totp_enabled_short")
-                        : t("admin.users.totp_disabled_short")}
-                    </td>
-                    <td className="px-3 py-2">
-                      {user.is_active
-                        ? t("admin.users.active_yes")
-                        : t("admin.users.active_no")}
-                    </td>
-                    <td className="px-3 py-2" title={user.created_at}>
-                      {formatDate(user.created_at)}
-                    </td>
-                    <td className="px-3 py-2" title={user.last_active_at ?? ""}>
-                      {formatDateTime(user.last_active_at)}
-                    </td>
-                  </tr>
-                ))
+                items.map((user) => {
+                  const isSelf = currentUserId !== null && user.id === currentUserId;
+                  const isAgent = user.role === "agent";
+                  const actionsDisabled = isSelf || isAgent;
+                  return (
+                    <tr key={user.id} className="border-t border-border">
+                      <td className="px-3 py-2">{user.email}</td>
+                      <td className="px-3 py-2">{user.display_name}</td>
+                      <td className="px-3 py-2">{user.role}</td>
+                      <td className="px-3 py-2">
+                        {user.totp_enabled
+                          ? t("admin.users.totp_enabled_short")
+                          : t("admin.users.totp_disabled_short")}
+                      </td>
+                      <td className="px-3 py-2">
+                        {user.is_active
+                          ? t("admin.users.active_yes")
+                          : t("admin.users.active_no")}
+                      </td>
+                      <td className="px-3 py-2" title={user.created_at}>
+                        {formatDate(user.created_at)}
+                      </td>
+                      <td className="px-3 py-2" title={user.last_active_at ?? ""}>
+                        {formatDateTime(user.last_active_at)}
+                      </td>
+                      <td className="px-3 py-2">
+                        {actionsDisabled ? (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            disabled
+                            aria-disabled="true"
+                            aria-label={t("admin.users.actions.menu_label", {
+                              email: user.email,
+                            })}
+                            className="opacity-50 cursor-not-allowed"
+                          >
+                            <MoreVertical className="size-4" aria-hidden />
+                          </Button>
+                        ) : (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger
+                              render={
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  aria-label={t("admin.users.actions.menu_label", {
+                                    email: user.email,
+                                  })}
+                                />
+                              }
+                            >
+                              <MoreVertical className="size-4" aria-hidden />
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  clearError();
+                                  setChangeRoleTarget(user);
+                                }}
+                              >
+                                {t("admin.users.actions.change_role")}
+                              </DropdownMenuItem>
+                              {user.is_active ? (
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() => {
+                                    clearError();
+                                    setConfirmDeactivateTarget(user);
+                                  }}
+                                >
+                                  {t("admin.users.actions.deactivate")}
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    clearError();
+                                    setConfirmReactivateTarget(user);
+                                  }}
+                                >
+                                  {t("admin.users.actions.reactivate")}
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onClick={() => {
+                                  clearError();
+                                  setConfirmForceLogoutTarget(user);
+                                }}
+                              >
+                                {t("admin.users.actions.force_logout")}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -261,6 +455,57 @@ export function UsersPage() {
           </button>
         </div>
       </footer>
+
+      <ChangeRoleModal
+        open={changeRoleTarget !== null}
+        onOpenChange={(next) => {
+          if (!next) setChangeRoleTarget(null);
+        }}
+        target={changeRoleTarget}
+        pending={pending}
+        onConfirm={handleChangeRoleConfirm}
+      />
+
+      <ConfirmDialog
+        open={confirmDeactivateTarget !== null}
+        onOpenChange={(next) => {
+          if (!next) setConfirmDeactivateTarget(null);
+        }}
+        title={t("admin.users.confirm.deactivate_title", {
+          email: confirmDeactivateTarget?.email ?? "",
+        })}
+        description={t("admin.users.confirm.deactivate_description")}
+        destructive
+        pending={pending}
+        onConfirm={handleDeactivateConfirm}
+      />
+
+      <ConfirmDialog
+        open={confirmReactivateTarget !== null}
+        onOpenChange={(next) => {
+          if (!next) setConfirmReactivateTarget(null);
+        }}
+        title={t("admin.users.confirm.reactivate_title", {
+          email: confirmReactivateTarget?.email ?? "",
+        })}
+        description={t("admin.users.confirm.reactivate_description")}
+        pending={pending}
+        onConfirm={handleReactivateConfirm}
+      />
+
+      <ConfirmDialog
+        open={confirmForceLogoutTarget !== null}
+        onOpenChange={(next) => {
+          if (!next) setConfirmForceLogoutTarget(null);
+        }}
+        title={t("admin.users.confirm.force_logout_title", {
+          email: confirmForceLogoutTarget?.email ?? "",
+        })}
+        description={t("admin.users.confirm.force_logout_description")}
+        destructive
+        pending={pending}
+        onConfirm={handleForceLogoutConfirm}
+      />
     </div>
   );
 }

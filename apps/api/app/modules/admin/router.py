@@ -10,14 +10,20 @@ import json
 import uuid
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlmodel import Session, func, select
 
+from app.core.audit import record_event
 from app.core.auth.dependencies import current_admin
-from app.core.db.models import AuditLog, User
-from app.core.db.session import get_session
-from app.modules.admin.users_schemas import AdminUserListItem, AdminUserListResponse
+from app.core.db.models import AuditLog, RefreshToken, User
+from app.core.db.models._enums import UserRole
+from app.core.db.session import get_engine, get_session
+from app.modules.admin.users_schemas import (
+    AdminUserListItem,
+    AdminUserListResponse,
+    UserMutationRequest,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -214,3 +220,165 @@ def list_admin_users(
         for row in rows
     ]
     return AdminUserListResponse(total=total, items=items, page=page, page_size=page_size)
+
+
+@router.patch(
+    "/users/{user_id}",
+    status_code=204,
+    summary="Update admin-visible user fields (role + is_active)",
+    description=(
+        "Accepts a partial mutation body `{role?, is_active?}` and applies it to the "
+        'target user. Unknown body fields return 422 via `extra="forbid"`. Four '
+        "foot-gun guardrails (FR5-ADMIN-2 + NFR5-INT-1): "
+        "**cannot_target_self** blocks the operator from demoting or deactivating "
+        "their own row (single-admin lockout prevention); "
+        "**cannot_target_agent** blocks any mutation on the agent service account "
+        "(NFR5-INT-1 nginx-bypass invariant); "
+        "**cannot_promote_to_agent** blocks promotion to the system-managed role "
+        "(architecture.md:1049 — agent is created by the bootstrap script); "
+        "**no_mutation_provided** rejects empty bodies (400). Emits "
+        "`user.role_changed` / `user.deactivated` / `user.reactivated` audit events "
+        "per FR5-AUDIT-1; no-op mutations are not audited. On deactivation also "
+        "burns every active refresh-token family for the target so the access-token "
+        "window is bounded to ≤10 minutes."
+    ),
+)
+def update_admin_user(
+    user_id: uuid.UUID,
+    body: UserMutationRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    admin_id: uuid.UUID = current_admin,
+) -> None:
+    if not body.model_fields_set:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no_mutation_provided")
+
+    target = session.get(User, user_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found")
+
+    if target.id == admin_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "cannot_target_self")
+    if target.role == UserRole.agent:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "cannot_target_agent")
+    if (
+        "role" in body.model_fields_set
+        and body.role == UserRole.agent
+        and target.role != UserRole.agent
+    ):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "cannot_promote_to_agent")
+
+    request_id = request.headers.get("x-request-id")
+    before_role = target.role
+    before_is_active = target.is_active
+
+    role_changed = (
+        "role" in body.model_fields_set and body.role is not None and body.role != target.role
+    )
+    active_changed = (
+        "is_active" in body.model_fields_set
+        and body.is_active is not None
+        and body.is_active != target.is_active
+    )
+
+    if role_changed:
+        assert body.role is not None
+        target.role = body.role
+    if active_changed:
+        assert body.is_active is not None
+        target.is_active = body.is_active
+        if body.is_active is False:
+            # Decision I §1622: invalidate the entire refresh-token surface for
+            # the deactivated user so the access-token-only window is bounded
+            # to ≤10 minutes (JWT TTL). The AC-3 /refresh gate catches anything
+            # that still gets through, but this immediate burn closes the
+            # in-flight replay window deterministically.
+            now = datetime.datetime.now(datetime.UTC)
+            rows = session.exec(
+                select(RefreshToken)
+                .where(RefreshToken.user_id == target.id)
+                .where(RefreshToken.revoked_at.is_(None))
+            ).all()
+            for r in rows:
+                r.revoked_at = now
+                r.revoke_reason = "force_deactivation"
+                session.add(r)
+
+    if role_changed or active_changed:
+        session.add(target)
+        session.commit()
+
+    if role_changed:
+        record_event(
+            get_engine(),
+            action="user.role_changed",
+            entity_type="user",
+            entity_id=target.id,
+            actor_user_id=admin_id,
+            before={"role": before_role.value},
+            after={"role": target.role.value},
+            request_id=request_id,
+        )
+    if active_changed:
+        assert body.is_active is not None
+        record_event(
+            get_engine(),
+            action="user.deactivated" if body.is_active is False else "user.reactivated",
+            entity_type="user",
+            entity_id=target.id,
+            actor_user_id=admin_id,
+            before={"is_active": before_is_active},
+            after={"is_active": target.is_active},
+            request_id=request_id,
+        )
+
+
+@router.post(
+    "/users/{user_id}/force-logout",
+    status_code=204,
+    summary="Force-logout all sessions of the target user (admin only)",
+    description=(
+        "Invalidates every active refresh-token family for the target user. "
+        "Idempotent: returns 204 with `revoked_count: 0` if the target has no "
+        "active families. Guards: **cannot_target_self** (the operator uses "
+        "`POST /api/auth/logout-all` for their own sessions — preserves the "
+        "audit invariant `actor != target` for `user.force_logout`); "
+        "**cannot_target_agent** (NFR5-INT-1). The access-token (JWT) is NOT "
+        "proactively invalidated — it expires naturally within 10 minutes."
+    ),
+)
+def force_logout_admin_user(
+    user_id: uuid.UUID,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    admin_id: uuid.UUID = current_admin,
+) -> None:
+    target = session.get(User, user_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found")
+    if target.id == admin_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "cannot_target_self")
+    if target.role == UserRole.agent:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "cannot_target_agent")
+
+    now = datetime.datetime.now(datetime.UTC)
+    rows = session.exec(
+        select(RefreshToken)
+        .where(RefreshToken.user_id == target.id)
+        .where(RefreshToken.revoked_at.is_(None))
+    ).all()
+    for r in rows:
+        r.revoked_at = now
+        r.revoke_reason = "admin_force_logout"
+        session.add(r)
+    session.commit()
+
+    record_event(
+        get_engine(),
+        action="user.force_logout",
+        entity_type="user",
+        entity_id=target.id,
+        actor_user_id=admin_id,
+        after={"revoked_count": len(rows)},
+        request_id=request.headers.get("x-request-id"),
+    )

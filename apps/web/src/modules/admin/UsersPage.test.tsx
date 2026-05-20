@@ -9,8 +9,9 @@ import {
   createRouter,
 } from "@tanstack/react-router";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   AdminUser,
@@ -18,15 +19,62 @@ import type {
 } from "@/lib/api-types";
 import i18n from "@/locales/i18n";
 
+const updateMutate = vi.fn();
+const forceLogoutMutate = vi.fn();
+
 vi.mock("@/modules/admin/hooks/useAdminUsers", () => ({
   useAdminUsers: vi.fn(),
+  useUpdateAdminUser: vi.fn(),
+  useForceLogoutAdminUser: vi.fn(),
 }));
 
-import { useAdminUsers } from "@/modules/admin/hooks/useAdminUsers";
+vi.mock("@/shell/AuthContext", () => ({
+  useAuth: vi.fn(),
+}));
+
+import { useAuth } from "@/shell/AuthContext";
+import {
+  useAdminUsers,
+  useForceLogoutAdminUser,
+  useUpdateAdminUser,
+} from "@/modules/admin/hooks/useAdminUsers";
 import { UsersPage } from "@/modules/admin/UsersPage";
 
 beforeAll(async () => {
   await i18n.changeLanguage("en");
+});
+
+const ADMIN_ID = "00000000-0000-0000-0000-000000000001";
+
+beforeEach(() => {
+  updateMutate.mockReset();
+  forceLogoutMutate.mockReset();
+  vi.mocked(useUpdateAdminUser).mockReturnValue({
+    mutate: updateMutate,
+    isPending: false,
+    isError: false,
+    error: null,
+  } as unknown as ReturnType<typeof useUpdateAdminUser>);
+  vi.mocked(useForceLogoutAdminUser).mockReturnValue({
+    mutate: forceLogoutMutate,
+    isPending: false,
+    isError: false,
+    error: null,
+  } as unknown as ReturnType<typeof useForceLogoutAdminUser>);
+  vi.mocked(useAuth).mockReturnValue({
+    user: {
+      id: ADMIN_ID,
+      email: "admin@localhost.localdomain",
+      display_name: "Admin",
+      role: "admin",
+    },
+    role: "admin",
+    isAdmin: true,
+    isMember: false,
+    isAdminOrAgent: true,
+    isAuthenticated: true,
+    isLoading: false,
+  });
 });
 
 function mockHook(value: {
@@ -164,6 +212,197 @@ describe("UsersPage", () => {
     await waitFor(() => {
       expect(screen.getByText("member0@test.example")).toBeTruthy();
     });
+    expect(screen.queryAllByRole("checkbox").length).toBe(0);
+    expect(
+      screen.queryAllByRole("button", { name: /bulk|select all/i }).length,
+    ).toBe(0);
+    expect(document.querySelectorAll('input[type="checkbox"]').length).toBe(0);
+  });
+
+  const memberRow: AdminUser = {
+    id: "00000000-0000-0000-0000-000000000010",
+    email: "member@test.example",
+    display_name: "Member",
+    role: "member",
+    created_at: "2026-05-19T00:00:00Z",
+    last_active_at: null,
+    totp_enabled: false,
+    is_active: true,
+  };
+
+  const agentRow: AdminUser = {
+    id: "00000000-0000-0000-0000-000000000020",
+    email: "agent@portal.local",
+    display_name: "Agent",
+    role: "agent",
+    created_at: "2026-05-19T00:00:00Z",
+    last_active_at: null,
+    totp_enabled: false,
+    is_active: true,
+  };
+
+  const inactiveMemberRow: AdminUser = {
+    ...memberRow,
+    id: "00000000-0000-0000-0000-000000000030",
+    email: "inactive@test.example",
+    is_active: false,
+  };
+
+  it("V5 — renders an actions kebab button for every non-self non-agent row", async () => {
+    mockHook({
+      data: {
+        total: 3,
+        items: [seedAdminItem, memberRow, agentRow],
+        page: 1,
+        page_size: 50,
+      },
+    });
+    mount(<UsersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("member@test.example")).toBeTruthy();
+    });
+
+    const memberKebab = screen.getByRole("button", {
+      name: /Actions for member@test\.example/i,
+    });
+    expect(memberKebab.hasAttribute("disabled")).toBe(false);
+
+    const agentKebab = screen.getByRole("button", {
+      name: /Actions for agent@portal\.local/i,
+    });
+    expect(agentKebab.getAttribute("aria-disabled")).toBe("true");
+
+    const ownKebab = screen.getByRole("button", {
+      name: /Actions for admin@localhost\.localdomain/i,
+    });
+    expect(ownKebab.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("V6 — opens action menu on kebab click and lists items for active user", async () => {
+    mockHook({
+      data: { total: 1, items: [memberRow], page: 1, page_size: 50 },
+    });
+    const user = userEvent.setup();
+    mount(<UsersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("member@test.example")).toBeTruthy();
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: /Actions for member@test\.example/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Change role")).toBeTruthy();
+    });
+    expect(screen.getByText("Deactivate")).toBeTruthy();
+    expect(screen.getByText("Force logout all sessions")).toBeTruthy();
+    expect(screen.queryByText("Reactivate")).toBeNull();
+  });
+
+  it("V7 — opens action menu and shows Reactivate instead of Deactivate for inactive user", async () => {
+    mockHook({
+      data: { total: 1, items: [inactiveMemberRow], page: 1, page_size: 50 },
+    });
+    const user = userEvent.setup();
+    mount(<UsersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("inactive@test.example")).toBeTruthy();
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: /Actions for inactive@test\.example/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Reactivate")).toBeTruthy();
+    });
+    expect(screen.queryByText("Deactivate")).toBeNull();
+  });
+
+  it("V8 — clicking Deactivate opens confirm modal then PATCH on confirm", async () => {
+    mockHook({
+      data: { total: 1, items: [memberRow], page: 1, page_size: 50 },
+    });
+    const user = userEvent.setup();
+    mount(<UsersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("member@test.example")).toBeTruthy();
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: /Actions for member@test\.example/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Deactivate")).toBeTruthy();
+    });
+    await user.click(screen.getByText("Deactivate"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Deactivate member@test\.example\?/i),
+      ).toBeTruthy();
+    });
+
+    await user.click(screen.getByRole("button", { name: /^Confirm$/i }));
+
+    expect(updateMutate).toHaveBeenCalledTimes(1);
+    expect(updateMutate.mock.calls[0][0]).toEqual({
+      user_id: memberRow.id,
+      body: { is_active: false },
+    });
+  });
+
+  it("V9 — clicking Force logout opens confirm modal then POST on confirm", async () => {
+    mockHook({
+      data: { total: 1, items: [memberRow], page: 1, page_size: 50 },
+    });
+    const user = userEvent.setup();
+    mount(<UsersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("member@test.example")).toBeTruthy();
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: /Actions for member@test\.example/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Force logout all sessions")).toBeTruthy();
+    });
+    await user.click(screen.getByText("Force logout all sessions"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Force logout member@test\.example\?/i),
+      ).toBeTruthy();
+    });
+
+    await user.click(screen.getByRole("button", { name: /^Confirm$/i }));
+
+    expect(forceLogoutMutate).toHaveBeenCalledTimes(1);
+    expect(forceLogoutMutate.mock.calls[0][0]).toBe(memberRow.id);
+  });
+
+  it("V10 — renders NO checkbox column even with the new Actions column (FR5-ADMIN-4 regression guard)", async () => {
+    mockHook({
+      data: {
+        total: 5,
+        items: [seedAdminItem, memberRow, agentRow, inactiveMemberRow, ...seedMembers(1)],
+        page: 1,
+        page_size: 50,
+      },
+    });
+    mount(<UsersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("member@test.example")).toBeTruthy();
+    });
+
     expect(screen.queryAllByRole("checkbox").length).toBe(0);
     expect(
       screen.queryAllByRole("button", { name: /bulk|select all/i }).length,
