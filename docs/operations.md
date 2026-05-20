@@ -409,3 +409,68 @@ re-running `hydrate_local_tree.py`.
   overwritten in place; storing it separately would require a DB
   convention decision (column on `Model` or a flagged `ModelNote`).
 - **Backup for `portal-content/`** — restic schedule per spec section 7.1.
+
+## Post-cutover portal-self-auth posture (2026-05-20)
+
+Initiative 5 closed at this commit. The edge cutover (Epic 10 Story 10.3,
+sibling commit `dd0c7b8` on `~/repos/configs/`) dropped the server-level
+IP allowlist on `https://3d.ezop.ddns.net`. Nginx is now a thin TLS
+terminator + proxy layer — no longer an auth gate.
+
+### Authentication
+
+- The portal authenticates itself via cookie+JWT — `portal_access` 10min +
+  `portal_refresh` 30d family rotation. CSRF via the `X-Portal-Client: web`
+  header (Init 0 baseline preserved).
+- The `member` role is invite-only: admin generates single-use invite
+  tokens via the `/admin/invites` panel (Story 8.6 surface); recipient
+  lands on `/register?token=` flow (Story 6.4 surface). Public sign-up is
+  intentionally NOT exposed.
+- The `agent` service account (Init 2) is preserved exactly: cookie+password
+  flow unchanged, 2FA never forced (`Role.agent` excluded by fail-fast
+  startup `RuntimeError` if added to `enforce_2fa_for_roles`).
+- The `admin` role (Michał) stays admin-only — `current_admin` dependency
+  enforces per-route on every admin endpoint.
+
+### 2FA enforcement
+
+- Per-role config-flag driven: `enforce_2fa_for_roles: list[Role]` in
+  `apps/api/app/core/config.py` (default `[]`).
+- Per-user override path via `users.force_2fa_enrollment` BOOLEAN flag
+  (Story 8.4 admin force-enrollment endpoint).
+- Eight single-use recovery codes generated once + stored hashed (Story 7.1
+  Fernet-encrypted secret + `recovery_codes` table).
+- TOTP enrollment + verify flow at `/settings/2fa` (Story 7.2 + 7.5).
+- Recovery-code drill artifact for the operator runbook:
+  `_bmad-output/implementation-artifacts/2fa-recovery-drill-2026-05-20.md`
+  (Story 7.6 NFR5-OBS-2 first slot, gitignored).
+
+### Rate-limiting
+
+Redis sliding-window protects the auth + share surfaces (Decision G + H):
+
+- `/api/auth/login` — 5 attempts / 60s per IP (Story 6.6).
+- `/api/auth/refresh` — 10 attempts / 60s per IP (Story 6.6).
+- `/api/auth/register?token=` — 3 attempts / 60s per IP (Story 6.6).
+- `POST /api/share/` per member — 20 creates / 24h hard cap; soft-alert
+  log line at 10th create (Story 6.7 + Decision H).
+
+### Cross-references
+
+- `_bmad-output/implementation-artifacts/security-audit-2026-05-20.md` —
+  Story 9.4 Epic 9 audit signoff: gate-condition PASS, zero open
+  Critical/High, 23 Mediums all mitigated, 0/3 accepted-with-rationale.
+- `_bmad-output/implementation-artifacts/cutover-smoke-2026-05-20.md` —
+  Story 10.3 cutover artifact: 4-scenario smoke + rollback drill PASS.
+- `_bmad-output/implementation-artifacts/2fa-recovery-drill-2026-05-20.md` —
+  Story 7.6 operator runbook drill.
+
+### Trust boundary
+
+The portal is now the sole authoritative authentication boundary. Any
+direct LAN access via `192.168.2.190:8090` STILL bypasses nginx and SHOULD
+NOT be used by clients (admin/agent excepted — operator uses LAN-direct for
+maintenance; production traffic goes through `https://3d.ezop.ddns.net`).
+The nginx `set_real_ip_from` trust boundary at `.180` (Story 6.6 Codex
+fix-up) ensures the rate-limit middleware sees the real client IP, not the
+nginx proxy IP, when computing the sliding-window key.
