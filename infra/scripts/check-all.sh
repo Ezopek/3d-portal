@@ -57,6 +57,17 @@ run_stage "workers/render ruff check" SKIP_RUFF_CHECK "$ROOT/workers/render" \
 run_stage "apps/web typecheck" SKIP_TYPECHECK "$ROOT/apps/web" \
   npm run typecheck
 
+# Story 9.1 (Epic 8 retro §A11) — apps/web production build stage. `tsc -b`
+# (the typecheck stage above) does NOT catch missing-export errors that the
+# full Vite production build surfaces. Story 8.6 TS2305 lesson: api-types.ts
+# shipped without an exported symbol that other modules imported; typecheck
+# passed because the tsc composite incremental did not re-evaluate the
+# downstream file. `pnpm build` (== `tsc -b && vite build`) re-evaluates
+# everything and fails fast. Cost: ~30-60s on a clean tree. Skip via
+# SKIP_BUILD=1 for fast iteration.
+run_stage "apps/web production build" SKIP_BUILD "$ROOT/apps/web" \
+  npm run build
+
 run_stage "apps/web lint (eslint + stylelint)" SKIP_LINT "$ROOT/apps/web" \
   npm run lint -- --max-warnings=0
 
