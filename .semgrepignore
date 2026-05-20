@@ -1,0 +1,31 @@
+# Semgrep ignore patterns — Story 9.1 (Epic 9 audit baseline)
+#
+# Semgrep's default `--config auto + p/owasp-top-ten` rulesets flag certain
+# patterns inside test fixtures as security errors. Test files contain
+# deliberately-crafted dummy secrets / tokens for assertion purposes; flagging
+# them yields false positives that drown real findings.
+#
+# Scope: only test-file patterns are ignored here. Production source and
+# config (Dockerfiles, nginx, *.html) remain in scope. The audit baseline
+# output (semgrep.json) is the gate input for Story 9.4.
+
+# Frontend test files — vitest + playwright fixtures with TOTP test secrets,
+# fake bearer tokens, hard-coded user passwords for mock API responses.
+apps/web/src/**/*.test.ts
+apps/web/src/**/*.test.tsx
+apps/web/tests/**/*.ts
+apps/web/tests/**/*.tsx
+
+# Backend test files — pytest fixtures with bcrypt test hashes, JWT secrets,
+# bandit B105/B106 false-positive material.
+apps/api/tests/**/*.py
+workers/render/tests/**/*.py
+
+# Generated / vendored artifacts already covered by --exclude flags but
+# duplicated here for safety on direct semgrep invocations.
+node_modules/
+.venv/
+**/dist/
+**/build/
+**/htmlcov/
+**/.pytest_cache/

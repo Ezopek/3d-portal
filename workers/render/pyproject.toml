@@ -29,6 +29,7 @@ dev = [
     "pytest-asyncio>=0.24",
     "ruff>=0.8",
     "fakeredis>=2.26",
+    "bandit>=1.8",
 ]
 
 [tool.ruff]
