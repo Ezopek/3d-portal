@@ -53,6 +53,11 @@ export function UserMenu() {
             {t("auth.sessions.menu_link")}
           </DropdownMenuItem>
           {isAdmin && (
+            <DropdownMenuItem render={<a href="/admin/users" />}>
+              {t("admin.menu_link")}
+            </DropdownMenuItem>
+          )}
+          {isAdmin && (
             <DropdownMenuItem onClick={() => setAgentsDialogOpen(true)}>
               {t("agents.menu_label")}
             </DropdownMenuItem>

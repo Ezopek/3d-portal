@@ -196,6 +196,29 @@ export interface SessionsResponse {
   items: Session[];
 }
 
+// --- Admin users (Story 8.2) ---
+
+export type AdminUserSortBy = "email" | "role" | "created_at" | "last_active_at";
+export type AdminUserSortOrder = "asc" | "desc";
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  display_name: string;
+  role: Role;
+  created_at: string;
+  last_active_at: string | null;
+  totp_enabled: boolean;
+  is_active: boolean;
+}
+
+export interface AdminUsersListResponse {
+  total: number;
+  items: AdminUser[];
+  page: number;
+  page_size: number;
+}
+
 // --- TOTP 2FA (Story 7.2) ---
 
 export interface TotpEnrollResponse {

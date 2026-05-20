@@ -8,15 +8,16 @@ SoT model/file/tag/category write endpoints live in
 import datetime
 import json
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlmodel import Session, func, select
 
 from app.core.auth.dependencies import current_admin
-from app.core.db.models import AuditLog
+from app.core.db.models import AuditLog, User
 from app.core.db.session import get_session
+from app.modules.admin.users_schemas import AdminUserListItem, AdminUserListResponse
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -134,3 +135,71 @@ def admin_get_audit_log(
     stmt = stmt.order_by(AuditLog.at.desc()).limit(limit)
     rows = session.exec(stmt).all()
     return AuditLogResponse(items=[AuditLogEntry.from_row(r) for r in rows])
+
+
+@router.get(
+    "/users",
+    response_model=AdminUserListResponse,
+    summary="List portal users with search, sort, and pagination (admin only)",
+    description=(
+        "Returns the 8 panel-visible columns from epics §1770 verbatim "
+        "(id, email, display_name, role, created_at, last_active_at, "
+        "totp_enabled, is_active). `password_hash` and `totp_secret` are "
+        "filtered at the Pydantic projection layer and NEVER appear in the "
+        "response (Decision I hygiene rule). Ordering defaults to "
+        "`created_at DESC`; `sort_by=last_active_at` puts NULLs LAST "
+        "regardless of `sort_order`. Pagination is 1-indexed; `page_size` "
+        "is capped at 200 to match the Init 5 admin-list contract."
+    ),
+)
+def list_admin_users(
+    session: Annotated[Session, Depends(get_session)],
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    search: str | None = Query(default=None, max_length=255),
+    sort_by: Literal["email", "role", "created_at", "last_active_at"] | None = Query(default=None),
+    sort_order: Literal["asc", "desc"] | None = Query(default=None),
+    _user_id: uuid.UUID = current_admin,
+) -> AdminUserListResponse:
+    base_stmt = select(User)
+    count_stmt = select(func.count()).select_from(User)
+    if search:
+        pattern = f"%{search}%"
+        base_stmt = base_stmt.where(User.email.ilike(pattern))
+        count_stmt = count_stmt.where(User.email.ilike(pattern))
+
+    if sort_by is None:
+        base_stmt = base_stmt.order_by(User.created_at.desc())
+    else:
+        column = {
+            "email": User.email,
+            "role": User.role,
+            "created_at": User.created_at,
+            "last_active_at": User.last_active_at,
+        }[sort_by]
+        order_default_desc = sort_by in {"created_at", "last_active_at"}
+        order = sort_order or ("desc" if order_default_desc else "asc")
+        direction = column.desc() if order == "desc" else column.asc()
+        if sort_by == "last_active_at":
+            base_stmt = base_stmt.order_by(User.last_active_at.is_(None).asc(), direction)
+        else:
+            base_stmt = base_stmt.order_by(direction)
+
+    total = session.exec(count_stmt).one()
+    offset = (page - 1) * page_size
+    rows = session.exec(base_stmt.offset(offset).limit(page_size)).all()
+
+    items = [
+        AdminUserListItem(
+            id=row.id,
+            email=row.email,
+            display_name=row.display_name,
+            role=row.role,
+            created_at=row.created_at,
+            last_active_at=row.last_active_at,
+            totp_enabled=row.totp_enabled_at is not None,
+            is_active=row.is_active,
+        )
+        for row in rows
+    ]
+    return AdminUserListResponse(total=total, items=items, page=page, page_size=page_size)
