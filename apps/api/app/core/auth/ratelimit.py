@@ -104,7 +104,10 @@ def refresh_ratelimit_key(request: Request) -> str | None:
 
 
 def register_ratelimit_key(request: Request) -> str | None:
-    if request.method == "POST" and request.url.path == "/api/auth/register":
+    if request.method == "POST" and request.url.path in {
+        "/api/auth/register",
+        "/api/auth/password-reset",
+    }:
         return f"ip:{_client_ip(request)}"
     return None
 

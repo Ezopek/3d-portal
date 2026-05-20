@@ -233,6 +233,13 @@ export interface UserMutationRequest {
 // `useForce2faEnrollmentAdminUser` / `useForceDisable2faAdminUser`
 // in `modules/admin/hooks/useAdminUsers.ts`.
 
+// --- Password reset (Story 8.5) ---
+
+export interface PasswordResetMintResponse {
+  reset_url: string;
+  expires_at: string;
+}
+
 // --- TOTP 2FA (Story 7.2) ---
 
 export interface TotpEnrollResponse {

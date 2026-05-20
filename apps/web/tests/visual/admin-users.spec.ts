@@ -12,6 +12,7 @@ interface AdminUserFixture {
   last_active_at: string | null;
   totp_enabled: boolean;
   is_active: boolean;
+  force_2fa_enrollment: boolean;
 }
 
 interface UsersListFixture {
@@ -31,6 +32,7 @@ function rowFixture(i: number, overrides: Partial<AdminUserFixture> = {}): Admin
     last_active_at: "2026-05-20T07:00:00Z",
     totp_enabled: false,
     is_active: true,
+    force_2fa_enrollment: false,
     ...overrides,
   };
 }
@@ -61,6 +63,7 @@ async function stubAdminUsersPage(page: Page, payload?: UsersListFixture) {
         last_active_at: "2026-05-20T07:00:00Z",
         totp_enabled: false,
         is_active: true,
+        force_2fa_enrollment: false,
       },
     ],
     page: 1,
@@ -159,5 +162,191 @@ test.describe("/admin/users — AdminTabs disabled-state regression guard", () =
 
     const invitesTab = page.getByRole("tab", { name: /Invites|Zaproszenia/i });
     await expect(invitesTab).toHaveAttribute("aria-disabled", "true");
+  });
+});
+
+// The dev server detects `pl-PL` locale (playwright.config.ts) so the page
+// renders in Polish; aria labels and menu text below match pl.json verbatim.
+test.describe("/admin/users — Story 8.3 per-row actions surface", () => {
+  test("kebab menu opens and shows the four actions on a member row", async ({
+    page,
+  }) => {
+    const member = rowFixture(7, {
+      id: "00000000-0000-0000-0000-000000000007",
+    });
+    await stubAdminUsersPage(page, {
+      total: 1,
+      items: [member],
+      page: 1,
+      page_size: 50,
+    });
+    await page.goto("/admin/users");
+    await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
+    await waitForReady(page);
+
+    const kebab = page.getByRole("button", {
+      name: /Akcje dla member7@test\.example/i,
+    });
+    await expect(kebab).toBeEnabled();
+    // ``force: true`` because narrow viewports (Pixel 5 in mobile-*) let the
+    // sticky table header overlap the kebab; the menu wiring itself is what
+    // we exercise here, layout regressions are caught by the baseline PNGs.
+    await kebab.click({ force: true });
+
+    await expect(page.getByText("Zmień rolę").first()).toBeVisible();
+    await expect(page.getByText("Dezaktywuj")).toBeVisible();
+    await expect(
+      page.getByText("Wymuś wylogowanie ze wszystkich sesji"),
+    ).toBeVisible();
+    await expect(page.getByText("Reaktywuj")).toHaveCount(0);
+  });
+
+  test("Story 8.4 — kebab shows force-disable item for active totp-enabled non-flagged member", async ({
+    page,
+  }) => {
+    const member = rowFixture(81, {
+      id: "00000000-0000-0000-0000-000000000081",
+      totp_enabled: true,
+      force_2fa_enrollment: false,
+    });
+    await stubAdminUsersPage(page, {
+      total: 1,
+      items: [member],
+      page: 1,
+      page_size: 50,
+    });
+    await page.goto("/admin/users");
+    await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
+    await waitForReady(page);
+
+    const kebab = page.getByRole("button", {
+      name: /Akcje dla member81@test\.example/i,
+    });
+    await kebab.click({ force: true });
+
+    // Force-disable 2FA is visible (totp_enabled=true).
+    await expect(
+      page.getByText(/Wymuś wyłączenie 2FA/i).first(),
+    ).toBeVisible();
+    // Force 2FA enrollment is NOT visible (already enrolled).
+    await expect(page.getByText(/Wymuś włączenie 2FA/i)).toHaveCount(0);
+    // Story 8.3 items still present.
+    await expect(page.getByText("Zmień rolę").first()).toBeVisible();
+    await expect(page.getByText("Dezaktywuj")).toBeVisible();
+    await expect(
+      page.getByText("Wymuś wylogowanie ze wszystkich sesji"),
+    ).toBeVisible();
+  });
+
+  test("Story 8.4 — kebab shows force-enroll item for active non-enrolled non-flagged member", async ({
+    page,
+  }) => {
+    const member = rowFixture(91, {
+      id: "00000000-0000-0000-0000-000000000091",
+      totp_enabled: false,
+      force_2fa_enrollment: false,
+    });
+    await stubAdminUsersPage(page, {
+      total: 1,
+      items: [member],
+      page: 1,
+      page_size: 50,
+    });
+    await page.goto("/admin/users");
+    await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
+    await waitForReady(page);
+
+    const kebab = page.getByRole("button", {
+      name: /Akcje dla member91@test\.example/i,
+    });
+    await kebab.click({ force: true });
+
+    // Force 2FA enrollment is visible (not enrolled + not flagged).
+    await expect(
+      page.getByText(/Wymuś włączenie 2FA/i).first(),
+    ).toBeVisible();
+    // Force-disable 2FA is NOT visible (not enrolled).
+    await expect(page.getByText(/Wymuś wyłączenie 2FA/i)).toHaveCount(0);
+    // Story 8.3 items still present.
+    await expect(page.getByText("Zmień rolę").first()).toBeVisible();
+  });
+
+  test("kebab disabled on self and agent rows; enabled on member row", async ({
+    page,
+  }) => {
+    const member = rowFixture(11, {
+      id: "00000000-0000-0000-0000-000000000011",
+    });
+    const agent = rowFixture(12, {
+      id: "00000000-0000-0000-0000-000000000012",
+      email: "agent@portal.local",
+      role: "agent",
+    });
+    const own: AdminUserFixture = {
+      id: "u1",
+      email: "admin@localhost.localdomain",
+      display_name: "Admin",
+      role: "admin",
+      created_at: "2026-05-19T08:00:00Z",
+      last_active_at: "2026-05-20T07:00:00Z",
+      totp_enabled: false,
+      is_active: true,
+      force_2fa_enrollment: false,
+    };
+    await stubAdminUsersPage(page, {
+      total: 3,
+      items: [own, agent, member],
+      page: 1,
+      page_size: 50,
+    });
+    await page.goto("/admin/users");
+    await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
+    await waitForReady(page);
+
+    const memberKebab = page.getByRole("button", {
+      name: /Akcje dla member11@test\.example/i,
+    });
+    await expect(memberKebab).toBeEnabled();
+
+    const agentKebab = page.getByRole("button", {
+      name: /Akcje dla agent@portal\.local/i,
+    });
+    await expect(agentKebab).toHaveAttribute("aria-disabled", "true");
+
+    const ownKebab = page.getByRole("button", {
+      name: /Akcje dla admin@localhost\.localdomain/i,
+    });
+    await expect(ownKebab).toHaveAttribute("aria-disabled", "true");
+  });
+
+  test("Story 8.5 — kebab shows 'Issue password reset link' item for active non-flagged member (Test 10, DOM-assert)", async ({
+    page,
+  }) => {
+    const member = rowFixture(101, {
+      id: "00000000-0000-0000-0000-000000000101",
+      totp_enabled: false,
+      force_2fa_enrollment: false,
+    });
+    await stubAdminUsersPage(page, {
+      total: 1,
+      items: [member],
+      page: 1,
+      page_size: 50,
+    });
+    await page.goto("/admin/users");
+    await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
+    await waitForReady(page);
+
+    const kebab = page.getByRole("button", {
+      name: /Akcje dla member101@test\.example/i,
+    });
+    await kebab.click({ force: true });
+
+    await expect(
+      page.getByText(/Wystaw link do resetu hasła/i).first(),
+    ).toBeVisible();
+    // Story 8.3 + 8.4 items still present.
+    await expect(page.getByText("Zmień rolę").first()).toBeVisible();
+    await expect(page.getByText(/Wymuś włączenie 2FA/i).first()).toBeVisible();
   });
 });

@@ -5,6 +5,7 @@ import type {
   AdminUserSortBy,
   AdminUserSortOrder,
   AdminUsersListResponse,
+  PasswordResetMintResponse,
   UserMutationRequest,
 } from "@/lib/api-types";
 
@@ -94,5 +95,19 @@ export function useForceDisable2faAdminUser() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
     },
+  });
+}
+
+// --- Admin-issued password-reset link (Story 8.5) ---
+// Intentionally does NOT invalidate the `["admin", "users"]` query subtree:
+// minting a reset link has no user-list-visible side-effect (Redis-only state),
+// so a refetch would be wasteful.
+
+export function useIssuePasswordResetAdminUser() {
+  return useMutation<PasswordResetMintResponse, ApiError, string>({
+    mutationFn: (user_id) =>
+      api<PasswordResetMintResponse>(`/admin/users/${user_id}/password-reset`, {
+        method: "POST",
+      }),
   });
 }

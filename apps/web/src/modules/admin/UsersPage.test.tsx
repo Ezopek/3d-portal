@@ -23,6 +23,7 @@ const updateMutate = vi.fn();
 const forceLogoutMutate = vi.fn();
 const force2faEnrollmentMutate = vi.fn();
 const forceDisable2faMutate = vi.fn();
+const issuePasswordResetMutate = vi.fn();
 
 vi.mock("@/modules/admin/hooks/useAdminUsers", () => ({
   useAdminUsers: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock("@/modules/admin/hooks/useAdminUsers", () => ({
   useForceLogoutAdminUser: vi.fn(),
   useForce2faEnrollmentAdminUser: vi.fn(),
   useForceDisable2faAdminUser: vi.fn(),
+  useIssuePasswordResetAdminUser: vi.fn(),
 }));
 
 vi.mock("@/shell/AuthContext", () => ({
@@ -42,6 +44,7 @@ import {
   useForce2faEnrollmentAdminUser,
   useForceDisable2faAdminUser,
   useForceLogoutAdminUser,
+  useIssuePasswordResetAdminUser,
   useUpdateAdminUser,
 } from "@/modules/admin/hooks/useAdminUsers";
 import { UsersPage } from "@/modules/admin/UsersPage";
@@ -57,6 +60,7 @@ beforeEach(() => {
   forceLogoutMutate.mockReset();
   force2faEnrollmentMutate.mockReset();
   forceDisable2faMutate.mockReset();
+  issuePasswordResetMutate.mockReset();
   vi.mocked(useUpdateAdminUser).mockReturnValue({
     mutate: updateMutate,
     isPending: false,
@@ -81,6 +85,12 @@ beforeEach(() => {
     isError: false,
     error: null,
   } as unknown as ReturnType<typeof useForceDisable2faAdminUser>);
+  vi.mocked(useIssuePasswordResetAdminUser).mockReturnValue({
+    mutate: issuePasswordResetMutate,
+    isPending: false,
+    isError: false,
+    error: null,
+  } as unknown as ReturnType<typeof useIssuePasswordResetAdminUser>);
   vi.mocked(useAuth).mockReturnValue({
     user: {
       id: ADMIN_ID,
@@ -606,5 +616,112 @@ describe("UsersPage", () => {
     const call = forceDisable2faMutate.mock.calls[0];
     if (!call) throw new Error("expected mutate call");
     expect(call[0]).toBe(enrolledMemberRow.id);
+  });
+
+  // Story 8.5 — V15-V17 — admin-issued password-reset link
+
+  it("V15 — Issue password reset link menu item visible for non-self non-agent rows", async () => {
+    mockHook({
+      data: { total: 1, items: [memberRow], page: 1, page_size: 50 },
+    });
+    const user = userEvent.setup();
+    mount(<UsersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("member@test.example")).toBeTruthy();
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: /Actions for member@test\.example/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Issue password reset link")).toBeTruthy();
+    });
+  });
+
+  it("V16 — confirming Issue password reset dispatches useIssuePasswordResetAdminUser", async () => {
+    mockHook({
+      data: { total: 1, items: [memberRow], page: 1, page_size: 50 },
+    });
+    const user = userEvent.setup();
+    mount(<UsersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("member@test.example")).toBeTruthy();
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: /Actions for member@test\.example/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Issue password reset link")).toBeTruthy();
+    });
+    await user.click(screen.getByText("Issue password reset link"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Issue password reset link for member@test\.example\?/i),
+      ).toBeTruthy();
+    });
+
+    await user.click(screen.getByRole("button", { name: /^Confirm$/i }));
+
+    expect(issuePasswordResetMutate).toHaveBeenCalledTimes(1);
+    const call = issuePasswordResetMutate.mock.calls[0];
+    if (!call) throw new Error("expected mutate call");
+    expect(call[0]).toBe(memberRow.id);
+  });
+
+  it("V17 — mutation onSuccess opens ResetLinkDisplayModal with returned reset_url", async () => {
+    mockHook({
+      data: { total: 1, items: [memberRow], page: 1, page_size: 50 },
+    });
+    // When the handler calls mutate(id, { onSuccess }), our mock immediately
+    // invokes the onSuccess callback with a canned response shape — that's
+    // what should open the ResetLinkDisplayModal.
+    issuePasswordResetMutate.mockImplementation(
+      (
+        _id: string,
+        opts?: {
+          onSuccess?: (resp: { reset_url: string; expires_at: string }) => void;
+        },
+      ) => {
+        opts?.onSuccess?.({
+          reset_url: "/reset-password?token=ABC",
+          expires_at: "2026-05-21T00:00:00Z",
+        });
+      },
+    );
+
+    const user = userEvent.setup();
+    mount(<UsersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("member@test.example")).toBeTruthy();
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: /Actions for member@test\.example/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Issue password reset link")).toBeTruthy();
+    });
+    await user.click(screen.getByText("Issue password reset link"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Issue password reset link for member@test\.example\?/i),
+      ).toBeTruthy();
+    });
+    await user.click(screen.getByRole("button", { name: /^Confirm$/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Password reset link issued for member@test\.example/i),
+      ).toBeTruthy();
+    });
+    const input = screen.getByDisplayValue("/reset-password?token=ABC");
+    expect(input).toBeTruthy();
   });
 });

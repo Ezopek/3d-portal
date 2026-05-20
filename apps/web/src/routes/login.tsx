@@ -10,6 +10,7 @@ import { Input } from "@/ui/input";
 
 interface LoginSearch {
   next?: string;
+  reset?: "success";
 }
 
 type SubState = "email_password" | "second_factor";
@@ -141,6 +142,11 @@ function Login() {
   return (
     <form onSubmit={submitEmailPassword} className="mx-auto mt-12 grid w-full max-w-sm gap-4 p-4">
       <h1 className="text-xl font-semibold">{t("auth.login")}</h1>
+      {search.reset === "success" && (
+        <p className="text-sm text-success" role="status">
+          {t("auth.login.reset_success_banner")}
+        </p>
+      )}
       <div className="grid gap-1.5">
         <label htmlFor={emailId} className="text-sm font-medium">
           {t("auth.email")}
@@ -182,8 +188,9 @@ function Login() {
 export const Route = createFileRoute("/login")({
   component: Login,
   validateSearch: (raw: Record<string, unknown>): LoginSearch => {
-    return typeof raw.next === "string" && raw.next.length > 0
-      ? { next: raw.next }
-      : {};
+    const out: LoginSearch = {};
+    if (typeof raw.next === "string" && raw.next.length > 0) out.next = raw.next;
+    if (raw.reset === "success") out.reset = "success";
+    return out;
   },
 });

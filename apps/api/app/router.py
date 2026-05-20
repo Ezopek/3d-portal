@@ -1,6 +1,8 @@
 from fastapi import APIRouter
 
 from app.modules.admin.router import router as admin_router
+from app.modules.auth.password_reset.admin_router import router as password_reset_admin_router
+from app.modules.auth.password_reset.router import router as password_reset_public_router
 from app.modules.auth.router import router as auth_router
 from app.modules.auth.totp.router import router as totp_router
 from app.modules.invite.admin_router import router as invite_admin_router
@@ -15,6 +17,8 @@ api_router.include_router(auth_router)
 api_router.include_router(totp_router)
 api_router.include_router(invite_public_router)
 api_router.include_router(invite_admin_router)
+api_router.include_router(password_reset_public_router)
+api_router.include_router(password_reset_admin_router)
 api_router.include_router(sot_admin_router)
 api_router.include_router(admin_router)
 api_router.include_router(share_admin_router)

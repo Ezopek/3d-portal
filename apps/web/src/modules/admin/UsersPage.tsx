@@ -12,11 +12,13 @@ import type {
 } from "@/lib/api-types";
 import { AdminTabs } from "@/modules/admin/AdminTabs";
 import { ChangeRoleModal } from "@/modules/admin/ChangeRoleModal";
+import { ResetLinkDisplayModal } from "@/modules/admin/ResetLinkDisplayModal";
 import {
   useAdminUsers,
   useForce2faEnrollmentAdminUser,
   useForceDisable2faAdminUser,
   useForceLogoutAdminUser,
+  useIssuePasswordResetAdminUser,
   useUpdateAdminUser,
 } from "@/modules/admin/hooks/useAdminUsers";
 import { useAuth } from "@/shell/AuthContext";
@@ -99,6 +101,7 @@ export function UsersPage() {
   const forceLogout = useForceLogoutAdminUser();
   const force2faEnrollment = useForce2faEnrollmentAdminUser();
   const forceDisable2fa = useForceDisable2faAdminUser();
+  const issuePasswordReset = useIssuePasswordResetAdminUser();
 
   const [changeRoleTarget, setChangeRoleTarget] = useState<AdminUser | null>(null);
   const [confirmDeactivateTarget, setConfirmDeactivateTarget] =
@@ -111,6 +114,11 @@ export function UsersPage() {
     useState<AdminUser | null>(null);
   const [confirmForceDisable2faTarget, setConfirmForceDisable2faTarget] =
     useState<AdminUser | null>(null);
+  const [confirmIssuePasswordResetTarget, setConfirmIssuePasswordResetTarget] =
+    useState<AdminUser | null>(null);
+  const [displayedResetLink, setDisplayedResetLink] = useState<
+    { reset_url: string; expires_at: string; email: string } | null
+  >(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
 
   function clearError() {
@@ -189,6 +197,23 @@ export function UsersPage() {
     });
   }
 
+  function handleIssuePasswordResetConfirm() {
+    const target = confirmIssuePasswordResetTarget;
+    if (!target) return;
+    clearError();
+    issuePasswordReset.mutate(target.id, {
+      onSuccess: (resp) => {
+        setConfirmIssuePasswordResetTarget(null);
+        setDisplayedResetLink({
+          reset_url: resp.reset_url,
+          expires_at: resp.expires_at,
+          email: target.email,
+        });
+      },
+      onError: handleMutationError,
+    });
+  }
+
   function updateSearchParams(
     next: Partial<{
       page: number;
@@ -239,7 +264,8 @@ export function UsersPage() {
     updateUser.isPending ||
     forceLogout.isPending ||
     force2faEnrollment.isPending ||
-    forceDisable2fa.isPending;
+    forceDisable2fa.isPending ||
+    issuePasswordReset.isPending;
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-6">
@@ -482,6 +508,14 @@ export function UsersPage() {
                                   {t("admin.users.actions.force_disable_2fa")}
                                 </DropdownMenuItem>
                               ) : null}
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  clearError();
+                                  setConfirmIssuePasswordResetTarget(user);
+                                }}
+                              >
+                                {t("admin.users.actions.issue_password_reset")}
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         )}
@@ -597,6 +631,31 @@ export function UsersPage() {
         pending={pending}
         onConfirm={handleForceDisable2faConfirm}
       />
+
+      <ConfirmDialog
+        open={confirmIssuePasswordResetTarget !== null}
+        onOpenChange={(next) => {
+          if (!next) setConfirmIssuePasswordResetTarget(null);
+        }}
+        title={t("admin.users.confirm.issue_password_reset_title", {
+          email: confirmIssuePasswordResetTarget?.email ?? "",
+        })}
+        description={t("admin.users.confirm.issue_password_reset_description")}
+        pending={pending}
+        onConfirm={handleIssuePasswordResetConfirm}
+      />
+
+      {displayedResetLink && (
+        <ResetLinkDisplayModal
+          open
+          onOpenChange={(next) => {
+            if (!next) setDisplayedResetLink(null);
+          }}
+          email={displayedResetLink.email}
+          resetUrl={displayedResetLink.reset_url}
+          expiresAt={displayedResetLink.expires_at}
+        />
+      )}
     </div>
   );
 }
