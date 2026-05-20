@@ -82,17 +82,21 @@ require() {
   fi
 }
 
-require "uv"        uv
-require "semgrep"   semgrep
-require "pip-audit" pip-audit
-require "npm"       npm
-require "docker"    docker
-require "jq"        jq
+# Codex P2 fix-up: gate each prerequisite behind its SKIP_<TOOL> flag so an
+# offline subset (e.g. SKIP_ZAP=1 on a host without Docker) can still run.
+# uv + jq are unconditional — they are universal helpers; the rest follow
+# their tool's skip flag.
+require "uv" uv
+require "jq" jq
 
-# Bandit lives inside the apps/api venv (uv-installed dev dep).
-if ! (cd "$REPO_DIR/apps/api" && uv run --no-sync bandit --version >/dev/null 2>&1); then
-  fail "bandit not available in apps/api/.venv — run 'uv sync --extra dev' first"
-fi
+[[ "${SKIP_BANDIT:-}" == "1" ]] || \
+  (cd "$REPO_DIR/apps/api" && uv run --no-sync bandit --version >/dev/null 2>&1) || \
+  fail "bandit not available in apps/api/.venv — run 'uv sync --extra dev' first (or set SKIP_BANDIT=1)"
+
+[[ "${SKIP_SEMGREP:-}" == "1" ]] || require "semgrep" semgrep
+[[ "${SKIP_PIP_AUDIT:-}" == "1" ]] || require "pip-audit" pip-audit
+[[ "${SKIP_NPM_AUDIT:-}" == "1" ]] || require "npm" npm
+[[ "${SKIP_ZAP:-}" == "1" ]] || require "docker" docker
 
 mkdir -p "$AUDIT_DIR"
 log "audit dir: $AUDIT_DIR"
@@ -103,6 +107,9 @@ FAILED_TOOLS=()
 # AC3 — bandit (apps/api + workers/render)
 #-----------------------------------------------------------------------------
 run_bandit() {
+  # Codex P2 fix-up: clear stale outputs first so a tool abort mid-run
+  # doesn't leave a previous attempt's artifact masquerading as current.
+  rm -f "$AUDIT_DIR/bandit-apps-api.txt" "$AUDIT_DIR/bandit-workers-render.txt"
   log "bandit — apps/api"
   (cd "$REPO_DIR/apps/api" && \
     uv run bandit -r app -f txt -o "$AUDIT_DIR/bandit-apps-api.txt") || true
@@ -117,6 +124,7 @@ run_bandit() {
 # AC4 — semgrep (apps/api + apps/web + workers/render)
 #-----------------------------------------------------------------------------
 run_semgrep() {
+  rm -f "$AUDIT_DIR/semgrep.json"
   log "semgrep — apps/api + apps/web + workers/render"
   (cd "$REPO_DIR" && \
     semgrep --config auto --config p/owasp-top-ten --exclude node_modules \
@@ -128,23 +136,41 @@ run_semgrep() {
 #-----------------------------------------------------------------------------
 # AC5 — pip-audit (apps/api + workers/render production deps only)
 #-----------------------------------------------------------------------------
+_pip_audit_one() {
+  # Codex P1 fix-up: process-substitution swallowed uv export errors AND
+  # `|| true` masked pip-audit failure, so an empty requirements stream could
+  # be recorded as a clean baseline. Now: export to temp file with stderr
+  # captured, verify exit + non-empty, then feed pip-audit; on any failure
+  # the output file stays cleared and FAILED_TOOLS catches it.
+  local project_dir="$1" out_file="$2" failure_key="$3"
+  rm -f "$out_file"
+  local req_tmp err_tmp
+  req_tmp="$(mktemp)"
+  err_tmp="$(mktemp)"
+  if (cd "$project_dir" && uv export --no-dev --no-hashes >"$req_tmp" 2>"$err_tmp") \
+      && [[ -s "$req_tmp" ]]; then
+    pip-audit --requirement "$req_tmp" -o "$out_file" || true
+  else
+    log "uv export failed for $project_dir — pip-audit skipped"
+    log "  stderr: $(head -3 "$err_tmp" | tr '\n' ' ')"
+    FAILED_TOOLS+=("$failure_key")
+  fi
+  rm -f "$req_tmp" "$err_tmp"
+  [[ -s "$out_file" ]] || FAILED_TOOLS+=("$failure_key")
+}
+
 run_pip_audit() {
   log "pip-audit — apps/api (prod deps)"
-  (cd "$REPO_DIR/apps/api" && \
-    pip-audit --requirement <(uv export --no-dev --no-hashes 2>/dev/null) \
-      -o "$AUDIT_DIR/pip-audit-apps-api.txt") || true
+  _pip_audit_one "$REPO_DIR/apps/api" "$AUDIT_DIR/pip-audit-apps-api.txt" pip-audit-apps-api
   log "pip-audit — workers/render (prod deps)"
-  (cd "$REPO_DIR/workers/render" && \
-    pip-audit --requirement <(uv export --no-dev --no-hashes 2>/dev/null) \
-      -o "$AUDIT_DIR/pip-audit-workers-render.txt") || true
-  [[ -s "$AUDIT_DIR/pip-audit-apps-api.txt" ]] || FAILED_TOOLS+=(pip-audit-apps-api)
-  [[ -s "$AUDIT_DIR/pip-audit-workers-render.txt" ]] || FAILED_TOOLS+=(pip-audit-workers-render)
+  _pip_audit_one "$REPO_DIR/workers/render" "$AUDIT_DIR/pip-audit-workers-render.txt" pip-audit-workers-render
 }
 
 #-----------------------------------------------------------------------------
 # AC6 — npm audit (apps/web)
 #-----------------------------------------------------------------------------
 run_npm_audit() {
+  rm -f "$AUDIT_DIR/npm-audit.json"
   log "npm audit — apps/web"
   (cd "$REPO_DIR/apps/web" && \
     npm audit --audit-level=moderate --json > "$AUDIT_DIR/npm-audit.json") \
@@ -156,6 +182,7 @@ run_npm_audit() {
 # AC7 — OWASP ZAP baseline (passive + light-active)
 #-----------------------------------------------------------------------------
 run_zap() {
+  rm -f "$AUDIT_DIR/zap-baseline.html" "$AUDIT_DIR/zap-baseline.json"
   log "ZAP baseline — $PORTAL_URL (max ${ZAP_MAX_MINUTES} min)"
   docker run --rm \
     -v "$AUDIT_DIR:/zap/wrk:rw" \
@@ -173,13 +200,22 @@ run_zap() {
 # AC8 — tool versions
 #-----------------------------------------------------------------------------
 write_tool_versions() {
+  # Codex P2 fix-up: gate per-tool version probes behind SKIP_<TOOL> so
+  # offline subset runs don't invoke docker / semgrep / pip-audit that are
+  # not installed.
   {
-    echo "bandit: $(cd "$REPO_DIR/apps/api" && uv run bandit --version 2>/dev/null | head -1)"
-    echo "semgrep: $(semgrep --version 2>&1)"
-    echo "pip-audit: $(pip-audit --version 2>&1)"
-    echo "npm: $(npm --version 2>&1) / node: $(node --version 2>&1)"
-    echo "zaproxy: $(docker run --rm ghcr.io/zaproxy/zaproxy:stable zap.sh -version 2>&1 | tail -1)"
-    echo "docker: $(docker --version 2>&1)"
+    if [[ "${SKIP_BANDIT:-}" != "1" ]]; then
+      echo "bandit: $(cd "$REPO_DIR/apps/api" && uv run bandit --version 2>/dev/null | head -1)"
+    fi
+    [[ "${SKIP_SEMGREP:-}" == "1" ]] || echo "semgrep: $(semgrep --version 2>&1)"
+    [[ "${SKIP_PIP_AUDIT:-}" == "1" ]] || echo "pip-audit: $(pip-audit --version 2>&1)"
+    if [[ "${SKIP_NPM_AUDIT:-}" != "1" ]]; then
+      echo "npm: $(npm --version 2>&1) / node: $(node --version 2>&1)"
+    fi
+    if [[ "${SKIP_ZAP:-}" != "1" ]]; then
+      echo "zaproxy: $(docker run --rm ghcr.io/zaproxy/zaproxy:stable zap.sh -version 2>&1 | tail -1)"
+      echo "docker: $(docker --version 2>&1)"
+    fi
     echo "uv: $(uv --version 2>&1)"
     echo "pipx: $(pipx --version 2>&1 || echo 'not installed')"
     echo "git HEAD: $(cd "$REPO_DIR" && git rev-parse HEAD)"
