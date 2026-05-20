@@ -27,9 +27,10 @@
 #
 # Optional env (overrideable):
 #   PORTAL_URL                  default https://3d.ezop.ddns.net
-#   CUTOVER_SHARE_TTL_HOURS     default 24 (cron runs hourly → 24h gives 24×
-#                               redundancy; tradeoff: larger leaked-token
-#                               blast radius vs. resilience to cron skip)
+#   CUTOVER_SHARE_TTL_HOURS     default 30 (cron at :00 every 6h → 4 tokens/day;
+#                               TTL 30h gives ≥6h overlap survives one cron skip;
+#                               4/day << 20/day per-member share cap per
+#                               Decision H — ratelimit_share_threshold=20)
 #   CUTOVER_REFRESH_LOG_FILE    default /var/log/3d-portal-cutover-share-refresh.log
 #                               (falls back to stderr if not writable)
 #
@@ -39,10 +40,12 @@
 #   2  missing required env / missing infra/.env
 #   3  --help invoked
 #
-# Cron entry (hourly at :00, runs from repo root, stdout+stderr appended
-# to a tmpfs log to survive log-rotation):
+# Cron entry (every 6h at :00 — Codex 10.1 P2 fix-up to stay under the
+# per-member 20/day share cap; hourly was 24/day > 20/day → would trip
+# rate-limit at hour 21; 4/day gives 16/day headroom on Decision H cap).
+# Runs from repo root, stdout+stderr appended to a tmpfs log:
 #
-#   0 * * * * cd ~/repos/3d-portal && bash infra/scripts/cutover-share-token-refresh.sh >> /tmp/cutover-share-refresh.log 2>&1
+#   0 */6 * * * cd ~/repos/3d-portal && bash infra/scripts/cutover-share-token-refresh.sh >> /tmp/cutover-share-refresh.log 2>&1
 #
 # Flags:
 #   --help     print this header docstring; exit 3
@@ -102,7 +105,7 @@ if (( ${#_missing_env[@]} > 0 )); then
 fi
 
 : "${PORTAL_URL:=https://3d.ezop.ddns.net}"
-: "${CUTOVER_SHARE_TTL_HOURS:=24}"
+: "${CUTOVER_SHARE_TTL_HOURS:=30}"
 : "${CUTOVER_REFRESH_LOG_FILE:=/var/log/3d-portal-cutover-share-refresh.log}"
 
 # --- Logging plumbing --------------------------------------------------------

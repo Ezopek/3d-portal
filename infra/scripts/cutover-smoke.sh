@@ -211,10 +211,14 @@ echo "started: $(iso_now); pid=$$; fixture=$CUTOVER_STL_FIXTURE"
 echo ""
 
 # --- Scenario 1 — Share bypass ----------------------------------------------
+# Codex 10.1 P1 fix-up: validate the API endpoint /api/share/{token} (returns
+# the ShareModelView JSON when the token is valid), NOT the SPA shell /share/
+# (vite's SPA fallback serves the React app with HTTP 200 for ANY /share/*
+# path, which would mask a broken token / broken API behind a passing smoke).
 scenario_1_share_bypass() {
   local ts code rid out
   ts=$(iso_now)
-  out=$(curl_smoke "$PORTAL_URL/share/$CUTOVER_TEST_SHARE_TOKEN")
+  out=$(curl_smoke "$PORTAL_URL/api/share/$CUTOVER_TEST_SHARE_TOKEN")
   code=$(echo "$out" | cut -f1)
   rid=$(echo "$out" | cut -f2)
   if [[ "$code" == "200" ]]; then
