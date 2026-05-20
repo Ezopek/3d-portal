@@ -12,7 +12,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from sqlmodel import Session, select
 
-from app.core.auth.dependencies import current_member_or_admin
 from app.core.config import get_settings
 from app.core.db.models import ModelFile, ModelFileKind, ModelSource, ModelStatus
 from app.core.db.session import get_session
@@ -42,14 +41,12 @@ router = APIRouter(prefix="/api", tags=["sot-read"])
     description=(
         "Returns the complete hierarchical category tree (`CategoryTree`). Used by "
         "agents during the pre-flight check to confirm a target slug exists before "
-        "creating a model. Requires member-or-admin authentication (post-Init-5 cutover; "
-        "pre-cutover this was nginx IP-allowlist gated)."
+        "creating a model. Public, unauthenticated."
     ),
     response_model=CategoryTree,
 )
 def get_categories(
     session: Annotated[Session, Depends(get_session)],
-    _user_id: uuid.UUID = current_member_or_admin,
 ) -> CategoryTree:
     return list_categories_tree(session)
 
@@ -60,7 +57,7 @@ def get_categories(
     description=(
         "Returns up to `limit` tags, optionally filtered by substring match against "
         "`q` over `slug`/`name_en`/`name_pl`. Default `limit=50`, max `limit=200`. "
-        "Requires member-or-admin authentication (post-Init-5 cutover)."
+        "Public, unauthenticated."
     ),
     response_model=list[TagRead],
 )
@@ -68,7 +65,6 @@ def get_tags(
     session: Annotated[Session, Depends(get_session)],
     q: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
-    _user_id: uuid.UUID = current_member_or_admin,
 ) -> list[TagRead]:
     return list_tags(session, q=q, limit=limit)
 
@@ -85,7 +81,7 @@ def get_tags(
         "dedup-by-source-URL pre-flight; typically 0 or 1 result), `include_deleted` "
         "(default false; soft-deleted rows are hidden). Sort modes: see `ModelListSort` "
         "enum (`recent`, etc.). Pagination: `offset` (≥0), `limit` (1-200, default 50). "
-        "Requires member-or-admin authentication (post-Init-5 cutover)."
+        "Public, unauthenticated."
     ),
     response_model=ModelListResponse,
 )
@@ -101,7 +97,6 @@ def get_models(
     include_deleted: bool = False,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
-    _user_id: uuid.UUID = current_member_or_admin,
 ) -> ModelListResponse:
     return list_models(
         session,
@@ -125,7 +120,7 @@ def get_models(
         "Returns `ModelDetail` including category, tags, files, notes, prints, external "
         "links, and the `thumbnail_file_id` field (non-null UUID once a render lands). "
         "404 if the model is not found OR is soft-deleted (use `?include_deleted=true` "
-        "to include). Requires member-or-admin authentication (post-Init-5 cutover)."
+        "to include). Public, unauthenticated."
     ),
     response_model=ModelDetail,
 )
@@ -133,7 +128,6 @@ def get_model(
     model_id: uuid.UUID,
     session: Annotated[Session, Depends(get_session)],
     include_deleted: bool = False,
-    _user_id: uuid.UUID = current_member_or_admin,
 ) -> ModelDetail:
     detail = get_model_detail(session, model_id, include_deleted=include_deleted)
     if detail is None:
@@ -146,9 +140,9 @@ def get_model(
     summary="List a model's files (optionally filtered by kind)",
     description=(
         "Returns `FileListResponse` for the given model. `kind` query (one of "
-        "`ModelFileKind`) narrows results. 404 if model not found. Requires "
-        "member-or-admin authentication (post-Init-5 cutover). Use the streaming "
-        "`/files/{file_id}/content` endpoint to fetch the binary."
+        "`ModelFileKind`) narrows results. 404 if model not found. Public, "
+        "unauthenticated. Use the streaming `/files/{file_id}/content` endpoint to "
+        "fetch the binary."
     ),
     response_model=FileListResponse,
 )
@@ -156,7 +150,6 @@ def get_model_files(
     model_id: uuid.UUID,
     session: Annotated[Session, Depends(get_session)],
     kind: ModelFileKind | None = None,
-    _user_id: uuid.UUID = current_member_or_admin,
 ) -> FileListResponse:
     result = list_model_files(session, model_id, kind=kind)
     if result is None:
@@ -183,7 +176,6 @@ def get_model_file_content(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
     download: bool = False,
-    _user_id: uuid.UUID = current_member_or_admin,
 ) -> Response:
     """Stream a model file's binary content from portal-content storage.
 

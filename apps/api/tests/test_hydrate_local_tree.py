@@ -13,34 +13,17 @@ import hashlib
 import uuid
 from pathlib import Path
 
-from sqlmodel import Session, select
+from sqlmodel import Session
 
-from app.core.auth.jwt import encode_token
 from app.core.config import get_settings
 from app.core.db.models import (
     Category,
     Model,
     ModelFile,
     ModelFileKind,
-    User,
 )
 from app.core.db.session import get_engine
 from scripts.hydrate_local_tree import _load_state, run_hydrate
-
-_SEEDED_ADMIN_EMAIL = "admin@localhost.localdomain"
-_JWT_TEST_SECRET = "test-secret-not-real"
-
-
-def _admin_cookie_token() -> str:
-    """Mint admin portal_access cookie token for hydrate-against-gated-API."""
-    engine = get_engine()
-    with Session(engine) as s:
-        admin = s.exec(select(User).where(User.email == _SEEDED_ADMIN_EMAIL)).first()
-        assert admin is not None
-        admin_uuid = admin.id
-    return encode_token(
-        subject=str(admin_uuid), role="admin", secret=_JWT_TEST_SECRET, ttl_minutes=30
-    )
 
 # ---------------------------------------------------------------------------
 # Seed helpers
@@ -128,19 +111,12 @@ def _run(
     state_path: Path | None = None,
 ) -> dict:
     """Thin wrapper that calls run_hydrate with sensible defaults for tests."""
-    # Post-Init-5 cutover: SoT GET endpoints now require member-or-admin auth
-    # via portal_access cookie (apps/api/app/modules/sot/router.py). Hydrate's
-    # http_client (TestClient) persists cookies — pre-set the admin cookie here
-    # so subsequent run_hydrate requests carry it. Bearer-token path stays
-    # supported by the script for operator-CLI usage (CLI logs in first then
-    # exports the cookie via curl --cookie-jar).
-    client.cookies.set("portal_access", _admin_cookie_token())
     return run_hydrate(
         http_client=client,
         portal_url="",  # TestClient uses relative URLs
         target=tmp_path,
         kinds=kinds if kinds is not None else {"stl"},
-        bearer_token="",  # cookie auth above; bearer path remains for CLI usage
+        bearer_token="",  # no auth on public read endpoints in tests
         include_soft_deleted=include_soft_deleted,
         prune_deleted=prune_deleted,
         dry_run=dry_run,
