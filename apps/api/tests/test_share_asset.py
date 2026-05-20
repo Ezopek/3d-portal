@@ -271,12 +271,32 @@ def test_anon_soft_deleted_model_returns_404(share_fixture):
     assert r.status_code == 404
 
 
-def test_anon_garbage_token_returns_404(share_fixture):
+def test_anon_garbage_token_returns_404_with_fail_audit(share_fixture):
+    """Token-resolve-failure path emits share.asset.fail audit.
+
+    Codex P2-1 (2026-05-20) — brute-force / revoked-token-reuse attempts
+    MUST be auditable. Pre-fix this code path raised 404 without emitting
+    any audit row → NFR6-OBS-1 silent on the most-attacker-relevant surface.
+    """
     c, _token, _ids = share_fixture
     bogus_token = "garbage-token-does-not-exist-anywhere"
     bogus_file = "00000000-0000-0000-0000-000000000000"
     r = c.get(f"/api/share/{bogus_token}/files/{bogus_file}/content")
     assert r.status_code == 404
+
+    engine = get_engine()
+    with Session(engine) as s:
+        row = s.exec(
+            select(AuditLog)
+            .where(AuditLog.action == "share.asset.fail")
+            .order_by(AuditLog.at.desc())
+        ).first()
+        assert row is not None
+        assert "token_resolve_failed" in (row.after_json or "")
+        # Token-hash present; clear token MUST NOT be in audit payload
+        expected_hash = hashlib.sha256(bogus_token.encode()).hexdigest()
+        assert expected_hash in (row.after_json or "")
+        assert bogus_token not in (row.after_json or "")
 
 
 def test_anon_stl_kind_returns_200(share_fixture):

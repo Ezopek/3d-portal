@@ -8,6 +8,7 @@ from sqlalchemy import nullslast
 from sqlmodel import Session, select
 
 from app.core.audit import record_event
+from app.core.auth.ratelimit import _client_ip
 from app.core.config import get_settings
 from app.core.db.models import (
     Category,
@@ -151,10 +152,33 @@ async def get_share_asset(
     intermediate caches / browser cache. No ETag header (premature
     ETag-match would short-circuit the scope check).
     """
-    # Step 1: token resolve
+    # Pre-compute token hash + trusted client IP once — used by every audit
+    # row (success + every fail branch). Token-hash is computed unconditionally
+    # so brute-force / revoked-token-reuse attempts are still auditable even
+    # before token resolves.
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    client_ip = _client_ip(request)
+
+    # Step 1: token resolve. Codex P2-1 (2026-05-20) — emit fail audit BEFORE
+    # the early return so brute-force / expired-or-revoked-token reuse
+    # attempts are captured for NFR6-OBS-1 observability (otherwise only
+    # post-resolve scope failures are logged and brute-force is silent).
     service = ShareService(redis=request.app.state.redis.get())
     record = await service.resolve(token)
     if record is None:
+        record_event(
+            get_engine(),
+            action="share.asset.fail",
+            entity_type="share_token",
+            entity_id=None,
+            actor_user_id=None,
+            after={
+                "target_token_hash": token_hash,
+                "target_file_id": str(file_id),
+                "reason": "token_resolve_failed",
+                "ip": client_ip,
+            },
+        )
         raise HTTPException(404, "Share asset not found")
 
     # Step 2: scope check (file belongs to model, kind is shareable, model not soft-deleted)
@@ -178,11 +202,11 @@ async def get_share_asset(
             entity_id=None,
             actor_user_id=None,
             after={
-                "target_token_hash": hashlib.sha256(token.encode()).hexdigest(),
+                "target_token_hash": token_hash,
                 "target_file_id": str(file_id),
                 "target_model_id": str(record.model_id),
                 "reason": "scope_check_failed",
-                "ip": request.client.host if request.client else None,
+                "ip": client_ip,
             },
         )
         raise HTTPException(404, "Share asset not found")
@@ -202,11 +226,11 @@ async def get_share_asset(
             entity_id=None,
             actor_user_id=None,
             after={
-                "target_token_hash": hashlib.sha256(token.encode()).hexdigest(),
+                "target_token_hash": token_hash,
                 "target_file_id": str(file_id),
                 "target_model_id": str(record.model_id),
                 "reason": "storage_path_escape",
-                "ip": request.client.host if request.client else None,
+                "ip": client_ip,
             },
         )
         raise HTTPException(500, "Invalid storage path") from exc
@@ -219,11 +243,11 @@ async def get_share_asset(
             entity_id=None,
             actor_user_id=None,
             after={
-                "target_token_hash": hashlib.sha256(token.encode()).hexdigest(),
+                "target_token_hash": token_hash,
                 "target_file_id": str(file_id),
                 "target_model_id": str(record.model_id),
                 "reason": "file_missing_on_disk",
-                "ip": request.client.host if request.client else None,
+                "ip": client_ip,
             },
         )
         raise HTTPException(404, "Share asset not found")
@@ -236,19 +260,34 @@ async def get_share_asset(
         entity_id=None,
         actor_user_id=None,
         after={
-            "target_token_hash": hashlib.sha256(token.encode()).hexdigest(),
+            "target_token_hash": token_hash,
             "target_model_id": str(record.model_id),
             "target_file_id": str(file_id),
             "target_file_kind": file_row.kind.value,
             "download": download,
-            "ip": request.client.host if request.client else None,
+            "ip": client_ip,
         },
     )
 
-    # Step 5: serve with Cache-Control: no-store; NO ETag (would short-circuit scope check)
-    return FileResponse(
+    # Step 5: serve with Cache-Control: no-store. Codex P2-2 (2026-05-20) —
+    # Starlette's FileResponse auto-adds ETag + Last-Modified validators
+    # from the on-disk stat; suppress them post-construction to honor the
+    # Decision N hardening contract ("no cache validators on share assets").
+    # The scope-check-survives-If-None-Match property already holds via the
+    # handler running scope check BEFORE FileResponse, but removing the
+    # headers eliminates ambiguity and prevents downstream caches from
+    # treating the response as cacheable.
+    response = FileResponse(
         candidate,
         media_type=file_row.mime_type,
         filename=file_row.original_name if download else None,
         headers={"Cache-Control": "no-store"},
     )
+    # Starlette FileResponse populates these as instance attributes that get
+    # serialized into headers at __call__ time. Stripping the headers dict
+    # directly is defense-in-depth — `del response.headers[key]` is a no-op
+    # on absent keys via the MutableHeaders __delitem__ contract.
+    for header_name in ("etag", "last-modified"):
+        if header_name in response.headers:
+            del response.headers[header_name]
+    return response
