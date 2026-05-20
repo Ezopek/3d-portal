@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { CatalogList } from "@/modules/catalog/routes/CatalogList";
 import type { ModelListSort } from "@/modules/catalog/hooks/useModels";
 import type { ModelSource, ModelStatus } from "@/lib/api-types";
+import { AuthGate } from "@/shell/AuthGate";
 
 const STATUSES: readonly ModelStatus[] = ["not_printed", "printed", "in_progress", "broken"];
 const SOURCES: readonly ModelSource[] = [
@@ -35,7 +36,15 @@ export interface CatalogSearch {
 }
 
 export const Route = createFileRoute("/catalog/")({
-  component: CatalogList,
+  // Post-Init-5 cutover: catalog browse requires member-or-admin auth
+  // (apps/api/app/modules/sot/router.py /api/categories + /api/models
+  // gated on `current_member_or_admin`). AuthGate redirects unauth to
+  // /login?next=<catalog-search>.
+  component: () => (
+    <AuthGate>
+      <CatalogList />
+    </AuthGate>
+  ),
   validateSearch: (raw: Record<string, unknown>): CatalogSearch => {
     const out: CatalogSearch = {};
     if (typeof raw.category_id === "string" && raw.category_id.length > 0) {
