@@ -38,9 +38,21 @@ export function ResetLinkDisplayModal({
 
   const formattedExpiry = new Date(expiresAt).toLocaleString("pl-PL");
 
+  // Codex P2 fix-up: backend returns relative path; out-of-band delivery
+  // (SMS/Messenger/personal email) needs an absolute URL with origin so
+  // the recipient can paste-and-open without manual prefix. Resolve via
+  // URL constructor against window.location.origin.
+  const absoluteUrl = (() => {
+    try {
+      return new URL(resetUrl, window.location.origin).toString();
+    } catch {
+      return resetUrl;
+    }
+  })();
+
   async function handleCopy() {
     try {
-      await navigator.clipboard.writeText(resetUrl);
+      await navigator.clipboard.writeText(absoluteUrl);
       setCopied(true);
     } catch {
       // Clipboard write can fail in restricted contexts (older browsers,
@@ -65,7 +77,7 @@ export function ResetLinkDisplayModal({
         <div className="grid gap-2 py-2">
           <Input
             readOnly
-            value={resetUrl}
+            value={absoluteUrl}
             aria-label={t("admin.users.reset_link.modal_title", { email })}
           />
           <Button type="button" variant="outline" onClick={handleCopy}>

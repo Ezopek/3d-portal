@@ -235,15 +235,18 @@ def test_consume_short_password_returns_422_with_weak_password_audit(
     completed = [r for r in _audit_rows() if r.action == "auth.password.reset.completed"]
     assert len(completed) == 1
     ev = completed[0]
-    assert ev.entity_id == target_id
+    # Codex P2 fix-up: password validated BEFORE token claim → entity_id is
+    # None at audit time (user identity unknown pre-claim) and the token
+    # stays in Redis for retry. Was: entity_id=target_id, token consumed.
+    assert ev.entity_id is None
     assert json.loads(ev.after_json) == {"reason": "weak_password"}
 
-    # Token already claimed by GETDEL on the failure path — single-use.
+    # Token preserved on weak-password — user can retry with stronger pw.
     async def _keys():
         return await fake.keys("invite:reset:*")
 
     keys = c.portal.call(_keys)
-    assert keys == []
+    assert len(keys) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -264,12 +267,15 @@ def test_consume_weak_zxcvbn_password_returns_422(isolated_client):
 
     completed = [r for r in _audit_rows() if r.action == "auth.password.reset.completed"]
     assert len(completed) == 1
+    # Codex P2 fix-up: validated pre-claim → entity_id None + token retained.
+    assert completed[0].entity_id is None
     assert json.loads(completed[0].after_json) == {"reason": "weak_password"}
 
     async def _keys():
         return await fake.keys("invite:reset:*")
 
-    assert c.portal.call(_keys) == []
+    # Token preserved for retry — only consumed on successful commit path.
+    assert len(c.portal.call(_keys)) == 1
 
 
 # ---------------------------------------------------------------------------

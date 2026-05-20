@@ -84,7 +84,35 @@ async def consume_password_reset(
     request_id = request.headers.get("x-request-id")
     service = _service(request)
 
+    # Codex P2 fix-up: validate password BEFORE the destructive GETDEL claim.
+    # Otherwise a weak-password attempt burns the only token + inline-422
+    # UI promises retryability that the server can't honor.
+    if len(payload.new_password) < _MIN_PASSWORD_LEN:
+        record_event(
+            engine,
+            action="auth.password.reset.completed",
+            entity_type="user",
+            entity_id=None,
+            actor_user_id=None,
+            after={"reason": "weak_password"},
+            request_id=request_id,
+        )
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, _LEN_MSG)
+    score = zxcvbn.zxcvbn(payload.new_password)["score"]
+    if score < _MIN_ZXCVBN_SCORE:
+        record_event(
+            engine,
+            action="auth.password.reset.completed",
+            entity_type="user",
+            entity_id=None,
+            actor_user_id=None,
+            after={"reason": "weak_password"},
+            request_id=request_id,
+        )
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, _SCORE_MSG)
+
     # Step 1 — atomic token claim. Loser of any GETDEL race observes None.
+    # Password is already validated above; this consume-and-act is one-shot.
     user_id: uuid.UUID | None = await service.claim(payload.token)
     if user_id is None:
         record_event(
@@ -97,32 +125,6 @@ async def consume_password_reset(
             request_id=request_id,
         )
         raise HTTPException(status.HTTP_404_NOT_FOUND, "token_invalid")
-
-    # Step 2 — password validation (length first, then zxcvbn).
-    # User identity is known post-claim, so entity_id is populated.
-    if len(payload.new_password) < _MIN_PASSWORD_LEN:
-        record_event(
-            engine,
-            action="auth.password.reset.completed",
-            entity_type="user",
-            entity_id=user_id,
-            actor_user_id=None,
-            after={"reason": "weak_password"},
-            request_id=request_id,
-        )
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, _LEN_MSG)
-    score = zxcvbn.zxcvbn(payload.new_password)["score"]
-    if score < _MIN_ZXCVBN_SCORE:
-        record_event(
-            engine,
-            action="auth.password.reset.completed",
-            entity_type="user",
-            entity_id=user_id,
-            actor_user_id=None,
-            after={"reason": "weak_password"},
-            request_id=request_id,
-        )
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, _SCORE_MSG)
 
     # Step 3 — user lookup. The row may have been deleted between mint
     # and consume; surface as 404 with a distinct audit reason.
