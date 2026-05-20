@@ -15,6 +15,8 @@ from pathlib import Path
 
 from sqlmodel import Session
 
+from app.core.auth.cookies import ACCESS_COOKIE
+from app.core.auth.jwt import encode_token
 from app.core.config import get_settings
 from app.core.db.models import (
     Category,
@@ -110,18 +112,38 @@ def _run(
     dry_run: bool = False,
     state_path: Path | None = None,
 ) -> dict:
-    """Thin wrapper that calls run_hydrate with sensible defaults for tests."""
-    return run_hydrate(
-        http_client=client,
-        portal_url="",  # TestClient uses relative URLs
-        target=tmp_path,
-        kinds=kinds if kinds is not None else {"stl"},
-        bearer_token="",  # no auth on public read endpoints in tests
-        include_soft_deleted=include_soft_deleted,
-        prune_deleted=prune_deleted,
-        dry_run=dry_run,
-        state_path=state_path,
+    """Thin wrapper that calls run_hydrate with sensible defaults for tests.
+
+    Initiative 6 Story 11.1 — SoT GET endpoints require authenticated user
+    post-default-deny (architecture.md § Initiative 6 Decision M). The hydrate
+    script (`apps/api/scripts/hydrate_local_tree.py`) runs as the `agent`
+    service-account in production (Init 2 cookie+password flow); tests mirror
+    that contract by pre-setting an agent-role cookie on the TestClient before
+    run_hydrate invocation. The bearer_token CLI path remains for operator
+    invocations (e.g. one-shot ops scripts); tests use cookie auth which
+    matches the dependency's read path (`current_user` Depends).
+    """
+    agent_token = encode_token(
+        subject=str(uuid.uuid4()),
+        role="agent",
+        secret="test-secret-not-real",
+        ttl_minutes=30,
     )
+    client.cookies.set(ACCESS_COOKIE, agent_token)
+    try:
+        return run_hydrate(
+            http_client=client,
+            portal_url="",  # TestClient uses relative URLs
+            target=tmp_path,
+            kinds=kinds if kinds is not None else {"stl"},
+            bearer_token="",  # cookie auth above; bearer path remains for CLI usage
+            include_soft_deleted=include_soft_deleted,
+            prune_deleted=prune_deleted,
+            dry_run=dry_run,
+            state_path=state_path,
+        )
+    finally:
+        client.cookies.delete(ACCESS_COOKIE)
 
 
 # ---------------------------------------------------------------------------

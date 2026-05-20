@@ -4,6 +4,8 @@ import uuid
 import pytest
 from sqlmodel import Session
 
+from app.core.auth.cookies import ACCESS_COOKIE
+from app.core.auth.jwt import encode_token
 from app.core.db.models import (
     Category,
     Model,
@@ -12,6 +14,21 @@ from app.core.db.models import (
     Tag,
 )
 from app.core.db.session import get_engine
+
+
+# Initiative 6 Story 11.1 — default-deny on SoT GET endpoints. See
+# test_sot_categories.py:_default_admin_cookie docstring for context.
+@pytest.fixture(autouse=True)
+def _default_admin_cookie(client):
+    token = encode_token(
+        subject=str(uuid.uuid4()),
+        role="admin",
+        secret="test-secret-not-real",
+        ttl_minutes=30,
+    )
+    client.cookies.set(ACCESS_COOKIE, token)
+    yield
+    client.cookies.delete(ACCESS_COOKIE)
 
 
 def _seed_model(session, slug, *, category_id, status=None, tags=()):

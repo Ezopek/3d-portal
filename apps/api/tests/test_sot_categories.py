@@ -1,10 +1,30 @@
 import datetime
 import uuid
 
+import pytest
 from sqlmodel import Session
 
+from app.core.auth.cookies import ACCESS_COOKIE
+from app.core.auth.jwt import encode_token
 from app.core.db.models import Category, Model, ModelStatus
 from app.core.db.session import get_engine
+
+
+# Initiative 6 Story 11.1 — default-deny on SoT GET endpoints requires authenticated
+# user (architecture.md § Initiative 6 Decision M). This autouse fixture pre-sets
+# an admin cookie so existing test cases that don't care about auth continue to
+# PASS. Anonymous-rejection + agent + member tests live in test_sot_auth_boundary.py.
+@pytest.fixture(autouse=True)
+def _default_admin_cookie(client):
+    token = encode_token(
+        subject=str(uuid.uuid4()),
+        role="admin",
+        secret="test-secret-not-real",
+        ttl_minutes=30,
+    )
+    client.cookies.set(ACCESS_COOKIE, token)
+    yield
+    client.cookies.delete(ACCESS_COOKIE)
 
 
 def _seed_categories(session, slugs_with_parent_slug):
