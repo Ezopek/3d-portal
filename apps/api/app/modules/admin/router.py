@@ -168,8 +168,14 @@ def list_admin_users(
         base_stmt = base_stmt.where(User.email.ilike(pattern))
         count_stmt = count_stmt.where(User.email.ilike(pattern))
 
+    # Codex P2 fix-up: every sort branch MUST end with a stable
+    # tie-breaker (User.email ASC + User.id ASC) so OFFSET/LIMIT
+    # pagination doesn't shuffle rows across pages when the primary
+    # sort key has duplicates (e.g. many role=member or many NULL
+    # last_active_at rows). Without it, SQLite/Postgres are free to
+    # reorder ties → page-skip + page-repeat under user navigation.
     if sort_by is None:
-        base_stmt = base_stmt.order_by(User.created_at.desc())
+        base_stmt = base_stmt.order_by(User.created_at.desc(), User.email.asc(), User.id.asc())
     else:
         column = {
             "email": User.email,
@@ -181,9 +187,14 @@ def list_admin_users(
         order = sort_order or ("desc" if order_default_desc else "asc")
         direction = column.desc() if order == "desc" else column.asc()
         if sort_by == "last_active_at":
-            base_stmt = base_stmt.order_by(User.last_active_at.is_(None).asc(), direction)
+            base_stmt = base_stmt.order_by(
+                User.last_active_at.is_(None).asc(),
+                direction,
+                User.email.asc(),
+                User.id.asc(),
+            )
         else:
-            base_stmt = base_stmt.order_by(direction)
+            base_stmt = base_stmt.order_by(direction, User.email.asc(), User.id.asc())
 
     total = session.exec(count_stmt).one()
     offset = (page - 1) * page_size
