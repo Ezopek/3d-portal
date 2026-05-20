@@ -251,9 +251,14 @@ async def verify_second_factor(
     except (ValueError, KeyError, TypeError) as exc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "partial_token_invalid") from exc
 
-    # Step 2 — load user and re-verify TOTP-enabled invariant.
+    # Step 2 — load user and re-verify TOTP-enabled + is_active invariants.
+    # is_active recheck closes the Story 8.3 P2 window: admin can deactivate
+    # during the 5-min partial-auth window, but verify must still refuse to
+    # mint cookies for an inactive account (the partial_token is consumed
+    # by GETDEL but a new login would be blocked anyway by the is_active
+    # gate at /login).
     user = session.get(User, stash_user_id)
-    if user is None or user.totp_enabled_at is None:
+    if user is None or user.totp_enabled_at is None or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "partial_token_invalid")
 
     # Step 3 — defense-in-depth against impossible-by-Story-7.2 state.

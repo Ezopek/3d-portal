@@ -351,7 +351,7 @@ describe("UsersPage", () => {
     await user.click(screen.getByRole("button", { name: /^Confirm$/i }));
 
     expect(updateMutate).toHaveBeenCalledTimes(1);
-    expect(updateMutate.mock.calls[0][0]).toEqual({
+    expect(updateMutate).toHaveBeenCalledWith({
       user_id: memberRow.id,
       body: { is_active: false },
     });
@@ -385,7 +385,7 @@ describe("UsersPage", () => {
     await user.click(screen.getByRole("button", { name: /^Confirm$/i }));
 
     expect(forceLogoutMutate).toHaveBeenCalledTimes(1);
-    expect(forceLogoutMutate.mock.calls[0][0]).toBe(memberRow.id);
+    expect(forceLogoutMutate).toHaveBeenCalledWith(memberRow.id);
   });
 
   it("V10 — renders NO checkbox column even with the new Actions column (FR5-ADMIN-4 regression guard)", async () => {
