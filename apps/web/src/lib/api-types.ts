@@ -275,6 +275,55 @@ export interface ReauthRequest {
 
 export type RegenerateResponse = TotpConfirmResponse;
 
+// --- Story 8.6: Admin invites tab ---
+
+export type InviteRoleRequest = "member" | "admin";
+export type InviteTTLPreset =
+  | "ONE_DAY"
+  | "THREE_DAYS"
+  | "SEVEN_DAYS"
+  | "THIRTY_DAYS";
+export type InviteStatus = "active" | "used" | "revoked" | "expired";
+
+export interface AdminInviteRow {
+  id: string;
+  invite_id: string;
+  token_hash: string;
+  role: InviteRoleRequest;
+  generated_by_user_id: string | null;
+  generated_at: string;
+  ttl_seconds: number;
+  expires_at: string;
+  used_by_user_id: string | null;
+  used_at: string | null;
+  used_from_ip: string | null;
+  revoked_at: string | null;
+  status: InviteStatus;
+}
+
+export interface AdminInvitesListResponse {
+  items: AdminInviteRow[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface GenerateInviteRequest {
+  role: InviteRoleRequest;
+  ttl_preset?: InviteTTLPreset;
+  ttl_seconds?: number;
+}
+
+export interface GenerateInviteResponse {
+  invite_id: string;
+  token: string;
+  role: InviteRoleRequest;
+  generated_at: string;
+  ttl_seconds: number;
+  expires_at: string;
+  registration_url: string;
+}
+
 // --- Audit log ---
 
 export interface AuditLogEntry {

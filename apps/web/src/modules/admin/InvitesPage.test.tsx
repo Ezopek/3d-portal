@@ -121,7 +121,9 @@ function mount(node: ReactNode, initialPath = "/admin/invites") {
 
 function seedRow(overrides: Partial<AdminInviteRow>): AdminInviteRow {
   return {
+    id: "00000000-0000-0000-0000-aaaaaaaaaaaa",
     invite_id: "00000000-0000-0000-0000-aaaaaaaaaaaa",
+    token_hash: "abc123",
     role: "member",
     ttl_seconds: 7 * 24 * 60 * 60,
     generated_by_user_id: "00000000-0000-0000-0000-000000000001",
@@ -243,6 +245,7 @@ describe("InvitesPage", () => {
       registration_url: "/register?token=TKN_ABC123",
       role: "member",
       ttl_seconds: 7 * 24 * 60 * 60,
+      generated_at: "2026-05-20T12:00:00Z",
       expires_at: "2026-05-27T12:00:00Z",
     };
     generateMutate.mockImplementation((_payload, opts) => {
