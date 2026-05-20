@@ -14,6 +14,24 @@ _HOST = socket.gethostname()
 _TOKEN_URL_REGEX = re.compile(r"\btoken=[^&\s\"']+")
 _TOKEN_REDACTED = "token=<redacted>"
 
+# Initiative 6 Story 11.2 — match share-token bearers embedded as PATH segments
+# under ``/share/<token>/...`` and ``/api/share/<token>/...``. The share-asset
+# endpoint (Decision N) exposes the token in URL path; without this redaction
+# the bearer leaks to nginx access logs, OTel span attributes, application log
+# records (including HTTP request loggers), browser history, error events.
+# Token shape: URL-safe base64 (``[A-Za-z0-9_-]``), minimum length 20 chars
+# (current `share/service.py:22` mints ``secrets.token_urlsafe(24)`` → 32 chars;
+# the 20-char floor leaves headroom for future entropy adjustments without
+# requiring this regex to be re-tuned). The capture preserves the leading
+# ``/share/`` or ``/api/share/`` prefix so the trace context remains
+# interpretable; only the bearer segment is masked. Resolve endpoint
+# ``/api/share/{token}`` (no trailing slash) is also covered when followed by
+# query string, whitespace, or quote.
+_SHARE_PATH_TOKEN_REGEX = re.compile(
+    r"((?:/api)?/share/)[A-Za-z0-9_-]{20,}(?=[/?\s\"']|$)"
+)
+_SHARE_PATH_TOKEN_REPLACEMENT = r"\1<redacted>"
+
 # Structured-log field names that JsonFormatter surfaces by pass-through.
 # Kept module-level so TokenRedactionFilter and JsonFormatter agree on which
 # keys leak to stdout (and therefore need redacting).
@@ -64,13 +82,17 @@ class TokenRedactionFilter(logging.Filter):
             # msg so we still redact something rather than letting the
             # record blow up downstream in the formatter.
             rendered = str(record.msg)
-        record.msg = _TOKEN_URL_REGEX.sub(_TOKEN_REDACTED, rendered)
+        rendered = _TOKEN_URL_REGEX.sub(_TOKEN_REDACTED, rendered)
+        rendered = _SHARE_PATH_TOKEN_REGEX.sub(_SHARE_PATH_TOKEN_REPLACEMENT, rendered)
+        record.msg = rendered
         record.args = ()
         if hasattr(record, "token"):
             record.token = "<redacted>"
         for key, value in record.__dict__.items():
             if _is_passthrough_key(key) and isinstance(value, str):
-                record.__dict__[key] = _TOKEN_URL_REGEX.sub(_TOKEN_REDACTED, value)
+                redacted = _TOKEN_URL_REGEX.sub(_TOKEN_REDACTED, value)
+                redacted = _SHARE_PATH_TOKEN_REGEX.sub(_SHARE_PATH_TOKEN_REPLACEMENT, redacted)
+                record.__dict__[key] = redacted
         return True
 
 

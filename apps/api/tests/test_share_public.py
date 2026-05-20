@@ -139,7 +139,12 @@ def test_resolve_returns_image_and_thumbnail_urls(client):
         json={"model_id": str(ids["full"]), "expires_in_hours": 1},
     ).json()
     body = c.get(f"/api/share/{created['token']}").json()
-    expected_img = f"/api/models/{ids['full']}/files/{ids['img']}/content"
+    # Initiative 6 Decision N — share-resolve emits share-scoped URLs
+    # (/api/share/{token}/files/{file_id}/content) instead of legacy
+    # /api/models/{id}/files/{file_id}/content URLs. The legacy SoT content
+    # endpoint is post-Story-11.1 current_user-gated; anonymous share
+    # recipients reach assets exclusively via the share-scoped path.
+    expected_img = f"/api/share/{created['token']}/files/{ids['img']}/content"
     assert body["images"] == [expected_img]
     assert body["thumbnail_url"] == expected_img
 
@@ -153,7 +158,11 @@ def test_resolve_returns_stl_url_when_stl_present(client):
     ).json()
     body = c.get(f"/api/share/{created['token']}").json()
     assert body["has_3d"] is True
-    assert body["stl_url"] == f"/api/models/{ids['full']}/files/{ids['stl']}/content?download=1"
+    # Initiative 6 Decision N — share-resolve emits share-scoped URL.
+    assert (
+        body["stl_url"]
+        == f"/api/share/{created['token']}/files/{ids['stl']}/content?download=1"
+    )
 
 
 def test_resolve_no_files_returns_empty(client):
