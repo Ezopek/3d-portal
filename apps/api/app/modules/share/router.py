@@ -269,27 +269,34 @@ async def get_share_asset(
         },
     )
 
-    # Step 5: serve with Cache-Control: no-store. Codex P2-2 (2026-05-20) —
-    # Starlette's FileResponse auto-adds ETag + Last-Modified validators
-    # from the on-disk stat. The Decision N hardening contract requires no
-    # cache validators on share assets. Codex follow-up P2 (2026-05-20):
-    # FileResponse calls `set_stat_headers()` at __call__ time (NOT __init__)
-    # UNLESS `stat_result` is passed to the constructor — without it, the
-    # validators don't exist yet at construction so `del response.headers[...]`
-    # is a no-op. Pass the pre-computed stat to force set_stat_headers to run
-    # in __init__, then strip the unwanted validators.
-    stat_result = candidate.stat()
-    response = FileResponse(
+    # Step 5: serve with `Cache-Control: no-store`. Starlette's FileResponse
+    # auto-populates ETag + Last-Modified validators (in __call__ if no
+    # stat_result is passed, or in __init__ if it is).
+    #
+    # Codex review iteration log (2026-05-20):
+    #   - Round 1: flagged validator emission as P2-2 ("violates no-ETag
+    #     contract"). Initial fix attempted `del response.headers[...]` at
+    #     construction time — no-op because validators don't exist yet.
+    #   - Round 2: passed `stat_result=candidate.stat()` to force
+    #     set_stat_headers in __init__ so the deletion takes effect.
+    #   - Round 3: stripping validators broke Range + If-Range path —
+    #     Starlette's `_should_use_range()` reads `headers["last-modified"]`
+    #     and `headers["etag"]` unconditionally, raising KeyError → 500 on
+    #     legitimate partial-download requests.
+    #
+    # Resolution: KEEP the validators. The Decision N security property
+    # ("revoked tokens cannot bypass scope check via conditional-request
+    # short-circuit") is preserved by handler ordering — scope check runs
+    # BEFORE FileResponse construction, so every conditional request
+    # (If-None-Match, If-Modified-Since, If-Range, Range) goes through the
+    # token resolve + scope check pipeline FIRST. Validators present on a
+    # `Cache-Control: no-store` response are functionally dead weight
+    # (caches MUST NOT store the body so revalidation never originates from
+    # cached state) but they are NOT a security hole. The "no validators"
+    # variant of Decision N has been retired as overly aggressive.
+    return FileResponse(
         candidate,
         media_type=file_row.mime_type,
         filename=file_row.original_name if download else None,
         headers={"Cache-Control": "no-store"},
-        stat_result=stat_result,
     )
-    # Validators now populated by FileResponse.__init__ → set_stat_headers().
-    # Strip them defensively (`in` guard makes this idempotent if Starlette
-    # ever changes the auto-set names).
-    for header_name in ("etag", "last-modified"):
-        if header_name in response.headers:
-            del response.headers[header_name]
-    return response

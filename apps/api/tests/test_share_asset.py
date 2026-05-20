@@ -344,24 +344,24 @@ def test_audit_row_present_on_fail(share_fixture):
         assert token not in (row.after_json or "")
 
 
-def test_cache_control_no_store_and_no_validators(share_fixture):
-    """Decision N hardening contract: no cache validators on share-asset
-    responses. Cache-Control: no-store + absence of ETag + Last-Modified
-    headers ensures downstream caches cannot treat the response as cacheable
-    and cannot revalidate via If-None-Match / If-Modified-Since (which
-    would round-trip back to the handler for a fresh scope check anyway,
-    but stripping the validators eliminates the ambiguity entirely).
-    Codex P2-2 followup (2026-05-20) — FileResponse populates validators
-    in __call__ unless stat_result is passed to the constructor.
+def test_cache_control_no_store(share_fixture):
+    """Decision N hardening contract: `Cache-Control: no-store` on share
+    assets. The original Codex peer-grill called for stripping ETag +
+    Last-Modified validators entirely, but Codex's third review iteration
+    surfaced that doing so breaks Starlette's Range + If-Range path
+    (KeyError → 500). The validators-present-with-no-store posture is
+    secure because (a) `no-store` tells caches not to store the body, so
+    revalidation never originates from cached state; (b) when a client
+    DOES send a conditional request, the handler runs token resolve +
+    scope check BEFORE FileResponse, so revoked tokens cannot bypass
+    via If-None-Match / If-Modified-Since / If-Range. See
+    test_scope_check_survives_if_none_match_after_revoke for the positive
+    security property assertion.
     """
     c, token, ids = share_fixture
     r = c.get(f"/api/share/{token}/files/{ids['img_a']}/content")
     assert r.status_code == 200
     assert "no-store" in r.headers.get("cache-control", "").lower()
-    header_keys = {k.lower() for k in r.headers}
-    assert "etag" not in header_keys, f"ETag present: {r.headers.get('etag')}"
-    last_modified = r.headers.get("last-modified")
-    assert "last-modified" not in header_keys, f"Last-Modified present: {last_modified}"
 
 
 def test_scope_check_survives_if_none_match_after_revoke(share_fixture):
