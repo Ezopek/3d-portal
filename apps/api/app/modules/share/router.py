@@ -271,22 +271,24 @@ async def get_share_asset(
 
     # Step 5: serve with Cache-Control: no-store. Codex P2-2 (2026-05-20) —
     # Starlette's FileResponse auto-adds ETag + Last-Modified validators
-    # from the on-disk stat; suppress them post-construction to honor the
-    # Decision N hardening contract ("no cache validators on share assets").
-    # The scope-check-survives-If-None-Match property already holds via the
-    # handler running scope check BEFORE FileResponse, but removing the
-    # headers eliminates ambiguity and prevents downstream caches from
-    # treating the response as cacheable.
+    # from the on-disk stat. The Decision N hardening contract requires no
+    # cache validators on share assets. Codex follow-up P2 (2026-05-20):
+    # FileResponse calls `set_stat_headers()` at __call__ time (NOT __init__)
+    # UNLESS `stat_result` is passed to the constructor — without it, the
+    # validators don't exist yet at construction so `del response.headers[...]`
+    # is a no-op. Pass the pre-computed stat to force set_stat_headers to run
+    # in __init__, then strip the unwanted validators.
+    stat_result = candidate.stat()
     response = FileResponse(
         candidate,
         media_type=file_row.mime_type,
         filename=file_row.original_name if download else None,
         headers={"Cache-Control": "no-store"},
+        stat_result=stat_result,
     )
-    # Starlette FileResponse populates these as instance attributes that get
-    # serialized into headers at __call__ time. Stripping the headers dict
-    # directly is defense-in-depth — `del response.headers[key]` is a no-op
-    # on absent keys via the MutableHeaders __delitem__ contract.
+    # Validators now populated by FileResponse.__init__ → set_stat_headers().
+    # Strip them defensively (`in` guard makes this idempotent if Starlette
+    # ever changes the auto-set names).
     for header_name in ("etag", "last-modified"):
         if header_name in response.headers:
             del response.headers[header_name]
