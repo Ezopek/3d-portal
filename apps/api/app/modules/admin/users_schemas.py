@@ -31,6 +31,7 @@ class AdminUserListItem(BaseModel):
     last_active_at: datetime.datetime | None
     totp_enabled: bool
     is_active: bool
+    force_2fa_enrollment: bool
 
 
 class AdminUserListResponse(BaseModel):

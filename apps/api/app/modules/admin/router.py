@@ -12,11 +12,12 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
+from sqlalchemy import update
 from sqlmodel import Session, func, select
 
 from app.core.audit import record_event
 from app.core.auth.dependencies import current_admin
-from app.core.db.models import AuditLog, RefreshToken, User
+from app.core.db.models import AuditLog, RecoveryCode, RefreshToken, User
 from app.core.db.models._enums import UserRole
 from app.core.db.session import get_engine, get_session
 from app.modules.admin.users_schemas import (
@@ -216,6 +217,7 @@ def list_admin_users(
             last_active_at=row.last_active_at,
             totp_enabled=row.totp_enabled_at is not None,
             is_active=row.is_active,
+            force_2fa_enrollment=row.force_2fa_enrollment,
         )
         for row in rows
     ]
@@ -380,5 +382,126 @@ def force_logout_admin_user(
         entity_id=target.id,
         actor_user_id=admin_id,
         after={"revoked_count": len(rows)},
+        request_id=request.headers.get("x-request-id"),
+    )
+
+
+@router.post(
+    "/users/{user_id}/force-2fa-enrollment",
+    status_code=204,
+    summary="Force a user to enroll 2FA on next login (admin only)",
+    description=(
+        "Sets ``users.force_2fa_enrollment = TRUE`` on the target user so that the "
+        "next ``POST /api/auth/login`` lands them on the ``/settings/2fa`` enrollment "
+        "screen before any other route works. Implements Decision F §1553 per-user "
+        "override path (force-enroll direction). Four foot-gun guardrails: "
+        "**cannot_target_self** (the operator self-enrolls via ``/settings/2fa``, not "
+        "via this admin endpoint); **cannot_target_agent** (NFR5-INT-1 — the agent "
+        "service account never enrolls); **totp_already_enrolled** 409 (the flag is "
+        "meaningful only before initial enrollment; the ``totp_enroll_required`` gate "
+        "requires ``totp_enabled_at IS NULL``); **already_force_enrolled** 409 "
+        "(idempotent no-op is surfaced as an explicit error so the operator knows "
+        "their action was redundant). Emits ``auth.totp.enrolled`` audit with "
+        "``actor_user_id != entity_id`` AND ``after.force_enrolled = True`` — that "
+        "payload shape discriminates this admin-side emission from the Story 7.2 "
+        "user-side self-enrollment emission. The flag auto-clears one-shot on the "
+        "next successful enrollment-confirm (no operator manual reset)."
+    ),
+)
+def force_2fa_enrollment_admin_user(
+    user_id: uuid.UUID,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    admin_id: uuid.UUID = current_admin,
+) -> None:
+    target = session.get(User, user_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found")
+    if target.id == admin_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "cannot_target_self")
+    if target.role == UserRole.agent:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "cannot_target_agent")
+    if target.totp_enabled_at is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "totp_already_enrolled")
+    if target.force_2fa_enrollment is True:
+        raise HTTPException(status.HTTP_409_CONFLICT, "already_force_enrolled")
+
+    target.force_2fa_enrollment = True
+    session.add(target)
+    session.commit()
+
+    record_event(
+        get_engine(),
+        action="auth.totp.enrolled",
+        entity_type="user",
+        entity_id=target.id,
+        actor_user_id=admin_id,
+        after={"force_enrolled": True},
+        request_id=request.headers.get("x-request-id"),
+    )
+
+
+@router.post(
+    "/users/{user_id}/force-disable-2fa",
+    status_code=204,
+    summary="Force-disable 2FA for a user (admin-side lockout recovery)",
+    description=(
+        "Clears ``users.totp_enabled_at = NULL`` AND invalidates every active "
+        "``recovery_codes`` row for the target user in a single atomic commit, then "
+        "emits ``auth.totp.disabled`` audit with ``actor_user_id != entity_id`` AND "
+        "``after.admin_override = True``. The Fernet-encrypted ``users.totp_secret`` "
+        "ciphertext is RETAINED per epics §1799 + Story 7.5 retention policy — the "
+        "user can later re-enroll with the same authenticator app without secret "
+        "rotation. Unlike the user-side ``POST /api/auth/2fa/disable`` endpoint, "
+        "this admin endpoint REQUIRES ONLY the ``current_admin`` cookie (no "
+        "password+TOTP body): the lockout-recovery scenario presumes the target user "
+        "CANNOT supply either, since that is the entire point of the endpoint. "
+        "Three foot-gun guardrails: **cannot_target_self** (the operator uses the "
+        "user-side disable flow with re-auth for their own 2FA — bypass would be a "
+        "self-lockout vector); **cannot_target_agent** (NFR5-INT-1); "
+        "**totp_not_enrolled** 409 (force-disable on a non-enrolled user is "
+        "meaningless). This is Step 1 of the lost-2FA-AND-lost-recovery-codes "
+        "recovery flow (epics §1817); Step 2 is the Story 8.5 password-reset "
+        "endpoint."
+    ),
+)
+def force_disable_2fa_admin_user(
+    user_id: uuid.UUID,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    admin_id: uuid.UUID = current_admin,
+) -> None:
+    target = session.get(User, user_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found")
+    if target.id == admin_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "cannot_target_self")
+    if target.role == UserRole.agent:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "cannot_target_agent")
+    if target.totp_enabled_at is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "totp_not_enrolled")
+
+    now = datetime.datetime.now(datetime.UTC)
+    # Atomic single-commit: invalidate active recovery codes + clear
+    # totp_enabled_at. ``target.totp_secret`` is NOT mutated — the Fernet
+    # ciphertext is retained per epics §1799 / Story 7.5 retention policy.
+    result = session.execute(
+        update(RecoveryCode)
+        .where(RecoveryCode.user_id == target.id)
+        .where(RecoveryCode.invalidated_at.is_(None))
+        .values(invalidated_at=now)
+    )
+    invalidated_count = result.rowcount
+    target.totp_enabled_at = None
+    session.add(target)
+    session.commit()
+
+    record_event(
+        get_engine(),
+        action="auth.totp.disabled",
+        entity_type="user",
+        entity_id=target.id,
+        actor_user_id=admin_id,
+        after={"admin_override": True, "invalidated_count": invalidated_count},
         request_id=request.headers.get("x-request-id"),
     )

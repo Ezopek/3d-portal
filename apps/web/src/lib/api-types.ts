@@ -210,6 +210,7 @@ export interface AdminUser {
   last_active_at: string | null;
   totp_enabled: boolean;
   is_active: boolean;
+  force_2fa_enrollment: boolean;
 }
 
 export interface AdminUsersListResponse {
@@ -225,6 +226,12 @@ export interface UserMutationRequest {
   role?: Role;
   is_active?: boolean;
 }
+
+// --- Admin 2FA overrides (Story 8.4) ---
+// The two new POST endpoints take no request body, so no
+// request/response interfaces are needed — see
+// `useForce2faEnrollmentAdminUser` / `useForceDisable2faAdminUser`
+// in `modules/admin/hooks/useAdminUsers.ts`.
 
 // --- TOTP 2FA (Story 7.2) ---
 

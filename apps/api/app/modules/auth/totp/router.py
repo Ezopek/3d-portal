@@ -181,6 +181,15 @@ async def confirm_enrollment(
         request_id=request.headers.get("x-request-id"),
     )
 
+    # Story 8.4 AC-5: one-shot auto-clear of the admin-set force-enrollment
+    # flag. Without this, the flag would remain True after the user satisfies
+    # it via self-enrollment — creating a stale-state surface invisible to the
+    # operator (the panel shows totp_enabled=True but the flag is still True).
+    if user.force_2fa_enrollment:
+        user.force_2fa_enrollment = False
+        session.add(user)
+        session.commit()
+
     return ConfirmResponse(
         recovery_codes=result.recovery_codes,
         batch_id=result.batch_id,

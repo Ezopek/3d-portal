@@ -31,6 +31,7 @@ class User(SQLModel, table=True):
         sa_column=Column(UTCDateTime, nullable=True),
     )
     is_active: bool = Field(default=True)
+    force_2fa_enrollment: bool = Field(default=False)
     last_active_at: datetime.datetime | None = Field(
         default=None,
         sa_column=Column(UTCDateTime, nullable=True),

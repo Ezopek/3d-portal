@@ -14,6 +14,8 @@ import { AdminTabs } from "@/modules/admin/AdminTabs";
 import { ChangeRoleModal } from "@/modules/admin/ChangeRoleModal";
 import {
   useAdminUsers,
+  useForce2faEnrollmentAdminUser,
+  useForceDisable2faAdminUser,
   useForceLogoutAdminUser,
   useUpdateAdminUser,
 } from "@/modules/admin/hooks/useAdminUsers";
@@ -42,6 +44,9 @@ const KNOWN_ERROR_CODES = new Set([
   "cannot_promote_to_agent",
   "no_mutation_provided",
   "user_not_found",
+  "totp_already_enrolled",
+  "already_force_enrolled",
+  "totp_not_enrolled",
 ]);
 
 function formatDateTime(iso: string | null): string {
@@ -92,6 +97,8 @@ export function UsersPage() {
 
   const updateUser = useUpdateAdminUser();
   const forceLogout = useForceLogoutAdminUser();
+  const force2faEnrollment = useForce2faEnrollmentAdminUser();
+  const forceDisable2fa = useForceDisable2faAdminUser();
 
   const [changeRoleTarget, setChangeRoleTarget] = useState<AdminUser | null>(null);
   const [confirmDeactivateTarget, setConfirmDeactivateTarget] =
@@ -99,6 +106,10 @@ export function UsersPage() {
   const [confirmReactivateTarget, setConfirmReactivateTarget] =
     useState<AdminUser | null>(null);
   const [confirmForceLogoutTarget, setConfirmForceLogoutTarget] =
+    useState<AdminUser | null>(null);
+  const [confirmForce2faEnrollmentTarget, setConfirmForce2faEnrollmentTarget] =
+    useState<AdminUser | null>(null);
+  const [confirmForceDisable2faTarget, setConfirmForceDisable2faTarget] =
     useState<AdminUser | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
 
@@ -160,6 +171,24 @@ export function UsersPage() {
     });
   }
 
+  function handleForce2faEnrollmentConfirm() {
+    if (!confirmForce2faEnrollmentTarget) return;
+    clearError();
+    force2faEnrollment.mutate(confirmForce2faEnrollmentTarget.id, {
+      onSuccess: () => setConfirmForce2faEnrollmentTarget(null),
+      onError: handleMutationError,
+    });
+  }
+
+  function handleForceDisable2faConfirm() {
+    if (!confirmForceDisable2faTarget) return;
+    clearError();
+    forceDisable2fa.mutate(confirmForceDisable2faTarget.id, {
+      onSuccess: () => setConfirmForceDisable2faTarget(null),
+      onError: handleMutationError,
+    });
+  }
+
   function updateSearchParams(
     next: Partial<{
       page: number;
@@ -206,7 +235,11 @@ export function UsersPage() {
   const items = data?.items ?? [];
   const first = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const last = Math.min(page * pageSize, total);
-  const pending = updateUser.isPending || forceLogout.isPending;
+  const pending =
+    updateUser.isPending ||
+    forceLogout.isPending ||
+    force2faEnrollment.isPending ||
+    forceDisable2fa.isPending;
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-6">
@@ -297,6 +330,9 @@ export function UsersPage() {
                 <th className="px-3 py-2 text-left">
                   {t("admin.users.column_active")}
                 </th>
+                <th className="px-3 py-2 text-left">
+                  {t("admin.users.column_force_2fa")}
+                </th>
                 <th
                   className="px-3 py-2 text-left cursor-pointer select-none"
                   onClick={() => onHeaderClick("created_at")}
@@ -345,6 +381,11 @@ export function UsersPage() {
                         {user.is_active
                           ? t("admin.users.active_yes")
                           : t("admin.users.active_no")}
+                      </td>
+                      <td className="px-3 py-2">
+                        {user.force_2fa_enrollment
+                          ? t("admin.users.totp_enabled_short")
+                          : t("admin.users.totp_disabled_short")}
                       </td>
                       <td className="px-3 py-2" title={user.created_at}>
                         {formatDate(user.created_at)}
@@ -419,6 +460,28 @@ export function UsersPage() {
                               >
                                 {t("admin.users.actions.force_logout")}
                               </DropdownMenuItem>
+                              {!user.totp_enabled && !user.force_2fa_enrollment ? (
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() => {
+                                    clearError();
+                                    setConfirmForce2faEnrollmentTarget(user);
+                                  }}
+                                >
+                                  {t("admin.users.actions.force_2fa_enrollment")}
+                                </DropdownMenuItem>
+                              ) : null}
+                              {user.totp_enabled ? (
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() => {
+                                    clearError();
+                                    setConfirmForceDisable2faTarget(user);
+                                  }}
+                                >
+                                  {t("admin.users.actions.force_disable_2fa")}
+                                </DropdownMenuItem>
+                              ) : null}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         )}
@@ -505,6 +568,34 @@ export function UsersPage() {
         destructive
         pending={pending}
         onConfirm={handleForceLogoutConfirm}
+      />
+
+      <ConfirmDialog
+        open={confirmForce2faEnrollmentTarget !== null}
+        onOpenChange={(next) => {
+          if (!next) setConfirmForce2faEnrollmentTarget(null);
+        }}
+        title={t("admin.users.confirm.force_2fa_enrollment_title", {
+          email: confirmForce2faEnrollmentTarget?.email ?? "",
+        })}
+        description={t("admin.users.confirm.force_2fa_enrollment_description")}
+        destructive
+        pending={pending}
+        onConfirm={handleForce2faEnrollmentConfirm}
+      />
+
+      <ConfirmDialog
+        open={confirmForceDisable2faTarget !== null}
+        onOpenChange={(next) => {
+          if (!next) setConfirmForceDisable2faTarget(null);
+        }}
+        title={t("admin.users.confirm.force_disable_2fa_title", {
+          email: confirmForceDisable2faTarget?.email ?? "",
+        })}
+        description={t("admin.users.confirm.force_disable_2fa_description")}
+        destructive
+        pending={pending}
+        onConfirm={handleForceDisable2faConfirm}
       />
     </div>
   );

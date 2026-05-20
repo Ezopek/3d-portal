@@ -68,3 +68,31 @@ export function useForceLogoutAdminUser() {
     },
   });
 }
+
+// --- Admin 2FA overrides (Story 8.4) ---
+
+export function useForce2faEnrollmentAdminUser() {
+  const queryClient = useQueryClient();
+  return useMutation<void, ApiError, string>({
+    mutationFn: (user_id) =>
+      api<void>(`/admin/users/${user_id}/force-2fa-enrollment`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
+  });
+}
+
+export function useForceDisable2faAdminUser() {
+  const queryClient = useQueryClient();
+  return useMutation<void, ApiError, string>({
+    mutationFn: (user_id) =>
+      api<void>(`/admin/users/${user_id}/force-disable-2fa`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
+  });
+}

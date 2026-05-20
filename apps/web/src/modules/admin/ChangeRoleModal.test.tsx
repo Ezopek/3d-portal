@@ -22,6 +22,7 @@ function memberTarget(overrides: Partial<AdminUser> = {}): AdminUser {
     last_active_at: null,
     totp_enabled: false,
     is_active: true,
+    force_2fa_enrollment: false,
     ...overrides,
   };
 }

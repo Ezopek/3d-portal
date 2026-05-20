@@ -135,8 +135,8 @@ async def login(
     # check fires AFTER the Story 7.3 totp_enabled_at-IS-NOT-NULL branch
     # so totp-enabled users still go through the verify flow; this branch
     # only fires for users who have NOT yet enrolled.
-    totp_enroll_required = (
-        user.totp_enabled_at is None and user.role in settings.enforce_2fa_for_roles
+    totp_enroll_required = user.totp_enabled_at is None and (
+        user.role in settings.enforce_2fa_for_roles or user.force_2fa_enrollment
     )
 
     def _mint_refresh_row() -> str:

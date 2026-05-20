@@ -21,11 +21,15 @@ import i18n from "@/locales/i18n";
 
 const updateMutate = vi.fn();
 const forceLogoutMutate = vi.fn();
+const force2faEnrollmentMutate = vi.fn();
+const forceDisable2faMutate = vi.fn();
 
 vi.mock("@/modules/admin/hooks/useAdminUsers", () => ({
   useAdminUsers: vi.fn(),
   useUpdateAdminUser: vi.fn(),
   useForceLogoutAdminUser: vi.fn(),
+  useForce2faEnrollmentAdminUser: vi.fn(),
+  useForceDisable2faAdminUser: vi.fn(),
 }));
 
 vi.mock("@/shell/AuthContext", () => ({
@@ -35,6 +39,8 @@ vi.mock("@/shell/AuthContext", () => ({
 import { useAuth } from "@/shell/AuthContext";
 import {
   useAdminUsers,
+  useForce2faEnrollmentAdminUser,
+  useForceDisable2faAdminUser,
   useForceLogoutAdminUser,
   useUpdateAdminUser,
 } from "@/modules/admin/hooks/useAdminUsers";
@@ -49,6 +55,8 @@ const ADMIN_ID = "00000000-0000-0000-0000-000000000001";
 beforeEach(() => {
   updateMutate.mockReset();
   forceLogoutMutate.mockReset();
+  force2faEnrollmentMutate.mockReset();
+  forceDisable2faMutate.mockReset();
   vi.mocked(useUpdateAdminUser).mockReturnValue({
     mutate: updateMutate,
     isPending: false,
@@ -61,6 +69,18 @@ beforeEach(() => {
     isError: false,
     error: null,
   } as unknown as ReturnType<typeof useForceLogoutAdminUser>);
+  vi.mocked(useForce2faEnrollmentAdminUser).mockReturnValue({
+    mutate: force2faEnrollmentMutate,
+    isPending: false,
+    isError: false,
+    error: null,
+  } as unknown as ReturnType<typeof useForce2faEnrollmentAdminUser>);
+  vi.mocked(useForceDisable2faAdminUser).mockReturnValue({
+    mutate: forceDisable2faMutate,
+    isPending: false,
+    isError: false,
+    error: null,
+  } as unknown as ReturnType<typeof useForceDisable2faAdminUser>);
   vi.mocked(useAuth).mockReturnValue({
     user: {
       id: ADMIN_ID,
@@ -125,6 +145,7 @@ const seedAdminItem: AdminUser = {
   last_active_at: "2026-05-20T00:00:00Z",
   totp_enabled: false,
   is_active: true,
+  force_2fa_enrollment: false,
 };
 
 function seedMembers(n: number): AdminUser[] {
@@ -139,6 +160,7 @@ function seedMembers(n: number): AdminUser[] {
       last_active_at: null,
       totp_enabled: false,
       is_active: true,
+      force_2fa_enrollment: false,
     });
   }
   return out;
@@ -228,6 +250,7 @@ describe("UsersPage", () => {
     last_active_at: null,
     totp_enabled: false,
     is_active: true,
+    force_2fa_enrollment: false,
   };
 
   const agentRow: AdminUser = {
@@ -239,6 +262,7 @@ describe("UsersPage", () => {
     last_active_at: null,
     totp_enabled: false,
     is_active: true,
+    force_2fa_enrollment: false,
   };
 
   const inactiveMemberRow: AdminUser = {
@@ -351,7 +375,9 @@ describe("UsersPage", () => {
     await user.click(screen.getByRole("button", { name: /^Confirm$/i }));
 
     expect(updateMutate).toHaveBeenCalledTimes(1);
-    expect(updateMutate).toHaveBeenCalledWith({
+    const call = updateMutate.mock.calls[0];
+    if (!call) throw new Error("expected mutate call");
+    expect(call[0]).toEqual({
       user_id: memberRow.id,
       body: { is_active: false },
     });
@@ -385,7 +411,9 @@ describe("UsersPage", () => {
     await user.click(screen.getByRole("button", { name: /^Confirm$/i }));
 
     expect(forceLogoutMutate).toHaveBeenCalledTimes(1);
-    expect(forceLogoutMutate).toHaveBeenCalledWith(memberRow.id);
+    const call = forceLogoutMutate.mock.calls[0];
+    if (!call) throw new Error("expected mutate call");
+    expect(call[0]).toBe(memberRow.id);
   });
 
   it("V10 — renders NO checkbox column even with the new Actions column (FR5-ADMIN-4 regression guard)", async () => {
@@ -408,5 +436,175 @@ describe("UsersPage", () => {
       screen.queryAllByRole("button", { name: /bulk|select all/i }).length,
     ).toBe(0);
     expect(document.querySelectorAll('input[type="checkbox"]').length).toBe(0);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Story 8.4 — V11..V14 admin 2FA override menu items + ConfirmDialog wiring
+  // ---------------------------------------------------------------------------
+
+  const enrolledMemberRow: AdminUser = {
+    ...memberRow,
+    id: "00000000-0000-0000-0000-000000000040",
+    email: "enrolled@test.example",
+    totp_enabled: true,
+  };
+
+  const flaggedMemberRow: AdminUser = {
+    ...memberRow,
+    id: "00000000-0000-0000-0000-000000000050",
+    email: "flagged@test.example",
+    force_2fa_enrollment: true,
+  };
+
+  it("V11 — shows Force 2FA enrollment item only for non-enrolled non-flagged users", async () => {
+    mockHook({
+      data: {
+        total: 3,
+        items: [memberRow, enrolledMemberRow, flaggedMemberRow],
+        page: 1,
+        page_size: 50,
+      },
+    });
+    const user = userEvent.setup();
+    mount(<UsersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("member@test.example")).toBeTruthy();
+    });
+
+    // (a) Plain member (totp=false, force=false) — item visible.
+    await user.click(
+      screen.getByRole("button", { name: /Actions for member@test\.example/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Force 2FA enrollment")).toBeTruthy();
+    });
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByText("Force 2FA enrollment")).toBeNull();
+    });
+
+    // (b) Enrolled member (totp=true) — item hidden.
+    await user.click(
+      screen.getByRole("button", { name: /Actions for enrolled@test\.example/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Change role")).toBeTruthy();
+    });
+    expect(screen.queryByText("Force 2FA enrollment")).toBeNull();
+    await user.keyboard("{Escape}");
+
+    // (c) Already-flagged member (totp=false, force=true) — item hidden.
+    await user.click(
+      screen.getByRole("button", { name: /Actions for flagged@test\.example/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Change role")).toBeTruthy();
+    });
+    expect(screen.queryByText("Force 2FA enrollment")).toBeNull();
+  });
+
+  it("V12 — shows Force-disable 2FA item only for enrolled users", async () => {
+    mockHook({
+      data: {
+        total: 2,
+        items: [memberRow, enrolledMemberRow],
+        page: 1,
+        page_size: 50,
+      },
+    });
+    const user = userEvent.setup();
+    mount(<UsersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("enrolled@test.example")).toBeTruthy();
+    });
+
+    // (a) Enrolled member — item visible.
+    await user.click(
+      screen.getByRole("button", { name: /Actions for enrolled@test\.example/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/Force-disable 2FA/i)).toBeTruthy();
+    });
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByText(/Force-disable 2FA/i)).toBeNull();
+    });
+
+    // (b) Non-enrolled member — item hidden.
+    await user.click(
+      screen.getByRole("button", { name: /Actions for member@test\.example/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Change role")).toBeTruthy();
+    });
+    expect(screen.queryByText(/Force-disable 2FA/i)).toBeNull();
+  });
+
+  it("V13 — clicking Force 2FA enrollment opens confirm modal then POST on confirm", async () => {
+    mockHook({
+      data: { total: 1, items: [memberRow], page: 1, page_size: 50 },
+    });
+    const user = userEvent.setup();
+    mount(<UsersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("member@test.example")).toBeTruthy();
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: /Actions for member@test\.example/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Force 2FA enrollment")).toBeTruthy();
+    });
+    await user.click(screen.getByText("Force 2FA enrollment"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Force 2FA enrollment for member@test\.example\?/i),
+      ).toBeTruthy();
+    });
+
+    await user.click(screen.getByRole("button", { name: /^Confirm$/i }));
+
+    expect(force2faEnrollmentMutate).toHaveBeenCalledTimes(1);
+    const call = force2faEnrollmentMutate.mock.calls[0];
+    if (!call) throw new Error("expected mutate call");
+    expect(call[0]).toBe(memberRow.id);
+  });
+
+  it("V14 — clicking Force-disable 2FA opens confirm modal then POST on confirm", async () => {
+    mockHook({
+      data: { total: 1, items: [enrolledMemberRow], page: 1, page_size: 50 },
+    });
+    const user = userEvent.setup();
+    mount(<UsersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("enrolled@test.example")).toBeTruthy();
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: /Actions for enrolled@test\.example/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/Force-disable 2FA/i)).toBeTruthy();
+    });
+    await user.click(screen.getByText(/Force-disable 2FA/i));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Force-disable 2FA for enrolled@test\.example\?/i),
+      ).toBeTruthy();
+    });
+
+    await user.click(screen.getByRole("button", { name: /^Confirm$/i }));
+
+    expect(forceDisable2faMutate).toHaveBeenCalledTimes(1);
+    const call = forceDisable2faMutate.mock.calls[0];
+    if (!call) throw new Error("expected mutate call");
+    expect(call[0]).toBe(enrolledMemberRow.id);
   });
 });
