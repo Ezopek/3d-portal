@@ -185,10 +185,22 @@ async def confirm_enrollment(
     # flag. Without this, the flag would remain True after the user satisfies
     # it via self-enrollment — creating a stale-state surface invisible to the
     # operator (the panel shows totp_enabled=True but the flag is still True).
-    if user.force_2fa_enrollment:
-        user.force_2fa_enrollment = False
-        session.add(user)
-        session.commit()
+    #
+    # Codex P3 fix-up: use an unconditional UPDATE rather than the cached
+    # `user` row's `force_2fa_enrollment` attribute — admin can set the flag
+    # between our SELECT (in the verify-step earlier) and this commit, and
+    # the cached row would show False → flag never cleared even after
+    # enrollment succeeds. The conditional in SQL guarantees we only clear
+    # the flag when it's actually set, but reads the current value.
+    from sqlalchemy import update as sa_update
+
+    session.execute(
+        sa_update(User)
+        .where(User.id == user.id)
+        .where(User.force_2fa_enrollment.is_(True))
+        .values(force_2fa_enrollment=False)
+    )
+    session.commit()
 
     return ConfirmResponse(
         recovery_codes=result.recovery_codes,

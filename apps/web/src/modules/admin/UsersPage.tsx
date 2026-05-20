@@ -356,7 +356,7 @@ export function UsersPage() {
               {items.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={SORTABLE_COLUMNS.length + 4}
+                    colSpan={SORTABLE_COLUMNS.length + 5}
                     className="px-3 py-6 text-center text-muted-foreground"
                   >
                     {t("admin.users.empty")}
