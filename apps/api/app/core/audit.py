@@ -29,7 +29,13 @@ from app.core.db.models import AuditLog
 #                          auth.totp.verify.success/auth.totp.verify.fail (Story 7.3 +
 #                          7.5 re-auth gates use method=regenerate_reauth/disable_reauth);
 #                          auth.recovery_codes.regenerated (Story 7.5);
-#                          auth.totp.disabled (Story 7.5)
+#                          auth.totp.disabled (Story 7.5);
+#                          user.role_changed, user.deactivated, user.reactivated,
+#                          user.force_logout (Story 8.3);
+#                          auth.totp.enrolled (actor!=target, force_enrolled=true),
+#                          auth.totp.disabled (actor!=target, admin_override=true) (Story 8.4);
+#                          auth.password.reset.initiated, auth.password.reset.completed
+#                          (Story 8.5)
 KNOWN_ENTITY_TYPES: frozenset[str] = frozenset(
     {
         "catalog",

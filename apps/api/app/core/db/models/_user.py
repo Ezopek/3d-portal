@@ -30,5 +30,10 @@ class User(SQLModel, table=True):
         default=None,
         sa_column=Column(UTCDateTime, nullable=True),
     )
+    is_active: bool = Field(default=True)
+    last_active_at: datetime.datetime | None = Field(
+        default=None,
+        sa_column=Column(UTCDateTime, nullable=True),
+    )
     created_at: datetime.datetime = Field(default_factory=_now_utc)
     last_login_at: datetime.datetime | None = None

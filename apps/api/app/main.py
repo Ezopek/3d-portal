@@ -5,6 +5,7 @@ from arq.connections import RedisSettings
 from fastapi import FastAPI
 
 from app.core.auth.csrf import install_csrf_middleware
+from app.core.auth.middleware import LastActiveMiddleware
 from app.core.auth.ratelimit import (
     RateLimitMiddleware,
     login_ratelimit_key,
@@ -125,6 +126,12 @@ def create_app() -> FastAPI:
         retry_after_seconds_fn=share_retry_after_seconds,
     )
     install_csrf_middleware(app)
+    # Story 8.1 (Decision I): added AFTER CSRF + rate-limit trio per AC-3
+    # step 6 verbatim. Under Starlette's LIFO wrapping this means LastActive
+    # is the OUTERMOST layer — fine because the middleware is a passthrough
+    # on missing/invalid cookie, agent role, and Redis-down, paying only one
+    # cookie parse + JWT decode on the authenticated happy path.
+    app.add_middleware(LastActiveMiddleware)
 
     @app.get("/api/health")
     def health() -> dict[str, str]:

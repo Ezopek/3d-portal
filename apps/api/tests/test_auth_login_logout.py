@@ -101,3 +101,28 @@ def test_logout_idempotent_double_call(client):
     b = client.post("/api/auth/logout")
     assert a.status_code == 204
     assert b.status_code == 204
+
+
+def test_login_success_threads_x_request_id(client):
+    """Story 8.1 AC-8 — single-factor login emission MUST thread X-Request-ID
+    from request headers into the audit row's ``request_id`` column.
+
+    Only the ``user.totp_enabled_at IS NULL`` branch is exercised here
+    (the seeded admin has no TOTP). The partial-auth + verify branches
+    are covered by Story 7.3 tests and need no new assertion here.
+    """
+    from app.core.db.models import AuditLog
+    from app.core.db.session import get_engine
+
+    correlation_id = "test-correlation-uuid-abc"
+    r = client.post(
+        "/api/auth/login",
+        json={"email": "admin@example.com", "password": "pw"},
+        headers={"X-Request-ID": correlation_id},
+    )
+    assert r.status_code == 200
+
+    with Session(get_engine()) as s:
+        rows = s.exec(select(AuditLog).where(AuditLog.action == "auth.login.success")).all()
+        assert len(rows) == 1
+        assert rows[0].request_id == correlation_id

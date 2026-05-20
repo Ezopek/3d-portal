@@ -67,7 +67,7 @@ def _fresh_migration_db(tmp_path: Path) -> Iterator[Path]:
 def test_migration_0013_advances_head(_fresh_migration_db: Path) -> None:
     db_path = _fresh_migration_db
     cfg = _alembic_cfg(db_path)
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0013_users_2fa_columns")
     with sqlite3.connect(db_path) as conn:
         rows = conn.execute("SELECT version_num FROM alembic_version").fetchall()
     assert rows == [("0013_users_2fa_columns",)]
@@ -76,7 +76,7 @@ def test_migration_0013_advances_head(_fresh_migration_db: Path) -> None:
 def test_migration_0013_creates_recovery_codes_table(_fresh_migration_db: Path) -> None:
     db_path = _fresh_migration_db
     cfg = _alembic_cfg(db_path)
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0013_users_2fa_columns")
     engine = create_engine_for_url(f"sqlite:///{db_path}")
     inspector = sa.inspect(engine)
     assert "recovery_codes" in inspector.get_table_names()
@@ -102,7 +102,7 @@ def test_migration_0013_creates_recovery_codes_table(_fresh_migration_db: Path) 
 def test_migration_0013_adds_user_totp_columns(_fresh_migration_db: Path) -> None:
     db_path = _fresh_migration_db
     cfg = _alembic_cfg(db_path)
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0013_users_2fa_columns")
     engine = create_engine_for_url(f"sqlite:///{db_path}")
     inspector = sa.inspect(engine)
     cols_by_name = {c["name"]: c for c in inspector.get_columns("user")}
@@ -122,7 +122,7 @@ def test_migration_0013_adds_user_totp_columns(_fresh_migration_db: Path) -> Non
 def test_migration_0013_creates_recovery_codes_indexes(_fresh_migration_db: Path) -> None:
     db_path = _fresh_migration_db
     cfg = _alembic_cfg(db_path)
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0013_users_2fa_columns")
     engine = create_engine_for_url(f"sqlite:///{db_path}")
     inspector = sa.inspect(engine)
     idx_by_name = {ix["name"]: ix for ix in inspector.get_indexes("recovery_codes")}
@@ -158,7 +158,7 @@ def test_migration_0013_preserves_existing_user_rows_null_default(
         )
         conn.commit()
     # Step 3: upgrade to head (0013) — ADD COLUMN should leave existing rows NULL.
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0013_users_2fa_columns")
     with sqlite3.connect(db_path) as conn:
         result = conn.execute(
             'SELECT email, totp_secret, totp_enabled_at FROM "user" ORDER BY email'
@@ -173,7 +173,7 @@ def test_migration_0013_preserves_existing_user_rows_null_default(
 def test_migration_0013_downgrade_reverses_clean(_fresh_migration_db: Path) -> None:
     db_path = _fresh_migration_db
     cfg = _alembic_cfg(db_path)
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0013_users_2fa_columns")
     command.downgrade(cfg, "-1")
     engine = create_engine_for_url(f"sqlite:///{db_path}")
     inspector = sa.inspect(engine)
@@ -258,6 +258,10 @@ def test_recovery_code_create_round_trip_via_init_schema(tmp_path: Path) -> None
 def test_user_model_matches_migration_0013_schema(_fresh_migration_db: Path) -> None:
     db_path = _fresh_migration_db
     cfg = _alembic_cfg(db_path)
+    # Upgrade to head (not just 0013) so the User SQLModel's columns added
+    # by later migrations (Story 8.1's is_active + last_active_at on 0014)
+    # match the DB schema. The test's binding intent — verifying the totp
+    # columns from 0013 round-trip cleanly through the model — stays intact.
     command.upgrade(cfg, "head")
     engine = create_engine_for_url(f"sqlite:///{db_path}")
     user_id = uuid.uuid4()

@@ -72,6 +72,27 @@ run_stage "workers/render pytest" SKIP_PYTEST "$ROOT/workers/render" \
 run_stage "apps/web visual regression" SKIP_VISUAL "$ROOT/apps/web" \
   npm run test:visual
 
+# Story 8.1 (Epic 7 retro §1) — tri-directional Settings ↔ env.example ↔
+# docker-compose.yml diff. Catches the Story 6.4/6.6/6.7/7.1 dropped-on-the-
+# floor env-var wiring regression class. Cheap (<1s).
+run_stage "settings-env-compose-diff" SKIP_SETTINGS_ENV "$ROOT" \
+  "$API_VENV/python" "$ROOT/infra/scripts/check-settings-env-compose.py"
+
+# Story 8.1 (Epic 7 retro §2) — uv lockfile staleness gate. Catches the
+# Story 7.1 stale-lockfile class (a pyproject.toml change shipped without
+# `uv lock` regen).
+run_stage "uv-lock-check (apps/api)" SKIP_UV_LOCK "$ROOT/apps/api" \
+  uv lock --check
+run_stage "uv-lock-check (workers/render)" SKIP_UV_LOCK "$ROOT/workers/render" \
+  uv lock --check
+
+# Story 8.1 (Epic 7 retro §1) — LOCAL infra/.env secret-provisioning check.
+# Scans env.example for ^[A-Z_]+=$ empty slots (intended for operator-supplied
+# secrets) and asserts the same name is non-empty in the local infra/.env.
+# Skips gracefully if infra/.env is absent (fresh checkout, no local dev yet).
+run_stage "local-env-secrets" SKIP_LOCAL_ENV_SECRETS "$ROOT" \
+  bash "$ROOT/infra/scripts/check-local-env-secrets.sh"
+
 echo
 echo "================ check-all summary ================"
 printf "passed:  %d\n" "${#PASSED[@]}"

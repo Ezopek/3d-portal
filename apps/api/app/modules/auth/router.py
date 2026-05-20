@@ -155,6 +155,7 @@ async def login(
         entity_id=user.id,
         actor_user_id=user.id,
         after=after_payload,
+        request_id=request.headers.get("x-request-id"),
     )
     return LoginResponse(
         user=MeResponse(
