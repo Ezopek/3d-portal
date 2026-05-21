@@ -25,6 +25,36 @@ from app.core.sentry import init_sentry
 from app.modules.runbook.router import router as runbook_router
 from app.router import api_router
 
+# Initiative 6 Story 11.4 Decision M — explicit allowlist of anonymous-allowed
+# `/api/*` routes. The route enforcement test
+# (`apps/api/tests/test_route_enforcement_gate.py`) iterates `app.routes` and
+# asserts every `/api/*` route has either an auth Depends (current_user /
+# current_admin / current_member_or_admin / current_admin_or_agent) OR appears
+# in this list. Adding an entry here requires a Sprint Change Proposal
+# (FR6-AUTH-2 procedural-gate property — single-story creep prevention).
+#
+# Categories (per SCP §3.3 D-LOCK-2):
+#   • /api/auth/* — login / refresh / register / partial-auth verify /
+#     password-reset consume. All POST endpoints; CSRF + rate-limit middleware
+#     applies.
+#   • /api/share/{token}* — anonymous share-recipient surface (resolve +
+#     share-scoped asset endpoint per Story 11.2 Decision N).
+#   • /api/health — D-LOCK-3 says health monitoring should be LAN-only via
+#     nginx listener 127.0.0.1; the application-level endpoint is kept
+#     anonymous for now (Story 11.7 nginx cleanup pass will route external
+#     traffic away from this surface).
+_PUBLIC_ROUTES: tuple[str, ...] = (
+    "/api/health",
+    "/api/auth/login",
+    "/api/auth/logout",  # cookie clear; no auth needed for the act of clearing
+    "/api/auth/refresh",
+    "/api/auth/register",
+    "/api/auth/2fa/verify",  # partial-auth step for users mid-2FA login
+    "/api/auth/password-reset",  # consume step (mint side is /api/admin/...)
+    "/api/share/{token}",  # share resolve (Init 0)
+    "/api/share/{token}/files/{file_id}/content",  # share-scoped asset (Story 11.2 Decision N)
+)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
