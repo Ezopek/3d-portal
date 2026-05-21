@@ -474,3 +474,85 @@ maintenance; production traffic goes through `https://3d.ezop.ddns.net`).
 The nginx `set_real_ip_from` trust boundary at `.180` (Story 6.6 Codex
 fix-up) ensures the rate-limit middleware sees the real client IP, not the
 nginx proxy IP, when computing the sliding-window key.
+
+## Post-cutover portal-self-auth posture — Initiative 6 default-deny (2026-05-21)
+
+Initiative 6 closes at this commit. Story 11.7 final rollback of the
+temporary sibling configs IP allowlist (`70cb5ba` on `~/repos/configs/`,
+reverted at `4be33d3`) re-establishes the cutover's primary product
+property: portal authenticates itself via application-tier default-deny,
+not via nginx perimeter restoration. Anonymous external requests now reach
+the FastAPI app and receive 401 from `current_user` Depends — verified
+end-to-end on 2026-05-21:
+
+```bash
+curl -sS -o /dev/null -w "%{http_code}\n" https://3d.ezop.ddns.net/api/categories
+# → 401  (was 403 from temporary allowlist during Initiative 6 build window)
+```
+
+### Default-deny posture on `/api/*` (Initiative 6 Decision M)
+
+The application route table is split between authenticated (`current_user`
+/ `current_admin` / `current_member_or_admin` / `current_admin_or_agent`
+Depends) and an enumerated `_PUBLIC_ROUTES` allowlist in
+`apps/api/app/main.py`. Adding to the allowlist requires a Sprint Change
+Proposal (FR6-AUTH-2 procedural gate). The CI-blocking pytest enumeration
+test at `apps/api/tests/test_route_enforcement_gate.py` (Story 11.4)
+asserts the property mechanically and runs in <1s.
+
+Anonymous-allowed `/api/*` surface (exactly enumerated):
+
+- `/api/health` — D-LOCK-3 nginx-LAN-only deferred to future cleanup
+- `/api/auth/login` / `/logout` / `/refresh` / `/register` / `/2fa/verify`
+  / `/password-reset` — auth endpoints (CSRF + rate-limit middleware)
+- `/api/share/{token}` — share resolve (Init 0 contract)
+- `/api/share/{token}/files/{file_id}/content` — share-scoped asset endpoint
+  (Initiative 6 Story 11.2 Decision N hardened-(a)): token-scoped, kind-
+  filtered (only image/print/stl surfaced; `source` + `archive_3mf` never
+  exposed), soft-delete filter, uniform 404 on any failure (no enumeration
+  oracle), Cache-Control: no-store, audit token-hash never clear token,
+  path-token redaction in `logging.py`.
+
+### Frontend shell-level AuthGate (Decision O)
+
+`apps/web/src/shell/AppShell.tsx` hoists authentication gating from per-route
+`<AuthGate>` wrappers to a single shell-level gate (Story 11.3). Anonymous
+users on protected paths redirect to `/login?next=<path+searchStr>`; the
+`searchStr` encoding contract (single-encode via TanStack Router) closes
+hot-fix 64447ff's P2 codex finding (object-coercion `[object Object]`).
+ModuleRail + TopBar absent for anonymous users — the login surface IS the
+shell for anon principals.
+
+### Audit re-run + trust restoration
+
+Story 11.5 audit re-run produced `security-audit-2026-05-21.md` with
+NFR6-SEC-1 gate condition PASS: **69/69 auth-boundary probe PASS, 0 FAIL,
+zero open Critical/High, 0/3 accepted-rationale Mediums.** Scenario 4 of
+`infra/scripts/audit-six-scenarios.sh` now enumerates the live route table
+via `/api/openapi.json` (replacing the pre-Init-6 hand-maintained admin-only
+target list that produced supplemental finding High-002 on 2026-05-20).
+
+`infra/scripts/cutover-smoke.sh` extends with Scenario 5 (Story 11.6) — an
+external-host anonymous probe verifying the application-tier default-deny
+is load-bearing from outside the LAN+VPN trust boundary. Operator sets
+`CUTOVER_EXTERNAL_PROBE_SSH=<host:port>` to enable the live verification
+at cutover time; the SKIP path (no env var) is acceptable during the
+Initiative 6 build window.
+
+### Cross-references (Initiative 6)
+
+- `_bmad-output/planning-artifacts/sprint-change-proposal-2026-05-20-post-cutover-auth.md` —
+  Source SCP, `approved` 2026-05-20 (Codex peer-grilled share-asset trade-off).
+- `_bmad-output/implementation-artifacts/security-audit-2026-05-21.md` —
+  Story 11.5 audit re-run with NFR6-SEC-1 gate PASS verbatim.
+- `_bmad-output/implementation-artifacts/audit-raw/2026-05-21/` — raw
+  Scenario 4 anonymous-probe output + reproducer script.
+- 10 codex review iteration logs at
+  `_bmad-output/implementation-artifacts/codex-review-11-{1,2,3}-*.log`
+  covering pre-merge auth-boundary review (NFR6-SEC-3 compensating
+  control for the cognitive-pattern miss that produced hot-fix 64447ff).
+
+Sibling configs revert commit: `~/repos/configs/` `4be33d3` (revert of
+`70cb5ba`), deployed via sibling `sync.sh` 2026-05-21 — `.180` nginx
+reloaded successfully; 3d.ezop.ddns.net no longer carries a server-level
+IP allowlist; portal-self-auth is the sole boundary.
