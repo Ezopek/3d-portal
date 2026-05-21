@@ -19,6 +19,7 @@ import { Route as QueueIndexRouteImport } from './routes/queue/index'
 import { Route as PrinterIndexRouteImport } from './routes/printer/index'
 import { Route as CatalogIndexRouteImport } from './routes/catalog/index'
 import { Route as SettingsSessionsRouteImport } from './routes/settings/sessions'
+import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
 import { Route as Settings2faRouteImport } from './routes/settings/2fa'
 import { Route as DevComponentsRouteImport } from './routes/dev/components'
 import { Route as CatalogIdRouteImport } from './routes/catalog/$id'
@@ -75,6 +76,11 @@ const SettingsSessionsRoute = SettingsSessionsRouteImport.update({
   path: '/settings/sessions',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsProfileRoute = SettingsProfileRouteImport.update({
+  id: '/settings/profile',
+  path: '/settings/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const Settings2faRoute = Settings2faRouteImport.update({
   id: '/settings/2fa',
   path: '/settings/2fa',
@@ -111,6 +117,7 @@ export interface FileRoutesByFullPath {
   '/catalog/$id': typeof CatalogIdRoute
   '/dev/components': typeof DevComponentsRoute
   '/settings/2fa': typeof Settings2faRoute
+  '/settings/profile': typeof SettingsProfileRoute
   '/settings/sessions': typeof SettingsSessionsRoute
   '/catalog/': typeof CatalogIndexRoute
   '/printer/': typeof PrinterIndexRoute
@@ -128,6 +135,7 @@ export interface FileRoutesByTo {
   '/catalog/$id': typeof CatalogIdRoute
   '/dev/components': typeof DevComponentsRoute
   '/settings/2fa': typeof Settings2faRoute
+  '/settings/profile': typeof SettingsProfileRoute
   '/settings/sessions': typeof SettingsSessionsRoute
   '/catalog': typeof CatalogIndexRoute
   '/printer': typeof PrinterIndexRoute
@@ -146,6 +154,7 @@ export interface FileRoutesById {
   '/catalog/$id': typeof CatalogIdRoute
   '/dev/components': typeof DevComponentsRoute
   '/settings/2fa': typeof Settings2faRoute
+  '/settings/profile': typeof SettingsProfileRoute
   '/settings/sessions': typeof SettingsSessionsRoute
   '/catalog/': typeof CatalogIndexRoute
   '/printer/': typeof PrinterIndexRoute
@@ -165,6 +174,7 @@ export interface FileRouteTypes {
     | '/catalog/$id'
     | '/dev/components'
     | '/settings/2fa'
+    | '/settings/profile'
     | '/settings/sessions'
     | '/catalog/'
     | '/printer/'
@@ -182,6 +192,7 @@ export interface FileRouteTypes {
     | '/catalog/$id'
     | '/dev/components'
     | '/settings/2fa'
+    | '/settings/profile'
     | '/settings/sessions'
     | '/catalog'
     | '/printer'
@@ -199,6 +210,7 @@ export interface FileRouteTypes {
     | '/catalog/$id'
     | '/dev/components'
     | '/settings/2fa'
+    | '/settings/profile'
     | '/settings/sessions'
     | '/catalog/'
     | '/printer/'
@@ -217,6 +229,7 @@ export interface RootRouteChildren {
   CatalogIdRoute: typeof CatalogIdRoute
   DevComponentsRoute: typeof DevComponentsRoute
   Settings2faRoute: typeof Settings2faRoute
+  SettingsProfileRoute: typeof SettingsProfileRoute
   SettingsSessionsRoute: typeof SettingsSessionsRoute
   CatalogIndexRoute: typeof CatalogIndexRoute
   PrinterIndexRoute: typeof PrinterIndexRoute
@@ -297,6 +310,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsSessionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/profile': {
+      id: '/settings/profile'
+      path: '/settings/profile'
+      fullPath: '/settings/profile'
+      preLoaderRoute: typeof SettingsProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings/2fa': {
       id: '/settings/2fa'
       path: '/settings/2fa'
@@ -345,6 +365,7 @@ const rootRouteChildren: RootRouteChildren = {
   CatalogIdRoute: CatalogIdRoute,
   DevComponentsRoute: DevComponentsRoute,
   Settings2faRoute: Settings2faRoute,
+  SettingsProfileRoute: SettingsProfileRoute,
   SettingsSessionsRoute: SettingsSessionsRoute,
   CatalogIndexRoute: CatalogIndexRoute,
   PrinterIndexRoute: PrinterIndexRoute,

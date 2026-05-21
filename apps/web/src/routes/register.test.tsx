@@ -292,4 +292,137 @@ describe("Register form", () => {
     // Error message is rendered
     expect(screen.getAllByRole("alert").length).toBeGreaterThan(0);
   });
+
+  // -------------------------------------------------------------------------
+  // Story 12.3 — display_name field + email-prefix autopopulate on blur
+  // -------------------------------------------------------------------------
+
+  it("renders display_name input with proper a11y attributes", async () => {
+    await renderRegister(<Component />, `/register?token=${TEST_TOKEN}`);
+    const dn = screen.getByLabelText(
+      /display name|nazwa wyświetlana/i,
+    ) as HTMLInputElement;
+    expect(dn.getAttribute("autocomplete")).toBe("nickname");
+    expect(dn.getAttribute("name")).toBe("display_name");
+    expect(dn.getAttribute("aria-label")).not.toBeNull();
+    expect(dn.getAttribute("aria-describedby")).not.toBeNull();
+    expect(dn.getAttribute("maxlength")).toBe("120");
+    // NOT required — display_name is optional (server falls back to email prefix)
+    expect(dn.required).toBe(false);
+  });
+
+  it("autopopulates display_name with email prefix on email blur when empty", async () => {
+    await renderRegister(<Component />, `/register?token=${TEST_TOKEN}`);
+    const email = screen.getByLabelText(/email/i) as HTMLInputElement;
+    const dn = screen.getByLabelText(
+      /display name|nazwa wyświetlana/i,
+    ) as HTMLInputElement;
+    expect(dn.value).toBe("");
+
+    fireEvent.change(email, { target: { value: "foo@example.com" } });
+    fireEvent.blur(email);
+
+    await waitFor(() => {
+      expect(dn.value).toBe("foo");
+    });
+  });
+
+  it("does NOT clobber a user-typed display_name on email blur", async () => {
+    await renderRegister(<Component />, `/register?token=${TEST_TOKEN}`);
+    const email = screen.getByLabelText(/email/i) as HTMLInputElement;
+    const dn = screen.getByLabelText(
+      /display name|nazwa wyświetlana/i,
+    ) as HTMLInputElement;
+
+    fireEvent.change(dn, { target: { value: "Alice Smith" } });
+    fireEvent.change(email, { target: { value: "foo@example.com" } });
+    fireEvent.blur(email);
+
+    // The blur autopopulate must respect the touched-state and leave the
+    // user-typed value intact.
+    expect(dn.value).toBe("Alice Smith");
+  });
+
+  it("submits display_name in the request body when populated", async () => {
+    vi.mocked(api).mockResolvedValueOnce({
+      user: {
+        id: "uid",
+        email: "newbie@example.com",
+        display_name: "Custom Name",
+        role: "member",
+      },
+    });
+    await renderRegister(<Component />, `/register?token=${TEST_TOKEN}`);
+
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: "newbie@example.com" },
+    });
+    fireEvent.change(
+      screen.getByLabelText(/display name|nazwa wyświetlana/i),
+      { target: { value: "Custom Name" } },
+    );
+    fireEvent.change(screen.getByLabelText(/password|hasło/i), {
+      target: { value: "correct horse battery staple" },
+    });
+    {
+      const btn = screen.getAllByRole("button")[0];
+      if (btn === undefined) throw new Error("submit button not found");
+      fireEvent.click(btn);
+    }
+
+    await waitFor(() => {
+      expect(vi.mocked(api)).toHaveBeenCalledWith(
+        "/auth/register",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            token: TEST_TOKEN,
+            email: "newbie@example.com",
+            password: "correct horse battery staple",
+            display_name: "Custom Name",
+          }),
+        }),
+      );
+    });
+  });
+
+  it("omits display_name from the request body when blank", async () => {
+    vi.mocked(api).mockResolvedValueOnce({
+      user: {
+        id: "uid",
+        email: "newbie@example.com",
+        display_name: "newbie",
+        role: "member",
+      },
+    });
+    await renderRegister(<Component />, `/register?token=${TEST_TOKEN}`);
+
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: "newbie@example.com" },
+    });
+    // Do NOT type into display_name and do NOT blur email — body must
+    // omit display_name entirely so the backend falls back to email prefix.
+    fireEvent.change(screen.getByLabelText(/password|hasło/i), {
+      target: { value: "correct horse battery staple" },
+    });
+    {
+      const btn = screen.getAllByRole("button")[0];
+      if (btn === undefined) throw new Error("submit button not found");
+      fireEvent.click(btn);
+    }
+
+    await waitFor(() => {
+      expect(vi.mocked(api)).toHaveBeenCalledWith(
+        "/auth/register",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            token: TEST_TOKEN,
+            email: "newbie@example.com",
+            password: "correct horse battery staple",
+          }),
+        }),
+      );
+    });
+  });
 });

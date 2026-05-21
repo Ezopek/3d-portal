@@ -29,15 +29,34 @@ function Register() {
   const qc = useQueryClient();
   const emailId = useId();
   const passwordId = useId();
+  const displayNameId = useId();
+  const displayNameHintId = useId();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  // Story 12.3 — optional display_name input with email-prefix autopopulate
+  // on email blur. ``displayNameTouched`` flips on any keystroke against the
+  // input so a user who has typed a value keeps it across email-blur events;
+  // re-blurring email after a manual edit must NEVER clobber what the user
+  // typed (AC: "user can edit/override before submit").
+  const [displayName, setDisplayName] = useState("");
+  const [displayNameTouched, setDisplayNameTouched] = useState(false);
   const [pending, setPending] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [fullPageError, setFullPageError] = useState<FullPageError | null>(
     search.token ? null : "token_missing",
   );
+
+  function onEmailBlur() {
+    if (displayNameTouched) return;
+    if (displayName.length > 0) return;
+    const at = email.indexOf("@");
+    if (at <= 0) return;
+    const prefix = email.slice(0, at).trim();
+    if (prefix.length === 0) return;
+    setDisplayName(prefix);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -46,9 +65,19 @@ function Register() {
     setPasswordError(null);
     setPending(true);
     try {
+      const trimmedDisplayName = displayName.trim();
+      const body: {
+        token: string;
+        email: string;
+        password: string;
+        display_name?: string;
+      } = { token: search.token, email, password };
+      if (trimmedDisplayName.length > 0) {
+        body.display_name = trimmedDisplayName;
+      }
       const res = await api<RegisterResponse>("/auth/register", {
         method: "POST",
-        body: JSON.stringify({ token: search.token, email, password }),
+        body: JSON.stringify(body),
       });
       await qc.invalidateQueries({ queryKey: ["auth", "me"] });
       // Story 7.4 Codex P1 follow-up: when ENFORCE_2FA_FOR_ROLES contains
@@ -111,6 +140,7 @@ function Register() {
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          onBlur={onEmailBlur}
           disabled={pending}
         />
         {emailError !== null && (
@@ -118,6 +148,29 @@ function Register() {
             {emailError}
           </p>
         )}
+      </div>
+      <div className="grid gap-1.5">
+        <label htmlFor={displayNameId} className="text-sm font-medium">
+          {t("auth.register.display_name_label")}
+        </label>
+        <Input
+          id={displayNameId}
+          name="display_name"
+          type="text"
+          autoComplete="nickname"
+          aria-label={t("auth.register.display_name_label")}
+          aria-describedby={displayNameHintId}
+          maxLength={120}
+          value={displayName}
+          onChange={(e) => {
+            setDisplayName(e.target.value);
+            setDisplayNameTouched(true);
+          }}
+          disabled={pending}
+        />
+        <p id={displayNameHintId} className="text-xs text-muted-foreground">
+          {t("auth.register.display_name_hint")}
+        </p>
       </div>
       <div className="grid gap-1.5">
         <label htmlFor={passwordId} className="text-sm font-medium">

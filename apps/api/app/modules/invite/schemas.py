@@ -12,6 +12,11 @@ Schema-layer validation is intentionally tight where it can be cheap:
 - ``password`` carries a length floor of 1 (DOS guard); the meaningful
   ``>=12`` policy + zxcvbn score check live in the route handler so the
   failure surface emits the user-facing 422 message + audit row.
+- ``display_name`` (Story 12.3) is OPTIONAL on register: when absent the
+  handler derives the value from the email local-part (legacy behaviour);
+  when present the trimmed value is persisted verbatim. The 1..120 length
+  bound matches the self-service ``DisplayNameUpdateRequest`` envelope so
+  both surfaces share the same validation contract.
 """
 
 from __future__ import annotations
@@ -27,3 +32,4 @@ class RegisterRequest(BaseModel):
     token: str = Field(min_length=43, max_length=43)
     email: EmailStr
     password: str = Field(min_length=1)
+    display_name: str | None = Field(default=None, min_length=1, max_length=120)

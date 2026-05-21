@@ -180,7 +180,14 @@ async def register(
         raise HTTPException(status.HTTP_409_CONFLICT, "email_taken")
 
     # Step 4: create user.
-    display_name = payload.email.split("@", 1)[0]
+    # Story 12.3: accept user-supplied display_name when present (trimmed);
+    # fall back to email local-part when absent or whitespace-only. The
+    # schema-layer ``min_length=1`` only catches the literal empty string,
+    # so the strip-then-fallback re-runs here to harden against pure-WS
+    # payloads that bypass the schema floor (legacy email-prefix derivation
+    # stays the contract for that case).
+    supplied = (payload.display_name or "").strip()
+    display_name = supplied or payload.email.split("@", 1)[0]
     user = User(
         email=payload.email,
         display_name=display_name,

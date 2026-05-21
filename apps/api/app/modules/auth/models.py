@@ -1,7 +1,7 @@
 import datetime
 import uuid
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.core.db.models._enums import UserRole
 
@@ -16,6 +16,21 @@ class MeResponse(BaseModel):
     email: str
     display_name: str
     role: UserRole
+
+
+class DisplayNameUpdateRequest(BaseModel):
+    """Payload accepted by ``PATCH /api/auth/me/display-name`` (Story 12.3).
+
+    Schema floor is ``min_length=1`` to reject literal empty strings at the
+    pydantic layer; the route handler additionally strips and re-validates
+    so pure-whitespace payloads are rejected with the same 422 surface.
+    The 120-char ceiling mirrors :class:`RegisterRequest.display_name` so
+    both ingress surfaces share one contract.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str = Field(min_length=1, max_length=120)
 
 
 class LoginResponse(BaseModel):

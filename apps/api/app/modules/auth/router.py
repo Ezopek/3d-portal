@@ -32,6 +32,7 @@ from app.core.config import Settings, get_settings
 from app.core.db.models import RefreshToken, User
 from app.core.db.session import get_engine, get_session
 from app.modules.auth.models import (
+    DisplayNameUpdateRequest,
     LoginRequest,
     LoginResponse,
     MeResponse,
@@ -191,6 +192,64 @@ def me(
     user = session.get(User, user_id)
     if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found")
+    return MeResponse(
+        id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        role=user.role.value,
+    )
+
+
+@router.patch(
+    "/me/display-name",
+    response_model=MeResponse,
+    summary="Update the authenticated user's display name",
+    description=(
+        "Self-service display-name edit (Story 12.3). Accepts a partial body "
+        "``{display_name: str}`` with the same 1..120 length floor as the "
+        "register surface; trims surrounding whitespace and rejects pure-WS "
+        "payloads with 422. No-op writes (post-strip value equal to the "
+        "current persisted value) are skipped and emit no audit row. "
+        "Successful mutations emit ``user.display_name.updated`` with the "
+        "before/after pair (actor==target). Auth required: ``current_user``."
+    ),
+)
+def update_display_name(
+    body: DisplayNameUpdateRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    user_id: uuid.UUID = current_user,
+) -> MeResponse:
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found")
+
+    new_value = body.display_name.strip()
+    if not new_value:
+        # Schema floor only catches the literal empty string; harden against
+        # whitespace-only payloads with the same 422 surface.
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "display_name must not be blank",
+        )
+
+    before_value = user.display_name
+    if new_value != before_value:
+        user.display_name = new_value
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        record_event(
+            get_engine(),
+            action="user.display_name.updated",
+            entity_type="user",
+            entity_id=user.id,
+            actor_user_id=user.id,
+            before={"display_name": before_value},
+            after={"display_name": new_value},
+            request_id=request.headers.get("x-request-id"),
+        )
+
     return MeResponse(
         id=user.id,
         email=user.email,

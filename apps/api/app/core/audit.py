@@ -35,7 +35,9 @@ from app.core.db.models import AuditLog
 #                          auth.totp.enrolled (actor!=target, force_enrolled=true),
 #                          auth.totp.disabled (actor!=target, admin_override=true) (Story 8.4);
 #                          auth.password.reset.initiated, auth.password.reset.completed
-#                          (Story 8.5)
+#                          (Story 8.5);
+#                          user.display_name.updated (Story 12.3 — self-service edit
+#                          via PATCH /api/auth/me/display-name; actor==target)
 KNOWN_ENTITY_TYPES: frozenset[str] = frozenset(
     {
         "catalog",

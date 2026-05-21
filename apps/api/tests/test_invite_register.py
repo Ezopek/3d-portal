@@ -704,3 +704,96 @@ def test_register_missing_password_field_returns_422(client):
         json={"token": "x" * 43, "email": "valid@example.com"},
     )
     assert r.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Story 12.3 — optional display_name on register
+# ---------------------------------------------------------------------------
+
+
+def test_register_with_display_name_uses_supplied_value(client):
+    """AC: user-supplied display_name overrides the email-prefix derivation."""
+    c, admin_uuid, fake = client
+    token, _ = _gen_invite(c, fake, generated_by_user_id=admin_uuid)
+    r = c.post(
+        "/api/auth/register",
+        json={
+            "token": token,
+            "email": "alice.smith@example.com",
+            "password": PASSWORD_STRONG,
+            "display_name": "Alice Smith",
+        },
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["user"]["display_name"] == "Alice Smith"
+    user = _user_by_email("alice.smith@example.com")
+    assert user.display_name == "Alice Smith"
+
+
+def test_register_without_display_name_falls_back_to_email_prefix(client):
+    """AC: when display_name absent, behaviour falls back to legacy
+    email-local-part derivation (Story 6.4 contract)."""
+    c, admin_uuid, fake = client
+    token, _ = _gen_invite(c, fake, generated_by_user_id=admin_uuid)
+    r = c.post(
+        "/api/auth/register",
+        json={
+            "token": token,
+            "email": "bob@example.com",
+            "password": PASSWORD_STRONG,
+        },
+    )
+    assert r.status_code == 201
+    assert r.json()["user"]["display_name"] == "bob"
+    user = _user_by_email("bob@example.com")
+    assert user.display_name == "bob"
+
+
+def test_register_with_whitespace_only_display_name_falls_back_to_email_prefix(client):
+    """Pure-whitespace display_name strips to empty → email-prefix fallback."""
+    c, admin_uuid, fake = client
+    token, _ = _gen_invite(c, fake, generated_by_user_id=admin_uuid)
+    r = c.post(
+        "/api/auth/register",
+        json={
+            "token": token,
+            "email": "carol@example.com",
+            "password": PASSWORD_STRONG,
+            "display_name": "   ",
+        },
+    )
+    assert r.status_code == 201
+    assert r.json()["user"]["display_name"] == "carol"
+
+
+def test_register_display_name_trims_whitespace(client):
+    """Leading/trailing whitespace is stripped before persistence."""
+    c, admin_uuid, fake = client
+    token, _ = _gen_invite(c, fake, generated_by_user_id=admin_uuid)
+    r = c.post(
+        "/api/auth/register",
+        json={
+            "token": token,
+            "email": "dave@example.com",
+            "password": PASSWORD_STRONG,
+            "display_name": "  Dave Doe  ",
+        },
+    )
+    assert r.status_code == 201
+    assert r.json()["user"]["display_name"] == "Dave Doe"
+
+
+def test_register_with_too_long_display_name_returns_422(client):
+    """Schema ceiling `max_length=120` rejects pathological lengths."""
+    c, admin_uuid, fake = client
+    token, _ = _gen_invite(c, fake, generated_by_user_id=admin_uuid)
+    r = c.post(
+        "/api/auth/register",
+        json={
+            "token": token,
+            "email": "eve@example.com",
+            "password": PASSWORD_STRONG,
+            "display_name": "x" * 121,
+        },
+    )
+    assert r.status_code == 422
