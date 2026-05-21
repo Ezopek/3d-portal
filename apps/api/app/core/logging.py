@@ -27,9 +27,7 @@ _TOKEN_REDACTED = "token=<redacted>"
 # interpretable; only the bearer segment is masked. Resolve endpoint
 # ``/api/share/{token}`` (no trailing slash) is also covered when followed by
 # query string, whitespace, or quote.
-_SHARE_PATH_TOKEN_REGEX = re.compile(
-    r"((?:/api)?/share/)[A-Za-z0-9_-]{20,}(?=[/?\s\"']|$)"
-)
+_SHARE_PATH_TOKEN_REGEX = re.compile(r"((?:/api)?/share/)[A-Za-z0-9_-]{20,}(?=[/?\s\"']|$)")
 _SHARE_PATH_TOKEN_REPLACEMENT = r"\1<redacted>"
 
 # Structured-log field names that JsonFormatter surfaces by pass-through.

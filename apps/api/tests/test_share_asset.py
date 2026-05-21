@@ -478,9 +478,9 @@ def test_share_resolve_emits_share_scoped_urls(share_fixture):
     c, token, _ids = share_fixture
     body = c.get(f"/api/share/{token}").json()
     expected_prefix = f"/api/share/{token}/files/"
-    assert all(
-        url.startswith(expected_prefix) for url in body["images"]
-    ), f"images contain non-share-scoped URL: {body['images']}"
+    assert all(url.startswith(expected_prefix) for url in body["images"]), (
+        f"images contain non-share-scoped URL: {body['images']}"
+    )
     assert body["thumbnail_url"].startswith(expected_prefix), body["thumbnail_url"]
     assert body["stl_url"].startswith(expected_prefix), body["stl_url"]
     # And explicitly NOT the legacy /api/models/... path

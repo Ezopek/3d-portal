@@ -37,7 +37,6 @@ deploy where the constraint IS active).
 
 from __future__ import annotations
 
-import sqlalchemy as sa
 from alembic import op
 
 revision = "0016_refresh_token_revoke_reasons_e8"
