@@ -145,7 +145,7 @@ export function InvitesPage() {
   const pending = generateInvite.isPending || revokeInvite.isPending;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4 p-6">
+    <div className="mx-auto max-w-7xl space-y-4 p-6">
       <header className="space-y-1">
         <h1 className="text-xl font-semibold">{t("admin.invites.title")}</h1>
         <p className="text-sm text-muted-foreground">
@@ -226,7 +226,7 @@ export function InvitesPage() {
         </p>
       ) : (
         <div className="rounded border border-border overflow-x-auto">
-          <table className="w-full min-w-[900px] text-sm">
+          <table className="w-full min-w-[1200px] text-sm">
             <thead className="bg-muted/50">
               <tr>
                 <th className="px-3 py-2 text-left">
