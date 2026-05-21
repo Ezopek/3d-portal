@@ -22,9 +22,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
       // pre-Init-6 implementation used `search` (the parsed object), which
       // template-literal-coerced to `"[object Object]"` and produced
       // `next=%5Bobject%20Object%5D` artifacts on /catalog redirects
-      // (P2 from 64447ff codex review verbatim). Using `searchStr` produces
-      // a faithful URL-encoded copy of the original location.
-      const next = encodeURIComponent(pathname + (searchStr || ""));
+      // (P2 from 64447ff codex review verbatim). Codex P2 round-1 (2026-05-21)
+      // for Story 11.3 — TanStack Router encodes search values via
+      // URLSearchParams; passing a pre-encoded string would double-encode.
+      // Pass raw concatenation; let the router encode once.
+      const next = pathname + (searchStr || "");
       void navigate({ to: "/login", search: { next }, replace: true });
     }
   }, [auth.isLoading, auth.isAuthenticated, navigate, pathname, searchStr]);

@@ -9,13 +9,27 @@
  * associated module-rail-flash race) is caught by the 4-project visual
  * matrix.
  *
- * The base `_test.ts` fixture stubs /api/auth/me → 401, simulating the
- * anonymous principal. Tests navigate to protected paths and assert the
- * login screen lands without shell chrome.
+ * The base `_test.ts` fixture stubs /api/auth/me → 200 ADMIN by default
+ * (Codex P1 review 2026-05-21 — keeps every other protected-route visual
+ * spec exercising its intended page). This spec OPTS IN to anonymous
+ * behavior via a beforeEach override that re-registers /api/auth/me → 401.
+ * Playwright matches handlers in reverse registration order so the per-spec
+ * override wins.
  */
 
 import { expect, test } from "./_test";
 import { waitForReady } from "./helpers";
+
+test.beforeEach(async ({ page }) => {
+  // Override the default-fixture admin stub to anonymous (401) for this spec.
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "not_authenticated" }),
+    }),
+  );
+});
 
 test("anonymous user at / lands on /login with no module rail", async ({ page }) => {
   await page.goto("/");

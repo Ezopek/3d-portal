@@ -46,7 +46,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (auth.isLoading) return;
     if (isSharePath || isPublicPath) return;
     if (!auth.isAuthenticated) {
-      const next = encodeURIComponent(pathname + (searchStr || ""));
+      // Codex P2 (2026-05-21) — pass raw `pathname + searchStr` to navigate.
+      // TanStack Router encodes search values via URLSearchParams; manually
+      // calling encodeURIComponent here would double-encode (the resulting URL
+      // becomes `/login?next=%252Fcatalog%253Fcategory_id%253Dxyz` instead of
+      // `/login?next=%2Fcatalog%3Fcategory_id%3Dxyz`).
+      const next = pathname + (searchStr || "");
       void navigate({ to: "/login", search: { next }, replace: true });
     }
   }, [auth.isLoading, auth.isAuthenticated, isSharePath, isPublicPath, navigate, pathname, searchStr]);
