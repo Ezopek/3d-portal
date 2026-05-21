@@ -49,6 +49,11 @@ export function UserMenu() {
           {label}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {/* Initiative 7 Story 12.4 — Settings hub is the new primary entry-point;
+              "Active sessions" stays as a direct deep-link for muscle-memory users. */}
+          <DropdownMenuItem render={<a href="/settings" />}>
+            {t("auth.menu.settings_link")}
+          </DropdownMenuItem>
           <DropdownMenuItem render={<a href="/settings/sessions" />}>
             {t("auth.sessions.menu_link")}
           </DropdownMenuItem>

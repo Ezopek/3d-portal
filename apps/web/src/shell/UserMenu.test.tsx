@@ -72,6 +72,31 @@ beforeEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("UserMenu — Story 12.4 Settings hub entry", () => {
+  it("shows the Settings entry routing to /settings for authenticated users", async () => {
+    stubAuthMe({
+      id: "u-4",
+      email: "m@example.com",
+      display_name: "Member",
+      role: "member",
+    });
+    mount();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /member/i })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /member/i }));
+
+    // The "Settings" entry surfaces as a menuitem with an underlying <a href>
+    // routing to the hub. We assert on the rendered anchor (Radix wraps the
+    // child in a role="menuitem"), not the role, to keep the test resilient
+    // to dropdown-menu refactors.
+    const settingsLink = await screen.findByText(/^Settings$/);
+    expect(settingsLink).toBeTruthy();
+    const anchor = settingsLink.closest("a");
+    expect(anchor?.getAttribute("href")).toBe("/settings");
+  });
+});
+
 describe("UserMenu — TB-006 admin agents entry", () => {
   it("does NOT show the agents entry for non-admin (member) users", async () => {
     stubAuthMe({ id: "u-1", email: "m@example.com", display_name: "Member", role: "member" });

@@ -14,6 +14,7 @@ import { Route as RegisterRouteImport } from './routes/register'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SpoolsIndexRouteImport } from './routes/spools/index'
+import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as RequestsIndexRouteImport } from './routes/requests/index'
 import { Route as QueueIndexRouteImport } from './routes/queue/index'
 import { Route as PrinterIndexRouteImport } from './routes/printer/index'
@@ -49,6 +50,11 @@ const IndexRoute = IndexRouteImport.update({
 const SpoolsIndexRoute = SpoolsIndexRouteImport.update({
   id: '/spools/',
   path: '/spools/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/settings/',
+  path: '/settings/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RequestsIndexRoute = RequestsIndexRouteImport.update({
@@ -123,6 +129,7 @@ export interface FileRoutesByFullPath {
   '/printer/': typeof PrinterIndexRoute
   '/queue/': typeof QueueIndexRoute
   '/requests/': typeof RequestsIndexRoute
+  '/settings/': typeof SettingsIndexRoute
   '/spools/': typeof SpoolsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -141,6 +148,7 @@ export interface FileRoutesByTo {
   '/printer': typeof PrinterIndexRoute
   '/queue': typeof QueueIndexRoute
   '/requests': typeof RequestsIndexRoute
+  '/settings': typeof SettingsIndexRoute
   '/spools': typeof SpoolsIndexRoute
 }
 export interface FileRoutesById {
@@ -160,6 +168,7 @@ export interface FileRoutesById {
   '/printer/': typeof PrinterIndexRoute
   '/queue/': typeof QueueIndexRoute
   '/requests/': typeof RequestsIndexRoute
+  '/settings/': typeof SettingsIndexRoute
   '/spools/': typeof SpoolsIndexRoute
 }
 export interface FileRouteTypes {
@@ -180,6 +189,7 @@ export interface FileRouteTypes {
     | '/printer/'
     | '/queue/'
     | '/requests/'
+    | '/settings/'
     | '/spools/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -198,6 +208,7 @@ export interface FileRouteTypes {
     | '/printer'
     | '/queue'
     | '/requests'
+    | '/settings'
     | '/spools'
   id:
     | '__root__'
@@ -216,6 +227,7 @@ export interface FileRouteTypes {
     | '/printer/'
     | '/queue/'
     | '/requests/'
+    | '/settings/'
     | '/spools/'
   fileRoutesById: FileRoutesById
 }
@@ -235,6 +247,7 @@ export interface RootRouteChildren {
   PrinterIndexRoute: typeof PrinterIndexRoute
   QueueIndexRoute: typeof QueueIndexRoute
   RequestsIndexRoute: typeof RequestsIndexRoute
+  SettingsIndexRoute: typeof SettingsIndexRoute
   SpoolsIndexRoute: typeof SpoolsIndexRoute
 }
 
@@ -273,6 +286,13 @@ declare module '@tanstack/react-router' {
       path: '/spools'
       fullPath: '/spools/'
       preLoaderRoute: typeof SpoolsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/': {
+      id: '/settings/'
+      path: '/settings'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/requests/': {
@@ -371,6 +391,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrinterIndexRoute: PrinterIndexRoute,
   QueueIndexRoute: QueueIndexRoute,
   RequestsIndexRoute: RequestsIndexRoute,
+  SettingsIndexRoute: SettingsIndexRoute,
   SpoolsIndexRoute: SpoolsIndexRoute,
 }
 export const routeTree = rootRouteImport
