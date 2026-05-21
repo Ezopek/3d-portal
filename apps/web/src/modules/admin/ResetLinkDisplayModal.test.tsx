@@ -26,8 +26,12 @@ describe("ResetLinkDisplayModal", () => {
       />,
     );
 
+    // Codex P2 fix-up `cd6354a` (Story 8.5 close-out) made the modal render
+    // an ABSOLUTE URL via `new URL(resetUrl, window.location.origin)`. The
+    // relative path becomes the tail of the absolute URL, so anchor the
+    // regex at `$` to match either render shape.
     const input = (await waitFor(() =>
-      screen.getByDisplayValue(URL_VALUE),
+      screen.getByDisplayValue(/\/reset-password\?token=ABC123$/),
     )) as HTMLInputElement;
     expect(input.readOnly).toBe(true);
   });
@@ -53,13 +57,22 @@ describe("ResetLinkDisplayModal", () => {
       />,
     );
 
+    // Component now resolves resetUrl against window.location.origin and
+    // writes the absolute URL to the clipboard (Story 8.5 close-out
+    // `cd6354a`). Build the same absolute URL here so the assertion
+    // matches the component's actual clipboard payload.
+    const expectedAbsolute = new URL(
+      URL_VALUE,
+      window.location.origin,
+    ).toString();
+
     await waitFor(() => {
-      expect(screen.getByDisplayValue(URL_VALUE)).toBeTruthy();
+      expect(screen.getByDisplayValue(/\/reset-password\?token=ABC123$/)).toBeTruthy();
     });
     fireEvent.click(screen.getByRole("button", { name: /^Copy link$/i }));
 
     await waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith(URL_VALUE);
+      expect(writeText).toHaveBeenCalledWith(expectedAbsolute);
     });
 
     await waitFor(() => {

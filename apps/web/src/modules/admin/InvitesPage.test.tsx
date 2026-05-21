@@ -145,7 +145,11 @@ describe("InvitesPage", () => {
     });
     mount(<InvitesPage />);
     await waitFor(() => {
-      expect(screen.getByText(/No invites match this filter/i)).toBeTruthy();
+      expect(
+        screen.getByText(
+          /brak zaproszeń pasujących do filtru|no invites match this filter/i,
+        ),
+      ).toBeTruthy();
     });
   });
 
@@ -187,7 +191,7 @@ describe("InvitesPage", () => {
     });
 
     // Only one Revoke button — for the active row
-    const revokeButtons = screen.getAllByRole("button", { name: /^Revoke$/i });
+    const revokeButtons = screen.getAllByRole("button", { name: /^Odwołaj$|^Revoke$/i });
     expect(revokeButtons).toHaveLength(1);
 
     // Each of the 4 status badges rendered inside the table body (the
@@ -225,12 +229,14 @@ describe("InvitesPage", () => {
     mount(<InvitesPage />);
 
     const generateBtn = await waitFor(() =>
-      screen.getByRole("button", { name: /Generate invite/i }),
+      screen.getByRole("button", { name: /wygeneruj zaproszenie|generate invite/i }),
     );
     await user.click(generateBtn);
 
     await waitFor(() => {
-      expect(screen.getByText(/Generate new invite/i)).toBeTruthy();
+      expect(
+        screen.getByText(/wygeneruj nowe zaproszenie|generate new invite/i),
+      ).toBeTruthy();
     });
   });
 
@@ -257,12 +263,14 @@ describe("InvitesPage", () => {
 
     await user.click(
       await waitFor(() =>
-        screen.getByRole("button", { name: /Generate invite/i }),
+        screen.getByRole("button", { name: /wygeneruj zaproszenie|generate invite/i }),
       ),
     );
     // Submit (defaults: role=member, ttl_preset=SEVEN_DAYS)
     await user.click(
-      await waitFor(() => screen.getByRole("button", { name: /^Generate$/ })),
+      await waitFor(() =>
+        screen.getByRole("button", { name: /^Wygeneruj$|^Generate$/i }),
+      ),
     );
 
     expect(generateMutate).toHaveBeenCalledTimes(1);
@@ -294,11 +302,15 @@ describe("InvitesPage", () => {
     mount(<InvitesPage />);
 
     await user.click(
-      await waitFor(() => screen.getByRole("button", { name: /^Revoke$/i })),
+      await waitFor(() => screen.getByRole("button", { name: /^Odwołaj$|^Revoke$/i })),
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/Revoke invite for member role/i)).toBeTruthy();
+      expect(
+        screen.getByText(
+          /odwołać zaproszenie dla roli member|revoke invite for member role/i,
+        ),
+      ).toBeTruthy();
     });
   });
 
@@ -319,11 +331,11 @@ describe("InvitesPage", () => {
     mount(<InvitesPage />);
 
     await user.click(
-      await waitFor(() => screen.getByRole("button", { name: /^Revoke$/i })),
+      await waitFor(() => screen.getByRole("button", { name: /^Odwołaj$|^Revoke$/i })),
     );
     // ConfirmDialog confirm button (Confirm / Potwierdź in EN locale = "Confirm")
     await user.click(
-      await waitFor(() => screen.getByRole("button", { name: /^Confirm$/i })),
+      await waitFor(() => screen.getByRole("button", { name: /^Potwierdź$|^Confirm$/i })),
     );
 
     expect(revokeMutate).toHaveBeenCalledTimes(1);
@@ -351,15 +363,17 @@ describe("InvitesPage", () => {
     mount(<InvitesPage />);
 
     await user.click(
-      await waitFor(() => screen.getByRole("button", { name: /^Revoke$/i })),
+      await waitFor(() => screen.getByRole("button", { name: /^Odwołaj$|^Revoke$/i })),
     );
     await user.click(
-      await waitFor(() => screen.getByRole("button", { name: /^Confirm$/i })),
+      await waitFor(() => screen.getByRole("button", { name: /^Potwierdź$|^Confirm$/i })),
     );
 
     await waitFor(() => {
       expect(
-        screen.getByText(/This invite is already used or revoked/i),
+        screen.getByText(
+          /zaproszenie zostało już wykorzystane|this invite is already used or revoked/i,
+        ),
       ).toBeTruthy();
     });
   });
@@ -385,14 +399,18 @@ describe("InvitesPage", () => {
     mount(<InvitesPage />);
 
     await user.click(
-      await waitFor(() => screen.getByRole("button", { name: /^Revoke$/i })),
+      await waitFor(() => screen.getByRole("button", { name: /^Odwołaj$|^Revoke$/i })),
     );
     await user.click(
-      await waitFor(() => screen.getByRole("button", { name: /^Confirm$/i })),
+      await waitFor(() => screen.getByRole("button", { name: /^Potwierdź$|^Confirm$/i })),
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/Invite not found/i)).toBeTruthy();
+      expect(
+        screen.getByText(
+          /zaproszenie nie zostało znalezione|invite not found/i,
+        ),
+      ).toBeTruthy();
     });
   });
 });

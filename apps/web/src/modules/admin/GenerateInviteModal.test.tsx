@@ -16,8 +16,11 @@ describe("GenerateInviteModal", () => {
       <GenerateInviteModal open onOpenChange={() => {}} onConfirm={() => {}} />,
     );
 
+    // Locale-tolerant per AC-4 (TB-015 alternation pattern). Test sets EN
+    // via beforeAll but mirror the /wyczy|clear/i precedent so a stray
+    // locale shift doesn't silently break the finder.
     const roleSelect = (await waitFor(() =>
-      screen.getByLabelText("Role"),
+      screen.getByLabelText(/^Rola$|^Role$/i),
     )) as HTMLSelectElement;
 
     // Exactly two options, with values "member" and "admin"
@@ -35,7 +38,7 @@ describe("GenerateInviteModal", () => {
     );
 
     const ttlSelect = (await waitFor(() =>
-      screen.getByLabelText("Validity"),
+      screen.getByLabelText(/^Ważność$|^Validity$/i),
     )) as HTMLSelectElement;
 
     const optionValues = Array.from(ttlSelect.options).map((o) => o.value);
@@ -60,14 +63,18 @@ describe("GenerateInviteModal", () => {
     );
 
     const roleSelect = (await waitFor(() =>
-      screen.getByLabelText("Role"),
+      screen.getByLabelText(/^Rola$|^Role$/i),
     )) as HTMLSelectElement;
-    const ttlSelect = screen.getByLabelText("Validity") as HTMLSelectElement;
+    const ttlSelect = screen.getByLabelText(
+      /^Ważność$|^Validity$/i,
+    ) as HTMLSelectElement;
 
     fireEvent.change(roleSelect, { target: { value: "admin" } });
     fireEvent.change(ttlSelect, { target: { value: "ONE_DAY" } });
 
-    fireEvent.click(screen.getByRole("button", { name: /^Generate$/ }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /^Wygeneruj$|^Generate$/i }),
+    );
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(onConfirm).toHaveBeenCalledWith({

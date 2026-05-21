@@ -36,8 +36,8 @@ describe("InviteTokenDisplayModal", () => {
     )) as HTMLInputElement;
     expect(input.readOnly).toBe(true);
 
-    expect(screen.getByRole("button", { name: /^Copy link$/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /^Done$/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Kopiuj link$|^Copy link$/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Gotowe$|^Done$/i })).toBeTruthy();
   });
 
   it("IT2 — clicking copy button calls navigator.clipboard.writeText with absolute URL", async () => {
@@ -65,14 +65,14 @@ describe("InviteTokenDisplayModal", () => {
     await waitFor(() => {
       expect(screen.getByDisplayValue(expectedAbsolute)).toBeTruthy();
     });
-    fireEvent.click(screen.getByRole("button", { name: /^Copy link$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Kopiuj link$|^Copy link$/i }));
 
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith(expectedAbsolute);
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /^Copied$/i })).toBeTruthy();
+      expect(screen.getByRole("button", { name: /^Skopiowano$|^Copied$/i })).toBeTruthy();
     });
   });
 
@@ -90,7 +90,7 @@ describe("InviteTokenDisplayModal", () => {
     );
 
     const doneButton = await waitFor(() =>
-      screen.getByRole("button", { name: /^Done$/i }),
+      screen.getByRole("button", { name: /^Gotowe$|^Done$/i }),
     );
     fireEvent.click(doneButton);
 

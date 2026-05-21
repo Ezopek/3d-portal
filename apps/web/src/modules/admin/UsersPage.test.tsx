@@ -721,7 +721,10 @@ describe("UsersPage", () => {
         screen.getByText(/Password reset link issued for member@test\.example/i),
       ).toBeTruthy();
     });
-    const input = screen.getByDisplayValue("/reset-password?token=ABC");
+    // Modal renders an absolute URL via `new URL(reset_url, origin)` per
+    // Codex P2 fix-up `cd6354a` (Story 8.5). Anchor regex at `$` so the
+    // relative path matches the tail of the absolute URL.
+    const input = screen.getByDisplayValue(/\/reset-password\?token=ABC$/);
     expect(input).toBeTruthy();
   });
 });
