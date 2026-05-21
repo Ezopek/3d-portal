@@ -10,6 +10,11 @@ interface AdminUsersSearch {
   search?: string;
   sort_by?: AdminUserSortBy;
   sort_order?: AdminUserSortOrder;
+  // Story 12.2 — `show_inactive=1` flips the page from "active-only" (default)
+  // to "show all (active + inactive)". Default behavior (param absent) hides
+  // deactivated accounts. Boolean-shaped via `1` only so URLs stay shareable +
+  // round-tripable through Tanstack's stringifier without quoting.
+  show_inactive?: 1;
 }
 
 function AdminUsersRoute() {
@@ -50,6 +55,11 @@ export const Route = createFileRoute("/admin/users")({
     }
     if (raw.sort_order === "asc" || raw.sort_order === "desc") {
       out.sort_order = raw.sort_order;
+    }
+    // Story 12.2 — accept only the literal `1` (number or string); any other
+    // value is treated as absent so the page falls back to active-only.
+    if (raw.show_inactive === 1 || raw.show_inactive === "1") {
+      out.show_inactive = 1;
     }
     return out;
   },

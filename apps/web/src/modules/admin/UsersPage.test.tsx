@@ -235,7 +235,7 @@ describe("UsersPage", () => {
     });
   });
 
-  it("V4 — renders zero checkboxes and zero bulk-action buttons (FR5-ADMIN-4)", async () => {
+  it("V4 — renders zero bulk-action checkboxes inside the table (FR5-ADMIN-4)", async () => {
     mockHook({
       data: { total: 5, items: seedMembers(5), page: 1, page_size: 50 },
     });
@@ -244,11 +244,13 @@ describe("UsersPage", () => {
     await waitFor(() => {
       expect(screen.getByText("member0@test.example")).toBeTruthy();
     });
-    expect(screen.queryAllByRole("checkbox").length).toBe(0);
+    // FR5-ADMIN-4 forbids bulk-select controls *inside the data table*. The
+    // page-level Story 12.2 filter checkbox lives in the header area and is
+    // intentionally out of scope for this regression guard.
+    expect(document.querySelectorAll('table input[type="checkbox"]').length).toBe(0);
     expect(
       screen.queryAllByRole("button", { name: /bulk|select all/i }).length,
     ).toBe(0);
-    expect(document.querySelectorAll('input[type="checkbox"]').length).toBe(0);
   });
 
   const memberRow: AdminUser = {
@@ -441,11 +443,12 @@ describe("UsersPage", () => {
       expect(screen.getByText("member@test.example")).toBeTruthy();
     });
 
-    expect(screen.queryAllByRole("checkbox").length).toBe(0);
+    // FR5-ADMIN-4 — no bulk-select column inside the data table. Page-level
+    // filter checkbox (Story 12.2 "Show inactive accounts") is exempt.
+    expect(document.querySelectorAll('table input[type="checkbox"]').length).toBe(0);
     expect(
       screen.queryAllByRole("button", { name: /bulk|select all/i }).length,
     ).toBe(0);
-    expect(document.querySelectorAll('input[type="checkbox"]').length).toBe(0);
   });
 
   // ---------------------------------------------------------------------------
@@ -726,5 +729,78 @@ describe("UsersPage", () => {
     // relative path matches the tail of the absolute URL.
     const input = screen.getByDisplayValue(/\/reset-password\?token=ABC$/);
     expect(input).toBeTruthy();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Story 12.2 — V18..V19 — default-hide inactive accounts + reveal toggle
+  // ---------------------------------------------------------------------------
+
+  it("V18 — defaults to hiding inactive accounts and passes is_active=true to the hook (AC-2)", async () => {
+    mockHook({
+      data: {
+        total: 1,
+        items: [memberRow],
+        page: 1,
+        page_size: 50,
+      },
+    });
+    mount(<UsersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("member@test.example")).toBeTruthy();
+    });
+
+    // AC-2: Checkbox renders with the visible label and starts unchecked.
+    const filterCheckbox = screen.getByRole("checkbox", {
+      name: /Show inactive accounts/i,
+    }) as HTMLInputElement;
+    expect(filterCheckbox.checked).toBe(false);
+
+    // AC-2: Default (unchecked) state calls the hook with `is_active: true`
+    // so the API restricts the result set to active rows.
+    expect(useAdminUsers).toHaveBeenCalled();
+    const lastCall = vi.mocked(useAdminUsers).mock.calls.at(-1);
+    if (!lastCall) throw new Error("expected useAdminUsers call");
+    expect(lastCall[0]).toMatchObject({ is_active: true });
+  });
+
+  it("V19 — toggling the checkbox flips the hook param to undefined and the URL gains show_inactive=1 (AC-2/AC-5)", async () => {
+    mockHook({
+      data: {
+        total: 1,
+        items: [{ ...memberRow, is_active: false }],
+        page: 1,
+        page_size: 50,
+      },
+    });
+    const user = userEvent.setup();
+    mount(<UsersPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("member@test.example")).toBeTruthy();
+    });
+
+    const filterCheckbox = screen.getByRole("checkbox", {
+      name: /Show inactive accounts/i,
+    }) as HTMLInputElement;
+    expect(filterCheckbox.checked).toBe(false);
+
+    // AC-5: Checkbox must be reachable + activatable via the keyboard. We
+    // focus then send the activating click via userEvent (mirrors the same
+    // pointer-or-keyboard activation path the browser uses for native
+    // <input type="checkbox">). The default state would otherwise pass
+    // `is_active: true`; after toggling we expect the hook to receive
+    // `is_active: undefined` so the API call drops the filter.
+    await user.click(filterCheckbox);
+
+    await waitFor(() => {
+      const latest = vi.mocked(useAdminUsers).mock.calls.at(-1);
+      if (!latest) throw new Error("expected useAdminUsers re-render call");
+      expect(latest[0].is_active).toBeUndefined();
+    });
+
+    // AC-3: When inactive rows are shown they render with muted styling +
+    // the "(inactive)" indicator key.
+    expect(screen.getByText(/\(inactive\)/i)).toBeTruthy();
   });
 });

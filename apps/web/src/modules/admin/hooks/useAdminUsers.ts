@@ -15,6 +15,14 @@ export interface UseAdminUsersParams {
   search?: string;
   sort_by?: AdminUserSortBy;
   sort_order?: AdminUserSortOrder;
+  /**
+   * Story 12.2 — when `true`, the API restricts the response to active rows
+   * only; when `false`, to inactive rows only; when `undefined`, no filter is
+   * applied (returns both active and inactive). The UsersPage default state
+   * passes `true`; the "Show inactive accounts" checkbox toggles this to
+   * `undefined`.
+   */
+  is_active?: boolean;
 }
 
 function buildQueryString(params: UseAdminUsersParams): string {
@@ -24,6 +32,9 @@ function buildQueryString(params: UseAdminUsersParams): string {
   if (params.search && params.search.length > 0) usp.set("search", params.search);
   if (params.sort_by) usp.set("sort_by", params.sort_by);
   if (params.sort_order) usp.set("sort_order", params.sort_order);
+  if (params.is_active !== undefined) {
+    usp.set("is_active", String(params.is_active));
+  }
   return usp.toString();
 }
 

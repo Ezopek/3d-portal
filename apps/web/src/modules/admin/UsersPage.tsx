@@ -82,12 +82,18 @@ export function UsersPage() {
   const navigate = useNavigate();
   const searchId = useId();
   const pageSizeId = useId();
+  const showInactiveId = useId();
   const auth = useAuth();
   const currentUserId = auth.user?.id ?? null;
 
   const page = search.page ?? 1;
   const pageSize = search.page_size ?? 50;
   const searchValue = search.search ?? "";
+  // Story 12.2 — default behavior hides inactive accounts. The URL param
+  // `show_inactive=1` flips the page to "show all"; absence means the API call
+  // restricts to `is_active=true`. State is derived from the URL so the toggle
+  // survives reloads and is shareable.
+  const showInactive = search.show_inactive === 1;
 
   const query = useAdminUsers({
     page,
@@ -95,6 +101,7 @@ export function UsersPage() {
     search: searchValue || undefined,
     sort_by: search.sort_by,
     sort_order: search.sort_order,
+    is_active: showInactive ? undefined : true,
   });
 
   const updateUser = useUpdateAdminUser();
@@ -221,6 +228,7 @@ export function UsersPage() {
       search: string;
       sort_by: AdminUserSortBy | undefined;
       sort_order: AdminUserSortOrder | undefined;
+      show_inactive: 1 | undefined;
     }>,
   ) {
     void navigate({
@@ -322,6 +330,25 @@ export function UsersPage() {
             ))}
           </select>
         </div>
+        {/* Story 12.2 — default-hide inactive accounts; checkbox reveals them. */}
+        <div className="flex items-center gap-2 self-end py-1.5">
+          <input
+            id={showInactiveId}
+            type="checkbox"
+            checked={showInactive}
+            aria-label={t("admin.users.filter_show_inactive")}
+            className="size-4 rounded border-border"
+            onChange={(e) =>
+              updateSearchParams({
+                show_inactive: e.target.checked ? 1 : undefined,
+                page: 1,
+              })
+            }
+          />
+          <label htmlFor={showInactiveId} className="text-sm font-medium">
+            {t("admin.users.filter_show_inactive")}
+          </label>
+        </div>
       </div>
 
       {query.isError ? (
@@ -393,9 +420,24 @@ export function UsersPage() {
                   const isSelf = currentUserId !== null && user.id === currentUserId;
                   const isAgent = user.role === "agent";
                   const actionsDisabled = isSelf || isAgent;
+                  // Story 12.2 — muted styling on deactivated rows when shown.
+                  const rowClassName = user.is_active
+                    ? "border-t border-border"
+                    : "border-t border-border bg-muted/30 text-muted-foreground";
                   return (
-                    <tr key={user.id} className="border-t border-border">
-                      <td className="px-3 py-2">{user.email}</td>
+                    <tr key={user.id} className={rowClassName}>
+                      <td className="px-3 py-2">
+                        {user.is_active ? (
+                          user.email
+                        ) : (
+                          <span className="line-through">{user.email}</span>
+                        )}
+                        {!user.is_active && (
+                          <span className="ml-1 text-xs">
+                            {t("admin.users.row_inactive_indicator")}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2">{user.display_name}</td>
                       <td className="px-3 py-2">{user.role}</td>
                       <td className="px-3 py-2">

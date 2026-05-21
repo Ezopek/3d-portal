@@ -363,6 +363,96 @@ def test_admin_user_list_omits_password_hash_and_totp_secret(isolated_client):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# T9..T11 — Story 12.2 — optional is_active filter
+# ---------------------------------------------------------------------------
+
+
+def _seed_active_and_inactive_mix(session: Session) -> None:
+    """Seed 3 active members + 2 inactive members alongside the seeded admin."""
+    for i in range(3):
+        session.add(
+            User(
+                email=f"active{i}@x",
+                display_name=f"Active {i}",
+                role=UserRole.member,
+                password_hash="bcrypt-test-hash",
+                is_active=True,
+            )
+        )
+    for i in range(2):
+        session.add(
+            User(
+                email=f"inactive{i}@x",
+                display_name=f"Inactive {i}",
+                role=UserRole.member,
+                password_hash="bcrypt-test-hash",
+                is_active=False,
+            )
+        )
+    session.commit()
+
+
+def test_admin_user_list_is_active_true_filters_out_inactive(isolated_client):
+    """Story 12.2 AC-1: `?is_active=true` returns only active rows."""
+    c, _ = isolated_client
+    engine = get_engine()
+    with Session(engine) as s:
+        _seed_active_and_inactive_mix(s)
+    _set_admin_cookie(c, _admin_token(c))
+
+    r = c.get("/api/admin/users", params={"is_active": "true", "search": "@x"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    emails = {item["email"] for item in body["items"]}
+    # seeded admin filtered out via `search=@x`; only the 3 active members remain.
+    assert emails == {"active0@x", "active1@x", "active2@x"}
+    assert body["total"] == 3
+    for item in body["items"]:
+        assert item["is_active"] is True
+
+
+def test_admin_user_list_is_active_false_returns_only_inactive(isolated_client):
+    """Story 12.2 AC-1: `?is_active=false` returns only deactivated rows."""
+    c, _ = isolated_client
+    engine = get_engine()
+    with Session(engine) as s:
+        _seed_active_and_inactive_mix(s)
+    _set_admin_cookie(c, _admin_token(c))
+
+    r = c.get("/api/admin/users", params={"is_active": "false", "search": "@x"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    emails = {item["email"] for item in body["items"]}
+    assert emails == {"inactive0@x", "inactive1@x"}
+    assert body["total"] == 2
+    for item in body["items"]:
+        assert item["is_active"] is False
+
+
+def test_admin_user_list_without_is_active_param_returns_all_rows(isolated_client):
+    """Story 12.2 AC-1: no `is_active` param → no filter (legacy behavior)."""
+    c, _ = isolated_client
+    engine = get_engine()
+    with Session(engine) as s:
+        _seed_active_and_inactive_mix(s)
+    _set_admin_cookie(c, _admin_token(c))
+
+    r = c.get("/api/admin/users", params={"search": "@x"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    emails = {item["email"] for item in body["items"]}
+    # All 5 (3 active + 2 inactive) seeded rows appear when the filter is absent.
+    assert emails == {
+        "active0@x",
+        "active1@x",
+        "active2@x",
+        "inactive0@x",
+        "inactive1@x",
+    }
+    assert body["total"] == 5
+
+
 def test_admin_user_list_returns_403_for_member_role(isolated_client):
     c, _ = isolated_client
     member_token = encode_token(

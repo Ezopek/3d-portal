@@ -166,6 +166,7 @@ def list_admin_users(
     search: str | None = Query(default=None, max_length=255),
     sort_by: Literal["email", "role", "created_at", "last_active_at"] | None = Query(default=None),
     sort_order: Literal["asc", "desc"] | None = Query(default=None),
+    is_active: bool | None = Query(default=None),
     _user_id: uuid.UUID = current_admin,
 ) -> AdminUserListResponse:
     base_stmt = select(User)
@@ -174,6 +175,15 @@ def list_admin_users(
         pattern = f"%{search}%"
         base_stmt = base_stmt.where(User.email.ilike(pattern))
         count_stmt = count_stmt.where(User.email.ilike(pattern))
+    # Story 12.2 — optional is_active filter. When absent (None), no WHERE clause is
+    # added so the response includes both active and inactive rows (legacy behavior).
+    # When the caller passes `?is_active=true` the result set is restricted to active
+    # accounts; `?is_active=false` restricts to deactivated. The frontend default
+    # state (hide inactive) sends `is_active=true`; the "Show inactive accounts"
+    # checkbox toggles the param off entirely.
+    if is_active is not None:
+        base_stmt = base_stmt.where(User.is_active == is_active)
+        count_stmt = count_stmt.where(User.is_active == is_active)
 
     # Codex P2 fix-up: every sort branch MUST end with a stable
     # tie-breaker (User.email ASC + User.id ASC) so OFFSET/LIMIT

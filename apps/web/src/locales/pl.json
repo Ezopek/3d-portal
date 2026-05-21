@@ -111,6 +111,8 @@
   "admin.users.title": "Użytkownicy",
   "admin.users.description": "Wszyscy zarejestrowani użytkownicy. Sortuj po nagłówku, filtruj po e-mailu, paginuj. Akcje per-użytkownik dostarczone w kolejnej historii.",
   "admin.users.search_placeholder": "Szukaj po e-mailu…",
+  "admin.users.filter_show_inactive": "Pokaż nieaktywne konta",
+  "admin.users.row_inactive_indicator": "(nieaktywne)",
   "admin.users.page_size_label": "Wiersze na stronę",
   "admin.users.column_email": "E-mail",
   "admin.users.column_display_name": "Nazwa wyświetlana",

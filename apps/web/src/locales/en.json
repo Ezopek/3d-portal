@@ -111,6 +111,8 @@
   "admin.users.title": "Users",
   "admin.users.description": "All registered users. Sort by any header, filter by email, paginate. Per-user actions ship in the next story.",
   "admin.users.search_placeholder": "Search by email…",
+  "admin.users.filter_show_inactive": "Show inactive accounts",
+  "admin.users.row_inactive_indicator": "(inactive)",
   "admin.users.page_size_label": "Rows per page",
   "admin.users.column_email": "Email",
   "admin.users.column_display_name": "Display name",

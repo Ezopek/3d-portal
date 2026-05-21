@@ -114,7 +114,10 @@ test.describe("/admin/users baselines", () => {
       page: 1,
       page_size: 25,
     });
-    await page.goto("/admin/users?page_size=25");
+    // Story 12.2 — visit with `show_inactive=1` so the inactive row at index 0
+    // is rendered (default state now hides it). The baseline therefore captures
+    // both the active rows and the muted-row styling on the inactive row.
+    await page.goto("/admin/users?page_size=25&show_inactive=1");
     await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
     await waitForReady(page);
     await expect(page).toHaveScreenshot("admin-users-many-rows.png", {
@@ -136,9 +139,12 @@ test.describe("/admin/users — FR5-ADMIN-4 negative AC enforcement", () => {
     await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
     await waitForReady(page);
 
+    // FR5-ADMIN-4 — no bulk-select column inside the data table. The Story
+    // 12.2 page-level "Show inactive accounts" filter checkbox is a single
+    // global control outside the table and is intentionally not constrained
+    // by this guard.
     expect(await page.locator('table input[type="checkbox"]').count()).toBe(0);
     expect(await page.locator('thead input[type="checkbox"]').count()).toBe(0);
-    expect(await page.locator('input[type="checkbox"]').count()).toBe(0);
     expect(
       await page.getByRole("button", { name: /bulk/i }).count(),
     ).toBe(0);
