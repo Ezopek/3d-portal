@@ -144,3 +144,80 @@ def test_logout_others_with_no_other_returns_204(client):
     r = client.post("/api/auth/logout-others")
     assert r.status_code == 204
     assert client.get("/api/auth/me").status_code == 200
+
+
+# ─────────────────────────── Story 12.5 — pagination + sort ───────────────────────────
+
+
+def _login_n_extra_devices(app, n: int) -> None:
+    """Spin up ``n`` extra sessions for the admin user, each with a distinct UA."""
+    for i in range(n):
+        sub = TestClient(app)
+        sub.headers.update({"X-Portal-Client": "web"})
+        sub.post(
+            "/api/auth/login",
+            json={"email": "admin@example.com", "password": "p"},
+            headers={"User-Agent": f"device-extra-{i}"},
+        )
+
+
+def test_sessions_pagination_total_and_window(client):
+    """`page`/`page_size` must produce a stable window with a `total` count.
+
+    Story 12.5 acceptance: list with >page_size entries shows pagination
+    controls; backend must echo `total` so the UI can render N-M of T."""
+    _login_n_extra_devices(client.app, 4)  # 5 total (1 current + 4 extras)
+    r = client.get("/api/auth/sessions", params={"page": 1, "page_size": 2})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] == 5
+    assert body["page"] == 1
+    assert body["page_size"] == 2
+    assert len(body["items"]) == 2
+
+    # Walk all pages, no rows should repeat and the union must equal total.
+    seen: set[str] = set()
+    for page in (1, 2, 3):
+        r = client.get("/api/auth/sessions", params={"page": page, "page_size": 2})
+        for it in r.json()["items"]:
+            assert it["family_id"] not in seen, "pagination must not repeat rows"
+            seen.add(it["family_id"])
+    assert len(seen) == 5
+
+
+def test_sessions_default_sort_last_used_desc_pins_current(client):
+    """Default ordering = last_used_at DESC, with current session pinned to row 0.
+
+    Story 12.5: default sort by last_used_at DESC keeps recent activity at the
+    top; the current session is pinned independently so users always see it
+    first regardless of which device they used most recently."""
+    _login_n_extra_devices(client.app, 2)
+    r = client.get("/api/auth/sessions")  # all defaults
+    assert r.status_code == 200
+    items = r.json()["items"]
+    assert items[0]["is_current"] is True, "current session must be pinned to row 0"
+    # Remaining items must be sorted by last_used_at DESC (newest first).
+    rest = items[1:]
+    timestamps = [i["last_used_at"] or i["family_issued_at"] for i in rest]
+    assert timestamps == sorted(timestamps, reverse=True)
+
+
+def test_sessions_sort_order_asc_flips_order(client):
+    """`sort_order=asc` flips the order (current still pinned)."""
+    _login_n_extra_devices(client.app, 2)
+    r = client.get(
+        "/api/auth/sessions",
+        params={"sort_by": "last_used_at", "sort_order": "asc"},
+    )
+    assert r.status_code == 200
+    items = r.json()["items"]
+    assert items[0]["is_current"] is True
+    rest = items[1:]
+    timestamps = [i["last_used_at"] or i["family_issued_at"] for i in rest]
+    assert timestamps == sorted(timestamps)  # ASC
+
+
+def test_sessions_invalid_sort_by_rejected_with_422(client):
+    """Pydantic Literal must reject unsupported sort columns at the boundary."""
+    r = client.get("/api/auth/sessions", params={"sort_by": "ip"})
+    assert r.status_code == 422

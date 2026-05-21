@@ -6,9 +6,9 @@ import json
 import logging
 import secrets
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -427,11 +427,31 @@ def refresh(
     )
 
 
-@router.get("/sessions", response_model=SessionsResponse)
+@router.get(
+    "/sessions",
+    response_model=SessionsResponse,
+    summary="List the caller's active session families (paginated + sortable)",
+    description=(
+        "Returns one row per active refresh-token family belonging to the "
+        "calling user. The current request's family (looked up by the "
+        "presented refresh cookie) is flagged via `is_current`. "
+        "Story 12.5: `page`/`page_size` enforce a stable OFFSET/LIMIT window "
+        "(default page=1 / page_size=20, capped at 100); `sort_by` in "
+        "{last_used_at, created_at} (default `last_used_at`) and "
+        "`sort_order` in {asc, desc} (default `desc`). Pagination is "
+        "applied **after** the family-grouping reduction so totals reflect "
+        "what the UI sees. The current session is always pinned to the top "
+        "of page 1 regardless of sort, so users never have to hunt for it."
+    ),
+)
 def list_sessions(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
     user_id: uuid.UUID = current_user,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    sort_by: Literal["last_used_at", "created_at"] = Query(default="last_used_at"),
+    sort_order: Literal["asc", "desc"] = Query(default="desc"),
 ) -> SessionsResponse:
     current_secret = request.cookies.get(REFRESH_COOKIE)
     current_family: uuid.UUID | None = None
@@ -450,7 +470,7 @@ def list_sessions(
     for r in rows:
         by_family[r.family_id] = r
 
-    items = [
+    all_items = [
         SessionRow(
             family_id=r.family_id,
             last_used_at=r.last_used_at,
@@ -461,8 +481,28 @@ def list_sessions(
         )
         for r in by_family.values()
     ]
-    items.sort(key=lambda i: i.last_used_at or i.family_issued_at, reverse=True)
-    return SessionsResponse(items=items)
+    # Sort key:
+    # - last_used_at: fall back to family_issued_at when None so brand-new
+    #   sessions that haven't been used yet still sort sensibly.
+    # - created_at: maps to family_issued_at (the column the model exposes).
+    # Stable tie-breaker on family_id (uuid string compare) so OFFSET/LIMIT
+    # paging is deterministic across requests when two rows tie on the key.
+    if sort_by == "last_used_at":
+        key_fn = lambda i: (i.last_used_at or i.family_issued_at, str(i.family_id))  # noqa: E731
+    else:  # created_at
+        key_fn = lambda i: (i.family_issued_at, str(i.family_id))  # noqa: E731
+    all_items.sort(key=key_fn, reverse=(sort_order == "desc"))
+    # Story 12.5: pin the current session to row 0 regardless of sort so users
+    # can always identify their active device at a glance (matches the UX
+    # intent of the "Current" badge — the badge is useless if the row is on
+    # page 7). Only applies to page 1; deeper pages keep the natural sort.
+    if current_family is not None:
+        all_items.sort(key=lambda i: 0 if i.is_current else 1)
+
+    total = len(all_items)
+    offset = (page - 1) * page_size
+    items = all_items[offset : offset + page_size]
+    return SessionsResponse(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.delete("/sessions/{family_id}", status_code=204)

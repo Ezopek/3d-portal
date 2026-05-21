@@ -192,8 +192,23 @@ export interface Session {
   is_current: boolean;
 }
 
+/** Story 12.5 — sort columns accepted by `GET /api/auth/sessions`. */
+export type SessionsSortBy = "last_used_at" | "created_at";
+export type SessionsSortOrder = "asc" | "desc";
+
 export interface SessionsResponse {
   items: Session[];
+  /** Story 12.5: total unpaginated count so the UI can render N-M of T. */
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface SessionsListParams {
+  page?: number;
+  page_size?: number;
+  sort_by?: SessionsSortBy;
+  sort_order?: SessionsSortOrder;
 }
 
 // --- Admin users (Story 8.2) ---

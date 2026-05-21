@@ -63,4 +63,15 @@ class SessionRow(BaseModel):
 
 
 class SessionsResponse(BaseModel):
+    """Response shape for ``GET /api/auth/sessions`` (Story 12.5).
+
+    ``total`` reflects the unpaginated count of active families for the user so
+    the client can render ``Showing N-M of T`` text. ``page`` / ``page_size``
+    are echoed back from the request (or their server defaults) so the client
+    doesn't have to round-trip through its own search-state to know what it got.
+    """
+
     items: list[SessionRow]
+    total: int = 0
+    page: int = 1
+    page_size: int = 20
