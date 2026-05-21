@@ -153,15 +153,22 @@ test.describe("/admin/users — FR5-ADMIN-4 negative AC enforcement", () => {
   });
 });
 
-test.describe("/admin/users — AdminTabs disabled-state regression guard", () => {
-  test("Invites tab stays aria-disabled until Story 8.6", async ({ page }) => {
+test.describe("/admin/users — AdminTabs active-state regression guard (Story 12.1)", () => {
+  test("Invites tab is an enabled link routing to /admin/invites (Story 12.1 unblock)", async ({
+    page,
+  }) => {
     await stubAdminUsersPage(page);
     await page.goto("/admin/users");
     await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
     await waitForReady(page);
 
     const invitesTab = page.getByRole("tab", { name: /Invites|Zaproszenia/i });
-    await expect(invitesTab).toHaveAttribute("aria-disabled", "true");
+    // Story 12.1 flipped AdminTabs.tsx <span aria-disabled> → <Link to="/admin/invites">.
+    // Expect: rendered as <a> with href, no aria-disabled attribute, not aria-selected
+    // (user is on /admin/users, not /admin/invites).
+    await expect(invitesTab).not.toHaveAttribute("aria-disabled", "true");
+    await expect(invitesTab).toHaveAttribute("href", "/admin/invites");
+    await expect(invitesTab).toHaveAttribute("aria-selected", "false");
   });
 });
 

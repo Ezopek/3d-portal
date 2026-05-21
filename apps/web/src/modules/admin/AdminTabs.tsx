@@ -28,20 +28,19 @@ export function AdminTabs({ activeTab }: { activeTab: ActiveTab }) {
       >
         {t("admin.tabs.users")}
       </Link>
-      <span
+      <Link
+        to="/admin/invites"
         role="tab"
         aria-selected={activeTab === "invites"}
-        aria-disabled="true"
-        tabIndex={-1}
-        title={t("admin.tabs.invites_coming_soon")}
         className={cn(
           baseTab,
-          "border-transparent cursor-not-allowed text-muted-foreground opacity-50",
+          activeTab === "invites"
+            ? "border-primary text-foreground"
+            : "border-transparent text-muted-foreground hover:text-foreground",
         )}
-        onClick={(e) => e.preventDefault()}
       >
         {t("admin.tabs.invites")}
-      </span>
+      </Link>
     </nav>
   );
 }

@@ -225,8 +225,8 @@ export function InvitesPage() {
           {t("admin.invites.error_loading")}
         </p>
       ) : (
-        <div className="rounded border border-border">
-          <table className="w-full text-sm">
+        <div className="rounded border border-border overflow-x-auto">
+          <table className="w-full min-w-[900px] text-sm">
             <thead className="bg-muted/50">
               <tr>
                 <th className="px-3 py-2 text-left">
