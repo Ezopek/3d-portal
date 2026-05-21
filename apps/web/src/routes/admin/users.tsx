@@ -2,7 +2,6 @@ import { Navigate, createFileRoute } from "@tanstack/react-router";
 
 import type { AdminUserSortBy, AdminUserSortOrder } from "@/lib/api-types";
 import { UsersPage } from "@/modules/admin/UsersPage";
-import { AuthGate } from "@/shell/AuthGate";
 import { useAuth } from "@/shell/AuthContext";
 
 interface AdminUsersSearch {
@@ -28,11 +27,11 @@ const SORT_COLUMNS: AdminUserSortBy[] = [
 ];
 
 export const Route = createFileRoute("/admin/users")({
-  component: () => (
-    <AuthGate>
-      <AdminUsersRoute />
-    </AuthGate>
-  ),
+  // Initiative 6 Story 11.3 — shell-level AuthGate (AppShell.tsx Decision O)
+  // handles the authenticated-vs-anonymous redirect. AdminUsersRoute's
+  // inner `isAdmin` check remains as the role-tier gate (member-authenticated
+  // user navigating here gets redirected to / per the inner Navigate).
+  component: AdminUsersRoute,
   validateSearch: (raw: Record<string, unknown>): AdminUsersSearch => {
     const out: AdminUsersSearch = {};
     if (typeof raw.page === "number" && raw.page >= 1) out.page = raw.page;

@@ -2,7 +2,6 @@ import { Navigate, createFileRoute } from "@tanstack/react-router";
 
 import type { InviteStatus } from "@/lib/api-types";
 import { InvitesPage } from "@/modules/admin/InvitesPage";
-import { AuthGate } from "@/shell/AuthGate";
 import { useAuth } from "@/shell/AuthContext";
 
 interface AdminInvitesSearch {
@@ -21,11 +20,10 @@ function AdminInvitesRoute() {
 const STATUS_VALUES: InviteStatus[] = ["active", "used", "expired", "revoked"];
 
 export const Route = createFileRoute("/admin/invites")({
-  component: () => (
-    <AuthGate>
-      <AdminInvitesRoute />
-    </AuthGate>
-  ),
+  // Initiative 6 Story 11.3 — shell-level AuthGate (AppShell.tsx Decision O)
+  // handles the authenticated-vs-anonymous redirect. AdminInvitesRoute's
+  // inner `isAdmin` check remains as the role-tier gate.
+  component: AdminInvitesRoute,
   validateSearch: (raw: Record<string, unknown>): AdminInvitesSearch => {
     const out: AdminInvitesSearch = {};
     if (typeof raw.page === "number" && raw.page >= 1) out.page = raw.page;

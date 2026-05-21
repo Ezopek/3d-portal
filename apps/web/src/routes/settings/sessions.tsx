@@ -6,7 +6,6 @@ import {
   useRevokeSession,
   useSessions,
 } from "@/modules/catalog/hooks/useSessions";
-import { AuthGate } from "@/shell/AuthGate";
 import { Button } from "@/ui/button";
 import { ConfirmDialog } from "@/ui/custom/ConfirmDialog";
 import { LoadingState } from "@/ui/custom/LoadingState";
@@ -156,9 +155,7 @@ function Sessions() {
 }
 
 export const Route = createFileRoute("/settings/sessions")({
-  component: () => (
-    <AuthGate>
-      <Sessions />
-    </AuthGate>
-  ),
+  // Initiative 6 Story 11.3 — shell-level AuthGate (AppShell.tsx Decision O)
+  // handles the anonymous redirect; per-route wrapper removed.
+  component: Sessions,
 });
