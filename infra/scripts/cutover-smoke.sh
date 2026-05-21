@@ -371,6 +371,70 @@ scenario_4_admin_login() {
   return 0
 }
 
+# --- Scenario 5: external-host anonymous probe (Initiative 6 Story 11.6) -----
+# Closes Story 10.3 AC5 (deferred-to-manual external-IP verification).
+# Verifies that an anonymous request from a non-LAN source against a
+# protected /api/* endpoint returns 401 — the primary product property of
+# Initiative 6's default-deny posture (sibling 70cb5ba IP allowlist is
+# bypassed by this probe IF and ONLY IF the source is genuinely outside
+# the LAN+VPN trust boundary).
+#
+# External-source decision:
+#   - If $CUTOVER_EXTERNAL_PROBE_SSH is set (host:port format), the probe
+#     runs via `ssh <host>` so the curl egress originates from that host's
+#     network. Operator's recommended sources:
+#       • Public VPS / monitoring host the operator already owns
+#       • Mobile-data-tethered laptop SSH'd into via tailscale exit node
+#       • A CI runner reachable via `ssh runner@ci-host` once GitHub
+#         Actions / similar lands
+#   - If $CUTOVER_EXTERNAL_PROBE_SSH is unset, the scenario emits a SKIP
+#     marker with operator instructions and DOES NOT count toward
+#     FAIL_COUNT. Story 11.7 sibling rollback close-out gate requires
+#     operator to run this scenario at least once with a real external
+#     source before the temporary IP allowlist `70cb5ba` is reverted.
+#
+# Expected response: HTTP 401 (anonymous request gets the standard auth
+# challenge from the FastAPI app, NOT the nginx allowlist 403 — proves
+# the app-level default-deny is the load-bearing gate, not the temporary
+# perimeter restoration).
+scenario_5_external_anonymous_probe() {
+  local ts code endpoint="/api/categories"
+  ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+  if [[ -z "${CUTOVER_EXTERNAL_PROBE_SSH:-}" ]]; then
+    printf '  %sSKIP%s 5 external probe   no CUTOVER_EXTERNAL_PROBE_SSH set; run manually from a non-LAN source:\n' \
+      "$C_YELLOW" "$C_RESET"
+    printf '         curl -sS -o /dev/null -w "%%{http_code}" -H "X-Portal-Client: web" \\\n'
+    printf '              "%s%s"\n' "$PORTAL_URL" "$endpoint"
+    printf '         (expected 401; FAIL if 200 — indicates app-level default-deny regressed)\n'
+    record_result 5 "external anonymous probe" "401" "SKIP" SKIP "$ts" "-"
+    return 0  # Skip doesn't count against FAIL_COUNT
+  fi
+
+  # Execute the probe via SSH so the curl egresses from the configured
+  # external source. The remote host needs curl in PATH; nothing else.
+  code=$(ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 \
+    "$CUTOVER_EXTERNAL_PROBE_SSH" \
+    "curl -sS -o /dev/null -w '%{http_code}' --max-time ${CUTOVER_HTTP_TIMEOUT:-7} \
+     -H 'X-Portal-Client: web' '${PORTAL_URL}${endpoint}'" 2>/dev/null) || code="SSH_ERR"
+
+  if [[ "$code" == "401" ]]; then
+    printf '  %sPASS%s 5 external probe   expected=401 actual=%s ts=%s source=%s\n' \
+      "$C_GREEN" "$C_RESET" "$code" "$ts" "$CUTOVER_EXTERNAL_PROBE_SSH"
+    record_result 5 "external anonymous probe" "401" "$code" PASS "$ts" "-"
+    return 0
+  fi
+
+  printf '  %sFAIL%s 5 external probe   expected=401 actual=%s ts=%s source=%s\n' \
+    "$C_RED" "$C_RESET" "$code" "$ts" "$CUTOVER_EXTERNAL_PROBE_SSH"
+  if [[ "$code" == "200" ]]; then
+    printf '         CRITICAL: external source returned 200 anonymously. Initiative 6 default-deny gate REGRESSED.\n'
+    printf '         Trigger rollback per Decision K; investigate sot/router.py + _PUBLIC_ROUTES allowlist.\n'
+  fi
+  record_result 5 "external anonymous probe" "401" "$code" FAIL "$ts" "-"
+  return 1
+}
+
 # --- Main: run all scenarios sequentially (race-free correlation) ------------
 FAIL_COUNT=0
 START_TS=$(date +%s)
@@ -379,18 +443,19 @@ scenario_1_share_bypass     || FAIL_COUNT=$((FAIL_COUNT + 1))
 scenario_2_agent_ingestion  || FAIL_COUNT=$((FAIL_COUNT + 1))
 scenario_3_member_login     || FAIL_COUNT=$((FAIL_COUNT + 1))
 scenario_4_admin_login      || FAIL_COUNT=$((FAIL_COUNT + 1))
+scenario_5_external_anonymous_probe || FAIL_COUNT=$((FAIL_COUNT + 1))
 
 END_TS=$(date +%s)
 ELAPSED=$((END_TS - START_TS))
 
 echo ""
 if (( FAIL_COUNT == 0 )); then
-  echo "${C_BOLD}${C_GREEN}cutover-smoke: ✅ 4/4 PASS in ${ELAPSED}s${C_RESET}"
+  echo "${C_BOLD}${C_GREEN}cutover-smoke: ✅ 5/5 PASS in ${ELAPSED}s${C_RESET}"
   if (( ELAPSED > 30 )); then
     echo "${C_YELLOW}warning: ${ELAPSED}s exceeds Decision J 30s budget — investigate latency before rollback${C_RESET}" >&2
   fi
   exit 0
 fi
 
-echo "${C_BOLD}${C_RED}cutover-smoke: ❌ ${FAIL_COUNT}/4 FAIL in ${ELAPSED}s — trigger rollback per Decision K${C_RESET}"
+echo "${C_BOLD}${C_RED}cutover-smoke: ❌ ${FAIL_COUNT}/5 FAIL in ${ELAPSED}s — trigger rollback per Decision K${C_RESET}"
 exit 1
