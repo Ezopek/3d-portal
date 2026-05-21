@@ -79,7 +79,7 @@ export function MeasureSummary({ measurements, onClear, onDelete }: Props) {
           );
         })}
       </ul>
-      <div className="px-2 py-1 border-t border-border">
+      <div className="px-2 py-1 border-t border-border pointer-events-auto">
         <Button type="button" variant="ghost" size="sm" onClick={onClear} className="h-6 gap-1">
           <Trash2 className="h-3 w-3" />
           {t("viewer3d.measure.clear")}
