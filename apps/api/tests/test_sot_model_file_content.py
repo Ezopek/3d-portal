@@ -1,5 +1,6 @@
 """Tests for GET /api/models/{model_id}/files/{file_id}/content."""
 
+import hashlib
 import uuid
 from pathlib import Path
 
@@ -57,7 +58,7 @@ def _seed_model_with_file(session, *, slug, kind, original_name, content):
         kind=kind,
         original_name=original_name,
         storage_path=rel,
-        sha256="0" * 64,
+        sha256=hashlib.sha256(content).hexdigest(),
         size_bytes=len(content),
         mime_type="application/octet-stream",
     )

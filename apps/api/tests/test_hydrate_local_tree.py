@@ -165,10 +165,16 @@ def test_hydrate_creates_local_tree(client, tmp_path):
     assert summary["n_models"] >= 1
     assert summary["m_downloaded"] >= 1
 
-    # Find the downloaded file under tmp_path
+    # Find the downloaded file under tmp_path. Content-aware match: other tests
+    # in the session may have also seeded a `dragon.stl` filename (rglob would
+    # see both); assert that AT LEAST ONE downloaded file has the content this
+    # test wrote, regardless of which path the test runner walked first.
     found = list(tmp_path.rglob("dragon.stl"))
     assert len(found) >= 1, f"dragon.stl not found under {tmp_path}"
-    assert found[0].read_bytes() == content
+    matching = [p for p in found if p.read_bytes() == content]
+    assert len(matching) >= 1, (
+        f"no dragon.stl with expected content {content!r} found among {found}"
+    )
 
 
 def test_hydrate_skips_in_sync_files(client, tmp_path):
