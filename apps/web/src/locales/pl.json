@@ -221,6 +221,7 @@
   "admin.invites.status.revoked": "Odwołane",
   "admin.invites.errors.invite_not_found": "Zaproszenie nie zostało znalezione. Lista może być nieaktualna — odśwież stronę i spróbuj ponownie.",
   "admin.invites.errors.invite_already_resolved": "To zaproszenie zostało już wykorzystane lub odwołane.",
+  "admin.invites.errors.generic": "Operacja nie powiodła się. Odśwież stronę i spróbuj ponownie lub sprawdź logi serwera.",
   "auth.reset_password.title": "Ustaw nowe hasło",
   "auth.reset_password.setting_password": "Ustawianie hasła…",
   "auth.reset_password.error.token_invalid": "Ten link do resetu jest nieprawidłowy, wygasł lub został już wykorzystany. Poproś administratora o nowy link.",

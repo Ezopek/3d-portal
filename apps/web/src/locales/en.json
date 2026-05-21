@@ -221,6 +221,7 @@
   "admin.invites.status.revoked": "Revoked",
   "admin.invites.errors.invite_not_found": "Invite not found. The list may be out of date — refresh and try again.",
   "admin.invites.errors.invite_already_resolved": "This invite is already used or revoked.",
+  "admin.invites.errors.generic": "Operation failed. Refresh the page and try again, or check the server logs.",
   "auth.reset_password.title": "Set a new password",
   "auth.reset_password.setting_password": "Setting password…",
   "auth.reset_password.error.token_invalid": "This reset link is invalid, has expired, or has already been used. Ask the administrator for a fresh link.",
