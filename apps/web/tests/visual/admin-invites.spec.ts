@@ -131,11 +131,16 @@ test.describe("/admin/invites baselines", () => {
     await waitForReady(page);
 
     await page
-      .getByRole("button", { name: /Generate invite|Wystaw zaproszenie/i })
+      .getByRole("button", {
+        name: /Generate invite|Wystaw zaproszenie|Wygeneruj zaproszenie/i,
+      })
       .click();
     await page
       .getByRole("dialog")
-      .filter({ hasText: /Generate new invite|Wystaw nowe zaproszenie/i })
+      .filter({
+        hasText:
+          /Generate new invite|Wystaw nowe zaproszenie|Wygeneruj nowe zaproszenie/i,
+      })
       .waitFor({ state: "visible" });
     await waitForReady(page);
 
