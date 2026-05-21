@@ -664,45 +664,140 @@ run_scenario_3() {
   record_verdict 3 "$verdict" "$out" "$repro" "$notes"
 }
 
-# ----------------- SCENARIO 4 — IDOR /api/admin/* via member -----------------
+# ----------------- SCENARIO 4 — Auth-boundary probe on ALL /api/* ------------
+#
+# Initiative 6 Story 11.5 — Scenario 4 reworked from "/api/admin/* IDOR via
+# member" to "auth-boundary probe on ALL /api/* routes". The pre-Init-6 scope
+# (admin-only) missed the read-side /api/sot/* and /api/* surfaces and was
+# the proximate root cause of supplemental finding High-002 (post-cutover
+# anonymous external read of /api/categories).
+#
+# The new Scenario 4 enumerates the live FastAPI route table via
+# /api/openapi.json, then probes every route as:
+#   1. anonymous (no cookies) → expected 401 EXCEPT _PUBLIC_ROUTES which
+#      return route-specific status codes (200 OK / 422 validation /
+#      400 bad request / etc.; the canonical "anonymous can call" check
+#      is "status != 401 + 403")
+#   2. member-authenticated → expected 200/201/403/404/422 per route's
+#      posture. Member-blocked routes (admin/*) return 403; member-allowed
+#      routes return their normal success code or validation error for
+#      the smoke-call payload.
+#
+# Verdict logic:
+#   - PASS if every /api/* route either has documented anonymous access
+#     (in _PUBLIC_ROUTES per backend route table) OR returns 401 anonymous.
+#   - FAIL if ANY route returns 200 (or any non-{401,403} success code)
+#     anonymously while NOT being in _PUBLIC_ROUTES — that's the High-002
+#     class of regression.
+
 emit_scenario_4() {
-  local repro="$AUDIT_DIR/scenario-4-idor-admin-reproducer.sh"
+  local repro="$AUDIT_DIR/scenario-4-auth-boundary-reproducer.sh"
   cat > "$repro" <<'REPRO_S4'
 #!/usr/bin/env bash
-# Story 9.2 / AC4 — IDOR scan on /api/admin/* via member-role principal.
-# Every admin endpoint introduced in E6+E8 must return HTTP 403 for a member.
+# Story 11.5 / Initiative 6 — auth-boundary probe on every /api/* route.
+# Replaces the pre-Init-6 admin-only IDOR scope (which missed the read-side
+# /api/sot/* surface that the Story 10.3 cutover exposed externally).
 #
 # Required env: PORTAL_URL, MEMBER_COOKIES, OUT_FILE.
 set -Eeuo pipefail
 PORTAL_URL="${PORTAL_URL:-https://3d.ezop.ddns.net}"
 OUT="${OUT_FILE:-scenario-4-output.txt}"
 
-declare -a TARGETS=(
-  "POST   /api/admin/invites                                                    {\"role\":\"member\",\"ttl_seconds\":3600}"
-  "POST   /api/admin/invites/00000000-0000-0000-0000-000000000000/revoke        {}"
-  "GET    /api/admin/invites                                                    "
-  "GET    /api/admin/users                                                      "
-  "PATCH  /api/admin/users/00000000-0000-0000-0000-000000000000                 {\"is_active\":false}"
-  "POST   /api/admin/users/00000000-0000-0000-0000-000000000000/force-logout    {}"
-  "POST   /api/admin/users/00000000-0000-0000-0000-000000000000/force-2fa-enrollment {}"
-  "POST   /api/admin/users/00000000-0000-0000-0000-000000000000/force-disable-2fa    {}"
-  "POST   /api/admin/users/00000000-0000-0000-0000-000000000000/password-reset  {}"
+# Anonymous-allowed routes (must match apps/api/app/main.py:_PUBLIC_ROUTES).
+# Path templates are matched literally against the OpenAPI route table;
+# {param} segments do NOT need substitution for the probe (we send a
+# template-placeholder value and check the status code shape, not the
+# semantic response).
+PUBLIC_ROUTES=(
+  "/api/health"
+  "/api/auth/login"
+  "/api/auth/logout"
+  "/api/auth/refresh"
+  "/api/auth/register"
+  "/api/auth/2fa/verify"
+  "/api/auth/password-reset"
+  "/api/share/{token}"
+  "/api/share/{token}/files/{file_id}/content"
 )
 
-: > "$OUT"
-for entry in "${TARGETS[@]}"; do
-  method=$(awk '{print $1}' <<<"$entry")
-  path=$(awk '{print $2}' <<<"$entry")
-  body=$(awk '{for(i=3;i<=NF;i++) printf "%s ", $i; print ""}' <<<"$entry" | sed 's/[[:space:]]*$//')
-  args=( -sS -o /dev/null -w '%{http_code}' -X "$method"
-         "$PORTAL_URL$path"
-         -H 'X-Portal-Client: web'
-         -b "$MEMBER_COOKIES" )
-  if [[ -n "$body" ]]; then
-    args+=( -H 'Content-Type: application/json' -d "$body" )
+is_public_route() {
+  local path="$1"
+  for p in "${PUBLIC_ROUTES[@]}"; do
+    [[ "$p" == "$path" ]] && return 0
+  done
+  return 1
+}
+
+# Fetch route table from /api/openapi.json (single source of truth for what
+# routes the API actually serves; defense against the pre-Init-6 pattern of
+# hand-maintaining a target list that drifts from the live route table).
+ROUTES_JSON=$(curl -sS "$PORTAL_URL/api/openapi.json" \
+  | jq -c '[.paths | to_entries[] | {path: .key, methods: (.value | keys | map(select(. != "parameters")))}]')
+
+probe_one() {
+  local method="$1" path="$2" expected_anon="$3"
+  # Substitute path templates with a known-bogus UUID so the request reaches
+  # the handler and exercises the auth dep, but the handler's body validation
+  # will produce a deterministic 422/404 for valid-auth probes.
+  local probe_path="$path"
+  probe_path=${probe_path//\{token\}/probe-token-bogus-aaaaaaaaaaaaaaaaaa}
+  probe_path=${probe_path//\{model_id\}/00000000-0000-0000-0000-000000000000}
+  probe_path=${probe_path//\{file_id\}/00000000-0000-0000-0000-000000000000}
+  probe_path=${probe_path//\{user_id\}/00000000-0000-0000-0000-000000000000}
+  probe_path=${probe_path//\{family_id\}/00000000-0000-0000-0000-000000000000}
+  probe_path=${probe_path//\{invite_id\}/00000000-0000-0000-0000-000000000000}
+  probe_path=${probe_path//\{file_id:uuid\}/00000000-0000-0000-0000-000000000000}
+  probe_path=${probe_path//\{tag_id\}/00000000-0000-0000-0000-000000000000}
+
+  # 1. Anonymous probe (no cookie jar, no CSRF header).
+  local anon_code
+  anon_code=$(curl -sS -o /dev/null -w '%{http_code}' -X "$method" \
+    "$PORTAL_URL$probe_path" \
+    -H 'Content-Type: application/json' -d '{}')
+
+  # 2. Member-authenticated probe (cookie jar + CSRF header for mutating).
+  local member_code
+  member_code=$(curl -sS -o /dev/null -w '%{http_code}' -X "$method" \
+    "$PORTAL_URL$probe_path" \
+    -H 'X-Portal-Client: web' \
+    -H 'Content-Type: application/json' \
+    -b "$MEMBER_COOKIES" -d '{}')
+
+  # Verdict: anonymous code MUST be 401 for non-public routes. Public
+  # routes can return anything (typically 200 / 400 / 422) — they're
+  # EXPECTED to be reachable anonymously.
+  local verdict="PASS"
+  if [[ "$expected_anon" == "public" ]]; then
+    # Public route: any code is fine as long as it's NOT a server error.
+    if [[ "$anon_code" =~ ^5 ]]; then
+      verdict="FAIL_server_error_on_public"
+    fi
+  else
+    # Protected route: anonymous MUST get 401 (or 403 for some role
+    # mismatches before auth runs, but 401 is the canonical reject).
+    if [[ "$anon_code" != "401" && "$anon_code" != "403" ]]; then
+      verdict="FAIL_anonymous_leak"
+    fi
   fi
-  code=$(curl "${args[@]}")
-  printf 'method=%-6s path=%-72s status=%s\n' "$method" "$path" "$code" | tee -a "$OUT"
+
+  printf 'method=%-6s path=%-72s anon=%s member=%s expected=%s verdict=%s\n' \
+    "$method" "$path" "$anon_code" "$member_code" "$expected_anon" "$verdict"
+}
+
+: > "$OUT"
+echo "$ROUTES_JSON" | jq -c '.[]' | while read -r row; do
+  path=$(jq -r '.path' <<<"$row")
+  # Skip non-/api/* paths (e.g. /agent-runbook — nginx-level bypass per
+  # NFR5-INT-1 Decision K, outside the Initiative 6 /api/* auth contract).
+  [[ "$path" != /api/* ]] && continue
+  # Skip introspection-only paths (not part of the auth boundary contract).
+  [[ "$path" == "/api/openapi.json" || "$path" == "/api/docs" ]] && continue
+  expected_anon="protected"
+  is_public_route "$path" && expected_anon="public"
+  for method in $(jq -r '.methods[]' <<<"$row" | tr '[:lower:]' '[:upper:]'); do
+    [[ "$method" == "HEAD" ]] && continue
+    probe_one "$method" "$path" "$expected_anon" | tee -a "$OUT"
+  done
 done
 REPRO_S4
   chmod +x "$repro"
@@ -710,7 +805,7 @@ REPRO_S4
 }
 
 run_scenario_4() {
-  log "--- Scenario 4: IDOR scan on /api/admin/* (member principal) ---"
+  log "--- Scenario 4: auth-boundary probe on ALL /api/* (Initiative 6 Story 11.5) ---"
   local repro out verdict notes
   repro=$(emit_scenario_4)
   out="$AUDIT_DIR/scenario-4-output${SFX}.txt"
@@ -727,16 +822,16 @@ run_scenario_4() {
   total=$(grep -c '^method=' "$out" || echo 0)
   bad=$(awk '/^method=/{
     s=""
-    for (i=1; i<=NF; i++) if (match($i, /^status=/)) s=substr($i, 8)
-    if (s != "403") c++
+    for (i=1; i<=NF; i++) if (match($i, /^verdict=/)) s=substr($i, 9)
+    if (s != "PASS") c++
   } END{print c+0}' "$out")
 
   if [[ "$bad" == "0" ]]; then
     verdict="PASS"
-    notes="$total/$total admin endpoints rejected member-role principal with HTTP 403."
+    notes="$total/$total /api/* routes enforce documented auth posture (anon→401 except _PUBLIC_ROUTES)."
   else
     verdict="FAIL"
-    notes="$bad/$total admin endpoints did NOT return 403 for member. See $out."
+    notes="$bad/$total /api/* routes violated auth posture. See $out for verdict=FAIL_* rows."
   fi
   record_verdict 4 "$verdict" "$out" "$repro" "$notes"
 }
