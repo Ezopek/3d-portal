@@ -208,7 +208,10 @@ export function Settings2faPage() {
     setCodesState(null);
     void qc.invalidateQueries({ queryKey: ["auth", "2fa", "status"] });
     if (forcedEnrollmentMode && search.next) {
-      const next = decodeURIComponent(search.next);
+      // Initiative 6 Story 11.3 / Codex P2 round-2 (2026-05-21) — `search.next`
+      // arrives already decoded once by TanStack Router; do NOT decodeURIComponent
+      // again. See login.tsx for the same fix + rationale.
+      const next = search.next;
       void navigate({ to: next as "/" });
       return;
     }

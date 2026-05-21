@@ -52,7 +52,14 @@ function Login() {
       // hand them back after enrollment completes.
       if (resp.totp_enroll_required === true) {
         await qc.invalidateQueries({ queryKey: ["auth", "me"] });
-        const next = search.next ? decodeURIComponent(search.next) : "/";
+        // Initiative 6 Story 11.3 / Codex P2 round-2 (2026-05-21) — `search.next`
+        // arrives already decoded once by TanStack Router's URLSearchParams
+        // handling. The producer (AppShell.tsx / AuthGate.tsx) now passes the
+        // raw `pathname + searchStr` to navigate() so the router can encode
+        // it once; the consumer must NOT decodeURIComponent again or
+        // percent-sequences in the original URL get double-decoded
+        // (e.g. /catalog?discount=50%25 would break or 50% literal escape).
+        const next = search.next || "/";
         await navigate({ to: "/settings/2fa", search: { next } });
         return;
       }
