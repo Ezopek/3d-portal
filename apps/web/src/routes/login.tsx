@@ -64,7 +64,7 @@ function Login() {
         return;
       }
       await qc.invalidateQueries({ queryKey: ["auth", "me"] });
-      const next = search.next ? decodeURIComponent(search.next) : "/";
+      const next = search.next || "/";
       await navigate({ to: next as "/" });
     } catch {
       setError(t("auth.error.invalid_credentials"));
@@ -82,7 +82,7 @@ function Login() {
         body: JSON.stringify({ partial_token: partialToken, code }),
       });
       await qc.invalidateQueries({ queryKey: ["auth", "me"] });
-      const next = search.next ? decodeURIComponent(search.next) : "/";
+      const next = search.next || "/";
       await navigate({ to: next as "/" });
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
