@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { useState, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import "@/locales/i18n";
 import type { ModelDetail, NoteRead } from "@/lib/api-types";
 
 import { EditDescriptionSheet } from "./EditDescriptionSheet";
@@ -80,50 +81,85 @@ function Harness({ detail }: { detail: ModelDetail }) {
   return <EditDescriptionSheet detail={detail} open={open} onOpenChange={setOpen} />;
 }
 
-describe("EditDescriptionSheet", () => {
-  it("preloads the textarea with the existing description body", () => {
-    const detail = makeDetail({ notes: [makeNote({ body: "hello world" })] });
+describe("EditDescriptionSheet (Story 16.2 revised — bilingual editor)", () => {
+  it("preloads the English textarea from existing body_en (or legacy body)", () => {
+    const detail = makeDetail({
+      notes: [makeNote({ body: "legacy", body_en: "english text" })],
+    });
     render(<Harness detail={detail} />, { wrapper: wrap() });
-    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
-    expect(textarea.value).toBe("hello world");
+    const en = screen.getByLabelText(/english description/i) as HTMLTextAreaElement;
+    expect(en.value).toBe("english text");
+  });
+
+  it("falls back to legacy body for English when body_en is null", () => {
+    const detail = makeDetail({
+      notes: [makeNote({ body: "hello world", body_en: null, body_pl: null })],
+    });
+    render(<Harness detail={detail} />, { wrapper: wrap() });
+    const en = screen.getByLabelText(/english description/i) as HTMLTextAreaElement;
+    expect(en.value).toBe("hello world");
+  });
+
+  it("preloads the Polish textarea from body_pl", () => {
+    const detail = makeDetail({
+      notes: [makeNote({ body: "", body_pl: "polski tekst" })],
+    });
+    render(<Harness detail={detail} />, { wrapper: wrap() });
+    const pl = screen.getByLabelText(/polish description/i) as HTMLTextAreaElement;
+    expect(pl.value).toBe("polski tekst");
   });
 
   it("starts empty when the model has no description note", () => {
     render(<Harness detail={makeDetail()} />, { wrapper: wrap() });
-    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
-    expect(textarea.value).toBe("");
+    const en = screen.getByLabelText(/english description/i) as HTMLTextAreaElement;
+    const pl = screen.getByLabelText(/polish description/i) as HTMLTextAreaElement;
+    expect(en.value).toBe("");
+    expect(pl.value).toBe("");
   });
 
-  it("PATCHes the existing note when saved", async () => {
+  it("PATCHes the existing note with bilingual fields when saved", async () => {
     fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify(makeNote({ body: "updated body" })), { status: 200 }),
+      new Response(JSON.stringify(makeNote({ body: "updated en" })), { status: 200 }),
     );
     const detail = makeDetail({ notes: [makeNote({ id: "note-99", body: "old" })] });
     render(<Harness detail={detail} />, { wrapper: wrap() });
-    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
-    fireEvent.change(textarea, { target: { value: "updated body" } });
-    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    const en = screen.getByLabelText(/english description/i) as HTMLTextAreaElement;
+    const pl = screen.getByLabelText(/polish description/i) as HTMLTextAreaElement;
+    fireEvent.change(en, { target: { value: "updated en" } });
+    fireEvent.change(pl, { target: { value: "zaktualizowane pl" } });
+    fireEvent.click(screen.getByRole("button", { name: /save|zapisz/i }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/admin/notes/note-99");
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(init.method).toBe("PATCH");
-    expect(init.body).toBe(JSON.stringify({ body: "updated body" }));
+    expect(init.body).toBe(
+      JSON.stringify({
+        body: "updated en",
+        body_pl: "zaktualizowane pl",
+        body_en: "updated en",
+      }),
+    );
   });
 
-  it("POSTs a new description note when none exists", async () => {
+  it("POSTs a new description note to /api/admin/models/{id}/notes when none exists", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify(makeNote({ body: "fresh" })), { status: 201 }),
     );
     render(<Harness detail={makeDetail()} />, { wrapper: wrap() });
-    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
-    fireEvent.change(textarea, { target: { value: "fresh" } });
-    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    const en = screen.getByLabelText(/english description/i) as HTMLTextAreaElement;
+    fireEvent.change(en, { target: { value: "fresh" } });
+    fireEvent.click(screen.getByRole("button", { name: /save|zapisz/i }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/admin/notes");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/admin/models/m1/notes");
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(init.method).toBe("POST");
     expect(init.body).toBe(
-      JSON.stringify({ model_id: "m1", kind: "description", body: "fresh" }),
+      JSON.stringify({
+        kind: "description",
+        body: "fresh",
+        body_pl: null,
+        body_en: "fresh",
+      }),
     );
   });
 });

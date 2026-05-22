@@ -115,11 +115,12 @@ describe("DescriptionPanel", () => {
     const editBtn = screen.getByLabelText(/edit description/i);
     expect(editBtn).toBeTruthy();
     fireEvent.click(editBtn);
-    // Sheet opens — it renders a textbox with the body preloaded
-    const textarea = await waitFor(
-      () => screen.getByRole("textbox") as HTMLTextAreaElement,
+    // Sheet opens — Story 16.2 revised: bilingual editor preloads the
+    // English textarea from legacy body when body_en is null.
+    const en = await waitFor(
+      () => screen.getByLabelText(/english description/i) as HTMLTextAreaElement,
     );
-    expect(textarea.value).toBe("Articulated dragon for Bambu A1.");
+    expect(en.value).toBe("Articulated dragon for Bambu A1.");
   });
 
   // Initiative 10 Story 16.1 (Decision L) — bilingual fallback chain.

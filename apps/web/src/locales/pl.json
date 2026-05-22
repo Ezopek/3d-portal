@@ -530,5 +530,10 @@
   "admin.models.new.errors.generic": "Nie udało się utworzyć — spróbuj ponownie.",
   "admin.models.new.errors.description_create_failed": "Model utworzony, ale opis nie zapisał się. Dodaj go ze strony szczegółów.",
   "catalog.actions.upload_files": "Wgraj {{kind}}",
-  "catalog.actions.uploading": "Wgrywam…"
+  "catalog.actions.uploading": "Wgrywam…",
+  "catalog.actions.description_saved": "Opis zapisany",
+  "catalog.description.body_en": "Opis (angielski)",
+  "catalog.description.body_pl": "Opis (polski)",
+  "catalog.description.bilingual_hint": "Wypełnij oba języki jeśli to możliwe — katalog renderuje wersję pasującą do locale, a druga jest fallbackiem.",
+  "common.saving": "Zapisuję…"
 }

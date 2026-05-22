@@ -530,5 +530,10 @@
   "admin.models.new.errors.generic": "Could not create — please try again.",
   "admin.models.new.errors.description_create_failed": "Model created but description note failed to save. Add it from the detail page.",
   "catalog.actions.upload_files": "Upload {{kind}}",
-  "catalog.actions.uploading": "Uploading…"
+  "catalog.actions.uploading": "Uploading…",
+  "catalog.actions.description_saved": "Description saved",
+  "catalog.description.body_en": "English description",
+  "catalog.description.body_pl": "Polish description",
+  "catalog.description.bilingual_hint": "Fill both languages when possible — the catalog renders the locale-matching version with the other as fallback.",
+  "common.saving": "Saving…"
 }
