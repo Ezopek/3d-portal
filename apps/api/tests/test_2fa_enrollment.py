@@ -14,10 +14,8 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from unittest.mock import MagicMock
 
 import bcrypt
-import fakeredis.aioredis
 import pyotp
 import pytest
 from fastapi.testclient import TestClient
@@ -28,7 +26,6 @@ from app.core.config import get_settings
 from app.core.db.models import AuditLog, RecoveryCode, User
 from app.core.db.models._enums import UserRole
 from app.core.db.session import get_engine
-from app.main import create_app
 from app.modules.auth.totp.service import (
     EnrollmentTokenInvalid,
     Settings2faService,
@@ -47,31 +44,11 @@ FERNET_KEY = "ZmFrZS10ZXN0LWtleS0zMi1ieXRlcy1mb3ItdGVzdHM="
 
 
 @pytest.fixture
-def client(tmp_path, monkeypatch):
-    """Fresh app + DB + fakeredis per test."""
-    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/s.db")
-    monkeypatch.setenv("ADMIN_EMAIL", "admin@localhost.localdomain")
-    monkeypatch.setenv("ADMIN_PASSWORD", "pw")
-    monkeypatch.setenv("JWT_SECRET", JWT_SECRET)
-    monkeypatch.setenv("TOTP_FERNET_KEY", FERNET_KEY)
-
-    get_settings.cache_clear()
-    get_engine.cache_clear()
-    app = create_app()
-    fake = fakeredis.aioredis.FakeRedis()
-    factory = MagicMock()
-    factory.get = MagicMock(return_value=fake)
-
-    async def _aclose():
-        return None
-
-    factory.aclose = _aclose
-    with TestClient(app) as c:
-        c.headers.update({"X-Portal-Client": "web"})
-        app.state.redis = factory
-        yield c, fake
-    get_settings.cache_clear()
-    get_engine.cache_clear()
+def client(isolated_client):
+    """Story 15.3 — bit-isomorphic per-file fixture removed; shim delegates to
+    `conftest.isolated_client` which yields the same `(TestClient, FakeRedis)`
+    tuple shape this file's tests already destructure."""
+    yield isolated_client
 
 
 def _seed_user(
