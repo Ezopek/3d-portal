@@ -256,6 +256,15 @@ Full execution rules and project-specific gotchas: `_bmad-output/project-context
 - `~/repos/configs/` — homelab edge proxy + observability contracts (`docs/observability-logging-contract.md`, `docs/glitchtip-agent-guide.md`)
 - `~/repos/orca-profiles/` — printer profiles (no v1 dependency; future printer module slot)
 
+## Scope boundaries
+
+Initiative 10 retro codified this; surfaced previously as the OTEL collector incident (item #6) when the originally-scoped recon revealed it was an infra-side problem misclassified as portal-app work.
+
+- **Infrastructure concerns** belong to `~/repos/configs`, NOT to 3d-portal initiatives. This includes: logging pipeline (otel-collector, data-prepper, opensearch), deployment topology, reverse-proxy rules (nginx-180 / nginx-190 / nginx-kbk), TLS / certificate provisioning, host-level systemd / docker daemon config, observability sinks (Sentry/GlitchTip backend, not the SDK integration).
+- **3d-portal initiatives** scope only app-layer concerns: FastAPI / SQLModel / React / Tanstack / Three.js / arq tasks / Alembic migrations / API contracts / UI components / static asset pipelines.
+- **Recon subagent assesses the split** when an item is scope-ambiguous. Heuristic: if the recon finds that `>50%` of the fix surface lives outside `apps/` + `workers/` + `infra/` in 3d-portal, carve out to `configs/`. The OTEL recon (2026-05-22) called it `~75% infra-side` and the item dropped from Init 10 scope correctly.
+- **Symptom triage rule**: when a production log error originates from a library/integration (e.g. opentelemetry-sdk's "Failed to export span batch"), check the recipient (collector / sink) BEFORE the sender (app code). 3d-portal's role is to send OTEL spans; the collector pipeline downstream is `configs/` territory.
+
 ## Data flow
 
 One-way Windows → `.190` rsync. Portal never writes to the catalog. See `docs/operations.md` for the sync recipe.
@@ -267,6 +276,9 @@ One-way Windows → `.190` rsync. Portal never writes to the catalog. See `docs/
 - Frontend: `npm run lint` from `apps/web/` runs ESLint 9 flat config (`eslint.config.js`); it must pass with `--max-warnings=0` before commit. Python (`apps/api/`, `workers/render/`) is on `ruff`.
 - Backend: structured JSON logs only; canonical fields per `~/repos/configs/docs/observability-logging-contract.md`.
 - Tests: TDD for backend logic; Playwright visual regression for UI.
+- **Frontend auth gating discipline** (Init 10 retro codification): component-level authorization checks (role / permission / ownership inside a route component) MUST NOT redirect when authentication state is unknown or anonymous. Defer to the shell-level `AuthGate` for the unauthenticated case; act only on `authenticated-but-unauthorized`. Anti-pattern that surfaced in Init 6 retro + Init 10 Story 15.2 P2 fix-up: `AdminUsersRoute` + `AdminInvitesRoute` rendered `<Navigate to="/" replace />` synchronously when `!isAdmin` for ANY auth state, racing AppShell.AuthGate's useEffect and stripping the original `pathname` from `/login?next=` for anonymous deep-link visitors. Decision O (anonymous redirect with pathname preservation) requires deferring to the shell gate for `!isAuthenticated` users — only fire the role-tier `<Navigate>` for authenticated-non-admin users.
+- **Test discipline — hang/timeout class bugs** (Init 10 Murat codification): after fix-up of any test in hang / timeout / deadlock class, mandatory full pytest suite re-run before claim "fixed". Masked tests have non-zero prior. Init 10 Story 15.1 closed a pytest threading deadlock; full-suite re-run revealed 2 pre-existing failures (TB-021) that had been masked for ~2 days because the runner couldn't reach them. NFR10-DETERMINISM-1 "3× consecutive PASS" is the EXIT criterion, not the POST-FIX protocol — the re-run IS the new execution path.
+- **Visual baseline triage before regen** (Init 10 Murat codification): before invoking `--update-snapshots`, classify each failure as `stale-baseline` (regen OK), `deterministic-fail` (real bug — do NOT regen, surface to operator), or `flake-candidate` (need 3× run probe to confirm non-determinism). Blanket regen masks real UX regressions. Carry-forward from [[feedback_visual_failure_mode_triage]] memory.
 
 ## Deployment
 
