@@ -35,7 +35,12 @@ export function EditDescriptionSheet({ detail, open, onOpenChange }: Props) {
       setBodyPl(existing?.body_pl ?? "");
       setBodyEn(existing?.body_en ?? "");
     }
-  }, [open, existing?.body_en, existing?.body_pl]);
+    // Codex P2 fix-up 2026-05-22 — include detail.id + existing?.id so
+    // switching the underlying model (e.g. ModelDetail rerender for a
+    // different model while the sheet stays open) resets the form state.
+    // Without these deps, edits drafted for one model could be saved
+    // onto another model's note when both have empty body_pl/body_en.
+  }, [open, detail.id, existing?.id, existing?.body_en, existing?.body_pl]);
 
   function save() {
     upsert.mutate(
