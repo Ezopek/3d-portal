@@ -67,7 +67,11 @@ def client(tmp_path, monkeypatch):
     get_engine.cache_clear()
 
 
-def test_create_share_requires_admin(client):
+def test_create_share_requires_authentication(client):
+    # Initiative 5 Story 6.5 expanded share creation from current_admin to
+    # current_member_or_admin; the test name was renamed from
+    # `requires_admin` to `requires_authentication` post-Init-10 DOC-DRIFT-2
+    # close-out (Drift 17) to reflect the actual contract.
     c, _, (mid, _) = client
     r = c.post("/api/admin/share", json={"model_id": str(mid), "expires_in_hours": 24})
     assert r.status_code == 401
