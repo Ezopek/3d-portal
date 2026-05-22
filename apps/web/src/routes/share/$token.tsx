@@ -17,6 +17,54 @@ import { useTranslation } from "react-i18next";
 
 import { fetchShareView, type ShareModelView } from "@/lib/share-api";
 
+/**
+ * Anonymous STL download button — fetches the file as a credentialless blob
+ * (NFR10-SHARE-SECURITY-1) so a logged-in user viewing the share link
+ * doesn't attach their portal_access cookie to the download. Plain
+ * `<a href={url} download>` would send cookies because the browser cannot
+ * disable credentials for navigation anchors.
+ */
+function AnonymousDownloadButton({
+  url,
+  filename,
+  label,
+}: {
+  url: string;
+  filename: string;
+  label: string;
+}) {
+  const [loading, setLoading] = useState(false);
+  const handleClick = async () => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const r = await fetch(url, { credentials: "omit" });
+      if (!r.ok) throw new Error(`download_${r.status}`);
+      const blob = await r.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(objectUrl);
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={loading}
+      className="mt-3 inline-flex items-center rounded border border-border bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
+    >
+      {label}
+    </button>
+  );
+}
+
 function AnonymousShareView({ token }: { token: string }) {
   const { t, i18n } = useTranslation();
   const [data, setData] = useState<ShareModelView | null>(null);
@@ -116,10 +164,17 @@ function AnonymousShareView({ token }: { token: string }) {
 
         {(data.thumbnail_url !== null || data.images.length > 0) && (
           <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {/* NFR10-SHARE-SECURITY-1 — crossOrigin="anonymous" forces the
+                browser into anonymous-credentials mode for these img
+                requests (no cookies sent). Otherwise a logged-in user
+                viewing /share/<token> would attach their portal_access
+                cookie to every gallery image request and update
+                last_active_at against the anonymous share path. */}
             {data.thumbnail_url !== null && (
               <img
                 src={data.thumbnail_url}
                 alt={title}
+                crossOrigin="anonymous"
                 className="aspect-square w-full rounded border border-border object-cover"
               />
             )}
@@ -128,6 +183,7 @@ function AnonymousShareView({ token }: { token: string }) {
                 key={url}
                 src={url}
                 alt={title}
+                crossOrigin="anonymous"
                 className="aspect-square w-full rounded border border-border object-cover"
               />
             ))}
@@ -142,13 +198,11 @@ function AnonymousShareView({ token }: { token: string }) {
             <p className="text-sm text-muted-foreground">
               {t("share.view.stl_description")}
             </p>
-            <a
-              href={data.stl_url}
-              download
-              className="mt-3 inline-flex items-center rounded border border-border bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-            >
-              {t("share.view.download_stl")}
-            </a>
+            <AnonymousDownloadButton
+              url={data.stl_url}
+              filename={`${title}.stl`}
+              label={t("share.view.download_stl")}
+            />
           </section>
         )}
 

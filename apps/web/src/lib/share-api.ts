@@ -47,7 +47,9 @@ export async function createShareLink(
   modelId: string,
   ttlDays: ShareTtlPreset,
 ): Promise<CreateShareResponse> {
-  return api<CreateShareResponse>("/api/admin/share", {
+  // `api()` prepends the `/api` base — pass the path WITHOUT the prefix to
+  // avoid `/api/api/...` double-prefix (Codex P1 2026-05-22).
+  return api<CreateShareResponse>("/admin/share", {
     method: "POST",
     body: JSON.stringify({ model_id: modelId, expires_in_hours: ttlDays * 24 }),
   });
@@ -55,13 +57,13 @@ export async function createShareLink(
 
 /** List the current user's active share tokens. Authenticated. */
 export async function listMyShareLinks(): Promise<ShareToken[]> {
-  const r = await api<{ tokens: ShareToken[] }>("/api/me/share-links");
+  const r = await api<{ tokens: ShareToken[] }>("/me/share-links");
   return r.tokens;
 }
 
 /** Revoke one of the current user's share tokens. Authenticated. */
 export async function revokeMyShareLink(token: string): Promise<void> {
-  await api<void>(`/api/me/share-links/${token}`, { method: "DELETE" });
+  await api<void>(`/me/share-links/${token}`, { method: "DELETE" });
 }
 
 /**

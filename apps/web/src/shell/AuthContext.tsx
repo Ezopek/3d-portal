@@ -34,14 +34,27 @@ const AuthCtx = createContext<AuthState>(ANONYMOUS);
 let authSnapshot: { isAuthenticated: boolean } = { isAuthenticated: false };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  // Initiative 10 Story 16.3 (NFR10-SHARE-SECURITY-1) — disable the
+  // /auth/me query on anonymous share routes. The viewer is detached
+  // from auth state by contract; calling /auth/me would (a) leak the
+  // logged-in user's session to the share surface and (b) potentially
+  // trigger a refresh-token rotation against the share visitor's
+  // unrelated browsing context (api()'s 401-retry path).
+  const isAnonymousShareRoute =
+    typeof window !== "undefined" && window.location.pathname.startsWith("/share/");
   const meQuery = useQuery<MeResponse>({
     queryKey: ["auth", "me"],
     queryFn: () => api<MeResponse>("/auth/me"),
     retry: false,
     staleTime: 5 * 60 * 1000,
+    enabled: !isAnonymousShareRoute,
   });
 
   const value = useMemo<AuthState>(() => {
+    // Share routes: query is disabled, isPending stays true forever. Short-
+    // circuit to ANONYMOUS so child components see a stable not-loading
+    // anonymous state instead of an infinite spinner.
+    if (isAnonymousShareRoute) return ANONYMOUS;
     if (meQuery.isPending) return { ...ANONYMOUS, isLoading: true };
     if (meQuery.isError) return ANONYMOUS;
     const u = meQuery.data!;
@@ -54,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: true,
       isLoading: false,
     };
-  }, [meQuery.isPending, meQuery.isError, meQuery.data]);
+  }, [isAnonymousShareRoute, meQuery.isPending, meQuery.isError, meQuery.data]);
 
   useEffect(() => {
     authSnapshot = { isAuthenticated: value.isAuthenticated };
