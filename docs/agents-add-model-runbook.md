@@ -139,7 +139,7 @@ URL host → fetch strategy:
 | `cults3d.com`        | `agent-browser` CLI against the operator's logged-in Windows-host Chrome.                          | Browser session must be logged in already. |
 | `crealitycloud.com`  | `agent-browser` CLI against the operator's logged-in Windows-host Chrome.                          | Browser session must be logged in already. |
 
-For the five browser-only sources: the `agent-browser` CLI navigates to the model URL, clicks Download, the file lands in `D:\` on the Windows host. Move it into a temporary working directory via PowerShell, then upload via the portal flow. See `~/.claude/CLAUDE.md` § "Browser automation — agent-browser" on the operator's machine for connection setup (mirrored networking, CDP on `localhost:9222`).
+For the five browser-only sources: the `agent-browser` CLI navigates to the model URL, clicks Download, the file lands in whatever directory your browser-automation tool downloads to (consult its docs or your local agent-environment notes — e.g. `agent-browser`'s default mirrors the Chrome download dir, which varies by host OS + browser profile). Move the file into a temporary working directory in your environment, then upload via the portal flow. For Claude-specific agents, see `~/.claude/CLAUDE.md` § "Browser automation — agent-browser" — one example of where to find your setup notes (mirrored networking, CDP on `localhost:9222`).
 
 ### Host → `source` enum mapping
 
@@ -300,7 +300,7 @@ Verify all five items BEFORE the first portal write call. If any item is false, 
    echo "$CATEGORY_ID"
    ```
    On ambiguity, dump the tree (`jq '.'`) and pick the right `id` by walking the parent chain manually, then ask the operator to rename one of the colliding slugs.
-2. **Model name sanitized.** No Polish diacritics in `name_en`, no leading/trailing whitespace, no file extension. Polish translations belong in `name_pl`. **How to derive `name_en` per source:**
+2. **Model name sanitized — populate BOTH `name_en` AND `name_pl`.** No Polish diacritics in `name_en`, no leading/trailing whitespace, no file extension. **Always populate both names** by translating one from the other — direction depends on the source page language. For brand-name compounds (e.g. "Prusa MK3 LED Lamp" → "Prusa MK3 lampka LED"), keep brand terms (`Prusa MK3`) verbatim and translate only the descriptive parts. If translation feels lossy (technical jargon, terms-of-art with no clean PL equivalent), fall back to `name_pl: null` and surface the case to the operator rather than guess. The catalog renders bilingually (i18n PL/EN) so leaving `name_pl: null` degrades to the English fallback for Polish UI users — functional but defeats the bilingual design. **How to derive `name_en` per source:**
    - **Printables URL slug** (`/model/<id>-<slug-words>`): strip the leading numeric id and the trailing dash, replace `-` with spaces, title-case. Example: `1000-prusa-mk3-led-lamp` → `Prusa MK3 LED Lamp`. One-liner:
      ```bash
      echo "1000-prusa-mk3-led-lamp" | sed -E 's/^[0-9]+-//; s/-/ /g' \
@@ -392,7 +392,7 @@ For a Printables URL `https://www.printables.com/model/1000-prusa-mk3-led-lamp`:
    MODEL_ID=$(
      curl -s -b /tmp/portal-cookies.txt -c /tmp/portal-cookies.txt \
        -X POST -H 'X-Portal-Client: web' -H 'Content-Type: application/json' \
-       -d "{\"name_en\":\"Prusa MK3 LED Lamp\",\"category_id\":\"$CATEGORY_ID\",\"source\":\"printables\"}" \
+       -d "{\"name_en\":\"Prusa MK3 LED Lamp\",\"name_pl\":\"Prusa MK3 lampka LED\",\"category_id\":\"$CATEGORY_ID\",\"source\":\"printables\"}" \
        https://3d.ezop.ddns.net/api/admin/models \
      | jq -r .id
    )
@@ -415,15 +415,15 @@ For a Printables URL `https://www.printables.com/model/1000-prusa-mk3-led-lamp`:
       "https://3d.ezop.ddns.net/api/admin/models/$MODEL_ID/files"
     ```
     Curl auto-sets the `multipart/form-data` content type from `-F`; do NOT add `-H 'Content-Type: ...'` manually or it will clobber the boundary. Other valid `kind` values: `image`, `print`, `source`, `archive_3mf` (see `ModelFileKind` in OpenAPI).
-11. **Verify.** Fetch the model via the public model-detail endpoint (`GET /api/models/{model_id}`, unauthenticated). The `thumbnail_file_id` field flips from `null` to a UUID within ~60 s of the first STL upload as the render completes. Concrete poll loop (12 attempts × 5 s = 60 s budget):
+11. **Verify.** Fetch the model via the public model-detail endpoint (`GET /api/models/{model_id}`, unauthenticated). The `thumbnail_file_id` field flips from `null` to a UUID once the render completes. Wall-clock budget scales with mesh complexity: ~60 s nominal for small meshes (≤50k triangles), ~120 s typical for medium meshes (≤200k triangles), longer for large ones. Concrete poll loop (24 attempts × 5 s = 120 s budget; safe for the medium-mesh range, generous headroom for small):
     ```bash
-    for i in $(seq 1 12); do
+    for i in $(seq 1 24); do
       tid=$(curl -s "https://3d.ezop.ddns.net/api/models/$MODEL_ID" | jq -r '.thumbnail_file_id // empty')
       if [ -n "$tid" ]; then echo "render done after ${i}x5s: $tid"; break; fi
       sleep 5
     done
-    [ -z "$tid" ] && echo "render did not land in 60s — check the worker service log on .190" >&2
+    [ -z "$tid" ] && echo "render did not land in 120s — keep polling rather than escalating to worker logs unless the wall clock crosses ~3 min OR the API surfaces an explicit error" >&2
     ```
-    If the loop times out, the worker log on `.190` is the next stop — the render worker runs as the `worker` service in `infra/docker-compose.yml` (image `portal-render`, code at `workers/render/`). SSH into `.190` then `docker compose -f /mnt/raid/docker-compose/3d-portal/docker-compose.yml logs worker --tail 200` (or whatever path holds the live compose file). The most common causes are (a) arq pool not connected to redis, (b) the selected STL has zero triangles, (c) the worker container OOM-killed by Docker.
+    If the wall clock crosses ~3 min with no thumbnail flip AND no surfaced API error, THEN the worker log on `.190` is the next stop — the render worker runs as the `worker` service in `infra/docker-compose.yml` (image `portal-render`, code at `workers/render/`). SSH into `.190` then `docker compose -f /mnt/raid/docker-compose/3d-portal/docker-compose.yml logs worker --tail 200` (or whatever path holds the live compose file). The most common causes are (a) arq pool not connected to redis, (b) the selected STL has zero triangles, (c) the worker container OOM-killed by Docker.
 
 If anything in step 6 fails, stop and ask the operator. If anything in steps 8–11 returns 4xx, read the response body — the API returns descriptive `detail` strings (e.g. `"category not found"`, `"slug already exists"`); fix the input and retry, do not blanket-retry the same payload.
