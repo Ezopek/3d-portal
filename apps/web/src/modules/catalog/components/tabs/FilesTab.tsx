@@ -1,5 +1,5 @@
-import { Box, ChevronDown, ChevronRight, Download, Package } from "lucide-react";
-import { Suspense, useMemo, useState } from "react";
+import { Box, ChevronDown, ChevronRight, Download, Package, Upload } from "lucide-react";
+import { Suspense, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -7,6 +7,7 @@ import type { ModelFileKind, ModelFileRead } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
 import { useSetFileRenderSelection } from "@/modules/catalog/hooks/mutations/useSetFileRenderSelection";
 import { useTriggerRender } from "@/modules/catalog/hooks/mutations/useTriggerRender";
+import { useUploadFile } from "@/modules/catalog/hooks/mutations/useUploadFile";
 import {
   Viewer3DInline,
   Viewer3DModal,
@@ -46,6 +47,8 @@ export function FilesTab({
   const { isAdmin } = useAuth();
   const setRenderSelection = useSetFileRenderSelection(modelId);
   const triggerRender = useTriggerRender(modelId);
+  const upload = useUploadFile(modelId);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const stlFiles: StlFile[] = useMemo(
     () =>
@@ -122,6 +125,41 @@ export function FilesTab({
             onClose={() => setModalOpen(false)}
           />
         </Suspense>
+      )}
+
+      {isAdmin && (
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="sr-only"
+            onChange={(e) => {
+              const files = Array.from(e.currentTarget.files ?? []);
+              for (const f of files) {
+                upload.mutate(
+                  { file: f, kind: active },
+                  {
+                    onError: (err) => toast.error(err.message),
+                  },
+                );
+              }
+              e.currentTarget.value = "";
+            }}
+          />
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={upload.isPending}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload className="mr-1 size-3.5" aria-hidden />
+            {upload.isPending
+              ? t("catalog.actions.uploading")
+              : t("catalog.actions.upload_files", { kind: active.toUpperCase() })}
+          </Button>
+        </div>
       )}
 
       {isAdmin && active === "stl" && visible.length > 0 && (

@@ -28,6 +28,7 @@ import { Route as DevComponentsRouteImport } from './routes/dev/components'
 import { Route as CatalogIdRouteImport } from './routes/catalog/$id'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
 import { Route as AdminInvitesRouteImport } from './routes/admin/invites'
+import { Route as AdminModelsNewRouteImport } from './routes/admin/models/new'
 
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
@@ -124,6 +125,11 @@ const AdminInvitesRoute = AdminInvitesRouteImport.update({
   path: '/admin/invites',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminModelsNewRoute = AdminModelsNewRouteImport.update({
+  id: '/admin/models/new',
+  path: '/admin/models/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -145,6 +151,7 @@ export interface FileRoutesByFullPath {
   '/requests/': typeof RequestsIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/spools/': typeof SpoolsIndexRoute
+  '/admin/models/new': typeof AdminModelsNewRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -166,6 +173,7 @@ export interface FileRoutesByTo {
   '/requests': typeof RequestsIndexRoute
   '/settings': typeof SettingsIndexRoute
   '/spools': typeof SpoolsIndexRoute
+  '/admin/models/new': typeof AdminModelsNewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -188,6 +196,7 @@ export interface FileRoutesById {
   '/requests/': typeof RequestsIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/spools/': typeof SpoolsIndexRoute
+  '/admin/models/new': typeof AdminModelsNewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -211,6 +220,7 @@ export interface FileRouteTypes {
     | '/requests/'
     | '/settings/'
     | '/spools/'
+    | '/admin/models/new'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -232,6 +242,7 @@ export interface FileRouteTypes {
     | '/requests'
     | '/settings'
     | '/spools'
+    | '/admin/models/new'
   id:
     | '__root__'
     | '/'
@@ -253,6 +264,7 @@ export interface FileRouteTypes {
     | '/requests/'
     | '/settings/'
     | '/spools/'
+    | '/admin/models/new'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -275,6 +287,7 @@ export interface RootRouteChildren {
   RequestsIndexRoute: typeof RequestsIndexRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
   SpoolsIndexRoute: typeof SpoolsIndexRoute
+  AdminModelsNewRoute: typeof AdminModelsNewRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -412,6 +425,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminInvitesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/models/new': {
+      id: '/admin/models/new'
+      path: '/admin/models/new'
+      fullPath: '/admin/models/new'
+      preLoaderRoute: typeof AdminModelsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -435,6 +455,7 @@ const rootRouteChildren: RootRouteChildren = {
   RequestsIndexRoute: RequestsIndexRoute,
   SettingsIndexRoute: SettingsIndexRoute,
   SpoolsIndexRoute: SpoolsIndexRoute,
+  AdminModelsNewRoute: AdminModelsNewRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
