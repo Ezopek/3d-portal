@@ -178,19 +178,16 @@ def test_concurrent_refresh_one_wins(client):
     Postgres + Redis in production and is covered out-of-band (load / manual probes).
     """
     cookies_snapshot = dict(client.cookies)
-    results: list[int] = []
 
     r1 = client.post("/api/auth/refresh", headers={"User-Agent": "UA"})
-    results.append(r1.status_code)
+    assert r1.status_code == 200, f"first refresh should rotate, got {r1.status_code}"
 
     for ck in list(client.cookies.jar):
         client.cookies.jar.clear(ck.domain, ck.path, ck.name)
     for k, v in cookies_snapshot.items():
         client.cookies.set(k, v)
     r2 = client.post("/api/auth/refresh", headers={"User-Agent": "UA"})
-    results.append(r2.status_code)
-
-    assert 200 in results, f"expected at least one 200, got {results}"
+    assert r2.status_code == 200, f"grace-window replay should succeed, got {r2.status_code}"
 
     from app.core.db.session import get_engine
 
