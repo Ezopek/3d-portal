@@ -1,0 +1,176 @@
+"""Story 13.2 / Decision P — backfill missing WebP thumbnails for legacy image-kind ModelFiles.
+
+Runs inside the API container (where the DB + Redis + content volume are all
+reachable). Walks every ``ModelFile`` of kind ``image`` or ``print``, checks
+the sibling ``<storage_path>.thumb.webp`` on disk, and either enqueues a
+``generate_thumbnail`` arq job OR (with ``--inline``) runs the Pillow
+pipeline in-process for synchronous, deterministic feedback.
+
+Idempotent: files that already have a sibling ``.thumb.webp`` are skipped
+without enqueueing anything.
+
+Usage (operator-supervised, NOT auto-run by deploy.sh)::
+
+    docker compose -f infra/docker-compose.yml exec api \\
+        python -m scripts.enqueue_thumbnail_backfill
+
+    # Bypass arq entirely (synchronous, single-worker):
+    docker compose -f infra/docker-compose.yml exec api \\
+        python -m scripts.enqueue_thumbnail_backfill --inline
+
+    # Dry-run inventory (no enqueue, no rendering):
+    docker compose -f infra/docker-compose.yml exec api \\
+        python -m scripts.enqueue_thumbnail_backfill --dry-run
+
+Exit codes:
+    0  success (possibly with skipped files)
+    1  unexpected error (logged to stderr)
+
+The wrapper script ``infra/scripts/backfill-thumbnails.sh`` runs this from
+the operator's workstation against the live ``.190`` deployment.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import logging
+import sys
+from dataclasses import dataclass
+
+from arq import create_pool
+from arq.connections import RedisSettings
+from sqlmodel import Session, select
+
+from app.core.config import get_settings
+from app.core.db.models import ModelFile, ModelFileKind
+from app.core.db.session import get_engine
+from app.workers.generate_thumbnail import (
+    THUMBNAIL_SUFFIX,
+    generate_thumbnail_sync,
+)
+
+_LOG = logging.getLogger("scripts.enqueue_thumbnail_backfill")
+
+
+@dataclass
+class BackfillStats:
+    inspected: int = 0
+    already_present: int = 0
+    enqueued: int = 0
+    rendered: int = 0
+    missing_original: int = 0
+    errors: int = 0
+
+
+_IMAGE_KINDS = (ModelFileKind.image, ModelFileKind.print)
+
+
+async def run(
+    *,
+    inline: bool = False,
+    dry_run: bool = False,
+) -> BackfillStats:
+    """Walk every image/print ModelFile and either enqueue or render the variant."""
+    settings = get_settings()
+    content_dir = settings.portal_content_dir.resolve()
+    engine = get_engine()
+
+    pool = None
+    if not (inline or dry_run):
+        pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+
+    stats = BackfillStats()
+    try:
+        with Session(engine) as s:
+            rows = s.exec(select(ModelFile).where(ModelFile.kind.in_(_IMAGE_KINDS))).all()
+        for row in rows:
+            stats.inspected += 1
+            original_abs = (content_dir / row.storage_path).resolve()
+            try:
+                original_abs.relative_to(content_dir)
+            except ValueError:
+                stats.errors += 1
+                _LOG.warning("path-escape on %s — skipped", row.storage_path)
+                continue
+
+            thumb_abs = original_abs.with_name(original_abs.name + THUMBNAIL_SUFFIX)
+            if thumb_abs.exists():
+                stats.already_present += 1
+                continue
+
+            if not original_abs.exists():
+                stats.missing_original += 1
+                _LOG.warning("missing original %s for ModelFile %s", row.storage_path, row.id)
+                continue
+
+            if dry_run:
+                _LOG.info("dry-run would-process ModelFile %s (%s)", row.id, row.storage_path)
+                continue
+
+            if inline:
+                result = generate_thumbnail_sync(engine, row.id, content_dir=content_dir)
+                if result["status"] == "ok":
+                    stats.rendered += 1
+                else:
+                    stats.errors += 1
+            else:
+                assert pool is not None
+                await pool.enqueue_job("generate_thumbnail", row.id)
+                stats.enqueued += 1
+    finally:
+        if pool is not None:
+            await pool.aclose()
+    return stats
+
+
+def _print_summary(stats: BackfillStats) -> None:
+    """Print human-readable summary to stdout (operator-readable)."""
+    print(
+        f"inspected={stats.inspected} "
+        f"already_present={stats.already_present} "
+        f"enqueued={stats.enqueued} "
+        f"rendered={stats.rendered} "
+        f"missing_original={stats.missing_original} "
+        f"errors={stats.errors}",
+        file=sys.stdout,
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument(
+        "--inline",
+        action="store_true",
+        help="Run Pillow pipeline in-process (no arq dependency). Slower but deterministic.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Inventory only; do not enqueue and do not render.",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable INFO-level logging on script + app.workers.thumbnail.",
+    )
+    args = parser.parse_args(argv)
+
+    logging.basicConfig(
+        level=logging.INFO if args.verbose else logging.WARNING,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+
+    try:
+        stats = asyncio.run(run(inline=args.inline, dry_run=args.dry_run))
+    except Exception:
+        _LOG.exception("backfill failed")
+        return 1
+
+    _print_summary(stats)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

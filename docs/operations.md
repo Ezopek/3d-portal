@@ -102,6 +102,24 @@ bash infra/scripts/render-all.sh "<bearer-jwt>"
 
 The script lists `/api/models`, then `POST /api/admin/models/{uuid}/render` for each. arq processes jobs serially in the worker container; wall time depends on STL complexity (~5–30 s per model on .190). Watch progress with `docker compose logs -f worker` on the host.
 
+**Backfill WebP thumbnail variants (image-kind ModelFiles)** — Story 13.2 / Decision P
+
+After deploying the Story 13.2 thumbnail pipeline (commit shipping `app/workers/generate_thumbnail.py`), legacy image-kind uploads do not yet have the `<storage_path>.thumb.webp` sibling on disk. New uploads auto-enqueue the variant; pre-pipeline files need a one-shot backfill. The variant endpoint silently serves the full-resolution original when the sibling is missing, so the backfill is non-blocking for users — run it whenever it's convenient post-deploy.
+
+```bash
+# 1. Inspect: list everything that would be enqueued (no write, no enqueue).
+SSH_TARGET=ezope@192.168.2.190 bash infra/scripts/backfill-thumbnails.sh --dry-run --verbose
+
+# 2. Enqueue: distributes Pillow work to the arq worker (fastest path).
+SSH_TARGET=ezope@192.168.2.190 bash infra/scripts/backfill-thumbnails.sh
+
+# 3. (alternative) Inline: render in-process inside the api container.
+#    Slower but produces deterministic per-file feedback in stdout.
+SSH_TARGET=ezope@192.168.2.190 bash infra/scripts/backfill-thumbnails.sh --inline --verbose
+```
+
+The script is idempotent — files that already have a `.thumb.webp` sibling are skipped without enqueueing. Re-runs are safe. Watch worker progress with `docker compose logs -f api worker` on the host. NOT auto-fired by `infra/scripts/deploy.sh`: operator runs once post-deploy.
+
 ## GlitchTip observability — operator runbook
 
 All three services (web, api, worker) report uncaught errors to a single GlitchTip project at `https://glitchtip.ezop.ddns.net`, project `3d-portal` in org `homelab`. The DSN is shared across services; events are tagged `service=web|api|render`, `release=<pkg.version>+<git_short_sha>`, `environment=$ENVIRONMENT`.

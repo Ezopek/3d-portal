@@ -21,6 +21,15 @@ function urlFor(modelId: string, fileId: string): string {
   return `/api/models/${modelId}/files/${fileId}/content`;
 }
 
+// Story 13.2 / Decision P — catalog cards request the WebP thumbnail
+// variant; the variant endpoint silently falls back to the original when
+// no `.thumb.webp` sibling exists (e.g. pre-pipeline files awaiting
+// backfill). `thumbUrlFor` is the 1x src; the full-res original is offered
+// as the 2x candidate via srcSet so retina displays stay crisp.
+function thumbUrlFor(modelId: string, fileId: string): string {
+  return `${urlFor(modelId, fileId)}?variant=thumb`;
+}
+
 /**
  * Mini-carousel rendered on catalog list cards when a model has multiple
  * gallery images. Consumes `gallery_file_ids` directly — no file-list fetch.
@@ -66,7 +75,9 @@ export function CardCarousel({ modelId, fileIds, alt }: Props) {
 
     const decoded = (() => {
       const img = new Image();
-      img.src = urlFor(modelId, targetId);
+      // Decode the same variant the visible <img> will paint — otherwise
+      // the cache wouldn't be primed.
+      img.src = thumbUrlFor(modelId, targetId);
       // Optional chaining handles environments without HTMLImageElement.decode
       // (jsdom in unit tests; some older browsers / image MIME types). A
       // missing decode degrades the cross-fade to "show the new src as soon
@@ -139,7 +150,8 @@ export function CardCarousel({ modelId, fileIds, alt }: Props) {
         )}
       >
         <img
-          src={urlFor(modelId, displayedId)}
+          src={thumbUrlFor(modelId, displayedId)}
+          srcSet={`${thumbUrlFor(modelId, displayedId)} 1x, ${urlFor(modelId, displayedId)} 2x`}
           alt={alt}
           loading="lazy"
           decoding="async"

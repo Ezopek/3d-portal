@@ -175,15 +175,19 @@ def get_model_files(
     description=(
         "Streams the raw bytes of the file from `portal-content` storage. ETag header is "
         "set; If-None-Match returns 304 on cache hit. `?download=true` adds a "
-        "Content-Disposition with the original filename. 404 if the file row is not "
-        "found OR doesn't belong to the given model (defense against cross-model file "
-        "id confusion). 404 if the row exists but the on-disk blob is missing "
-        "(integrity issue). 500 if storage path resolution escapes the storage root "
-        "(should never happen; defense in depth). Requires authenticated user (any "
-        "role: admin / member / agent). Initiative 6 default-deny posture (architecture.md "
-        "§ Initiative 6 Decision M). Anonymous share-recipients access this content via "
-        "the share-scoped endpoint `/api/share/{token}/files/{file_id}/content` "
-        "(Decision N) — NOT via this route."
+        "Content-Disposition with the original filename. `?variant=thumb` returns the "
+        "Story 13.2 / Decision P WebP thumbnail variant (800px longest side, q80) when "
+        "it exists on disk; falls back to the original blob when the variant is missing "
+        "(e.g. for files uploaded before the thumbnail pipeline shipped and not yet "
+        "backfilled, OR for non-image kinds where the variant is never generated). 404 "
+        "if the file row is not found OR doesn't belong to the given model (defense "
+        "against cross-model file id confusion). 404 if the row exists but the on-disk "
+        "blob is missing (integrity issue). 500 if storage path resolution escapes the "
+        "storage root (should never happen; defense in depth). Requires authenticated "
+        "user (any role: admin / member / agent). Initiative 6 default-deny posture "
+        "(architecture.md § Initiative 6 Decision M). Anonymous share-recipients access "
+        "this content via the share-scoped endpoint "
+        "`/api/share/{token}/files/{file_id}/content` (Decision N) — NOT via this route."
     ),
 )
 def get_model_file_content(
@@ -192,6 +196,7 @@ def get_model_file_content(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
     download: bool = False,
+    variant: str | None = Query(default=None),
     _user_id: uuid.UUID = current_user,
 ) -> Response:
     """Stream a model file's binary content from portal-content storage.
@@ -215,16 +220,36 @@ def get_model_file_content(
         candidate.relative_to(base)
     except ValueError as exc:
         raise HTTPException(status_code=500, detail="Invalid storage path") from exc
-    if not candidate.is_file():
+
+    # Story 13.2 / Decision P — variant routing. The thumbnail is a sibling
+    # file (``<storage_path>.thumb.webp``) written by the generate_thumbnail
+    # arq task on image-kind upload. When ``variant=thumb`` is requested AND
+    # the sibling exists, serve WebP at image/webp media type. Backward-compat
+    # fallback to the original blob when the sibling is missing keeps the
+    # endpoint safe for pre-pipeline files and ungenerated kinds.
+    served = candidate
+    served_mime = row.mime_type
+    if variant == "thumb":
+        thumb_candidate = candidate.with_name(candidate.name + ".thumb.webp")
+        # Resolve + re-check under base for defense in depth.
+        try:
+            thumb_candidate.resolve().relative_to(base)
+        except (ValueError, OSError):
+            thumb_candidate = candidate  # fall back to original
+        if thumb_candidate != candidate and thumb_candidate.is_file():
+            served = thumb_candidate
+            served_mime = "image/webp"
+
+    if not served.is_file():
         # DB row exists but file missing on disk — integrity issue.
         raise HTTPException(status_code=404, detail="File missing in storage")
 
-    etag = file_etag(candidate)
+    etag = file_etag(served)
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers={"ETag": etag})
     return FileResponse(
-        candidate,
-        media_type=row.mime_type,
+        served,
+        media_type=served_mime,
         filename=row.original_name if download else None,
         headers={"ETag": etag, "Cache-Control": "private, max-age=300"},
     )

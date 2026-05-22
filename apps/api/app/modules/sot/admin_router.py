@@ -478,6 +478,17 @@ async def admin_upload_file(
         except Exception as exc:  # don't fail the upload if redis is down
             logger.warning("auto-render enqueue failed: %s", exc)
 
+    # Story 13.2 / Decision P — auto-enqueue WebP thumbnail generation for
+    # image-kind uploads (including `print` kind which also surfaces in the
+    # catalog gallery). Best-effort: a failure to enqueue must NEVER fail the
+    # upload itself — the operator-supervised backfill script picks up any
+    # ModelFiles whose `.thumb.webp` sibling did not land.
+    if kind in (ModelFileKind.image, ModelFileKind.print):
+        try:
+            await request.app.state.arq.enqueue_job("generate_thumbnail", file_row.id)
+        except Exception as exc:
+            logger.warning("thumbnail enqueue failed: %s", exc)
+
     return ModelFileRead.model_validate(file_row)
 
 

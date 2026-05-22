@@ -143,7 +143,16 @@ def test_image_upload_does_not_enqueue_render(client, _patch_arq_pool):
         data={"kind": "image"},
     )
     assert r2.status_code == 201, r2.text
-    _patch_arq_pool.enqueue_job.assert_not_awaited()
+    # Image uploads must NOT enqueue a `render_model` job (the STL → render
+    # pipeline). Story 13.2 added a `generate_thumbnail` enqueue for image
+    # kinds; that is the only enqueue allowed here. Narrow the assertion
+    # accordingly rather than asserting "no enqueue at all".
+    render_calls = [
+        c
+        for c in _patch_arq_pool.enqueue_job.call_args_list
+        if c.args and c.args[0] == "render_model"
+    ]
+    assert render_calls == [], f"unexpected render enqueue: {render_calls}"
 
 
 def test_stl_upload_does_not_re_enqueue_when_renders_exist(client, _patch_arq_pool):

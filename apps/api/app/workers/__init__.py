@@ -13,12 +13,13 @@ from arq.connections import RedisSettings
 
 from app.core.config import get_settings
 from app.workers.cleanup_refresh_tokens import cleanup_refresh_tokens
+from app.workers.generate_thumbnail import generate_thumbnail
 
 
 class WorkerSettings:
     """arq worker configuration."""
 
-    functions: ClassVar[list] = [cleanup_refresh_tokens]
+    functions: ClassVar[list] = [cleanup_refresh_tokens, generate_thumbnail]
     cron_jobs: ClassVar[list] = [
         cron(cleanup_refresh_tokens, hour={3}, minute={15}),  # 03:15 UTC daily
     ]

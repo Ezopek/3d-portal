@@ -16,6 +16,13 @@ function urlFor(fileId: string) {
   return `/api/models/${MODEL_ID}/files/${fileId}/content`;
 }
 
+// Story 13.2 — catalog carousel paints the WebP thumbnail variant; full-res
+// remains the 2x candidate via srcSet (and the endpoint silently falls back
+// to original when the variant file is missing).
+function thumbUrlFor(fileId: string) {
+  return `${urlFor(fileId)}?variant=thumb`;
+}
+
 const dotsQuery = { name: /^go to image / };
 
 describe("CardCarousel", () => {
@@ -23,7 +30,10 @@ describe("CardCarousel", () => {
     render(<CardCarousel modelId={MODEL_ID} fileIds={IDS} alt="Dragon" />);
     const img = document.querySelector("img") as HTMLImageElement;
     expect(img).toBeTruthy();
-    expect(img.getAttribute("src")).toBe(urlFor(IDS[0]!));
+    expect(img.getAttribute("src")).toBe(thumbUrlFor(IDS[0]!));
+    expect(img.getAttribute("srcset")).toBe(
+      `${thumbUrlFor(IDS[0]!)} 1x, ${urlFor(IDS[0]!)} 2x`,
+    );
     expect(img.getAttribute("alt")).toBe("Dragon");
   });
 
@@ -47,17 +57,17 @@ describe("CardCarousel", () => {
   it("clicking a dot switches the main image", async () => {
     render(<CardCarousel modelId={MODEL_ID} fileIds={IDS} alt="Dragon" />);
     const img = () => document.querySelector("img") as HTMLImageElement;
-    expect(img().getAttribute("src")).toBe(urlFor(IDS[0]!));
+    expect(img().getAttribute("src")).toBe(thumbUrlFor(IDS[0]!));
 
     const dots = screen.getAllByRole("button", dotsQuery);
     fireEvent.click(dots[2]!);
     await waitFor(() => {
-      expect(img().getAttribute("src")).toBe(urlFor(IDS[2]!));
+      expect(img().getAttribute("src")).toBe(thumbUrlFor(IDS[2]!));
     });
 
     fireEvent.click(dots[1]!);
     await waitFor(() => {
-      expect(img().getAttribute("src")).toBe(urlFor(IDS[1]!));
+      expect(img().getAttribute("src")).toBe(thumbUrlFor(IDS[1]!));
     });
   });
 

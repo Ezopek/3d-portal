@@ -19,10 +19,16 @@ export function ModelCard({ model }: { model: ModelSummary }) {
     i18n.language.startsWith("pl") ? model.name_en : (model.name_pl ?? "");
   const topTags = model.tags.slice(0, 2);
   const linkId = model.id;
-  const thumbUrl =
+  // Story 13.2 / Decision P — catalog cards request the WebP thumbnail
+  // variant by default (`?variant=thumb`) and offer the full-res original
+  // as the 2x srcSet candidate so retina displays still pick a crisp source.
+  // `fullUrl` doubles as the fallback when the variant file is not yet on
+  // disk: the API endpoint silently serves the original in that case.
+  const fullUrl =
     model.thumbnail_file_id !== null
       ? `/api/models/${model.id}/files/${model.thumbnail_file_id}/content`
       : null;
+  const thumbUrl = fullUrl !== null ? `${fullUrl}?variant=thumb` : null;
   // Push the chosen thumbnail to the front of the carousel so the first card
   // image matches what's used as the catalog thumbnail. Admin order is
   // preserved for the rest of the gallery.
@@ -57,6 +63,9 @@ export function ModelCard({ model }: { model: ModelSummary }) {
               >
                 <img
                   src={thumbUrl}
+                  srcSet={
+                    fullUrl !== null ? `${thumbUrl} 1x, ${fullUrl} 2x` : undefined
+                  }
                   alt={primary}
                   className="h-full w-full object-cover"
                   loading="lazy"
