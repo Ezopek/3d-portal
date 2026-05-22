@@ -77,16 +77,12 @@ test("anonymous user at /catalog redirects to /login with next param", async ({
 
 test("anonymous user at /admin/users redirects to /login", async ({ page }) => {
   await page.goto("/admin/users");
-  // `/admin/users` route's `AdminUsersRoute` component renders
-  // `<Navigate to="/" replace />` synchronously when `!isAdmin` (admin
-  // check at apps/web/src/routes/admin/users.tsx:23), which fires before
-  // AppShell.AuthGate's useEffect can capture the original pathname.
-  // The resulting redirect chain is `/admin/users` → `/` → (beforeLoad)
-  // `/catalog` → `/login?next=%2Fcatalog`. The test asserts the final
-  // destination is /login (Decision O semantic preserved); the exact
-  // `next=` value is a function of which redirect fires first and is
-  // out of scope for this spec.
-  await page.waitForURL(/\/login\?next=%2Fcatalog$/, { timeout: 5_000 });
+  // Decision O contract — anonymous deep link to a protected admin route
+  // surfaces /login?next=%2Fadmin%2Fusers (pathname preserved). The admin
+  // route components defer to AppShell.AuthGate via the
+  // `!isAuthenticated → return null` guard so the role-tier `<Navigate to="/">`
+  // doesn't race ahead of the shell-level auth gate for anonymous users.
+  await page.waitForURL(/\/login\?next=%2Fadmin%2Fusers$/, { timeout: 5_000 });
   await waitForReady(page);
   await expect(page.getByLabel(/email|e-mail/i)).toBeVisible();
   await expect(page.locator("nav")).toHaveCount(0);

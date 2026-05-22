@@ -11,8 +11,11 @@ interface AdminInvitesSearch {
 }
 
 function AdminInvitesRoute() {
-  const { isAdmin, isLoading } = useAuth();
+  const { isAuthenticated, isAdmin, isLoading } = useAuth();
   if (isLoading) return null;
+  // Defer to AppShell.AuthGate for anonymous users so the original pathname
+  // is preserved in the /login?next= param (Decision O contract).
+  if (!isAuthenticated) return null;
   if (!isAdmin) return <Navigate to="/" replace />;
   return <InvitesPage />;
 }
