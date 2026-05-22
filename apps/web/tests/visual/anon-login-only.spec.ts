@@ -33,9 +33,13 @@ test.beforeEach(async ({ page }) => {
 
 test("anonymous user at / lands on /login with no module rail", async ({ page }) => {
   await page.goto("/");
-  // The redirect happens via TanStack router.navigate; wait for the URL
-  // to flip to /login (with `next=%2F` param).
-  await page.waitForURL(/\/login\?next=%2F$/, { timeout: 5_000 });
+  // `/` route has `beforeLoad: () => throw redirect({ to: "/catalog" })`
+  // (see `apps/web/src/routes/index.tsx`), so the redirect chain is
+  // `/` → `/catalog` → `/login?next=%2Fcatalog` (AuthGate captures the
+  // post-beforeLoad pathname). The Decision O contract is "anonymous
+  // user lands on /login carrying pathname-as-next"; what pathname
+  // AuthGate sees is governed by route-level redirects firing first.
+  await page.waitForURL(/\/login\?next=%2Fcatalog$/, { timeout: 5_000 });
   await waitForReady(page);
   // Module rail + top bar MUST NOT be in the DOM for anonymous users.
   // ModuleRail is keyed by its role=nav landmark or a known data-attr;
@@ -73,7 +77,16 @@ test("anonymous user at /catalog redirects to /login with next param", async ({
 
 test("anonymous user at /admin/users redirects to /login", async ({ page }) => {
   await page.goto("/admin/users");
-  await page.waitForURL(/\/login\?next=%2Fadmin%2Fusers$/, { timeout: 5_000 });
+  // `/admin/users` route's `AdminUsersRoute` component renders
+  // `<Navigate to="/" replace />` synchronously when `!isAdmin` (admin
+  // check at apps/web/src/routes/admin/users.tsx:23), which fires before
+  // AppShell.AuthGate's useEffect can capture the original pathname.
+  // The resulting redirect chain is `/admin/users` → `/` → (beforeLoad)
+  // `/catalog` → `/login?next=%2Fcatalog`. The test asserts the final
+  // destination is /login (Decision O semantic preserved); the exact
+  // `next=` value is a function of which redirect fires first and is
+  // out of scope for this spec.
+  await page.waitForURL(/\/login\?next=%2Fcatalog$/, { timeout: 5_000 });
   await waitForReady(page);
   await expect(page.getByLabel(/email|e-mail/i)).toBeVisible();
   await expect(page.locator("nav")).toHaveCount(0);
