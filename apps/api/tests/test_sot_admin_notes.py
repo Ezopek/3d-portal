@@ -162,6 +162,43 @@ def test_patch_note_200(client):
     assert r.json()["body"] == "Updated body."
 
 
+def test_patch_note_mirrors_body_to_body_en_on_description_kind(client):
+    """Initiative 10 Story 16.1 (Decision L) — legacy edit-path mirror.
+
+    PATCHing only `body` on a description-kind note must also update
+    `body_en` so the locale-aware DescriptionPanel fallback chain doesn't
+    surface stale backfilled content after an admin edits via the
+    pre-bilingual EditDescriptionSheet."""
+    engine = get_engine()
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        note_id = _seed_note(s, model_id, admin_id)
+        s.commit()
+
+    client.cookies.set("portal_access", _admin_token(admin_id))
+    r = client.patch(
+        f"/api/admin/notes/{note_id}",
+        json={"body": "Fresh legacy edit."},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["body"] == "Fresh legacy edit."
+    assert body["body_en"] == "Fresh legacy edit."
+    assert body["body_pl"] is None  # unchanged — only body_en mirrors
+
+    # Patching body_en explicitly bypasses the mirror.
+    r = client.patch(
+        f"/api/admin/notes/{note_id}",
+        json={"body": "ignored legacy", "body_en": "explicit english"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["body"] == "ignored legacy"
+    assert body["body_en"] == "explicit english"
+
+
 def test_patch_note_404(client):
     engine = get_engine()
     with Session(engine) as s:

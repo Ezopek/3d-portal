@@ -34,6 +34,7 @@ from app.core.db.models import (
     ModelNote,
     ModelPrint,
     ModelTag,
+    NoteKind,
     Tag,
 )
 from app.core.db.session import get_engine
@@ -1366,6 +1367,19 @@ def update_note(
     data = patch.model_dump(exclude_unset=True)
     for field, value in data.items():
         setattr(note, field, value)
+
+    # Initiative 10 Story 16.1 (Decision L) — legacy edit-path mirror.
+    # The pre-bilingual EditDescriptionSheet patches only `body`; without
+    # this mirror the post-migration display chain would read stale
+    # `body_en` (backfilled at migration time) and silently hide the
+    # admin's fresh edit. Story 16.2 will introduce explicit body_pl +
+    # body_en editor fields and remove the need for this mirror.
+    if (
+        note.kind == NoteKind.description
+        and "body" in data
+        and "body_en" not in data
+    ):
+        note.body_en = note.body
 
     note.updated_at = datetime.datetime.now(datetime.UTC)
     after = {"kind": str(note.kind), "body": note.body}
