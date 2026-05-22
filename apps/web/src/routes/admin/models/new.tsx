@@ -20,7 +20,7 @@ import { Input } from "@/ui/input";
 
 const SOURCES = [
   "unknown",
-  "self",
+  "own",
   "printables",
   "thingiverse",
   "thangs",
