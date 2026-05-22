@@ -472,3 +472,201 @@ def test_variant_absent_returns_original(client):
     r = client.get(f"/api/models/{model_id}/files/{file_id}/content")
     assert r.status_code == 200
     assert r.headers["content-type"] == "image/jpeg"
+
+
+def test_variant_thumb_returns_404_when_original_missing_even_if_sidecar_present(client):
+    """P2-2 (Codex aa6a8eb): integrity gate — original missing → 404 even with sidecar.
+
+    The thumbnail is a *derivative* of the original. If the original blob
+    has been removed on disk but a stale `.thumb.webp` sidecar lingers
+    (e.g. left behind by a manual deletion that bypassed delete_model_file),
+    the endpoint MUST surface the integrity break as 404 rather than
+    silently serve the stale WebP.
+    """
+    engine = get_engine()
+    settings = get_settings()
+    content_dir = settings.portal_content_dir
+
+    rel_path = f"models/test-orig-missing/files/{uuid.uuid4().hex}.jpg"
+    abs_path = content_dir / rel_path
+    _write_jpeg(abs_path, size=(800, 600))
+
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        file_id = _seed_image_file(
+            s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
+        )
+        s.commit()
+
+    # Render the variant so the .thumb.webp sidecar exists.
+    result = generate_thumbnail_sync(engine, file_id, content_dir=content_dir)
+    assert result["status"] == "ok"
+    thumb_abs = thumbnail_path_for(abs_path)
+    assert thumb_abs.is_file(), "fixture precondition: sidecar must exist"
+
+    # Simulate the stale-sidecar scenario: delete the original blob from
+    # disk WITHOUT going through delete_model_file (which would also remove
+    # the sidecar per P3-1). The DB row still references the now-missing
+    # storage_path.
+    abs_path.unlink()
+    assert not abs_path.is_file()
+    assert thumb_abs.is_file(), "sidecar must still be present for the test to be meaningful"
+
+    client.cookies.set("portal_access", _admin_token(admin_id))
+    r = client.get(f"/api/models/{model_id}/files/{file_id}/content?variant=thumb")
+    assert r.status_code == 404, r.text
+    # Original-blob path also 404s — same integrity gate, no variant.
+    r2 = client.get(f"/api/models/{model_id}/files/{file_id}/content")
+    assert r2.status_code == 404
+
+
+def test_thumbnail_render_uses_unique_tmp_per_job(tmp_path, monkeypatch):
+    """P2-3 (Codex aa6a8eb): per-job unique tmp suffix prevents shared-tmp race.
+
+    Two concurrent ``generate_thumbnail`` invocations on the SAME ModelFile
+    must each own a distinct ``.tmp.{pid}.{rand}`` file rather than fighting
+    over a shared ``.thumb.webp.tmp``. We can't drive true concurrency from a
+    single-threaded pytest, so we observe the contract by capturing every
+    tmp path the renderer chooses and asserting (a) each is unique and (b)
+    each carries the pid+hex suffix shape mandated by the fix.
+    """
+    # ``from app.workers import generate_thumbnail`` resolves to the *function*
+    # (re-exported by app/workers/__init__.py for arq), shadowing the submodule
+    # in the package namespace. Pull the submodule directly via sys.modules so
+    # we can call generate_thumbnail_sync on it without ambiguity.
+    import sys
+
+    gt_mod = sys.modules["app.workers.generate_thumbnail"]
+
+    settings = get_settings()
+    content_dir = settings.portal_content_dir
+    rel_path = f"models/test-tmp-unique/files/{uuid.uuid4().hex}.jpg"
+    abs_path = content_dir / rel_path
+    _write_jpeg(abs_path, size=(1200, 900))
+
+    engine = get_engine()
+    with Session(engine) as s:
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        file_id = _seed_image_file(
+            s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
+        )
+        s.commit()
+
+    # Capture every tmp path the renderer hands off to Image.save by patching
+    # PIL.Image.Image.save at the module level. We don't replace the save
+    # behavior — just observe the call. The fp argument is the tmp path the
+    # renderer constructed.
+    seen_tmp_names: list[str] = []
+    original_save = Image.Image.save
+
+    def _spy_save(self, fp, *args, **kwargs):  # type: ignore[no-redef]
+        seen_tmp_names.append(Path(str(fp)).name)
+        return original_save(self, fp, *args, **kwargs)
+
+    monkeypatch.setattr(Image.Image, "save", _spy_save, raising=True)
+
+    # First render writes the sidecar.
+    r1 = gt_mod.generate_thumbnail_sync(engine, file_id, content_dir=content_dir)
+    assert r1["status"] == "ok"
+    # Remove the canonical sidecar so the SECOND call also exercises the
+    # render path (otherwise the idempotent guard short-circuits to "skipped").
+    thumb_abs = thumbnail_path_for(abs_path)
+    thumb_abs.unlink()
+    r2 = gt_mod.generate_thumbnail_sync(engine, file_id, content_dir=content_dir)
+    assert r2["status"] == "ok"
+
+    assert len(seen_tmp_names) == 2, seen_tmp_names
+    # Each tmp must be unique (defeats the shared-tmp race) AND match the
+    # pid+hex shape so we know the fix is in force, not a coincidence.
+    assert seen_tmp_names[0] != seen_tmp_names[1], (
+        f"renderer reused tmp name across calls: {seen_tmp_names}"
+    )
+    import re
+
+    tmp_pattern = re.compile(r"\.thumb\.webp\.tmp\.\d+\.[0-9a-f]{8}$")
+    for name in seen_tmp_names:
+        assert tmp_pattern.search(name), (
+            f"tmp name {name!r} missing per-job pid+hex suffix — race window open"
+        )
+
+    # Final sidecar must be the canonical name, not a tmp residue.
+    assert thumb_abs.is_file()
+    assert not any(
+        p.name != thumb_abs.name and p.name.startswith(thumb_abs.name)
+        for p in thumb_abs.parent.iterdir()
+    ), "leftover tmp file after successful render"
+
+
+def test_delete_model_file_removes_thumbnail_sidecar(client):
+    """P3-1 (Codex aa6a8eb): admin DELETE on a ModelFile clears the .thumb.webp sidecar.
+
+    Sidecars have no DB row, so without explicit cleanup they leak on every
+    normal delete. After DELETE the original AND the sidecar must both be
+    gone from portal-content.
+    """
+    engine = get_engine()
+    settings = get_settings()
+    content_dir = settings.portal_content_dir
+
+    rel_path = f"models/test-delete-sidecar/files/{uuid.uuid4().hex}.jpg"
+    abs_path = content_dir / rel_path
+    _write_jpeg(abs_path, size=(1200, 900))
+
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        file_id = _seed_image_file(
+            s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
+        )
+        s.commit()
+
+    # Render variant so the sidecar exists.
+    result = generate_thumbnail_sync(engine, file_id, content_dir=content_dir)
+    assert result["status"] == "ok"
+    thumb_abs = thumbnail_path_for(abs_path)
+    assert thumb_abs.is_file()
+
+    client.cookies.set("portal_access", _admin_token(admin_id))
+    r = client.delete(f"/api/admin/models/{model_id}/files/{file_id}")
+    assert r.status_code == 204, r.text
+
+    assert not abs_path.exists(), "original blob should be removed by DELETE"
+    assert not thumb_abs.exists(), "thumbnail sidecar should be removed by DELETE (P3-1 fix-up)"
+
+
+def test_hard_delete_model_removes_thumbnail_sidecars(client):
+    """P3-1 (Codex aa6a8eb): admin hard-delete of a Model clears all sidecars too."""
+    engine = get_engine()
+    settings = get_settings()
+    content_dir = settings.portal_content_dir
+
+    rel_path = f"models/test-hard-delete-sidecar/files/{uuid.uuid4().hex}.jpg"
+    abs_path = content_dir / rel_path
+    _write_jpeg(abs_path, size=(800, 600))
+
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        file_id = _seed_image_file(
+            s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
+        )
+        s.commit()
+
+    result = generate_thumbnail_sync(engine, file_id, content_dir=content_dir)
+    assert result["status"] == "ok"
+    thumb_abs = thumbnail_path_for(abs_path)
+    assert thumb_abs.is_file()
+
+    client.cookies.set("portal_access", _admin_token(admin_id))
+    r = client.delete(f"/api/admin/models/{model_id}?hard=true")
+    assert r.status_code == 200, r.text
+
+    assert not abs_path.exists()
+    assert not thumb_abs.exists(), (
+        "thumbnail sidecar should be removed by hard-delete (P3-1 fix-up)"
+    )

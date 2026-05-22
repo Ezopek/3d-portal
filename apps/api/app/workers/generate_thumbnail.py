@@ -15,6 +15,7 @@ FR8-THUMB-2 (variant endpoint reads the file this task writes).
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from pathlib import Path
 
@@ -210,7 +211,18 @@ def _render_thumbnail(original_abs: Path, thumb_abs: Path) -> int:
         # concurrent task or the variant endpoint must never read a partial
         # WebP. The temp path is in the same directory so the rename is atomic
         # on POSIX volumes (portal-content is bind-mounted ext4 / overlayfs).
-        tmp_abs = thumb_abs.with_name(thumb_abs.name + ".tmp")
+        #
+        # P2-3 fix-up on Codex review aa6a8eb: per-job unique tmp suffix
+        # (pid + 8-hex uuid) so two concurrent generate_thumbnail jobs on the
+        # SAME ModelFile (e.g. upload-enqueued + backfill-enqueued races) do
+        # NOT clobber each other's `.tmp` mid-save. Previously both jobs wrote
+        # to a shared `<name>.thumb.webp.tmp`, where one rename could land
+        # while the other was still saving — outcome: corrupt or missing
+        # thumbnail. Each job now owns its own tmp file; whichever finishes
+        # last wins the canonical name via atomic replace (same final byte-
+        # exact WebP either way — pipeline is deterministic). The finally
+        # clause cleans up our own tmp only.
+        tmp_abs = thumb_abs.with_name(f"{thumb_abs.name}.tmp.{os.getpid()}.{uuid.uuid4().hex[:8]}")
         try:
             im.save(tmp_abs, format="WEBP", quality=WEBP_QUALITY, method=6)
             tmp_abs.replace(thumb_abs)

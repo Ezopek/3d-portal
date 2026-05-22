@@ -227,6 +227,16 @@ def get_model_file_content(
     # the sibling exists, serve WebP at image/webp media type. Backward-compat
     # fallback to the original blob when the sibling is missing keeps the
     # endpoint safe for pre-pipeline files and ungenerated kinds.
+    #
+    # Integrity gate (P2-2 fix-up on Codex review aa6a8eb): the thumbnail is
+    # a *derivative* of the original. If the original file is gone on disk
+    # the model is broken — return 404 even when the .thumb.webp sidecar
+    # still exists. Without this check, a stale sidecar (e.g. left behind
+    # after a manual blob delete that bypassed delete_model_file) would mask
+    # the integrity issue by silently serving the WebP.
+    if not candidate.is_file():
+        raise HTTPException(status_code=404, detail="File missing in storage")
+
     served = candidate
     served_mime = row.mime_type
     if variant == "thumb":
@@ -239,10 +249,6 @@ def get_model_file_content(
         if thumb_candidate != candidate and thumb_candidate.is_file():
             served = thumb_candidate
             served_mime = "image/webp"
-
-    if not served.is_file():
-        # DB row exists but file missing on disk — integrity issue.
-        raise HTTPException(status_code=404, detail="File missing in storage")
 
     etag = file_etag(served)
     if request.headers.get("if-none-match") == etag:

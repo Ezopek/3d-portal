@@ -419,6 +419,11 @@ def hard_delete_model(
         full = (base / sp).resolve()
         if full.is_file():
             full.unlink(missing_ok=True)
+        # P3-1 fix-up on Codex review aa6a8eb: also remove the Story 13.2
+        # thumbnail sidecar (<storage_path>.thumb.webp); it has no ModelFile
+        # row, so the cascade above can't reach it.
+        thumb = full.with_name(full.name + ".thumb.webp")
+        thumb.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -718,6 +723,11 @@ def delete_model_file(
     full_path = (content_dir / storage_path).resolve()
     if full_path.is_file():
         full_path.unlink(missing_ok=True)
+    # P3-1 fix-up on Codex review aa6a8eb: also remove the Story 13.2 thumbnail
+    # sidecar (<storage_path>.thumb.webp), which is NOT represented by a
+    # ModelFile row and would otherwise leak on every normal delete.
+    thumb_path = full_path.with_name(full_path.name + ".thumb.webp")
+    thumb_path.unlink(missing_ok=True)
 
 
 def set_thumbnail(

@@ -36,7 +36,17 @@ set -euo pipefail
 
 COMPOSE_FILE="${COMPOSE_FILE:-infra/docker-compose.yml}"
 API_SERVICE="${API_SERVICE:-api}"
-SSH_TARGET="${SSH_TARGET:-}"
+# Remote execution is opt-in via SSH_TARGET (operator sets it explicitly to
+# run from a workstation against the live host). When set, mirror deploy.sh's
+# SSH+compose-dir resolution exactly — an earlier revision hardcoded
+# `cd /home/ezope/3d-portal` and bare port 22, both wrong on .190 where:
+#   - SSH listens on PORTAL_SSH_PORT=30022
+#   - the live compose stack + .env live under PORTAL_COMPOSE_DIR=/mnt/raid/docker-compose/3d-portal
+# PORTAL_HOST honored as an alternative to SSH_TARGET so operators can use
+# the same env var deploy.sh accepts.
+SSH_TARGET="${SSH_TARGET:-${PORTAL_HOST:-}}"
+SSH_PORT="${PORTAL_SSH_PORT:-30022}"
+COMPOSE_DIR="${PORTAL_COMPOSE_DIR:-/mnt/raid/docker-compose/3d-portal}"
 
 PASS_ARGS=()
 while (($#)); do
@@ -62,13 +72,21 @@ while (($#)); do
   esac
 done
 
-REMOTE_CMD=(docker compose -f "$COMPOSE_FILE" exec -T "$API_SERVICE"
+LOCAL_CMD=(docker compose -f "$COMPOSE_FILE" exec -T "$API_SERVICE"
+  python -m scripts.enqueue_thumbnail_backfill "${PASS_ARGS[@]}")
+
+# Remote command mirrors deploy.sh's compose invocation: `cd $COMPOSE_DIR`
+# (where the synced docker-compose.yml + .env live) and resolve compose via
+# its default filename + --env-file .env. The local `-f $COMPOSE_FILE` path
+# (infra/docker-compose.yml) is repo-relative and does NOT exist on the
+# live host.
+REMOTE_COMPOSE_CMD=(docker compose --env-file .env exec -T "$API_SERVICE"
   python -m scripts.enqueue_thumbnail_backfill "${PASS_ARGS[@]}")
 
 if [[ -n "$SSH_TARGET" ]]; then
-  echo "==> remote: ssh $SSH_TARGET ${REMOTE_CMD[*]}"
-  ssh "$SSH_TARGET" "cd /home/ezope/3d-portal && ${REMOTE_CMD[*]}"
+  echo "==> remote: ssh -p $SSH_PORT $SSH_TARGET (cwd=$COMPOSE_DIR) ${REMOTE_COMPOSE_CMD[*]}"
+  ssh -p "$SSH_PORT" "$SSH_TARGET" "cd $COMPOSE_DIR && ${REMOTE_COMPOSE_CMD[*]}"
 else
-  echo "==> local: ${REMOTE_CMD[*]}"
-  "${REMOTE_CMD[@]}"
+  echo "==> local: ${LOCAL_CMD[*]}"
+  "${LOCAL_CMD[@]}"
 fi
