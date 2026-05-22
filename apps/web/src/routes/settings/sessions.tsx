@@ -113,9 +113,21 @@ function Sessions() {
     ? rawItems
     : rawItems.filter((s) => !isNonBrowserUserAgent(s.user_agent));
 
-  const hasOthers = items.some((i) => !i.is_current);
-  const first = total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const last = Math.min(page * pageSize, total);
+  // Codex P2 (12.5 review): derive "logout all others" availability from the
+  // UNFILTERED response — the UA-filter is a view preference, not an action
+  // boundary. If the user has API sessions that are hidden by the default
+  // filter, the global revoke still applies to them and the button must stay
+  // enabled. (Empty-state — no other sessions at all — falls out of total > 1.)
+  const hasOthers = total > 1;
+  // Codex P3 (12.5 review): clamp the visible page label when a mutation
+  // (e.g. "log out everywhere") shrinks `total` below the current offset,
+  // otherwise the indicator renders ranges like "Showing 21–1 of 1". The
+  // effective page is the smaller of the requested page and the last page
+  // that actually has rows.
+  const lastPage = total === 0 ? 1 : Math.max(1, Math.ceil(total / pageSize));
+  const visiblePage = Math.min(page, lastPage);
+  const first = total === 0 ? 0 : (visiblePage - 1) * pageSize + 1;
+  const last = Math.min(visiblePage * pageSize, total);
 
   async function onRevoke(familyId: string, isCurrent: boolean) {
     if (isCurrent) {
