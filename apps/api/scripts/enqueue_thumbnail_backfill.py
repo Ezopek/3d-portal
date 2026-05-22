@@ -116,7 +116,16 @@ async def run(
                     stats.errors += 1
             else:
                 assert pool is not None
-                await pool.enqueue_job("generate_thumbnail", row.id)
+                # Route to api-arq-worker's dedicated queue (Story 13.2 post-Codex
+                # hot-fix 2026-05-22 — see apps/api/app/workers/__init__.py
+                # `API_QUEUE_NAME`) so the render-worker (which consumes the
+                # default `arq:queue` and lacks `generate_thumbnail`) does not
+                # pick up these jobs and reject them with "function not found".
+                from app.workers import API_QUEUE_NAME
+
+                await pool.enqueue_job(
+                    "generate_thumbnail", row.id, _queue_name=API_QUEUE_NAME
+                )
                 stats.enqueued += 1
     finally:
         if pool is not None:

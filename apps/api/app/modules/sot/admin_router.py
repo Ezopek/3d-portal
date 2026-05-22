@@ -485,7 +485,16 @@ async def admin_upload_file(
     # ModelFiles whose `.thumb.webp` sibling did not land.
     if kind in (ModelFileKind.image, ModelFileKind.print):
         try:
-            await request.app.state.arq.enqueue_job("generate_thumbnail", file_row.id)
+            # Route to api-arq-worker's dedicated queue (Story 13.2 post-Codex
+            # hot-fix 2026-05-22) so the render-worker — which consumes the
+            # default `arq:queue` and lacks the `generate_thumbnail` function
+            # — does not pick up these jobs and reject them with
+            # "function not found".
+            from app.workers import API_QUEUE_NAME
+
+            await request.app.state.arq.enqueue_job(
+                "generate_thumbnail", file_row.id, _queue_name=API_QUEUE_NAME
+            )
         except Exception as exc:
             logger.warning("thumbnail enqueue failed: %s", exc)
 

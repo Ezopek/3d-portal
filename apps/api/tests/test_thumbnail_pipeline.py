@@ -357,7 +357,16 @@ def test_image_upload_enqueues_thumbnail(client, _patch_arq_pool):
     r = client.post(f"/api/admin/models/{model_id}/files", files=files, data=data)
     assert r.status_code == 201, r.text
 
-    _patch_arq_pool.enqueue_job.assert_any_call("generate_thumbnail", uuid.UUID(r.json()["id"]))
+    # Hot-fix 2026-05-22: enqueue routes to api-arq-worker's dedicated queue
+    # (`arq:api`) so the render-worker doesn't pick it up and reject it with
+    # "function not found". See apps/api/app/workers/__init__.py API_QUEUE_NAME.
+    from app.workers import API_QUEUE_NAME
+
+    _patch_arq_pool.enqueue_job.assert_any_call(
+        "generate_thumbnail",
+        uuid.UUID(r.json()["id"]),
+        _queue_name=API_QUEUE_NAME,
+    )
 
 
 def test_stl_upload_does_not_enqueue_thumbnail(client, _patch_arq_pool):
