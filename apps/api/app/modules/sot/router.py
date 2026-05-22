@@ -377,17 +377,28 @@ def download_model_bundle(
             raise HTTPException(
                 status_code=404, detail=f"File missing in storage: {row.original_name}"
             )
-        arcname = row.original_name
-        # Deduplicate within the archive if two ModelFile rows happen to share an
-        # original_name (unusual but possible): append a numeric suffix before the
-        # extension.
+        # Sanitize the archive entry name. ModelFile.original_name comes from
+        # upload-time client filenames + admin metadata patch — both untrusted.
+        # Pre-Codex-P2 fix-up the raw value was used, allowing a malicious row
+        # to inject "../evil.stl" or absolute paths into the ZIP. Split off the
+        # extension before sanitizing the stem (safe_filename strips dots) and
+        # re-attach. Empty extension is OK — the stem alone becomes the name.
+        raw_name = row.original_name
+        if "." in raw_name and not raw_name.startswith("."):
+            stem, _, ext = raw_name.rpartition(".")
+        else:
+            stem, ext = raw_name, ""
+        safe_stem = safe_filename(stem, fallback=str(row.id))
+        safe_ext = safe_filename(ext, fallback="bin") if ext else ""
+        arcname = f"{safe_stem}.{safe_ext}" if safe_ext else safe_stem
+        # Deduplicate within the archive if two ModelFile rows happen to produce
+        # the same sanitized name (unusual but possible after normalization):
+        # append a numeric suffix before the extension.
         if arcname in seen_arcnames:
-            stem, _, ext = arcname.rpartition(".")
-            base_arc = stem or arcname
             suffix = 1
             while True:
                 candidate_arc = (
-                    f"{base_arc}_{suffix}.{ext}" if ext else f"{arcname}_{suffix}"
+                    f"{safe_stem}_{suffix}.{safe_ext}" if safe_ext else f"{safe_stem}_{suffix}"
                 )
                 if candidate_arc not in seen_arcnames:
                     arcname = candidate_arc

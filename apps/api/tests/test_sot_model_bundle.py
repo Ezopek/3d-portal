@@ -183,6 +183,39 @@ def test_bundle_deduplicates_archive_entries_on_name_collision(client):
     assert len(names) == 2
 
 
+def test_bundle_sanitizes_path_traversal_in_original_name(client):
+    """Codex P2 fix-up: ModelFile.original_name is untrusted (upload + admin
+    patch). Reject `../evil.stl` style names — the bundle must contain only
+    safe top-level filenames."""
+    engine = get_engine()
+    with Session(engine) as s:
+        model_id = _seed_model(s, slug="bundle-traversal", name_en="Hostile")
+        _seed_file(
+            s,
+            model_id=model_id,
+            kind=ModelFileKind.stl,
+            original_name="../../../etc/passwd.stl",
+            content=b"hostile",
+        )
+        _seed_file(
+            s,
+            model_id=model_id,
+            kind=ModelFileKind.stl,
+            original_name="legit.stl",
+            content=b"legit",
+            position=1,
+        )
+
+    r = client.get(f"/api/models/{model_id}/bundle")
+    assert r.status_code == 200
+    zf = zipfile.ZipFile(io.BytesIO(r.content))
+    for name in zf.namelist():
+        assert ".." not in name, f"path-traversal sneaked through: {name}"
+        assert not name.startswith("/"), f"absolute path: {name}"
+        assert "/" not in name, f"directory separator: {name}"
+        assert "\\" not in name, f"backslash separator: {name}"
+
+
 def test_bundle_skips_soft_deleted_models(client):
     """Soft-deleted models surface 404 (consistent with other SoT GET endpoints)."""
     import datetime
