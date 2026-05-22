@@ -14,7 +14,12 @@ class ShareToken(BaseModel):
 
 class CreateShareRequest(BaseModel):
     model_id: uuid.UUID
-    expires_in_hours: int = Field(default=72, ge=1, le=24 * 30)
+    # Initiative 10 Story 16.3 — hard-cap TTL at 7 days per operator decision.
+    # Pre-Init-10 cap was 30 days (24 * 30); narrowed to 7 days (24 * 7 = 168)
+    # to limit anonymous-link lifetime per share-link-amplification security
+    # posture. The frontend dialog exposes only 1d/3d/7d presets; this
+    # backend constraint backstops any client that bypasses the dropdown.
+    expires_in_hours: int = Field(default=72, ge=1, le=24 * 7)
 
 
 class CreateShareResponse(BaseModel):

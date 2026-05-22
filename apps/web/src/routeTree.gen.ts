@@ -19,6 +19,8 @@ import { Route as RequestsIndexRouteImport } from './routes/requests/index'
 import { Route as QueueIndexRouteImport } from './routes/queue/index'
 import { Route as PrinterIndexRouteImport } from './routes/printer/index'
 import { Route as CatalogIndexRouteImport } from './routes/catalog/index'
+import { Route as ShareTokenRouteImport } from './routes/share/$token'
+import { Route as SettingsShareLinksRouteImport } from './routes/settings/share-links'
 import { Route as SettingsSessionsRouteImport } from './routes/settings/sessions'
 import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
 import { Route as Settings2faRouteImport } from './routes/settings/2fa'
@@ -77,6 +79,16 @@ const CatalogIndexRoute = CatalogIndexRouteImport.update({
   path: '/catalog/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ShareTokenRoute = ShareTokenRouteImport.update({
+  id: '/share/$token',
+  path: '/share/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsShareLinksRoute = SettingsShareLinksRouteImport.update({
+  id: '/settings/share-links',
+  path: '/settings/share-links',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsSessionsRoute = SettingsSessionsRouteImport.update({
   id: '/settings/sessions',
   path: '/settings/sessions',
@@ -125,6 +137,8 @@ export interface FileRoutesByFullPath {
   '/settings/2fa': typeof Settings2faRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/sessions': typeof SettingsSessionsRoute
+  '/settings/share-links': typeof SettingsShareLinksRoute
+  '/share/$token': typeof ShareTokenRoute
   '/catalog/': typeof CatalogIndexRoute
   '/printer/': typeof PrinterIndexRoute
   '/queue/': typeof QueueIndexRoute
@@ -144,6 +158,8 @@ export interface FileRoutesByTo {
   '/settings/2fa': typeof Settings2faRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/sessions': typeof SettingsSessionsRoute
+  '/settings/share-links': typeof SettingsShareLinksRoute
+  '/share/$token': typeof ShareTokenRoute
   '/catalog': typeof CatalogIndexRoute
   '/printer': typeof PrinterIndexRoute
   '/queue': typeof QueueIndexRoute
@@ -164,6 +180,8 @@ export interface FileRoutesById {
   '/settings/2fa': typeof Settings2faRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/sessions': typeof SettingsSessionsRoute
+  '/settings/share-links': typeof SettingsShareLinksRoute
+  '/share/$token': typeof ShareTokenRoute
   '/catalog/': typeof CatalogIndexRoute
   '/printer/': typeof PrinterIndexRoute
   '/queue/': typeof QueueIndexRoute
@@ -185,6 +203,8 @@ export interface FileRouteTypes {
     | '/settings/2fa'
     | '/settings/profile'
     | '/settings/sessions'
+    | '/settings/share-links'
+    | '/share/$token'
     | '/catalog/'
     | '/printer/'
     | '/queue/'
@@ -204,6 +224,8 @@ export interface FileRouteTypes {
     | '/settings/2fa'
     | '/settings/profile'
     | '/settings/sessions'
+    | '/settings/share-links'
+    | '/share/$token'
     | '/catalog'
     | '/printer'
     | '/queue'
@@ -223,6 +245,8 @@ export interface FileRouteTypes {
     | '/settings/2fa'
     | '/settings/profile'
     | '/settings/sessions'
+    | '/settings/share-links'
+    | '/share/$token'
     | '/catalog/'
     | '/printer/'
     | '/queue/'
@@ -243,6 +267,8 @@ export interface RootRouteChildren {
   Settings2faRoute: typeof Settings2faRoute
   SettingsProfileRoute: typeof SettingsProfileRoute
   SettingsSessionsRoute: typeof SettingsSessionsRoute
+  SettingsShareLinksRoute: typeof SettingsShareLinksRoute
+  ShareTokenRoute: typeof ShareTokenRoute
   CatalogIndexRoute: typeof CatalogIndexRoute
   PrinterIndexRoute: typeof PrinterIndexRoute
   QueueIndexRoute: typeof QueueIndexRoute
@@ -323,6 +349,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CatalogIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/share/$token': {
+      id: '/share/$token'
+      path: '/share/$token'
+      fullPath: '/share/$token'
+      preLoaderRoute: typeof ShareTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/share-links': {
+      id: '/settings/share-links'
+      path: '/settings/share-links'
+      fullPath: '/settings/share-links'
+      preLoaderRoute: typeof SettingsShareLinksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings/sessions': {
       id: '/settings/sessions'
       path: '/settings/sessions'
@@ -387,6 +427,8 @@ const rootRouteChildren: RootRouteChildren = {
   Settings2faRoute: Settings2faRoute,
   SettingsProfileRoute: SettingsProfileRoute,
   SettingsSessionsRoute: SettingsSessionsRoute,
+  SettingsShareLinksRoute: SettingsShareLinksRoute,
+  ShareTokenRoute: ShareTokenRoute,
   CatalogIndexRoute: CatalogIndexRoute,
   PrinterIndexRoute: PrinterIndexRoute,
   QueueIndexRoute: QueueIndexRoute,

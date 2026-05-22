@@ -69,12 +69,18 @@ function mount(initialPath = "/settings") {
     path: "/settings/sessions",
     component: () => <div>sessions placeholder</div>,
   });
+  const shareLinksRoute = createRoute({
+    getParentRoute: () => root,
+    path: "/settings/share-links",
+    component: () => <div>share-links placeholder</div>,
+  });
   const router = createRouter({
     routeTree: root.addChildren([
       hubRoute,
       profileRoute,
       twofaRoute,
       sessionsRoute,
+      shareLinksRoute,
     ]),
     history: createMemoryHistory({ initialEntries: [initialPath] }),
   });
@@ -89,7 +95,7 @@ function mount(initialPath = "/settings") {
 }
 
 describe("Settings — hub landing", () => {
-  it("renders three cards (Profile, 2FA, Sessions) for authenticated users", async () => {
+  it("renders four cards (Profile, 2FA, Sessions, My share links) for authenticated users", async () => {
     vi.mocked(api).mockImplementation(async (path: string) => {
       if (path === "/auth/me") return ME_RESPONSE;
       throw new Error(`unexpected call: ${path}`);
@@ -112,6 +118,7 @@ describe("Settings — hub landing", () => {
       "Profile",
       "Two-factor authentication",
       "Active sessions",
+      "My share links",
     ]);
 
     // Each card has an associated description (paired with title).
@@ -121,6 +128,9 @@ describe("Settings — hub landing", () => {
     ).toBeTruthy();
     expect(
       screen.getByText(/Review devices currently signed in/i),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/List and revoke share links you've generated/i),
     ).toBeTruthy();
   });
 
@@ -172,8 +182,9 @@ describe("Settings — hub landing", () => {
 
     const nav = screen.getByRole("navigation", { name: /settings/i });
     expect(nav).toBeTruthy();
-    // The nav contains the three sibling links; no stray external links inside.
+    // The nav contains the four sibling links (Story 16.3 added share-links);
+    // no stray external links inside.
     const navLinks = nav.querySelectorAll("a");
-    expect(navLinks.length).toBe(3);
+    expect(navLinks.length).toBe(4);
   });
 });

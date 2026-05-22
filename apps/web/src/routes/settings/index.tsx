@@ -15,7 +15,7 @@ import { Card, CardDescription, CardTitle } from "@/ui/card";
  * redirect; no per-route wrapper is required.
  */
 interface HubEntry {
-  to: "/settings/profile" | "/settings/2fa" | "/settings/sessions";
+  to: "/settings/profile" | "/settings/2fa" | "/settings/sessions" | "/settings/share-links";
   titleKey: string;
   descriptionKey: string;
 }
@@ -35,6 +35,11 @@ const HUB_ENTRIES: HubEntry[] = [
     to: "/settings/sessions",
     titleKey: "settings.hub.sessions.card_title",
     descriptionKey: "settings.hub.sessions.card_description",
+  },
+  {
+    to: "/settings/share-links",
+    titleKey: "settings.hub.share_links.card_title",
+    descriptionKey: "settings.hub.share_links.card_description",
   },
 ];
 

@@ -1,9 +1,10 @@
-import { MoreVertical, Pencil } from "lucide-react";
+import { MoreVertical, Pencil, Share2 } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { CategoryNode, CategorySummary, ModelDetail } from "@/lib/api-types";
 import { DeleteModelDialog } from "@/modules/catalog/components/dialogs/DeleteModelDialog";
+import { ShareLinkDialog } from "@/modules/catalog/components/dialogs/ShareLinkDialog";
 import { RatingPopover } from "@/modules/catalog/components/popovers/RatingPopover";
 import { StatusPopover } from "@/modules/catalog/components/popovers/StatusPopover";
 import { EditDescriptionSheet } from "@/modules/catalog/components/sheets/EditDescriptionSheet";
@@ -56,11 +57,12 @@ function buildAncestorChain(
 
 export function ModelHero({ detail }: { detail: ModelDetail }) {
   const { t, i18n } = useTranslation();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isAuthenticated } = useAuth();
   const [tagsOpen, setTagsOpen] = useState(false);
   const [descriptionOpen, setDescriptionOpen] = useState(false);
   const [renderSheetOpen, setRenderSheetOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const tree = useCategoriesTree();
 
   const preferPl = i18n.language.startsWith("pl");
@@ -102,32 +104,44 @@ export function ModelHero({ detail }: { detail: ModelDetail }) {
           </div>
           <h1 className="mt-1 text-xl font-semibold text-foreground">{title}</h1>
         </div>
-        {isAdmin && (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t("catalog.actions.modelActions")}
-                />
-              }
+        <div className="flex items-center gap-1">
+          {isAuthenticated && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t("share.dialog.title")}
+              onClick={() => setShareOpen(true)}
             >
-              <MoreVertical className="size-4" aria-hidden />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setDescriptionOpen(true)}>
-                {t("catalog.actions.editDescription")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setRenderSheetOpen(true)}>
-                {t("catalog.actions.rerender")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDeleteOpen(true)}>
-                {t("catalog.actions.delete")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+              <Share2 className="size-4" aria-hidden />
+            </Button>
+          )}
+          {isAdmin && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t("catalog.actions.modelActions")}
+                  />
+                }
+              >
+                <MoreVertical className="size-4" aria-hidden />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setDescriptionOpen(true)}>
+                  {t("catalog.actions.editDescription")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setRenderSheetOpen(true)}>
+                  {t("catalog.actions.rerender")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setDeleteOpen(true)}>
+                  {t("catalog.actions.delete")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
         {isAdmin ? (
@@ -189,6 +203,14 @@ export function ModelHero({ detail }: { detail: ModelDetail }) {
             onOpenChange={setDeleteOpen}
           />
         </>
+      )}
+      {isAuthenticated && (
+        <ShareLinkDialog
+          modelId={detail.id}
+          modelName={title}
+          open={shareOpen}
+          onOpenChange={setShareOpen}
+        />
       )}
     </div>
   );

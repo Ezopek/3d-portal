@@ -15,7 +15,9 @@ from app.core.db.models import (
     Model,
     ModelFile,
     ModelFileKind,
+    ModelNote,
     ModelTag,
+    NoteKind,
     Tag,
 )
 from app.core.db.session import get_engine, get_session
@@ -89,6 +91,24 @@ async def resolve_share(
         f"/api/share/{token}/files/{stl_row}/content?download=1" if stl_row is not None else None
     )
 
+    # Initiative 10 Story 16.3 — anonymous viewer surfaces the description.
+    # Pull from ModelNote with kind=description; prefer the bilingual fields
+    # introduced in Story 16.1 (body_pl + body_en) with legacy `body` as
+    # fallback. The anonymous-viewer DescriptionPanel does the same locale-
+    # aware fallback chain frontend-side; passing both fields lets the client
+    # pick without a second round-trip.
+    desc_note = session.exec(
+        select(ModelNote)
+        .where(ModelNote.model_id == model.id)
+        .where(ModelNote.kind == NoteKind.description)
+        .order_by(ModelNote.updated_at.desc())
+    ).first()
+    notes_en = ""
+    notes_pl = ""
+    if desc_note is not None:
+        notes_en = desc_note.body_en or desc_note.body or ""
+        notes_pl = desc_note.body_pl or ""
+
     return ShareModelView(
         id=model.id,
         name_en=model.name_en,
@@ -98,8 +118,8 @@ async def resolve_share(
         thumbnail_url=thumbnail_url,
         has_3d=stl_row is not None,
         images=images,
-        notes_en="",
-        notes_pl="",
+        notes_en=notes_en,
+        notes_pl=notes_pl,
         stl_url=stl_url,
     )
 
