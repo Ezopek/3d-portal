@@ -65,6 +65,51 @@ function AnonymousDownloadButton({
   );
 }
 
+/**
+ * Anonymous image loader — fetches the asset as a credentialless blob and
+ * assigns the resulting object-URL to the `<img>` src. Same-origin `<img>`
+ * elements send cookies by default (crossOrigin="anonymous" only matters
+ * for cross-origin requests), so without this blob round-trip a logged-in
+ * user opening /share/<token> would still attach their portal_access
+ * cookie to every gallery/thumbnail load (Codex P2 round-2 finding
+ * 2026-05-22). NFR10-SHARE-SECURITY-1.
+ */
+function AnonymousImage({
+  src,
+  alt,
+  className,
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+}) {
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    let urlToRevoke: string | null = null;
+    fetch(src, { credentials: "omit" })
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`img_${r.status}`))))
+      .then((blob) => {
+        if (cancelled) return;
+        const url = URL.createObjectURL(blob);
+        urlToRevoke = url;
+        setObjectUrl(url);
+      })
+      .catch(() => {
+        // Silent fail: the empty placeholder remains visible; we don't surface
+        // load errors at the per-image level for share view.
+      });
+    return () => {
+      cancelled = true;
+      if (urlToRevoke !== null) URL.revokeObjectURL(urlToRevoke);
+    };
+  }, [src]);
+  if (objectUrl === null) {
+    return <div className={`${className ?? ""} animate-pulse bg-muted`} aria-label={alt} />;
+  }
+  return <img src={objectUrl} alt={alt} className={className} />;
+}
+
 function AnonymousShareView({ token }: { token: string }) {
   const { t, i18n } = useTranslation();
   const [data, setData] = useState<ShareModelView | null>(null);
@@ -164,26 +209,23 @@ function AnonymousShareView({ token }: { token: string }) {
 
         {(data.thumbnail_url !== null || data.images.length > 0) && (
           <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {/* NFR10-SHARE-SECURITY-1 — crossOrigin="anonymous" forces the
-                browser into anonymous-credentials mode for these img
-                requests (no cookies sent). Otherwise a logged-in user
-                viewing /share/<token> would attach their portal_access
-                cookie to every gallery image request and update
-                last_active_at against the anonymous share path. */}
+            {/* NFR10-SHARE-SECURITY-1 — AnonymousImage routes each image
+                through fetch(credentials:"omit") → blob → object-URL so the
+                browser never sends a same-origin cookie to /api/share/*.
+                crossOrigin="anonymous" alone doesn't help for same-origin
+                requests (browser still attaches credentials per fetch spec). */}
             {data.thumbnail_url !== null && (
-              <img
+              <AnonymousImage
                 src={data.thumbnail_url}
                 alt={title}
-                crossOrigin="anonymous"
                 className="aspect-square w-full rounded border border-border object-cover"
               />
             )}
             {data.images.slice(0, 5).map((url) => (
-              <img
+              <AnonymousImage
                 key={url}
                 src={url}
                 alt={title}
-                crossOrigin="anonymous"
                 className="aspect-square w-full rounded border border-border object-cover"
               />
             ))}
