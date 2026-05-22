@@ -162,29 +162,35 @@ def test_reuse_outside_grace_burns_family(client):
 
 
 def test_concurrent_refresh_one_wins(client):
-    """Two parallel rotations on the same refresh — both succeed (one rotates, one grace)."""
-    import threading
+    """Sequential simulation of two refresh requests sharing the same starting cookie.
 
-    results: list[int] = []
+    The first request rotates; the second (replaying the original cookie within the
+    grace window) lands on the active descendant and also returns 200. Family ends
+    with exactly one active token regardless of which path the second request took.
+
+    History: prior threading.Thread variant hung deterministically when the file ran
+    in full (~20s timeout after 7 sibling tests in the same module); root cause was
+    an anyio BlockingPortal cross-thread Future-never-signaled deadlock under
+    session-scoped SQLite pollution + concurrent TestClient lifespan startup. SQLite
+    serializes writes anyway, so the threading variant never tested a real race —
+    it tested "second request hits grace via SQL serialization", which the sequential
+    form exercises deterministically. True multi-process concurrency lives behind
+    Postgres + Redis in production and is covered out-of-band (load / manual probes).
+    """
     cookies_snapshot = dict(client.cookies)
+    results: list[int] = []
 
-    def _hit():
-        with TestClient(client.app) as c:
-            c.headers.update({"X-Portal-Client": "web"})
-            for k, v in cookies_snapshot.items():
-                c.cookies.set(k, v)
-            r = c.post("/api/auth/refresh", headers={"User-Agent": "UA"})
-            results.append(r.status_code)
+    r1 = client.post("/api/auth/refresh", headers={"User-Agent": "UA"})
+    results.append(r1.status_code)
 
-    t1 = threading.Thread(target=_hit)
-    t2 = threading.Thread(target=_hit)
-    t1.start()
-    t2.start()
-    t1.join()
-    t2.join()
-    # At least one must succeed (200). The other can be 200 (grace) or 401 race-lost.
-    # The CRITICAL invariant is that the family ends with exactly one active token.
-    assert 200 in results
+    for ck in list(client.cookies.jar):
+        client.cookies.jar.clear(ck.domain, ck.path, ck.name)
+    for k, v in cookies_snapshot.items():
+        client.cookies.set(k, v)
+    r2 = client.post("/api/auth/refresh", headers={"User-Agent": "UA"})
+    results.append(r2.status_code)
+
+    assert 200 in results, f"expected at least one 200, got {results}"
 
     from app.core.db.session import get_engine
 
