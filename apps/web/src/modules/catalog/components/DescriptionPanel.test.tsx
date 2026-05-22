@@ -111,16 +111,24 @@ describe("DescriptionPanel", () => {
 
   it("renders the edit affordance for admin and opens the sheet on click", async () => {
     mockUseAuth.mockReturnValue({ isAdmin: true });
-    render(<DescriptionPanel detail={makeDetail([note()])} />, { wrapper: wrap() });
+    render(
+      <DescriptionPanel
+        detail={makeDetail([
+          note({ body_en: "english from sheet" }),
+        ])}
+      />,
+      { wrapper: wrap() },
+    );
     const editBtn = screen.getByLabelText(/edit description/i);
     expect(editBtn).toBeTruthy();
     fireEvent.click(editBtn);
     // Sheet opens — Story 16.2 revised: bilingual editor preloads the
-    // English textarea from legacy body when body_en is null.
+    // English textarea from body_en (NOT from legacy body, which is
+    // language-ambiguous per Codex P2 fix-up 2026-05-22).
     const en = await waitFor(
       () => screen.getByLabelText(/english description/i) as HTMLTextAreaElement,
     );
-    expect(en.value).toBe("Articulated dragon for Bambu A1.");
+    expect(en.value).toBe("english from sheet");
   });
 
   // Initiative 10 Story 16.1 (Decision L) — bilingual fallback chain.

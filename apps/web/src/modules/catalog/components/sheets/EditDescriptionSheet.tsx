@@ -16,21 +16,26 @@ interface Props {
 export function EditDescriptionSheet({ detail, open, onOpenChange }: Props) {
   const { t } = useTranslation();
   const existing = detail.notes.find((n) => n.kind === "description") ?? null;
-  // Initiative 10 Story 16.2 revised — bilingual editor. Seed body_pl from
-  // existing.body_pl, body_en from existing.body_en (with legacy `body`
-  // as the body_en fallback when body_en is null — covers pre-migration
-  // rows whose Story 16.1 backfill mirrored body → body_en already, but
-  // the safety belt is cheap).
+  // Initiative 10 Story 16.2 revised — bilingual editor. Seed each textarea
+  // from its OWN localized field. Do NOT fall back from body_en to legacy
+  // `body`: the legacy field is language-ambiguous (pre-bilingual catalog
+  // has a mix of EN and PL content) and Story 16.1's migration backfilled
+  // body → body_en wholesale, so the legacy body for any post-migration
+  // row already lives in body_en (or is null if the row was post-migration
+  // empty). For pre-migration legacy rows we deliberately surface empty
+  // textareas — the operator's intent in opening the editor is to populate
+  // the bilingual fields cleanly, not inherit potentially-mislabeled
+  // legacy text into the wrong locale slot (Codex P2 2026-05-22).
   const [bodyPl, setBodyPl] = useState(existing?.body_pl ?? "");
-  const [bodyEn, setBodyEn] = useState(existing?.body_en ?? existing?.body ?? "");
+  const [bodyEn, setBodyEn] = useState(existing?.body_en ?? "");
   const upsert = useUpsertDescription();
 
   useEffect(() => {
     if (open) {
       setBodyPl(existing?.body_pl ?? "");
-      setBodyEn(existing?.body_en ?? existing?.body ?? "");
+      setBodyEn(existing?.body_en ?? "");
     }
-  }, [open, existing?.body, existing?.body_en, existing?.body_pl]);
+  }, [open, existing?.body_en, existing?.body_pl]);
 
   function save() {
     upsert.mutate(

@@ -91,13 +91,16 @@ describe("EditDescriptionSheet (Story 16.2 revised — bilingual editor)", () =>
     expect(en.value).toBe("english text");
   });
 
-  it("falls back to legacy body for English when body_en is null", () => {
+  it("leaves the English textarea empty when body_en is null (pre-bilingual rows)", () => {
+    // Codex P2 2026-05-22 — legacy body is language-ambiguous, so do NOT
+    // seed body_en from it. The operator opening the editor will fill
+    // both locale fields cleanly.
     const detail = makeDetail({
-      notes: [makeNote({ body: "hello world", body_en: null, body_pl: null })],
+      notes: [makeNote({ body: "ambiguous-language", body_en: null, body_pl: null })],
     });
     render(<Harness detail={detail} />, { wrapper: wrap() });
     const en = screen.getByLabelText(/english description/i) as HTMLTextAreaElement;
-    expect(en.value).toBe("hello world");
+    expect(en.value).toBe("");
   });
 
   it("preloads the Polish textarea from body_pl", () => {
