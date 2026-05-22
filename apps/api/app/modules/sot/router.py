@@ -5,18 +5,24 @@ legacy /api/catalog/* (file-based) at distinct prefixes; legacy is left
 untouched until the cutover slice.
 """
 
+import io
 import uuid
+import zipfile
+from collections.abc import Iterator
+from pathlib import Path
 from typing import Annotated
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from sqlmodel import Session, select
 
 from app.core.auth.dependencies import current_user
 from app.core.config import get_settings
-from app.core.db.models import ModelFile, ModelFileKind, ModelSource, ModelStatus
+from app.core.db.models import Model, ModelFile, ModelFileKind, ModelSource, ModelStatus
 from app.core.db.session import get_session
 from app.core.etag import file_etag
+from app.core.filenames import safe_filename
 from app.modules.sot.schemas import (
     CategoryTree,
     FileListResponse,
@@ -258,4 +264,145 @@ def get_model_file_content(
         media_type=served_mime,
         filename=row.original_name if download else None,
         headers={"ETag": etag, "Cache-Control": "private, max-age=300"},
+    )
+
+
+# Initiative 10 Story 16.6 (FR10-DOWNLOAD-1) — bulk STL download (ZIP) restore.
+# Pre-SoT migration shipped /api/files/{model_id}/bundle (commit caf4d5a, May
+# 2026) using filesystem rglob; that endpoint dropped during the SoT cutover.
+# This restores the same UX affordance ("Download all") against the new SoT
+# storage layer: enumerate ModelFile rows for the model, filter to printable
+# kinds, stream them as a ZIP_STORED archive with the model.name_en stem.
+# Initiative 10 Story 16.6 — printable file kinds for bundle download.
+# Mirrors the pre-SoT /api/files/bundle filter (caf4d5a, May 2026) under the
+# new ModelFileKind enum: stl (canonical printable mesh), archive_3mf (Bambu /
+# Orca slicer archives, typically printable directly), source (CAD source files
+# — STEP / F3D — operator/designer may want them for remix). Excludes image
+# (gallery photos) + print (photos of physical prints).
+_BUNDLE_PRINTABLE_KINDS: tuple[ModelFileKind, ...] = (
+    ModelFileKind.stl,
+    ModelFileKind.archive_3mf,
+    ModelFileKind.source,
+)
+
+
+class _ZipStreamBuffer(io.RawIOBase):
+    """Append-only buffer that ZipFile writes to; we drain after each chunk."""
+
+    def __init__(self) -> None:
+        self._buf = bytearray()
+
+    def writable(self) -> bool:
+        return True
+
+    def write(self, b: object) -> int:
+        data = bytes(b)  # type: ignore[arg-type]
+        self._buf.extend(data)
+        return len(data)
+
+    def drain(self) -> bytes:
+        data = bytes(self._buf)
+        self._buf.clear()
+        return data
+
+
+def _stream_zip(entries: list[tuple[Path, str]]) -> Iterator[bytes]:
+    buf = _ZipStreamBuffer()
+    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_STORED, allowZip64=True) as zf:
+        for src_path, arcname in entries:
+            with (
+                zf.open(arcname, mode="w", force_zip64=True) as zentry,
+                src_path.open("rb") as src,
+            ):
+                while chunk := src.read(64 * 1024):
+                    zentry.write(chunk)
+                    if drained := buf.drain():
+                        yield drained
+            if drained := buf.drain():
+                yield drained
+    if drained := buf.drain():
+        yield drained
+
+
+def _content_disposition(filename: str) -> str:
+    encoded = quote(filename, safe="")
+    return f"attachment; filename*=UTF-8''{encoded}"
+
+
+@router.get(
+    "/models/{model_id}/bundle",
+    summary="Download all printable files in a model as a ZIP",
+    description=(
+        "Streams every printable file (kinds: stl, step, f3d, three_mf, gcode, other) "
+        "attached to the model as a ZIP_STORED archive with the model.name_en stem as "
+        "filename. Initiative 10 Story 16.6 (FR10-DOWNLOAD-1) regression restore — the "
+        "pre-SoT bundle endpoint (commit caf4d5a, May 2026) was dropped during the SoT "
+        "cutover; the affordance is restored on the new storage layer. Requires "
+        "authenticated user (any role). 404 if model not found OR no printable files. "
+        "404 if any matched file's on-disk blob is missing (defense-in-depth integrity "
+        "check). 500 if storage-path resolution escapes the storage root."
+    ),
+)
+def download_model_bundle(
+    model_id: uuid.UUID,
+    session: Annotated[Session, Depends(get_session)],
+    _user_id: uuid.UUID = current_user,
+) -> Response:
+    model = session.exec(
+        select(Model).where(Model.id == model_id, Model.deleted_at.is_(None))
+    ).first()
+    if model is None:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    rows = session.exec(
+        select(ModelFile)
+        .where(ModelFile.model_id == model_id)
+        .where(ModelFile.kind.in_(_BUNDLE_PRINTABLE_KINDS))
+        .order_by(ModelFile.position, ModelFile.original_name)
+    ).all()
+    if not rows:
+        raise HTTPException(status_code=404, detail="No printable files in this model")
+
+    settings = get_settings()
+    base = settings.portal_content_dir.resolve()
+    entries: list[tuple[Path, str]] = []
+    seen_arcnames: set[str] = set()
+    for row in rows:
+        candidate = (base / row.storage_path).resolve()
+        try:
+            candidate.relative_to(base)
+        except ValueError as exc:
+            raise HTTPException(status_code=500, detail="Invalid storage path") from exc
+        if not candidate.is_file():
+            raise HTTPException(
+                status_code=404, detail=f"File missing in storage: {row.original_name}"
+            )
+        arcname = row.original_name
+        # Deduplicate within the archive if two ModelFile rows happen to share an
+        # original_name (unusual but possible): append a numeric suffix before the
+        # extension.
+        if arcname in seen_arcnames:
+            stem, _, ext = arcname.rpartition(".")
+            base_arc = stem or arcname
+            suffix = 1
+            while True:
+                candidate_arc = (
+                    f"{base_arc}_{suffix}.{ext}" if ext else f"{arcname}_{suffix}"
+                )
+                if candidate_arc not in seen_arcnames:
+                    arcname = candidate_arc
+                    break
+                suffix += 1
+        seen_arcnames.add(arcname)
+        entries.append((candidate, arcname))
+
+    zip_stem = safe_filename(model.name_en or "", fallback=str(model_id))
+    zip_filename = f"{zip_stem}.zip"
+    return StreamingResponse(
+        _stream_zip(entries),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": _content_disposition(zip_filename),
+            "Cache-Control": "private, no-store",
+        },
     )

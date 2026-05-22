@@ -1,4 +1,4 @@
-import { Box, ChevronDown, ChevronRight, Download } from "lucide-react";
+import { Box, ChevronDown, ChevronRight, Download, Package } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -77,24 +77,41 @@ export function FilesTab({
     undefined,
   );
 
+  // Initiative 10 Story 16.6 — total printable count for the "Download all" CTA.
+  const printableTotal =
+    (counts.get("stl") ?? 0) + (counts.get("source") ?? 0) + (counts.get("archive_3mf") ?? 0);
+
   return (
     <div className="space-y-3 p-3">
-      <div className="flex flex-wrap gap-2">
-        {CHIPS.map((c) => (
-          <button
-            key={c.kind}
-            type="button"
-            onClick={() => setActive(c.kind)}
-            className={cn(
-              "rounded px-3 py-1 text-xs",
-              c.kind === active
-                ? "bg-primary/10 text-foreground font-medium ring-1 ring-inset ring-primary"
-                : "bg-muted text-muted-foreground hover:text-foreground",
-            )}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-2">
+          {CHIPS.map((c) => (
+            <button
+              key={c.kind}
+              type="button"
+              onClick={() => setActive(c.kind)}
+              className={cn(
+                "rounded px-3 py-1 text-xs",
+                c.kind === active
+                  ? "bg-primary/10 text-foreground font-medium ring-1 ring-inset ring-primary"
+                  : "bg-muted text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {c.label} · {counts.get(c.kind) ?? 0}
+            </button>
+          ))}
+        </div>
+        {printableTotal > 0 && (
+          <a
+            href={`/api/models/${modelId}/bundle`}
+            className="inline-flex items-center gap-1.5 rounded border border-border bg-card px-3 py-1 text-xs font-medium text-foreground hover:bg-accent"
+            aria-label={t("catalog.actions.download_all")}
           >
-            {c.label} · {counts.get(c.kind) ?? 0}
-          </button>
-        ))}
+            <Package className="size-3.5" aria-hidden />
+            <span>{t("catalog.actions.download_all")}</span>
+            <span className="text-muted-foreground">({printableTotal})</span>
+          </a>
+        )}
       </div>
 
       {modalOpen && (
