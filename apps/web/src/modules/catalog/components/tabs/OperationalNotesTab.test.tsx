@@ -38,6 +38,8 @@ function note(kind: NoteRead["kind"], body: string, id: string): NoteRead {
     model_id: MODEL_ID,
     kind,
     body,
+    body_pl: null,
+    body_en: null,
     author_id: null,
     created_at: "",
     updated_at: "",

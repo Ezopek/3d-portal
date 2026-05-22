@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
+import i18n from "i18next";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import "@/locales/i18n";
@@ -33,6 +34,8 @@ function note(over: Partial<NoteRead> = {}): NoteRead {
     model_id: MODEL_ID,
     kind: "description",
     body: "Articulated dragon for Bambu A1.",
+    body_pl: null,
+    body_en: null,
     author_id: null,
     created_at: "",
     updated_at: "",
@@ -117,5 +120,67 @@ describe("DescriptionPanel", () => {
       () => screen.getByRole("textbox") as HTMLTextAreaElement,
     );
     expect(textarea.value).toBe("Articulated dragon for Bambu A1.");
+  });
+
+  // Initiative 10 Story 16.1 (Decision L) — bilingual fallback chain.
+  describe("bilingual fallback (Story 16.1)", () => {
+    afterEach(async () => {
+      await i18n.changeLanguage("en");
+    });
+
+    it("renders body_en when locale is en and body_en is set", async () => {
+      await i18n.changeLanguage("en");
+      render(
+        <DescriptionPanel
+          detail={makeDetail([
+            note({ body: "legacy", body_pl: "polski tekst", body_en: "english text" }),
+          ])}
+        />,
+        { wrapper: wrap() },
+      );
+      expect(screen.getByText("english text")).toBeTruthy();
+      expect(screen.queryByText("polski tekst")).toBeNull();
+      expect(screen.queryByText("legacy")).toBeNull();
+    });
+
+    it("renders body_pl when locale is pl and body_pl is set", async () => {
+      await i18n.changeLanguage("pl");
+      render(
+        <DescriptionPanel
+          detail={makeDetail([
+            note({ body: "legacy", body_pl: "polski tekst", body_en: "english text" }),
+          ])}
+        />,
+        { wrapper: wrap() },
+      );
+      expect(screen.getByText("polski tekst")).toBeTruthy();
+      expect(screen.queryByText("english text")).toBeNull();
+    });
+
+    it("falls back to body_en when locale is pl but body_pl is null", async () => {
+      await i18n.changeLanguage("pl");
+      render(
+        <DescriptionPanel
+          detail={makeDetail([
+            note({ body: "legacy", body_pl: null, body_en: "english only" }),
+          ])}
+        />,
+        { wrapper: wrap() },
+      );
+      expect(screen.getByText("english only")).toBeTruthy();
+      expect(screen.queryByText("legacy")).toBeNull();
+    });
+
+    it("falls back to legacy body when both body_pl and body_en are null", () => {
+      render(
+        <DescriptionPanel
+          detail={makeDetail([
+            note({ body: "legacy content", body_pl: null, body_en: null }),
+          ])}
+        />,
+        { wrapper: wrap() },
+      );
+      expect(screen.getByText("legacy content")).toBeTruthy();
+    });
   });
 });

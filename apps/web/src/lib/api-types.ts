@@ -116,6 +116,11 @@ export interface NoteRead {
   model_id: string;
   kind: NoteKind;
   body: string;
+  // Initiative 10 Story 16.1 (Decision L) — bilingual fields for description-kind
+  // notes. Null on non-description notes and on legacy description rows; frontend
+  // falls back to `body` when both are null.
+  body_pl: string | null;
+  body_en: string | null;
   author_id: string | null;
   created_at: string;
   updated_at: string;

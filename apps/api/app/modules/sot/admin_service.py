@@ -1323,6 +1323,8 @@ def create_note(
         model_id=model_id,
         kind=payload.kind,
         body=payload.body,
+        body_pl=payload.body_pl,
+        body_en=payload.body_en,
         author_id=actor_user_id,
         created_at=now,
         updated_at=now,

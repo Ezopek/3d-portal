@@ -68,6 +68,11 @@ class NoteRead(_OrmBase):
     model_id: uuid.UUID
     kind: str
     body: str
+    # Initiative 10 Story 16.1 (Decision L) — bilingual description fields.
+    # Null on non-description notes and on legacy description rows whose
+    # backfill hasn't run; frontend falls back to `body` in either case.
+    body_pl: str | None = None
+    body_en: str | None = None
     author_id: uuid.UUID | None
     created_at: datetime.datetime
     updated_at: datetime.datetime

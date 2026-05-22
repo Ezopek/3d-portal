@@ -271,6 +271,8 @@ class NoteCreate(BaseModel):
                 {
                     "kind": "description",
                     "body": "Single-wall vase mode; uses ~12 g of PLA at 0.28 mm layer height.",
+                    "body_pl": "Tryb wazonu; ~12 g PLA przy warstwie 0.28 mm.",
+                    "body_en": "Single-wall vase mode; uses ~12 g of PLA at 0.28 mm layer height.",
                 }
             ]
         }
@@ -278,6 +280,11 @@ class NoteCreate(BaseModel):
 
     kind: NoteKind
     body: str = Field(min_length=1)
+    # Initiative 10 Story 16.1 (Decision L) — bilingual fields for description-kind
+    # notes. Optional on create; admin UI may populate either, both, or neither
+    # (legacy body-only writes continue to work for backward compatibility).
+    body_pl: str | None = Field(default=None, min_length=1)
+    body_en: str | None = Field(default=None, min_length=1)
 
 
 class NotePatch(BaseModel):
@@ -286,12 +293,15 @@ class NotePatch(BaseModel):
         json_schema_extra={
             "examples": [
                 {"body": "Re-tested 2026-05; PETG works too at 245 °C."},
+                {"body_pl": "Przetestowane 2026-05; PETG też działa przy 245 °C."},
             ]
         },
     )
 
     kind: NoteKind | None = None
     body: str | None = Field(default=None, min_length=1)
+    body_pl: str | None = Field(default=None, min_length=1)
+    body_en: str | None = Field(default=None, min_length=1)
 
 
 # ---------------------------------------------------------------------------

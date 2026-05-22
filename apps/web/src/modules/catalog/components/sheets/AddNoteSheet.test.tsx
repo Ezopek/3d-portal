@@ -27,6 +27,8 @@ function makeNote(over: Partial<NoteRead> = {}): NoteRead {
     model_id: "m1",
     kind: "operational",
     body: "watch the supports",
+    body_pl: null,
+    body_en: null,
     author_id: null,
     created_at: "",
     updated_at: "",

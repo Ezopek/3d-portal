@@ -202,7 +202,14 @@ class ModelNote(SQLModel, table=True):
         sa_column=uuid_fk("model.id", ondelete="CASCADE", nullable=False),
     )
     kind: NoteKind
+    # Initiative 10 Story 16.1 (Decision L) — description-kind notes use
+    # body_pl + body_en for bilingual content. body remains as the legacy
+    # column for non-description note kinds (print_settings etc.) and as a
+    # backward-compat mirror on description rows (frontend prefers
+    # body_pl/body_en, falls back to body when both are null).
     body: str
+    body_pl: str | None = Field(default=None)
+    body_en: str | None = Field(default=None)
     author_id: uuid.UUID | None = Field(
         default=None,
         sa_column=uuid_fk("user.id", ondelete="SET NULL", nullable=True),
