@@ -23,11 +23,16 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 from app.core.auth.jwt import encode_token
+from app.core.config import get_settings
 from app.core.db.models import User
 from app.core.db.models._enums import UserRole
 from app.core.db.session import get_engine
 
-JWT_SECRET = "test-secret-not-real"
+# Use the currently-effective settings.jwt_secret rather than a hardcoded
+# value. Other tests in the suite call monkeypatch.setenv("JWT_SECRET", ...)
+# but do not clear the LRU cache on get_settings(), so a hardcoded constant
+# here can disagree with whichever secret the middleware actually decodes
+# against in full-suite context (TB-021 Failure A: cross-file pollution).
 
 _UPDATE_LAST_ACTIVE_RE = "UPDATE user SET last_active_at"
 
@@ -62,7 +67,7 @@ def _login_as(c: TestClient, user: User) -> None:
     token = encode_token(
         subject=str(user.id),
         role=user.role.value,
-        secret=JWT_SECRET,
+        secret=get_settings().jwt_secret,
         ttl_minutes=30,
     )
     c.cookies.set("portal_access", token, path="/api")
@@ -279,18 +284,55 @@ def isolated_client_redis_down(isolated_client):
         c.app.state.redis.get = original_get
 
 
-def test_redis_down_passes_through_with_warning(isolated_client_redis_down, counter, caplog):
+class _ListHandler(logging.Handler):
+    """Capture records on a named logger without going through root.
+
+    pytest's built-in caplog attaches to root, but
+    ``app.core.logging.configure_logging`` does ``root.handlers[:] = ...``
+    during FastAPI lifespan startup, removing pytest's handler. Attaching a
+    dedicated handler to ``app.auth.last_active`` sidesteps the wipe.
+    Mirrors the share_caplog / auth_ratelimit_caplog pattern from
+    test_ratelimit_share_cap.py. Closes TB-021 Failure A.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.NOTSET)
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
+
+
+@pytest.fixture
+def last_active_caplog():
+    logger = logging.getLogger("app.auth.last_active")
+    prev_level = logger.level
+    prev_disabled = logger.disabled
+    handler = _ListHandler()
+    logger.addHandler(handler)
+    logger.setLevel(logging.WARNING)
+    logger.disabled = False
+    try:
+        yield handler
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(prev_level)
+        logger.disabled = prev_disabled
+
+
+def test_redis_down_passes_through_with_warning(
+    isolated_client_redis_down, counter, last_active_caplog
+):
     c = isolated_client_redis_down
     user = _seed_user(role=UserRole.member)
     _login_as(c, user)
 
-    with caplog.at_level(logging.WARNING, logger="app.auth.last_active"):
-        r = c.get("/api/auth/me")
-        assert r.status_code == 200, r.text
+    r = c.get("/api/auth/me")
+    assert r.status_code == 200, r.text
 
     warnings = [
         rec
-        for rec in caplog.records
+        for rec in last_active_caplog.records
         if rec.name == "app.auth.last_active"
         and getattr(rec, "event.action", None) == "last_active.redis_unavailable"
     ]

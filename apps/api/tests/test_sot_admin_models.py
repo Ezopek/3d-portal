@@ -793,6 +793,7 @@ def test_list_files_returns_image_kinds_in_position_order(client):
     files sorted by (position NULLS LAST, created_at)."""
     engine = get_engine()
     with Session(engine) as s:
+        admin_id = _seed_admin(s)
         cat = Category(slug=f"order-cat-{uuid.uuid4().hex[:6]}", name_en="x")
         s.add(cat)
         s.commit()
@@ -835,6 +836,7 @@ def test_list_files_returns_image_kinds_in_position_order(client):
         s.commit()
         m_id = str(m.id)
 
+    client.cookies.set("portal_access", _admin_token(admin_id))
     r = client.get(f"/api/models/{m_id}/files?kind=image")
     assert r.status_code == 200
     items = r.json()["items"]
