@@ -4,7 +4,18 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
 import { stlCache } from "../lib/stlCache";
 
-export type UseStlGeometryArgs = { modelId: string; fileId: string };
+export type UseStlGeometryArgs = {
+  modelId: string;
+  fileId: string;
+  /**
+   * Initiative 13 Story 20.3 (TB-022) — optional URL override for non-default
+   * auth contexts (e.g. anonymous /share/<token>). When set, this URL is
+   * fetched WITHOUT credentials (``fetch(url, { credentials: "omit" })``)
+   * instead of the default ``/api/models/{modelId}/files/{fileId}/content``
+   * with browser-default same-origin cookies. Use this for share-anon.
+   */
+  srcOverride?: string | null;
+};
 export type UseStlGeometryResult = {
   geometry: BufferGeometry | null;
   error: Error | null;
@@ -61,12 +72,27 @@ async function parseStlAsync(buf: ArrayBuffer): Promise<BufferGeometry> {
 export function useStlGeometry({
   modelId,
   fileId,
+  srcOverride,
 }: UseStlGeometryArgs): UseStlGeometryResult {
   // When ids are empty (caller is gating fetch — e.g. waiting on a confirm
   // dialog) skip the network entirely. Returning the same shape keeps the
-  // hook drop-in.
-  const skip = modelId === "" || fileId === "";
-  const url = skip ? "" : `/api/models/${modelId}/files/${fileId}/content`;
+  // hook drop-in. srcOverride takes priority when set — caller passed an
+  // explicit URL (typically share-scoped). modelId/fileId then serve as the
+  // skip-gate only; their values are not used to build the URL.
+  const hasSrcOverride =
+    srcOverride !== undefined && srcOverride !== null && srcOverride !== "";
+  const skip = !hasSrcOverride && (modelId === "" || fileId === "");
+  const url = skip
+    ? ""
+    : hasSrcOverride
+      ? srcOverride
+      : `/api/models/${modelId}/files/${fileId}/content`;
+  // Credentialless fetch when srcOverride is set — assumes caller is in
+  // an anonymous context (e.g. /share/<token>) and a same-origin cookie
+  // attach is a leak vector. Default flow keeps browser-default credentials.
+  const fetchInit: RequestInit | undefined = hasSrcOverride
+    ? { credentials: "omit" }
+    : undefined;
   const [geometry, setGeometry] = useState<BufferGeometry | null>(() => {
     if (skip) return null;
     const cached = stlCache.peek(url);
@@ -101,7 +127,7 @@ export function useStlGeometry({
     }
 
     setIsLoading(true);
-    fetch(url)
+    fetch(url, fetchInit)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.arrayBuffer();

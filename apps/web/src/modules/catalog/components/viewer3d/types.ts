@@ -5,6 +5,20 @@ export type StlFile = {
   modelId: string;
   name: string;
   size: number;
+  /**
+   * Initiative 13 Story 20.3 (TB-022) — optional URL override for non-default
+   * auth contexts (e.g. anonymous /share/<token> route). When set, the STL is
+   * fetched from this URL instead of the default
+   * `/api/models/{modelId}/files/{id}/content` (which is auth-gated under
+   * Init 6 default-deny). Passing a share-scoped URL here lets the viewer
+   * load STLs anonymously without any cookie attached.
+   *
+   * Caller contract: when ``srcOverride`` is set, the hook uses
+   * ``fetch(url, { credentials: "omit" })`` so same-origin cookies do NOT
+   * attach. Same security property as ``AnonymousImage`` in the share
+   * route. Use this for share-anon and similar contexts only.
+   */
+  srcOverride?: string | null;
 };
 
 export type MeasureMode =
