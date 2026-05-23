@@ -174,3 +174,119 @@ def test_resolve_no_files_returns_empty(client):
     assert body["stl_url"] is None
     assert body["images"] == []
     assert body["thumbnail_url"] is None
+
+
+# ---------------------------------------------------------------------------
+# Initiative 12 Story 19.4 (Decision T) — share file list endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_share_files_list_unknown_token_returns_404(client):
+    c, _, _ids = client
+    r = c.get("/api/share/no-such-token/files")
+    assert r.status_code == 404
+
+
+def test_share_files_list_returns_files_with_share_scoped_urls(client):
+    c, token, ids = client
+    c.cookies.set("portal_access", token)
+    created = c.post(
+        "/api/admin/share",
+        json={"model_id": str(ids["full"]), "expires_in_hours": 1},
+    ).json()
+    # Clear admin cookie — share list MUST work anonymous
+    c.cookies.clear()
+    r = c.get(f"/api/share/{created['token']}/files")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["total"] == 2  # 1 image + 1 stl
+    assert body["page"] == 1
+    assert body["page_size"] == 50
+    assert len(body["items"]) == 2
+
+    items_by_id = {it["id"]: it for it in body["items"]}
+    img_entry = items_by_id[str(ids["img"])]
+    stl_entry = items_by_id[str(ids["stl"])]
+
+    # Decision N — share-scoped content URLs.
+    assert (
+        img_entry["content_url"]
+        == f"/api/share/{created['token']}/files/{ids['img']}/content"
+    )
+    assert (
+        stl_entry["content_url"]
+        == f"/api/share/{created['token']}/files/{ids['stl']}/content"
+    )
+    assert img_entry["kind"] == "image"
+    assert img_entry["original_name"] == "hero.png"
+    assert stl_entry["kind"] == "stl"
+    assert stl_entry["original_name"] == "Dragon.stl"
+
+
+def test_share_files_list_pagination_clamps_to_total(client):
+    c, token, ids = client
+    c.cookies.set("portal_access", token)
+    created = c.post(
+        "/api/admin/share",
+        json={"model_id": str(ids["full"]), "expires_in_hours": 1},
+    ).json()
+    c.cookies.clear()
+    r = c.get(f"/api/share/{created['token']}/files?page=2&page_size=1")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] == 2
+    assert body["page"] == 2
+    assert body["page_size"] == 1
+    assert len(body["items"]) == 1
+
+
+def test_share_files_list_filters_disallowed_kinds(client, tmp_path):
+    """source + archive_3mf MUST NOT surface in the share file list."""
+    c, token, ids = client
+    # Seed a source-kind file on the full model directly
+    from app.core.db.session import get_engine
+
+    engine = get_engine()
+    with Session(engine) as s:
+        src = ModelFile(
+            model_id=ids["full"],
+            kind=ModelFileKind.source,
+            original_name="secret.f3d",
+            storage_path=f"{ids['full']}/secret.f3d",
+            sha256="c" * 64,
+            size_bytes=100,
+            mime_type="application/octet-stream",
+        )
+        s.add(src)
+        s.commit()
+    c.cookies.set("portal_access", token)
+    created = c.post(
+        "/api/admin/share",
+        json={"model_id": str(ids["full"]), "expires_in_hours": 1},
+    ).json()
+    c.cookies.clear()
+    body = c.get(f"/api/share/{created['token']}/files").json()
+    kinds = {it["kind"] for it in body["items"]}
+    assert "source" not in kinds
+    assert "archive_3mf" not in kinds
+    # Total reflects filtered count, not raw DB count (3 rows; 2 surfaced)
+    assert body["total"] == 2
+
+
+def test_share_files_list_returns_no_set_cookie_header(client):
+    """Anonymous share endpoint MUST NOT set cookies on the response.
+
+    Security invariant per Init 12 Story 19.3 § Threat vectors enumerated:
+    no cookie response on /api/share/<token>/* endpoints. Maszynowo verified
+    by TB-023 fixture in Init 14 Story 21.2; this is an early smoke version.
+    """
+    c, token, ids = client
+    c.cookies.set("portal_access", token)
+    created = c.post(
+        "/api/admin/share",
+        json={"model_id": str(ids["full"]), "expires_in_hours": 1},
+    ).json()
+    c.cookies.clear()
+    r = c.get(f"/api/share/{created['token']}/files")
+    assert r.status_code == 200
+    assert "set-cookie" not in {k.lower() for k in r.headers}

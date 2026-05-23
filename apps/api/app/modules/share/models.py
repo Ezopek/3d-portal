@@ -3,6 +3,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.core.db.models._enums import ModelFileKind
+
 
 class ShareToken(BaseModel):
     token: str
@@ -42,3 +44,34 @@ class ShareModelView(BaseModel):
     notes_en: str
     notes_pl: str
     stl_url: str | None = None
+
+
+# Initiative 12 Story 19.4 (Decision T) — anonymous share file list endpoint.
+
+
+class ShareFileListEntry(BaseModel):
+    """One file row in the anonymous share view file list response.
+
+    Mirrors the admin SoT ModelFile shape but with a pre-formatted
+    share-scoped ``content_url`` (Init 6 Decision N pattern) so the
+    anonymous SPA does not need to construct the URL itself. Only kinds
+    in ``_SHARE_ALLOWED_KINDS`` ({image, print, stl}; plus stl_preview
+    after Story 19.6) are surfaced; source / archive_3mf are filtered out
+    server-side.
+    """
+
+    id: str
+    kind: ModelFileKind
+    original_name: str
+    mime_type: str
+    size_bytes: int
+    position: int | None
+    content_url: str  # share-scoped: /api/share/{token}/files/{file_id}/content
+    created_at: datetime
+
+
+class PaginatedShareFileList(BaseModel):
+    items: list[ShareFileListEntry]
+    total: int
+    page: int
+    page_size: int

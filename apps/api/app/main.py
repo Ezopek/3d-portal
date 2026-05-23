@@ -54,6 +54,7 @@ _PUBLIC_ROUTES: tuple[str, ...] = (
     "/api/auth/2fa/verify",  # partial-auth step for users mid-2FA login
     "/api/auth/password-reset",  # consume step (mint side is /api/admin/...)
     "/api/share/{token}",  # share resolve (Init 0)
+    "/api/share/{token}/files",  # share file list (Init 12 Story 19.4 / Decision T)
     "/api/share/{token}/files/{file_id}/content",  # share-scoped asset (Story 11.2 Decision N)
 )
 

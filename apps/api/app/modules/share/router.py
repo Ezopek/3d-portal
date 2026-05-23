@@ -2,9 +2,9 @@ import hashlib
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import nullslast
+from sqlalchemy import func, nullslast
 from sqlmodel import Session, select
 
 from app.core.audit import record_event
@@ -21,7 +21,11 @@ from app.core.db.models import (
     Tag,
 )
 from app.core.db.session import get_engine, get_session
-from app.modules.share.models import ShareModelView
+from app.modules.share.models import (
+    PaginatedShareFileList,
+    ShareFileListEntry,
+    ShareModelView,
+)
 from app.modules.share.service import ShareService
 
 router = APIRouter(prefix="/api/share", tags=["share"])
@@ -121,6 +125,88 @@ async def resolve_share(
         notes_en=notes_en,
         notes_pl=notes_pl,
         stl_url=stl_url,
+    )
+
+
+@router.get(
+    "/{token}/files",
+    summary="List share-scoped model files (anonymous, paginated)",
+    description=(
+        "Initiative 12 Story 19.4 / Decision T — anonymous share-scoped "
+        "file list endpoint. Returns paginated list of files attached to "
+        "the share-bound model with share-scoped content URLs (Init 6 "
+        "Decision N pattern). Only kinds in {image, print, stl} surfaced; "
+        "source + archive_3mf remain hidden from anonymous recipients. "
+        "Subject to the Decision Q request-rate cap (60 req/min per "
+        "(token, IP)) handled by RateLimitMiddleware. Returns 404 on "
+        "token miss / expired / revoked / model soft-deleted (uniform — "
+        "no enumeration oracle, mirroring get_share_asset)."
+    ),
+    response_model=PaginatedShareFileList,
+)
+async def list_share_files(
+    token: str,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+) -> PaginatedShareFileList:
+    """List files belonging to the share-bound model.
+
+    No auth dependency: the share token IS the auth (Decision M
+    `/api/share/*` carve-out). Admin / member roles NOT consulted.
+
+    Uniform 404 on any failure mode (invalid token, expired token,
+    soft-deleted model) — same enumeration-oracle defense as
+    get_share_asset.
+    """
+    service = ShareService(redis=request.app.state.redis.get())
+    record = await service.resolve(token)
+    if record is None:
+        raise HTTPException(404, "Share token not found or expired")
+
+    model = session.exec(
+        select(Model).where(Model.id == record.model_id, Model.deleted_at.is_(None))
+    ).first()
+    if model is None:
+        raise HTTPException(404, "Share token not found or expired")
+
+    offset = (page - 1) * page_size
+    base_filter = (
+        ModelFile.model_id == record.model_id,
+        ModelFile.kind.in_(_SHARE_ALLOWED_KINDS),
+    )
+    total = session.exec(
+        select(func.count()).select_from(ModelFile).where(*base_filter)
+    ).one()
+
+    items_rows = session.exec(
+        select(ModelFile)
+        .where(*base_filter)
+        .order_by(nullslast(ModelFile.position.asc()), ModelFile.created_at.asc())
+        .offset(offset)
+        .limit(page_size)
+    ).all()
+
+    items = [
+        ShareFileListEntry(
+            id=str(f.id),
+            kind=f.kind,
+            original_name=f.original_name,
+            mime_type=f.mime_type,
+            size_bytes=f.size_bytes,
+            position=f.position,
+            content_url=f"/api/share/{token}/files/{f.id}/content",
+            created_at=f.created_at,
+        )
+        for f in items_rows
+    ]
+
+    return PaginatedShareFileList(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
     )
 
 
