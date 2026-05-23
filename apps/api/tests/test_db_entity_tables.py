@@ -34,6 +34,7 @@ def test_model_source_enum_values():
         "makerworld",
         "cults3d",
         "thingiverse",
+        "crealitycloud",
         "own",
         "other",
     }
@@ -65,6 +66,7 @@ def test_external_source_enum_values():
         "makerworld",
         "cults3d",
         "thingiverse",
+        "crealitycloud",
         "other",
     }
 
