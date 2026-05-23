@@ -62,7 +62,7 @@ describe("AddNoteSheet", () => {
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/admin/notes");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/admin/models/m1/notes");
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(init.method).toBe("POST");
     expect(init.body).toBe(

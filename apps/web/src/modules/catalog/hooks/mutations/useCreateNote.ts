@@ -14,7 +14,7 @@ export function useCreateNote(modelId: string) {
   return useMutation<NoteRead, Error, CreateNoteInput>({
     mutationFn: (input) =>
       api<NoteRead>(
-        "/admin/notes",
+        `/admin/models/${input.model_id}/notes`,
         { method: "POST", body: JSON.stringify(input) },
       ),
     onSuccess: () => {
