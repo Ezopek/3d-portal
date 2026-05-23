@@ -53,6 +53,7 @@ export default function Viewer3DModal({ files, initialFileId, onClose }: Viewer3
   const { geometry, error, isLoading } = useStlGeometry({
     modelId: allowLoad ? (file?.modelId ?? "") : "",
     fileId: allowLoad ? activeId : "",
+    srcOverride: allowLoad ? (file?.srcOverride ?? null) : null,
   });
   const isLargeMesh = perf.isLargeMesh(geometry);
   const triangleCount = perf.triangleCount(geometry);

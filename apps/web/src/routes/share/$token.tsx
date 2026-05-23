@@ -18,6 +18,8 @@ import { useTranslation } from "react-i18next";
 
 import { fetchShareView, type ShareModelView } from "@/lib/share-api";
 import { cn } from "@/lib/utils";
+import Viewer3DInline from "@/modules/catalog/components/viewer3d/Viewer3DInline";
+import type { StlFile } from "@/modules/catalog/components/viewer3d/types";
 
 /**
  * Anonymous STL download button — fetches the file as a credentialless blob
@@ -260,6 +262,29 @@ function ShareCarousel({
   );
 }
 
+/**
+ * Construct a Viewer3DInline-compatible StlFile from the share resolve
+ * payload. Sets srcOverride to the share-scoped STL URL (with ?download=1
+ * stripped so the viewer fetches inline content) so useStlGeometry routes
+ * through credentials:"omit". modelId/fileId carry the share-view's model
+ * id + a placeholder file id; they're only used as skip-gate semantics
+ * when srcOverride is null (which it isn't here), so the placeholder is
+ * benign. size set to 0 — share resolve doesn't carry STL byte size; the
+ * large-mesh confirm gate falls through (acceptable for recipients who
+ * explicitly opened a share link).
+ */
+function shareStlFile(data: ShareModelView, title: string): StlFile {
+  const stlUrl = data.stl_url ?? "";
+  const cleanedSrc = stlUrl.endsWith("?download=1") ? stlUrl.slice(0, -"?download=1".length) : stlUrl;
+  return {
+    id: "share-stl",
+    modelId: data.id,
+    name: `${title}.stl`,
+    size: 0,
+    srcOverride: cleanedSrc,
+  };
+}
+
 function AnonymousShareView({ token }: { token: string }) {
   const { t, i18n } = useTranslation();
   const [data, setData] = useState<ShareModelView | null>(null);
@@ -370,10 +395,20 @@ function AnonymousShareView({ token }: { token: string }) {
         />
 
         {data.has_3d && data.stl_url !== null && (
-          <section className="rounded border border-border bg-card p-4">
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <section className="space-y-3 rounded border border-border bg-card p-4">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {t("share.view.stl_label")}
             </h2>
+            {/* Initiative 12 Story 19.7 (FR12-SHARE-3D-VIEWER-1) — embedded
+                inline 3D viewer using Init 13 Story 20.3 srcOverride hook.
+                The viewer fetches the STL via fetch(url, credentials:"omit")
+                so same-origin cookies do NOT attach when a logged-in user
+                opens the share link. data.stl_url already has ?download=1
+                appended for the download anchor below; strip it for the
+                viewer fetch so the server returns inline content-disposition.
+                onExpand omitted — no modal host on share view (would need
+                operator-aligned scope to add). */}
+            <Viewer3DInline file={shareStlFile(data, title)} />
             <p className="text-sm text-muted-foreground">
               {t("share.view.stl_description")}
             </p>

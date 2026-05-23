@@ -35,7 +35,13 @@ import type { Plane, StlFile } from "./types";
 export type Viewer3DInlineProps = {
   /** Single STL file scoped to this inline mount (one per expanded row). */
   file: StlFile;
-  onExpand: () => void;
+  /**
+   * Optional expand-to-modal handler. When omitted (e.g. anonymous share
+   * view — Init 12 Story 19.7), the inline viewer hides the expand button.
+   * Story 20.3 left this as required; downgrading to optional unblocks
+   * embedded contexts that don't carry a modal host.
+   */
+  onExpand?: () => void;
 };
 
 export default function Viewer3DInline({ file, onExpand }: Viewer3DInlineProps) {
@@ -78,12 +84,13 @@ function CanvasLoader({
   onExpand,
 }: {
   file: StlFile;
-  onExpand: () => void;
+  onExpand?: () => void;
 }) {
   const { t } = useTranslation();
   const { geometry, error, isLoading } = useStlGeometry({
     modelId: file.modelId,
     fileId: file.id,
+    srcOverride: file.srcOverride ?? null,
   });
   const perf = usePerfGuard();
   const isLargeMesh = perf.isLargeMesh(geometry);
@@ -231,11 +238,13 @@ function CanvasLoader({
       onKeyDown={onKey}
       tabIndex={-1}
     >
-      <div className="absolute right-2 top-2 z-10">
-        <Button type="button" size="sm" variant="secondary" onClick={onExpand}>
-          {t("viewer3d.tooltip.expand")}
-        </Button>
-      </div>
+      {onExpand !== undefined && (
+        <div className="absolute right-2 top-2 z-10">
+          <Button type="button" size="sm" variant="secondary" onClick={onExpand}>
+            {t("viewer3d.tooltip.expand")}
+          </Button>
+        </div>
+      )}
       <InteractionHint />
       {isLargeMesh && (
         <div
