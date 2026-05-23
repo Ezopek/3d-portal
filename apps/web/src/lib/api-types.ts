@@ -69,7 +69,13 @@ export interface TagRead {
 
 // --- Files ---
 
-export type ModelFileKind = "stl" | "image" | "print" | "source" | "archive_3mf";
+export type ModelFileKind =
+  | "stl"
+  | "image"
+  | "print"
+  | "source"
+  | "archive_3mf"
+  | "stl_preview";
 
 export interface ModelFileRead {
   id: string;

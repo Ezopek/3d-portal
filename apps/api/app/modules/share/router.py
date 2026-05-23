@@ -64,6 +64,39 @@ async def resolve_share(
     if model is None:
         raise HTTPException(404, "Model no longer exists")
 
+    # Initiative 12 Story 19.6 (Decision S) — lazy STL preview render dispatch.
+    # Trigger on every resolve_share hit (not just list_share_files) because
+    # the SPA's anonymous viewer currently only calls fetchShareView(); the
+    # file-list endpoint is consumed in a follow-up FE story. Worker
+    # idempotency guards (require complete 4-view set) absorb repeat
+    # dispatches.
+    stl_for_preview = session.exec(
+        select(ModelFile.id)
+        .where(
+            ModelFile.model_id == record.model_id,
+            ModelFile.kind == ModelFileKind.stl,
+        )
+        .order_by(ModelFile.created_at.asc())
+    ).first()
+    if stl_for_preview is not None:
+        existing_preview_count = session.exec(
+            select(func.count()).select_from(ModelFile).where(
+                ModelFile.model_id == record.model_id,
+                ModelFile.kind == ModelFileKind.stl_preview,
+            )
+        ).one()
+        if existing_preview_count < 4:
+            try:
+                await request.app.state.arq.enqueue_job(
+                    "render_stl_previews", str(stl_for_preview)
+                )
+            except Exception:
+                import logging
+
+                logging.getLogger("app.share").warning(
+                    "stl_preview enqueue failed in resolve_share", exc_info=True
+                )
+
     category = session.exec(select(Category).where(Category.id == model.category_id)).one()
 
     tag_rows = session.exec(
@@ -80,11 +113,23 @@ async def resolve_share(
         .where(ModelFile.kind.in_([ModelFileKind.image, ModelFileKind.print]))
         .order_by(nullslast(ModelFile.position.asc()), ModelFile.created_at.asc())
     ).all()
+    # Initiative 12 Story 19.6 — STL preview renders (iso/front/side/top)
+    # surfaced alongside admin gallery photos. Stored as ModelFile rows with
+    # kind=stl_preview, position 0-3, generated lazily by the render-worker
+    # task dispatched above. Appended AFTER admin images so admin curation
+    # comes first in the carousel.
+    preview_files = session.exec(
+        select(ModelFile.id)
+        .where(ModelFile.model_id == model.id)
+        .where(ModelFile.kind == ModelFileKind.stl_preview)
+        .order_by(ModelFile.position.asc(), ModelFile.created_at.asc())
+    ).all()
     # Initiative 6 Decision N — emit share-scoped URLs (`/api/share/{token}/...`)
     # instead of legacy `/api/models/{id}/...` URLs. The legacy SoT content
     # endpoint is post-Story-11.1 `current_user`-gated; anonymous share
     # recipients reach assets exclusively via the share path.
     images = [f"/api/share/{token}/files/{fid}/content" for fid in image_files]
+    images.extend(f"/api/share/{token}/files/{fid}/content" for fid in preview_files)
 
     thumbnail_url = None
     if model.thumbnail_file_id is not None:
@@ -178,40 +223,10 @@ async def list_share_files(
     if model is None:
         raise HTTPException(404, "Share token not found or expired")
 
-    # Initiative 12 Story 19.6 (Decision S) — lazy STL preview render dispatch.
-    # If the model has STL files but no stl_preview rows yet, enqueue the
-    # render worker. Idempotency is enforced inside the worker (checks
-    # existing stl_preview rows before render). Dispatch failure is logged
-    # but does NOT fail the share view — the file list still returns whatever
-    # files exist now; previews surface on the next view once the worker
-    # completes.
-    stl_for_preview = session.exec(
-        select(ModelFile.id)
-        .where(
-            ModelFile.model_id == record.model_id,
-            ModelFile.kind == ModelFileKind.stl,
-        )
-        .order_by(ModelFile.created_at.asc())
-    ).first()
-    if stl_for_preview is not None:
-        has_preview = session.exec(
-            select(ModelFile.id).where(
-                ModelFile.model_id == record.model_id,
-                ModelFile.kind == ModelFileKind.stl_preview,
-            )
-        ).first()
-        if has_preview is None:
-            try:
-                await request.app.state.arq.enqueue_job(
-                    "render_stl_previews", str(stl_for_preview)
-                )
-            except Exception:
-                # Fire-and-forget — never block the share view on enqueue.
-                import logging
-
-                logging.getLogger("app.share").warning(
-                    "stl_preview enqueue failed", exc_info=True
-                )
+    # Initiative 12 Story 19.6 dispatch moved to resolve_share (the SPA's
+    # anonymous viewer calls fetchShareView only; list_share_files is a
+    # secondary surface). Worker idempotency uses complete 4-view set check
+    # so partial renders or post-STL-replace re-uploads retry.
 
     offset = (page - 1) * page_size
     base_filter = (

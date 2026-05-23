@@ -8,6 +8,7 @@ const KIND_LABEL: Record<ModelFileKind, string> = {
   print: "print",
   source: "source",
   archive_3mf: "3MF",
+  stl_preview: "STL preview",
 };
 
 function summariseFiles(files: ModelDetail["files"]): string {

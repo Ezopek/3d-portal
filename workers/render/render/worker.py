@@ -11,6 +11,7 @@ import sentry_sdk
 from app.core.db.models import AuditLog, Model, ModelFile, ModelFileKind
 from app.core.db.session import create_engine_for_url
 from arq.connections import RedisSettings
+from sqlalchemy import func
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 
@@ -234,15 +235,18 @@ async def render_stl_previews(
                 await redis.set(status_key, b"failed", ex=_STATUS_TTL_SECONDS)
                 return {"status": "failed", "reason": f"STL file {model_file_id} not found"}
 
-            # Idempotency guard — if any stl_preview row already exists for
-            # this STL's parent model, assume the render was already done.
-            existing = session.exec(
-                select(ModelFile.id).where(
+            # Idempotency guard — require the COMPLETE 4-view set (one per
+            # VIEW_NAMES entry) before skipping. Partial renders (1-3 rows
+            # committed before crash) AND post-STL-replace re-uploads must
+            # retry rather than treat any single existing row as "done".
+            # Codex Story 19.6 round-2 P2 fix.
+            existing_count = session.exec(
+                select(func.count()).select_from(ModelFile).where(
                     ModelFile.model_id == stl_row.model_id,
                     ModelFile.kind == ModelFileKind.stl_preview,
                 )
-            ).first()
-            if existing is not None:
+            ).one()
+            if existing_count >= len(VIEW_NAMES):
                 await redis.set(status_key, b"done", ex=_STATUS_TTL_SECONDS)
                 return {"status": "skipped", "reason": "previews already exist"}
 
