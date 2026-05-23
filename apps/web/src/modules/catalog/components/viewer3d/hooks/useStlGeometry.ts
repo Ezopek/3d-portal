@@ -87,12 +87,6 @@ export function useStlGeometry({
     : hasSrcOverride
       ? srcOverride
       : `/api/models/${modelId}/files/${fileId}/content`;
-  // Credentialless fetch when srcOverride is set — assumes caller is in
-  // an anonymous context (e.g. /share/<token>) and a same-origin cookie
-  // attach is a leak vector. Default flow keeps browser-default credentials.
-  const fetchInit: RequestInit | undefined = hasSrcOverride
-    ? { credentials: "omit" }
-    : undefined;
   const [geometry, setGeometry] = useState<BufferGeometry | null>(() => {
     if (skip) return null;
     const cached = stlCache.peek(url);
@@ -127,6 +121,12 @@ export function useStlGeometry({
     }
 
     setIsLoading(true);
+    // Credentialless fetch when srcOverride is set — assumes caller is in
+    // an anonymous context (e.g. /share/<token>) and a same-origin cookie
+    // attach is a leak vector. Default flow keeps browser-default credentials.
+    const fetchInit: RequestInit | undefined = hasSrcOverride
+      ? { credentials: "omit" }
+      : undefined;
     fetch(url, fetchInit)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -154,7 +154,7 @@ export function useStlGeometry({
         subscribed.current = null;
       }
     };
-  }, [url, skip]);
+  }, [url, skip, hasSrcOverride]);
 
   return { geometry, error, isLoading };
 }
