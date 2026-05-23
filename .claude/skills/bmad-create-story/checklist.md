@@ -165,6 +165,22 @@ You will systematically re-do the entire story creation process, but with a crit
 - **Scope creep:** Missing boundaries that could cause unnecessary work
 - **Quality failures:** Missing quality requirements that could deliver broken features
 
+#### **3.6 Already-Shipped DISASTERS** (3d-portal Init 10 retro / TB-024 codification)
+
+**🚨 PROCEDURAL GATE:** Before writing the SCP `## H2 Initiative N` section or any story spec referencing "new endpoints / new schema / new migrations", run this enumeration phase per [[feedback_scp_pre_enumeration_phase]]:
+
+- **Grep the codebase for the endpoints/handlers the story claims to add.** If `grep -r "POST /api/admin/<thing>"` or `grep -r "def admin_<verb>_<thing>"` already returns hits, the endpoint EXISTS. The story's scope reduces to the missing complement (frontend only? new validation? new audit?).
+- **Read `_bmad-output/implementation-artifacts/sprint-status.yaml`** for any story that may have already shipped the surface. Cross-reference against active triage-backlog candidates.
+- **Read the SoT route-enforcement gate test** at `apps/api/tests/test_route_enforcement_gate.py` — if the path is already in `_PUBLIC_ROUTES` allowlist OR carries an existing auth `Depends(...)`, the route is shipped.
+- **Job-shape question per item BEFORE drafting:** for every listed task, ask "what is the shape of this work — code creation / refactor / config change / pure scope cut / doc?" Items that turn out to be "scope cut" or "verify existing" should be moved out of the implementation phase before SCP commit.
+
+Surface gap (3d-portal historical examples):
+- Init 10 Story 16.4 (`/admin/models/new`) scoped as "new endpoint" — `POST /api/admin/models` had shipped with Init 0 SoT. ~70% scope cut discovered mid-story.
+- Init 10 Story 16.5 (`/admin/files/upload`) same — `admin_upload_file` already shipped. Mid-init scope correction.
+- Init 14 Story 21.1 (TB-018 hydrate pollution) — verified ALREADY CLOSED via Init 9 Story 14.2 during pre-enumeration; no work needed.
+
+The cost of an explicit grep + sprint-status read + job-shape question is ~10-15 min upfront. The cost of discovering already-shipped mid-story is multiple Codex review rounds + scope rewrite + operator surface time. Bias hard toward upfront cost.
+
 ### **Step 4: LLM-Dev-Agent Optimization Analysis**
 
 **CRITICAL STEP: Optimize story context for LLM developer agent consumption**
