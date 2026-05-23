@@ -76,6 +76,56 @@ function AnonymousDownloadButton({
  * cookie to every gallery/thumbnail load (Codex P2 round-2 finding
  * 2026-05-22). NFR10-SHARE-SECURITY-1.
  */
+// Module-level shared blob cache for /share/<token>/* fetches.
+// Keyed by URL, refcounted across AnonymousImage instances. When a thumbnail
+// strip + main carousel frame both render the same URL, only ONE fetch hits
+// the share-anon rate limit (NFR12-DDOS-RATE-1 cap = 60 req/min). Without
+// this cache, a carousel of ~60+ photos would self-429 by issuing 60+ thumb
+// fetches + duplicate main-frame fetch on mount (Codex 19.5 round-2 P2).
+const _shareBlobCache = new Map<string, { url: string; refCount: number }>();
+const _shareBlobInflight = new Map<string, Promise<string>>();
+
+function acquireShareBlob(src: string): Promise<string> {
+  const cached = _shareBlobCache.get(src);
+  if (cached !== undefined) {
+    cached.refCount += 1;
+    return Promise.resolve(cached.url);
+  }
+  const inflight = _shareBlobInflight.get(src);
+  if (inflight !== undefined) {
+    // Another component is already fetching this URL; piggy-back. The
+    // first-to-resolve sets up the cache entry; this caller increments the
+    // refCount when the cached entry materializes inside the .then below.
+    return inflight.then((url) => {
+      const entry = _shareBlobCache.get(src);
+      if (entry !== undefined) entry.refCount += 1;
+      return url;
+    });
+  }
+  const promise = fetch(src, { credentials: "omit" })
+    .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`img_${r.status}`))))
+    .then((blob) => {
+      const objUrl = URL.createObjectURL(blob);
+      _shareBlobCache.set(src, { url: objUrl, refCount: 1 });
+      return objUrl;
+    })
+    .finally(() => {
+      _shareBlobInflight.delete(src);
+    });
+  _shareBlobInflight.set(src, promise);
+  return promise;
+}
+
+function releaseShareBlob(src: string): void {
+  const entry = _shareBlobCache.get(src);
+  if (entry === undefined) return;
+  entry.refCount -= 1;
+  if (entry.refCount <= 0) {
+    URL.revokeObjectURL(entry.url);
+    _shareBlobCache.delete(src);
+  }
+}
+
 function AnonymousImage({
   src,
   alt,
@@ -87,15 +137,14 @@ function AnonymousImage({
 }) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   useEffect(() => {
+    // Codex 19.5 round-2 P2 — reset blob state on src change so the previous
+    // image doesn't keep rendering while the new one loads (or forever if
+    // the new fetch 404s / 429s). Each src starts from a clean loading state.
+    setObjectUrl(null);
     let cancelled = false;
-    let urlToRevoke: string | null = null;
-    fetch(src, { credentials: "omit" })
-      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`img_${r.status}`))))
-      .then((blob) => {
-        if (cancelled) return;
-        const url = URL.createObjectURL(blob);
-        urlToRevoke = url;
-        setObjectUrl(url);
+    acquireShareBlob(src)
+      .then((url) => {
+        if (!cancelled) setObjectUrl(url);
       })
       .catch(() => {
         // Silent fail: the empty placeholder remains visible; we don't surface
@@ -103,7 +152,7 @@ function AnonymousImage({
       });
     return () => {
       cancelled = true;
-      if (urlToRevoke !== null) URL.revokeObjectURL(urlToRevoke);
+      releaseShareBlob(src);
     };
   }, [src]);
   if (objectUrl === null) {
