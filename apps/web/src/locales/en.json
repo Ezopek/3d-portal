@@ -516,6 +516,7 @@
   "settings.share_links.revoke_failed": "Could not revoke — please try again.",
   "admin.models.new.title": "Add a model",
   "admin.models.new.description": "Create a model row manually. Add files (STL/STEP/3MF, images) on the model detail page after create.",
+  "admin.models.new.toolbar_cta": "Add model",
   "admin.models.new.field.name_en": "Name (English)",
   "admin.models.new.field.name_pl": "Name (Polish)",
   "admin.models.new.field.category": "Category",

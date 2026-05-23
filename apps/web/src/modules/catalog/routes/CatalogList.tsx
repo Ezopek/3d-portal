@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { CategoryNode, CategoryTree } from "@/lib/api-types";
+import { AddModelButton } from "@/modules/admin/AddModelButton";
 import { CategoryTreeSidebar } from "@/modules/catalog/components/CategoryTreeSidebar";
 import { FilterRibbon, type FilterRibbonState } from "@/modules/catalog/components/FilterRibbon";
 import { useCategoriesTree } from "@/modules/catalog/hooks/useCategoriesTree";
@@ -171,7 +172,18 @@ export function CatalogList() {
             </Sheet>
           </div>
         )}
-        <FilterRibbon state={filterState} tagsById={tagsById} onChange={setFilters} />
+        {/* Initiative 13 Story 20.2 — admin-only "Add Model" CTA in the
+            catalog toolbar. Operator-aligned 2026-05-23: top-right placement
+            next to filter controls. AddModelButton role-gates on isAdmin
+            (non-admin users see nothing in this slot). */}
+        <div className="flex items-start justify-between gap-3 px-3 pt-3">
+          <div className="min-w-0 flex-1">
+            <FilterRibbon state={filterState} tagsById={tagsById} onChange={setFilters} />
+          </div>
+          <div className="shrink-0 pt-1">
+            <AddModelButton />
+          </div>
+        </div>
         {items.length === 0 ? (
           <EmptyState
             messageKey="catalog.empty"

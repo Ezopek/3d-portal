@@ -516,6 +516,7 @@
   "settings.share_links.revoke_failed": "Nie udało się odwołać — spróbuj ponownie.",
   "admin.models.new.title": "Dodaj model",
   "admin.models.new.description": "Utwórz wpis modelu ręcznie. Pliki (STL/STEP/3MF, zdjęcia) dodasz na stronie szczegółów modelu po utworzeniu.",
+  "admin.models.new.toolbar_cta": "Dodaj model",
   "admin.models.new.field.name_en": "Nazwa (angielska)",
   "admin.models.new.field.name_pl": "Nazwa (polska)",
   "admin.models.new.field.category": "Kategoria",
