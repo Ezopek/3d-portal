@@ -206,13 +206,19 @@ def share_anon_ratelimit_key(request: Request) -> str | None:
 
 
 def share_anon_retry_after_seconds() -> int:
-    """60s window for /api/share/{token}/* rate limit (Initiative 12 Decision Q).
+    """Window duration (settings-driven) for /api/share/{token}/* rate limit.
 
-    Sliding-window — Retry-After is the window duration, NOT seconds-until-
-    midnight. A client that just hit the cap can retry in ~60s when the
-    oldest request falls out of the window.
+    Sliding-window — Retry-After equals the configured window duration, NOT
+    seconds-until-midnight. A client that just hit the cap can retry in
+    ~window when the oldest request falls out of it.
+
+    Reads ``settings.ratelimit_share_anon_window_seconds`` at call time so
+    operator-tuned windows (via ``RATELIMIT_SHARE_ANON_WINDOW_SECONDS`` env
+    override) propagate to the Retry-After header. Hardcoding to 60 would
+    desync Retry-After from the actual middleware window if the operator
+    tunes the cap.
     """
-    return 60
+    return get_settings().ratelimit_share_anon_window_seconds
 
 
 class RateLimitMiddleware:
