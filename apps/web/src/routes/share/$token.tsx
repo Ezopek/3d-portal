@@ -12,10 +12,12 @@
 //     (`/api/share/<token>/...`) — never the authenticated `/api/sot/...` path.
 
 import { createFileRoute } from "@tanstack/react-router";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { fetchShareView, type ShareModelView } from "@/lib/share-api";
+import { cn } from "@/lib/utils";
 
 /**
  * Anonymous STL download button — fetches the file as a credentialless blob
@@ -108,6 +110,105 @@ function AnonymousImage({
     return <div className={`${className ?? ""} animate-pulse bg-muted`} aria-label={alt} />;
   }
   return <img src={objectUrl} alt={alt} className={className} />;
+}
+
+/**
+ * Initiative 12 Story 19.5 — carousel for the anonymous share view, parity
+ * with `ModelGallery` on the authenticated catalog detail page. One image
+ * visible at a time + thumbnail strip + prev/next chevrons. Each frame goes
+ * through `AnonymousImage` so the credentialless contract (NFR10/12) holds:
+ * no same-origin cookies on /api/share/* asset fetches.
+ *
+ * Image source order:
+ *  1. `thumbnailUrl` (chosen catalog thumbnail) first — matches what the
+ *     recipient saw in the share-link preview.
+ *  2. `imageUrls` (admin-ordered gallery) — preserves admin photo-order.
+ * Duplicates of the thumbnail in imageUrls are filtered out to avoid
+ * showing the same image twice.
+ */
+function ShareCarousel({
+  thumbnailUrl,
+  imageUrls,
+  altLabel,
+}: {
+  thumbnailUrl: string | null;
+  imageUrls: readonly string[];
+  altLabel: string;
+}) {
+  const { t } = useTranslation();
+  const ordered: string[] = [];
+  if (thumbnailUrl !== null) ordered.push(thumbnailUrl);
+  for (const url of imageUrls) {
+    if (url !== thumbnailUrl) ordered.push(url);
+  }
+  const [activeIdx, setActiveIdx] = useState(0);
+
+  if (ordered.length === 0) {
+    return null;
+  }
+
+  const activeUrl = ordered[activeIdx] ?? ordered[0];
+  if (activeUrl === undefined) {
+    return null;
+  }
+  const showNav = ordered.length > 1;
+  const onPrev = () => setActiveIdx((i) => (i === 0 ? ordered.length - 1 : i - 1));
+  const onNext = () => setActiveIdx((i) => (i + 1) % ordered.length);
+
+  return (
+    <section className="space-y-2" aria-label={t("share.view.carousel_label")}>
+      <div className="relative">
+        <AnonymousImage
+          src={activeUrl}
+          alt={altLabel}
+          className="aspect-[4/3] w-full rounded border border-border object-contain bg-muted/30"
+        />
+        {showNav && (
+          <>
+            <button
+              type="button"
+              onClick={onPrev}
+              aria-label={t("share.view.carousel_prev")}
+              className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-background/80 p-1.5 text-foreground shadow ring-1 ring-border backdrop-blur hover:bg-background"
+            >
+              <ChevronLeft className="size-5" />
+            </button>
+            <button
+              type="button"
+              onClick={onNext}
+              aria-label={t("share.view.carousel_next")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-background/80 p-1.5 text-foreground shadow ring-1 ring-border backdrop-blur hover:bg-background"
+            >
+              <ChevronRight className="size-5" />
+            </button>
+          </>
+        )}
+      </div>
+      {showNav && (
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {ordered.map((url, idx) => (
+            <button
+              key={url}
+              type="button"
+              onClick={() => setActiveIdx(idx)}
+              aria-label={t("share.view.carousel_thumb_label", { index: idx + 1 })}
+              aria-current={idx === activeIdx ? "true" : undefined}
+              className={cn(
+                "size-14 shrink-0 overflow-hidden rounded border-2",
+                idx === activeIdx ? "border-primary" : "border-transparent hover:border-border",
+              )}
+            >
+              <AnonymousImage
+                src={url}
+                alt=""
+                className="size-full object-cover"
+              />
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
 
 function AnonymousShareView({ token }: { token: string }) {
@@ -207,30 +308,17 @@ function AnonymousShareView({ token }: { token: string }) {
           )}
         </section>
 
-        {(data.thumbnail_url !== null || data.images.length > 0) && (
-          <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {/* NFR10-SHARE-SECURITY-1 — AnonymousImage routes each image
-                through fetch(credentials:"omit") → blob → object-URL so the
-                browser never sends a same-origin cookie to /api/share/*.
-                crossOrigin="anonymous" alone doesn't help for same-origin
-                requests (browser still attaches credentials per fetch spec). */}
-            {data.thumbnail_url !== null && (
-              <AnonymousImage
-                src={data.thumbnail_url}
-                alt={title}
-                className="aspect-square w-full rounded border border-border object-cover"
-              />
-            )}
-            {data.images.slice(0, 5).map((url) => (
-              <AnonymousImage
-                key={url}
-                src={url}
-                alt={title}
-                className="aspect-square w-full rounded border border-border object-cover"
-              />
-            ))}
-          </section>
-        )}
+        {/* Initiative 12 Story 19.5 (FR12-SHARE-CAROUSEL-1) — carousel parity
+            with authenticated catalog detail. ShareCarousel renders one image
+            at a time with prev/next chevron navigation + thumbnail strip
+            below, mirroring ModelGallery's UX. AnonymousImage continues to
+            route every fetch through credentials:"omit" + blob (NFR10/12
+            credentialless contract). */}
+        <ShareCarousel
+          thumbnailUrl={data.thumbnail_url}
+          imageUrls={data.images}
+          altLabel={title}
+        />
 
         {data.has_3d && data.stl_url !== null && (
           <section className="rounded border border-border bg-card p-4">
