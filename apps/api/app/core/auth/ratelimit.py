@@ -164,6 +164,57 @@ def share_retry_after_seconds() -> int:
     return max(int((tomorrow - now).total_seconds()), 1)
 
 
+def share_anon_ratelimit_key(request: Request) -> str | None:
+    """Per-(token, IP) rate-limit key for anonymous /api/share/{token}/* endpoints.
+
+    Initiative 12 / Decision Q (Story 19.1, NFR12-DDOS-RATE-1). Defends the
+    public share surface against DDoS / pipe-saturation by capping requests
+    per minute per (token, IP) tuple. Operator-calibrated 2026-05-23: 60
+    requests / 60s window (1 req/sec rolling).
+
+    Returns ``None`` for any non-``/api/share/{token}/...`` request (the
+    middleware then short-circuits without touching Redis). For matching
+    requests returns ``token:{sha256_prefix_16}:ip:{client_ip}`` — the
+    token is hashed to keep secret material out of Redis keys and logs.
+
+    Key formula:
+      - URL ``/api/share/abc123/files`` + IP ``10.0.0.1`` →
+        key ``ratelimit:share_anon:token:<hash16>:ip:10.0.0.1``
+
+    Why hash the token: the share token IS the credential. Storing it
+    cleartext in Redis (which logs key patterns under DEBUG, and gets
+    snapshotted in monitoring/dumps) is a leak vector. 16-byte sha256
+    prefix gives ~2^64 keyspace — enough for collision-free bucketing.
+
+    Why not include URL path: the cap is per-share, NOT per-endpoint, so
+    a browser loading carousel images + STL viewer + file list shares the
+    same bucket. Treating each endpoint independently would let a single
+    recipient burn through the budget on photo loads alone.
+    """
+    path = request.url.path
+    if not path.startswith("/api/share/"):
+        return None
+    parts = path.split("/", 4)
+    # /api/share/<token>/... → ["", "api", "share", "<token>", "<rest>"]
+    if len(parts) < 4 or not parts[3]:
+        return None
+    token = parts[3]
+    import hashlib
+
+    token_hash = hashlib.sha256(token.encode()).hexdigest()[:16]
+    return f"token:{token_hash}:ip:{_client_ip(request)}"
+
+
+def share_anon_retry_after_seconds() -> int:
+    """60s window for /api/share/{token}/* rate limit (Initiative 12 Decision Q).
+
+    Sliding-window — Retry-After is the window duration, NOT seconds-until-
+    midnight. A client that just hit the cap can retry in ~60s when the
+    oldest request falls out of the window.
+    """
+    return 60
+
+
 class RateLimitMiddleware:
     """Sliding-window rate-limit middleware (one Redis pipeline per request)."""
 

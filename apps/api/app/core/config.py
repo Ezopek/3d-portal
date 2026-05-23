@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     ratelimit_share_window_seconds: int = 86400
     ratelimit_share_threshold: int = 20
     ratelimit_share_soft_alert_threshold: int = 10
+    # Rate-limiting (Story 19.1, Decision Q — anonymous share view DDoS cap)
+    # Operator-calibrated 2026-05-23 via Init 12 AskUserQuestion.
+    ratelimit_share_anon_window_seconds: int = 60
+    ratelimit_share_anon_threshold: int = 60  # 1 req/sec rolling per (token, IP)
+    ratelimit_share_anon_soft_alert_threshold: int = 30
     # Story 8.5: admin-issued password-reset link TTL bounds.
     password_reset_ttl_seconds: int = Field(default=3600, ge=60, le=86400)
 

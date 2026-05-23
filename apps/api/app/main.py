@@ -11,6 +11,8 @@ from app.core.auth.ratelimit import (
     login_ratelimit_key,
     refresh_ratelimit_key,
     register_ratelimit_key,
+    share_anon_ratelimit_key,
+    share_anon_retry_after_seconds,
     share_ratelimit_key,
     share_retry_after_seconds,
 )
@@ -154,6 +156,18 @@ def create_app() -> FastAPI:
         threshold=settings.ratelimit_share_threshold,
         soft_alert_threshold=settings.ratelimit_share_soft_alert_threshold,
         retry_after_seconds_fn=share_retry_after_seconds,
+    )
+    # Initiative 12 Story 19.1 (Decision Q) — anonymous /api/share/{token}/*
+    # DDoS cap. Operator-calibrated 2026-05-23: 60 req/min per (token, IP).
+    # Keyed via share_anon_ratelimit_key (hashes token, includes client IP).
+    app.add_middleware(
+        RateLimitMiddleware,
+        scope="share_anon",
+        key_fn=share_anon_ratelimit_key,
+        window_seconds=settings.ratelimit_share_anon_window_seconds,
+        threshold=settings.ratelimit_share_anon_threshold,
+        soft_alert_threshold=settings.ratelimit_share_anon_soft_alert_threshold,
+        retry_after_seconds_fn=share_anon_retry_after_seconds,
     )
     install_csrf_middleware(app)
     # Story 8.1 (Decision I): added AFTER CSRF + rate-limit trio per AC-3
