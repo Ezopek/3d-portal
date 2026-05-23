@@ -121,3 +121,55 @@ def isolated_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     finally:
         get_settings.cache_clear()
         get_engine.cache_clear()
+
+
+def make_anonymous_client(c):
+    """Strip cookies + auth headers from a TestClient, return it for share-anon use.
+
+    Initiative 14 Story 21.2 (TB-023). Builds the credentialless contract
+    helper on top of whatever per-file ``client`` fixture the test uses
+    (test_share_public, test_share_admin, etc. each carry their own seeded
+    fixture chain). Returns the SAME TestClient instance — call sites
+    should treat it as "this client is now credentialless" and snapshot
+    cookies BEFORE calling this helper if they need them later.
+
+    Why a helper not a fixture: anonymous_client as a separate pytest
+    fixture would create a fresh isolated_client (new DB, new fixture
+    chain) — so a token minted via the per-file client wouldn't resolve
+    against the anonymous client's DB. Sharing the same TestClient via a
+    helper sidesteps that.
+
+    Usage:
+        c_anon = make_anonymous_client(c)
+        r = c_anon.get(f"/api/share/{token}")
+        assert_no_set_cookie_in_response(r)
+
+    The function mutates the passed client (clears cookies + non-portal
+    headers); subsequent calls via the same client are also credentialless
+    unless the caller re-sets cookies.
+    """
+    c.cookies.clear()
+    portal_client = c.headers.get("x-portal-client")
+    # Remove every header then restore X-Portal-Client (request shape, not
+    # a credential — CSRF middleware needs it on mutating requests).
+    c.headers.clear()
+    if portal_client is not None:
+        c.headers["X-Portal-Client"] = portal_client
+    return c
+
+
+def assert_no_set_cookie_in_response(response) -> None:
+    """Assertion helper: response MUST NOT carry a Set-Cookie header.
+
+    Initiative 14 Story 21.2. Use after exercising any /api/share/<token>/*
+    endpoint with the make_anonymous_client helper to lock the credentialless
+    contract maszynowo. Failure here means the endpoint somehow attaches a
+    cookie to the response — which would leak auth state to anonymous
+    recipients (logged-in user opening a share link in the same tab would
+    see their portal_access refresh / land in the share recipient's
+    session, etc.).
+    """
+    cookie_keys = {k.lower() for k in response.headers}
+    assert "set-cookie" not in cookie_keys, (
+        f"share-anon response carried Set-Cookie: {response.headers!r}"
+    )

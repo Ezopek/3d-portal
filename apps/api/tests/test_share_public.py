@@ -290,3 +290,65 @@ def test_share_files_list_returns_no_set_cookie_header(client):
     r = c.get(f"/api/share/{created['token']}/files")
     assert r.status_code == 200
     assert "set-cookie" not in {k.lower() for k in r.headers}
+
+
+# ---------------------------------------------------------------------------
+# Initiative 14 Story 21.2 (TB-023) — credentialless contract maszynowo
+# ---------------------------------------------------------------------------
+
+
+def test_share_resolve_credentialless_contract(client):
+    """Resolve endpoint MUST work without auth + emit no Set-Cookie.
+
+    Uses make_anonymous_client helper (Story 21.2) to strip cookies + auth
+    headers from the existing client BEFORE exercising the share endpoint.
+    Locks the credentialless contract maszynowo for the bound endpoint.
+    """
+    from tests.conftest import assert_no_set_cookie_in_response, make_anonymous_client
+
+    c, token, ids = client
+    c.cookies.set("portal_access", token)
+    created = c.post(
+        "/api/admin/share",
+        json={"model_id": str(ids["full"]), "expires_in_hours": 1},
+    ).json()
+    share_token = created["token"]
+
+    # Strip cookies / auth headers — share view fetched as truly anonymous.
+    c_anon = make_anonymous_client(c)
+    assert len(c_anon.cookies) == 0
+    r = c_anon.get(f"/api/share/{share_token}")
+    assert r.status_code == 200, r.text
+    assert_no_set_cookie_in_response(r)
+
+
+def test_share_file_list_credentialless_contract(client):
+    """File-list endpoint (Story 19.4) MUST work without auth + no Set-Cookie."""
+    from tests.conftest import assert_no_set_cookie_in_response, make_anonymous_client
+
+    c, token, ids = client
+    c.cookies.set("portal_access", token)
+    created = c.post(
+        "/api/admin/share",
+        json={"model_id": str(ids["full"]), "expires_in_hours": 1},
+    ).json()
+    share_token = created["token"]
+
+    c_anon = make_anonymous_client(c)
+    r = c_anon.get(f"/api/share/{share_token}/files")
+    assert r.status_code == 200
+    assert_no_set_cookie_in_response(r)
+    body = r.json()
+    assert "items" in body
+    assert body["total"] >= 1
+
+
+def test_share_invalid_token_credentialless_contract(client):
+    """Even on 404 the share-resolve endpoint MUST NOT leak Set-Cookie."""
+    from tests.conftest import assert_no_set_cookie_in_response, make_anonymous_client
+
+    c, _token, _ids = client
+    c_anon = make_anonymous_client(c)
+    r = c_anon.get("/api/share/clearly-not-a-valid-token")
+    assert r.status_code == 404
+    assert_no_set_cookie_in_response(r)
