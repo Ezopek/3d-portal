@@ -20,6 +20,7 @@ class ModelSource(StrEnum):
     makerworld = "makerworld"
     cults3d = "cults3d"
     thingiverse = "thingiverse"
+    crealitycloud = "crealitycloud"
     own = "own"
     other = "other"
 
@@ -45,6 +46,7 @@ class ExternalSource(StrEnum):
     makerworld = "makerworld"
     cults3d = "cults3d"
     thingiverse = "thingiverse"
+    crealitycloud = "crealitycloud"
     other = "other"
 
 

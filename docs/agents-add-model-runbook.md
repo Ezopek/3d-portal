@@ -152,10 +152,10 @@ For the five browser-only sources: the `agent-browser` CLI navigates to the mode
 | `thingiverse.com`   | `thingiverse`              | `thingiverse`                     |
 | `makerworld.com`    | `makerworld`               | `makerworld`                      |
 | `cults3d.com`       | `cults3d`                  | `cults3d`                         |
-| `crealitycloud.com` | `other`                    | `other`                           |
+| `crealitycloud.com` | `crealitycloud`            | `crealitycloud`                   |
 | (no source URL)     | `own` or `unknown`         | n/a (skip external-link step)     |
 
-`ModelSource` has `unknown` (default) + `own` for in-house designs; `ExternalSource` has neither (a link must point at a real source). For `crealitycloud.com` the runbook intentionally maps to `other` until/unless a `crealitycloud` enum value is added on both sides — see `_bmad-output/triage-backlog.md` if you think the enum should be extended.
+`ModelSource` has `unknown` (default) + `own` for in-house designs; `ExternalSource` has neither (a link must point at a real source). The `crealitycloud` enum value was added 2026-05-23 (Story 18.3, TB-014) — previously the runbook mapped `crealitycloud.com → other / other` as a workaround.
 
 Always fetch the canonical enum values from OpenAPI before sending (see § "Endpoint Discovery via OpenAPI → Enums") — the source of truth is the API, not this table.
 
