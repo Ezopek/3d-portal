@@ -11,6 +11,7 @@ import uuid
 from sqlmodel import Session, select
 
 from app.core.auth.jwt import encode_token
+from app.core.config import get_settings
 from app.core.db.models import (
     AuditLog,
     Category,
@@ -26,19 +27,39 @@ from app.core.db.session import get_engine
 # Helpers
 # ---------------------------------------------------------------------------
 
-JWT_SECRET = "test-secret-not-real"
+# Use the currently-effective settings.jwt_secret rather than a hardcoded
+# constant. Other tests in the suite (e.g. test_csrf_middleware.py with
+# JWT_SECRET="s") call monkeypatch.setenv("JWT_SECRET", ...) without
+# clearing get_settings()'s LRU cache, so a hardcoded constant here can
+# disagree with whichever secret the middleware actually decodes against
+# in full-suite context (Story 18.4 Codex round-2 P2).
 
 
 def _admin_token(user_id: uuid.UUID) -> str:
-    return encode_token(subject=str(user_id), role="admin", secret=JWT_SECRET, ttl_minutes=30)
+    return encode_token(
+        subject=str(user_id),
+        role="admin",
+        secret=get_settings().jwt_secret,
+        ttl_minutes=30,
+    )
 
 
 def _agent_token(user_id: uuid.UUID) -> str:
-    return encode_token(subject=str(user_id), role="agent", secret=JWT_SECRET, ttl_minutes=30)
+    return encode_token(
+        subject=str(user_id),
+        role="agent",
+        secret=get_settings().jwt_secret,
+        ttl_minutes=30,
+    )
 
 
 def _member_token(user_id: uuid.UUID) -> str:
-    return encode_token(subject=str(user_id), role="member", secret=JWT_SECRET, ttl_minutes=30)
+    return encode_token(
+        subject=str(user_id),
+        role="member",
+        secret=get_settings().jwt_secret,
+        ttl_minutes=30,
+    )
 
 
 def _seed_admin(session: Session) -> uuid.UUID:
