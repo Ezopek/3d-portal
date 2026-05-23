@@ -16,9 +16,11 @@ function urlFor(fileId: string) {
   return `/api/models/${MODEL_ID}/files/${fileId}/content`;
 }
 
-// Story 13.2 — catalog carousel paints the WebP thumbnail variant; full-res
-// remains the 2x candidate via srcSet (and the endpoint silently falls back
-// to original when the variant file is missing).
+// Story 13.2 — catalog carousel paints the WebP thumbnail variant.
+// Story 20.1 (TB-027) — full-res 2x srcSet candidate removed; retina users
+// were picking it and burning bandwidth on full-resolution downloads
+// instead of the WebP thumbnail. Cards render at thumb resolution
+// everywhere now.
 function thumbUrlFor(fileId: string) {
   return `${urlFor(fileId)}?variant=thumb`;
 }
@@ -31,9 +33,7 @@ describe("CardCarousel", () => {
     const img = document.querySelector("img") as HTMLImageElement;
     expect(img).toBeTruthy();
     expect(img.getAttribute("src")).toBe(thumbUrlFor(IDS[0]!));
-    expect(img.getAttribute("srcset")).toBe(
-      `${thumbUrlFor(IDS[0]!)} 1x, ${urlFor(IDS[0]!)} 2x`,
-    );
+    expect(img.getAttribute("srcset")).toBe(null);
     expect(img.getAttribute("alt")).toBe("Dragon");
   });
 

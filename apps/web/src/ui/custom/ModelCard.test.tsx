@@ -94,12 +94,14 @@ describe("ModelCard (SoT)", () => {
     );
     await screen.findAllByText(/Dragon|Smok/);
     const img = document.querySelector("img") as HTMLImageElement;
-    // Story 13.2 — single-image card requests the WebP variant by default
-    // and exposes the full-res original as the 2x srcSet candidate.
+    // Story 13.2 — single-image card requests the WebP variant by default.
+    // Story 20.1 (TB-027) dropped the 2x srcSet candidate that pointed at
+    // the full-res original — retina users were burning bandwidth on full
+    // resolution instead of using the WebP thumbnail.
     const fullUrl =
       "/api/models/11111111-1111-1111-1111-111111111111/files/44444444-4444-4444-4444-444444444444/content";
     expect(img.getAttribute("src")).toBe(`${fullUrl}?variant=thumb`);
-    expect(img.getAttribute("srcset")).toBe(`${fullUrl}?variant=thumb 1x, ${fullUrl} 2x`);
+    expect(img.getAttribute("srcset")).toBe(null);
   });
 
   it("renders CardCarousel when image_count >= 2 and gallery_file_ids has 2+ entries", async () => {
@@ -122,11 +124,12 @@ describe("ModelCard (SoT)", () => {
     expect(dotsContainer.querySelectorAll("button")).toHaveLength(3);
     // First image is the first gallery file id, not the thumbnail_file_id.
     const img = document.querySelector("img") as HTMLImageElement;
-    // Story 13.2 — CardCarousel requests the WebP variant; full-res as 2x.
+    // Story 13.2 — CardCarousel requests the WebP variant.
+    // Story 20.1 (TB-027) — no 2x srcSet candidate; thumb everywhere.
     const fullUrl =
       "/api/models/11111111-1111-1111-1111-111111111111/files/66666666-6666-6666-6666-666666666666/content";
     expect(img.getAttribute("src")).toBe(`${fullUrl}?variant=thumb`);
-    expect(img.getAttribute("srcset")).toBe(`${fullUrl}?variant=thumb 1x, ${fullUrl} 2x`);
+    expect(img.getAttribute("srcset")).toBe(null);
   });
 
   it("does not render CardCarousel when image_count < 2", async () => {

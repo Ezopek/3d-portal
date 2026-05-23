@@ -63,9 +63,6 @@ export function ModelCard({ model }: { model: ModelSummary }) {
               >
                 <img
                   src={thumbUrl}
-                  srcSet={
-                    fullUrl !== null ? `${thumbUrl} 1x, ${fullUrl} 2x` : undefined
-                  }
                   alt={primary}
                   className="h-full w-full object-cover"
                   loading="lazy"

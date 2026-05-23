@@ -151,7 +151,6 @@ export function CardCarousel({ modelId, fileIds, alt }: Props) {
       >
         <img
           src={thumbUrlFor(modelId, displayedId)}
-          srcSet={`${thumbUrlFor(modelId, displayedId)} 1x, ${urlFor(modelId, displayedId)} 2x`}
           alt={alt}
           loading="lazy"
           decoding="async"
