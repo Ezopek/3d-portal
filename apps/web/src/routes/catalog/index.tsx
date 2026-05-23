@@ -12,6 +12,7 @@ const SOURCES: readonly ModelSource[] = [
   "makerworld",
   "cults3d",
   "thingiverse",
+  "crealitycloud",
   "own",
   "other",
 ];

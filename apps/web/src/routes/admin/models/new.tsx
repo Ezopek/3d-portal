@@ -26,6 +26,7 @@ const SOURCES = [
   "thangs",
   "makerworld",
   "cults3d",
+  "crealitycloud",
   "other",
 ] as const;
 

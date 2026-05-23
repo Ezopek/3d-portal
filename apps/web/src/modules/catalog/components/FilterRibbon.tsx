@@ -24,6 +24,7 @@ const SOURCE_VALUES: ModelSource[] = [
   "makerworld",
   "cults3d",
   "thingiverse",
+  "crealitycloud",
   "own",
   "other",
 ];

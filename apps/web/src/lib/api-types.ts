@@ -97,6 +97,7 @@ export type ExternalSource =
   | "makerworld"
   | "cults3d"
   | "thingiverse"
+  | "crealitycloud"
   | "other";
 
 export interface ExternalLinkRead {
@@ -145,6 +146,7 @@ export type ModelSource =
   | "makerworld"
   | "cults3d"
   | "thingiverse"
+  | "crealitycloud"
   | "own"
   | "other";
 

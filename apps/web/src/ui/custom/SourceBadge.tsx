@@ -8,6 +8,7 @@ const LABEL: Record<ModelSource, string> = {
   thingiverse: "Thingi",
   makerworld: "MakerW",
   cults3d: "Cults3D",
+  crealitycloud: "Creality",
   own: "Own",
   other: "Other",
   unknown: "",
