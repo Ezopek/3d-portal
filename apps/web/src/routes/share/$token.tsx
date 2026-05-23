@@ -13,12 +13,16 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { fetchShareView, type ShareModelView } from "@/lib/share-api";
 import { cn } from "@/lib/utils";
-import Viewer3DInline from "@/modules/catalog/components/viewer3d/Viewer3DInline";
+// Use the lazy export from the viewer3d barrel so the Three.js stack stays
+// code-split out of the initial app bundle. Importing the default export
+// directly would defeat the dynamic import the barrel sets up and pull
+// Three into every route's initial bundle (Codex Story 19.7 P2).
+import { Viewer3DInline } from "@/modules/catalog/components/viewer3d";
 import type { StlFile } from "@/modules/catalog/components/viewer3d/types";
 
 /**
@@ -280,7 +284,12 @@ function shareStlFile(data: ShareModelView, title: string): StlFile {
     id: "share-stl",
     modelId: data.id,
     name: `${title}.stl`,
-    size: 0,
+    // size from ShareModelView.stl_size_bytes when present so the large-STL
+    // confirm gate in Viewer3DInline (needsConfirmForSize) still fires for
+    // anonymous recipients on shares >50 MB. Falls back to 0 only when the
+    // backend returns null (unknown size) — in which case the gate skips
+    // and the viewer loads the STL eagerly. Story 19.7 round-2 P2 fix.
+    size: data.stl_size_bytes ?? 0,
     srcOverride: cleanedSrc,
   };
 }
@@ -407,8 +416,19 @@ function AnonymousShareView({ token }: { token: string }) {
                 appended for the download anchor below; strip it for the
                 viewer fetch so the server returns inline content-disposition.
                 onExpand omitted — no modal host on share view (would need
-                operator-aligned scope to add). */}
-            <Viewer3DInline file={shareStlFile(data, title)} />
+                operator-aligned scope to add).
+
+                Viewer3DInline is lazy() — wrap in Suspense to defer the
+                Three.js chunk until the viewer actually mounts. */}
+            <Suspense
+              fallback={
+                <div className="grid aspect-square w-full place-items-center rounded border border-border bg-muted/30 text-xs text-muted-foreground md:aspect-auto md:min-h-[280px]">
+                  {t("share.view.stl_viewer_loading")}
+                </div>
+              }
+            >
+              <Viewer3DInline file={shareStlFile(data, title)} />
+            </Suspense>
             <p className="text-sm text-muted-foreground">
               {t("share.view.stl_description")}
             </p>

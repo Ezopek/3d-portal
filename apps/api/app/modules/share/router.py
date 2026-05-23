@@ -138,14 +138,15 @@ async def resolve_share(
         thumbnail_url = images[0]
 
     stl_row = session.exec(
-        select(ModelFile.id)
+        select(ModelFile.id, ModelFile.size_bytes)
         .where(ModelFile.model_id == model.id)
         .where(ModelFile.kind == ModelFileKind.stl)
         .order_by(ModelFile.created_at.asc())
     ).first()
     stl_url = (
-        f"/api/share/{token}/files/{stl_row}/content?download=1" if stl_row is not None else None
+        f"/api/share/{token}/files/{stl_row[0]}/content?download=1" if stl_row is not None else None
     )
+    stl_size_bytes = stl_row[1] if stl_row is not None else None
 
     # Initiative 10 Story 16.3 — anonymous viewer surfaces the description.
     # Pull from ModelNote with kind=description; prefer the bilingual fields
@@ -177,6 +178,7 @@ async def resolve_share(
         notes_en=notes_en,
         notes_pl=notes_pl,
         stl_url=stl_url,
+        stl_size_bytes=stl_size_bytes,
     )
 
 

@@ -38,6 +38,14 @@ export interface ShareModelView {
   notes_en: string;
   notes_pl: string;
   stl_url: string | null;
+  /**
+   * Initiative 12 Story 19.7 round-2 (Codex P2 fix) — size in bytes of the
+   * STL surfaced via stl_url, used client-side by the embedded
+   * Viewer3DInline to gate the large-STL confirm dialog (>50 MB triggers
+   * the gate per perf module). null when no STL exists or when the backend
+   * can't determine the size — the gate then skips.
+   */
+  stl_size_bytes: number | null;
 }
 
 export type ShareTtlPreset = 1 | 3 | 7;

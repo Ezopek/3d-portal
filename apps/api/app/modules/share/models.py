@@ -44,6 +44,11 @@ class ShareModelView(BaseModel):
     notes_en: str
     notes_pl: str
     stl_url: str | None = None
+    # Initiative 12 Story 19.7 round-2 (Codex P2) — byte size of the STL
+    # surfaced via stl_url. Anonymous viewer uses it to fire the >50 MB
+    # large-mesh confirm dialog before parsing. None when no STL exists or
+    # when the backend can't determine the size — the gate then skips.
+    stl_size_bytes: int | None = None
 
 
 # Initiative 12 Story 19.4 (Decision T) — anonymous share file list endpoint.
