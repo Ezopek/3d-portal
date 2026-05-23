@@ -56,6 +56,7 @@ def test_model_file_kind_enum_values():
         "print",
         "source",
         "archive_3mf",
+        "stl_preview",
     }
 
 

@@ -35,8 +35,15 @@ router = APIRouter(prefix="/api/share", tags=["share"])
 # (image + print for thumbnails / image gallery; stl for download/viewer).
 # `source` + `archive_3mf` are NEVER surfaced via share path (codex peer-grill
 # 2026-05-20 finding: raw scope-check would over-grant same-model files).
+# Initiative 12 Story 19.6 (Decision S) added `stl_preview` — auto-generated
+# iso/front/side/top renders rendered lazily on share access.
 _SHARE_ALLOWED_KINDS: frozenset[ModelFileKind] = frozenset(
-    {ModelFileKind.image, ModelFileKind.print, ModelFileKind.stl}
+    {
+        ModelFileKind.image,
+        ModelFileKind.print,
+        ModelFileKind.stl,
+        ModelFileKind.stl_preview,
+    }
 )
 
 
@@ -170,6 +177,41 @@ async def list_share_files(
     ).first()
     if model is None:
         raise HTTPException(404, "Share token not found or expired")
+
+    # Initiative 12 Story 19.6 (Decision S) — lazy STL preview render dispatch.
+    # If the model has STL files but no stl_preview rows yet, enqueue the
+    # render worker. Idempotency is enforced inside the worker (checks
+    # existing stl_preview rows before render). Dispatch failure is logged
+    # but does NOT fail the share view — the file list still returns whatever
+    # files exist now; previews surface on the next view once the worker
+    # completes.
+    stl_for_preview = session.exec(
+        select(ModelFile.id)
+        .where(
+            ModelFile.model_id == record.model_id,
+            ModelFile.kind == ModelFileKind.stl,
+        )
+        .order_by(ModelFile.created_at.asc())
+    ).first()
+    if stl_for_preview is not None:
+        has_preview = session.exec(
+            select(ModelFile.id).where(
+                ModelFile.model_id == record.model_id,
+                ModelFile.kind == ModelFileKind.stl_preview,
+            )
+        ).first()
+        if has_preview is None:
+            try:
+                await request.app.state.arq.enqueue_job(
+                    "render_stl_previews", str(stl_for_preview)
+                )
+            except Exception:
+                # Fire-and-forget — never block the share view on enqueue.
+                import logging
+
+                logging.getLogger("app.share").warning(
+                    "stl_preview enqueue failed", exc_info=True
+                )
 
     offset = (page - 1) * page_size
     base_filter = (

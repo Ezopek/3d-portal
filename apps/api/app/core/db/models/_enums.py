@@ -38,6 +38,12 @@ class ModelFileKind(StrEnum):
     print = "print"
     source = "source"
     archive_3mf = "archive_3mf"
+    # Initiative 12 Story 19.6 (Decision S) — auto-generated STL preview
+    # renders (iso/front/side/top) for the anonymous share view. Distinct
+    # from `image` (admin-curated photos + Story 11.1 admin auto-render
+    # `<view>-render.png` rows) so the share view can surface previews
+    # without conflating with admin gallery semantics.
+    stl_preview = "stl_preview"
 
 
 class ExternalSource(StrEnum):
