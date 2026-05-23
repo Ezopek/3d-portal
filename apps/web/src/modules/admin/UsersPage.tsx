@@ -356,7 +356,7 @@ export function UsersPage() {
           {t("admin.users.error_loading")}
         </p>
       ) : (
-        <div className="rounded border border-border">
+        <div className="rounded border border-border overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
