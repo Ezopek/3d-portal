@@ -1,3 +1,4 @@
+import contextlib
 import hashlib
 import uuid
 from typing import Annotated
@@ -70,32 +71,64 @@ async def resolve_share(
     # file-list endpoint is consumed in a follow-up FE story. Worker
     # idempotency guards (require complete 4-view set) absorb repeat
     # dispatches.
-    stl_for_preview = session.exec(
-        select(ModelFile.id)
+    #
+    # Story 23.2 (TB-034 / Decision X.2) — fetch the primary STL's sha256
+    # alongside its id so we can scope both the dispatch-side idempotency
+    # count AND the share-list query to the CURRENT geometry (filter by
+    # ``original_name LIKE "%-<sha8>.png"``). Without source-tracking,
+    # post-STL-replace would either skip render (orphan rows count toward
+    # the 4-view gate) or surface stale previews to share recipients.
+    stl_for_preview_row = session.exec(
+        select(ModelFile.id, ModelFile.sha256)
         .where(
             ModelFile.model_id == record.model_id,
             ModelFile.kind == ModelFileKind.stl,
         )
         .order_by(ModelFile.created_at.asc())
     ).first()
-    if stl_for_preview is not None:
+    stl_for_preview: uuid.UUID | None = None
+    stl_sha8: str | None = None
+    if stl_for_preview_row is not None:
+        stl_for_preview, stl_sha256 = stl_for_preview_row
+        stl_sha8 = stl_sha256[:8] if stl_sha256 else None
+    if stl_for_preview is not None and stl_sha8 is not None:
         existing_preview_count = session.exec(
-            select(func.count()).select_from(ModelFile).where(
+            select(func.count())
+            .select_from(ModelFile)
+            .where(
                 ModelFile.model_id == record.model_id,
                 ModelFile.kind == ModelFileKind.stl_preview,
+                ModelFile.original_name.like(f"%-{stl_sha8}.png"),
             )
         ).one()
         if existing_preview_count < 4:
-            try:
-                await request.app.state.arq.enqueue_job(
-                    "render_stl_previews", str(stl_for_preview)
-                )
-            except Exception:
-                import logging
+            # Story 23.2 (TB-034 P2#2) — single-flight Redis SETNX lock
+            # prevents concurrent share-view requests from enqueueing
+            # duplicate render jobs for the same STL. Lock TTL 300s covers
+            # worst-case render wall time + safety margin; worker releases
+            # the lock in its ``finally`` block on done/skipped/failed
+            # paths. The lock is dispatch-coordination only — visible
+            # run-state stays in ``render:stl_preview:<model_file_id>``.
+            redis_client = request.app.state.redis.get()
+            lock_key = f"share:stl_preview_lock:{stl_for_preview}"
+            acquired = await redis_client.set(lock_key, b"1", nx=True, ex=300)
+            if acquired:
+                try:
+                    await request.app.state.arq.enqueue_job(
+                        "render_stl_previews", str(stl_for_preview)
+                    )
+                except Exception:
+                    # If enqueue fails AFTER lock acquired, release it
+                    # immediately so the next request can retry without
+                    # waiting the full 300s TTL.
+                    with contextlib.suppress(Exception):
+                        await redis_client.delete(lock_key)
+                    import logging
 
-                logging.getLogger("app.share").warning(
-                    "stl_preview enqueue failed in resolve_share", exc_info=True
-                )
+                    logging.getLogger("app.share").warning(
+                        "stl_preview enqueue failed in resolve_share", exc_info=True
+                    )
+            # else: another dispatch is in flight for this STL; skip silently.
 
     category = session.exec(select(Category).where(Category.id == model.category_id)).one()
 
@@ -118,12 +151,23 @@ async def resolve_share(
     # kind=stl_preview, position 0-3, generated lazily by the render-worker
     # task dispatched above. Appended AFTER admin images so admin curation
     # comes first in the carousel.
-    preview_files = session.exec(
-        select(ModelFile.id)
-        .where(ModelFile.model_id == model.id)
-        .where(ModelFile.kind == ModelFileKind.stl_preview)
-        .order_by(ModelFile.position.asc(), ModelFile.created_at.asc())
-    ).all()
+    #
+    # Story 23.2 (TB-034 P2#1 / Decision X.2) — filter to the CURRENT
+    # STL's previews by sha8 suffix on ``original_name``. Stale orphan
+    # previews (from a prior STL geometry, or pre-Story-23.2 legacy rows
+    # named ``iso.png`` without sha8 stamping) do NOT surface in the
+    # share carousel. If the model has no primary STL, ``stl_sha8`` is
+    # None and ``preview_files`` is empty.
+    if stl_sha8 is not None:
+        preview_files = session.exec(
+            select(ModelFile.id)
+            .where(ModelFile.model_id == model.id)
+            .where(ModelFile.kind == ModelFileKind.stl_preview)
+            .where(ModelFile.original_name.like(f"%-{stl_sha8}.png"))
+            .order_by(ModelFile.position.asc(), ModelFile.created_at.asc())
+        ).all()
+    else:
+        preview_files = []
     # Initiative 6 Decision N — emit share-scoped URLs (`/api/share/{token}/...`)
     # instead of legacy `/api/models/{id}/...` URLs. The legacy SoT content
     # endpoint is post-Story-11.1 `current_user`-gated; anonymous share
@@ -235,9 +279,7 @@ async def list_share_files(
         ModelFile.model_id == record.model_id,
         ModelFile.kind.in_(_SHARE_ALLOWED_KINDS),
     )
-    total = session.exec(
-        select(func.count()).select_from(ModelFile).where(*base_filter)
-    ).one()
+    total = session.exec(select(func.count()).select_from(ModelFile).where(*base_filter)).one()
 
     items_rows = session.exec(
         select(ModelFile)

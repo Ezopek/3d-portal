@@ -240,10 +240,20 @@ async def render_stl_previews(
             # committed before crash) AND post-STL-replace re-uploads must
             # retry rather than treat any single existing row as "done".
             # Codex Story 19.6 round-2 P2 fix.
+            #
+            # Story 23.2 (TB-034 P2#1) — source-tracking by STL sha8 suffix
+            # in ``original_name``. Counts ONLY previews from the CURRENT
+            # STL geometry; orphan previews from a prior STL (delete +
+            # reupload, or upload-new + curation swap) do NOT count toward
+            # the 4-view completion gate, so the new STL renders fresh.
+            stl_sha8 = stl_row.sha256[:8]
             existing_count = session.exec(
-                select(func.count()).select_from(ModelFile).where(
+                select(func.count())
+                .select_from(ModelFile)
+                .where(
                     ModelFile.model_id == stl_row.model_id,
                     ModelFile.kind == ModelFileKind.stl_preview,
+                    ModelFile.original_name.like(f"%-{stl_sha8}.png"),
                 )
             ).one()
             if existing_count >= len(VIEW_NAMES):
@@ -276,7 +286,11 @@ async def render_stl_previews(
                         id=new_uuid,
                         model_id=model_id,
                         kind=ModelFileKind.stl_preview,
-                        original_name=f"{view}.png",
+                        # Story 23.2 — sha8 suffix stamps the source-STL
+                        # geometry into the row, paired with the LIKE filter
+                        # in the idempotency query above and in the share
+                        # router dispatch + list queries.
+                        original_name=f"{view}-{stl_sha8}.png",
                         storage_path=storage_rel,
                         sha256=sha256,
                         size_bytes=size_bytes,
@@ -309,6 +323,18 @@ async def render_stl_previews(
         await redis.set(status_key, b"failed", ex=_STATUS_TTL_SECONDS)
         logger.exception("render_stl_previews failed")
         return {"status": "failed", "reason": str(exc)}
+    finally:
+        # Story 23.2 (TB-034 P2#2) — release the dispatch single-flight
+        # lock acquired by the share router. The lock is a dispatch-side
+        # coordination primitive distinct from ``status_key`` (which is
+        # the visible run-state marker for observability). Released on
+        # done / skipped / failed paths; if release fails the 300s TTL
+        # is the safety net so the next share-view hit can re-dispatch
+        # without waiting indefinitely.
+        try:
+            await redis.delete(f"share:stl_preview_lock:{model_file_id}")
+        except Exception:
+            logger.warning("stl_preview lock release failed", exc_info=True)
 
 
 def _sha256_of(path: Path) -> tuple[str, int]:
