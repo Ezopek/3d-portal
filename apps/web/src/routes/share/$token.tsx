@@ -18,6 +18,12 @@ import { useTranslation } from "react-i18next";
 
 import { fetchShareView, type ShareModelView } from "@/lib/share-api";
 import { cn } from "@/lib/utils";
+
+import {
+  acquireShareBlob,
+  clearShareBlobCache,
+  releaseShareBlob,
+} from "./shareBlobCache";
 // Use the lazy export from the viewer3d barrel so the Three.js stack stays
 // code-split out of the initial app bundle. Importing the default export
 // directly would defeat the dynamic import the barrel sets up and pull
@@ -82,56 +88,11 @@ function AnonymousDownloadButton({
  * cookie to every gallery/thumbnail load (Codex P2 round-2 finding
  * 2026-05-22). NFR10-SHARE-SECURITY-1.
  */
-// Module-level shared blob cache for /share/<token>/* fetches.
-// Keyed by URL, refcounted across AnonymousImage instances. When a thumbnail
-// strip + main carousel frame both render the same URL, only ONE fetch hits
-// the share-anon rate limit (NFR12-DDOS-RATE-1 cap = 60 req/min). Without
-// this cache, a carousel of ~60+ photos would self-429 by issuing 60+ thumb
-// fetches + duplicate main-frame fetch on mount (Codex 19.5 round-2 P2).
-const _shareBlobCache = new Map<string, { url: string; refCount: number }>();
-const _shareBlobInflight = new Map<string, Promise<string>>();
-
-function acquireShareBlob(src: string): Promise<string> {
-  const cached = _shareBlobCache.get(src);
-  if (cached !== undefined) {
-    cached.refCount += 1;
-    return Promise.resolve(cached.url);
-  }
-  const inflight = _shareBlobInflight.get(src);
-  if (inflight !== undefined) {
-    // Another component is already fetching this URL; piggy-back. The
-    // first-to-resolve sets up the cache entry; this caller increments the
-    // refCount when the cached entry materializes inside the .then below.
-    return inflight.then((url) => {
-      const entry = _shareBlobCache.get(src);
-      if (entry !== undefined) entry.refCount += 1;
-      return url;
-    });
-  }
-  const promise = fetch(src, { credentials: "omit" })
-    .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`img_${r.status}`))))
-    .then((blob) => {
-      const objUrl = URL.createObjectURL(blob);
-      _shareBlobCache.set(src, { url: objUrl, refCount: 1 });
-      return objUrl;
-    })
-    .finally(() => {
-      _shareBlobInflight.delete(src);
-    });
-  _shareBlobInflight.set(src, promise);
-  return promise;
-}
-
-function releaseShareBlob(src: string): void {
-  const entry = _shareBlobCache.get(src);
-  if (entry === undefined) return;
-  entry.refCount -= 1;
-  if (entry.refCount <= 0) {
-    URL.revokeObjectURL(entry.url);
-    _shareBlobCache.delete(src);
-  }
-}
-
+// Blob-cache helpers live in the sibling `shareBlobCache.ts` module so this
+// route file can stay focused on JSX/components (and not trip
+// react-refresh/only-export-components). See that module's header comment
+// for the full design rationale (NFR12 rate-limit reason the cache exists,
+// Story 23.1 TB-033 P2#1/P2#2 hardening).
 function AnonymousImage({
   src,
   alt,
@@ -459,6 +420,20 @@ function AnonymousShareView({ token }: { token: string }) {
 
 function ShareTokenRoute() {
   const { token } = Route.useParams();
+  // Story 23.1 (TB-033 P2#2) — Decision X.1 policy A: page-mount-scoped
+  // blob-cache invalidation. On route unmount, revoke every cached object
+  // URL and clear all three maps so a subsequent re-mount of /share/<token>
+  // (same or different token) starts from a clean slate. Without this, a
+  // recipient who keeps the tab open across a model-owner share revocation
+  // would continue seeing cached photos until manual refresh. After this
+  // cleanup, navigating away + back triggers fresh fetches that will
+  // surface the now-revoked token's 404/403. Full rationale lives in
+  // `shareBlobCache.clearShareBlobCache`.
+  useEffect(() => {
+    return () => {
+      clearShareBlobCache();
+    };
+  }, []);
   return <AnonymousShareView token={token} />;
 }
 
@@ -469,3 +444,12 @@ export const Route = createFileRoute("/share/$token")({
   // `_PUBLIC_PATHS`. Verify the prefix matches at integration time.
   component: ShareTokenRoute,
 });
+
+// Test-only handle. Production callers MUST NOT reach into this — the
+// `AnonymousImage` component is module-private. Exposed for Story 23.1
+// StrictMode test (TB-033 AC4 mounts AnonymousImage directly to exercise
+// the acquire/release cycle without TanStack Router scaffolding).
+// Blob-cache state-inspection lives in `shareBlobCache.ts`.
+//
+// eslint-disable-next-line react-refresh/only-export-components
+export const __test_AnonymousImage = AnonymousImage;
