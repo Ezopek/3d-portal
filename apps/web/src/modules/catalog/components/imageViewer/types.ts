@@ -43,10 +43,26 @@ export interface ImageSource {
  * image at `sources[initialIndex]` first, supports prev/next navigation,
  * ESC + Dialog default close, and surfaces mobile gestures
  * (tap-to-toggle-chrome + swipe-LR) per designer §5.
+ *
+ * Story 22.3 round-2 (Codex P1): the optional `renderThumb` prop lets
+ * consumers inject a DIFFERENT renderer for the bottom strip than for
+ * the main frame. /share/<token> uses this to pass `LazyAnonymousImage`
+ * for the strip (IntersectionObserver-gated) while the main frame stays
+ * on plain `AnonymousImage` (always eager — it's the active image).
+ * Without this, the viewer's strip on /share/<token> would mount every
+ * thumbnail eagerly and bypass the route's existing lazy-strip
+ * mitigation (Story 22.2 round-2) — pushing /api/share/* over the 60
+ * req/min cap on large galleries.
+ *
+ * When `renderThumb` is omitted (e.g. /catalog/<id> authenticated
+ * mount where no rate-limit applies), it defaults to `renderImage` —
+ * preserving the symmetric single-renderer behaviour for the simple
+ * case.
  */
 export interface ImageFullscreenViewerProps {
   readonly sources: readonly ImageSource[];
   readonly initialIndex: number;
   readonly onClose: () => void;
   readonly renderImage: ImageRenderer;
+  readonly renderThumb?: ImageRenderer;
 }

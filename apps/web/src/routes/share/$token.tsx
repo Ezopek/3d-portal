@@ -362,6 +362,14 @@ function ShareCarousel({
             initialIndex={activeIdx}
             onClose={() => setFullscreenOpen(false)}
             renderImage={AnonymousImage}
+            // Story 22.3 round-2 (Codex P1): use the lazy variant for
+            // the strip thumbs so the viewer doesn't bypass the route's
+            // existing LazyAnonymousImage mitigation (Story 22.2
+            // round-2). Without this, opening the viewer on a
+            // /share/<token> with many photos would burst-fetch every
+            // thumbnail at once and risk crossing the 60 req/min
+            // (token, IP) cap from Init 12 Story 19.1.
+            renderThumb={LazyAnonymousImage}
           />
         </Suspense>
       )}

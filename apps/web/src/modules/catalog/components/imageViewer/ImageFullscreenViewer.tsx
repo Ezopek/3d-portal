@@ -52,8 +52,16 @@ export default function ImageFullscreenViewer({
   initialIndex,
   onClose,
   renderImage,
+  // Story 22.3 round-2 (Codex P1): when the consumer supplies a
+  // separate thumb renderer, use it for the strip. Defaults to
+  // `renderImage`, preserving the single-renderer shape for the
+  // simple /catalog/<id> mount. ShareCarousel injects
+  // `LazyAnonymousImage` here so strip thumbs lazy-load on
+  // IntersectionObserver instead of all fetching at viewer-open.
+  renderThumb,
 }: ImageFullscreenViewerProps) {
   const { t } = useTranslation();
+  const renderThumbResolved = renderThumb ?? renderImage;
 
   // Clamp initialIndex defensively: a consumer passing an out-of-range
   // index (e.g. after deletion races) would otherwise render undefined.
@@ -127,6 +135,17 @@ export default function ImageFullscreenViewer({
   };
 
   const onTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    // Story 22.3 round-2 (Codex P2): ignore gestures that originate
+    // inside the bottom thumb-strip — the strip is `overflow-x-auto`
+    // and horizontal drag on it should scroll the strip, not navigate
+    // between images. Without this guard, dragging the strip on
+    // mobile/tablet calls step() and changes the active photo before
+    // the user can scroll to later thumbnails.
+    const strip = stripRef.current;
+    if (strip !== null && e.target instanceof Node && strip.contains(e.target)) {
+      touchStart.current = null;
+      return;
+    }
     const t0 = e.touches[0];
     if (t0 === undefined) return;
     touchStart.current = { x: t0.clientX, y: t0.clientY };
@@ -270,7 +289,7 @@ export default function ImageFullscreenViewer({
                       : "opacity-70 hover:opacity-100",
                   )}
                 >
-                  {renderImage({
+                  {renderThumbResolved({
                     src: s.thumbUrl,
                     alt: "",
                     className: "size-full object-cover",
