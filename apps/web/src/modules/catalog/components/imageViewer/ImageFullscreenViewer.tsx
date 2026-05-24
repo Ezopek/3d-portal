@@ -87,7 +87,7 @@ export default function ImageFullscreenViewer({
   // touch coordinates still land inside the strip's bounding rect, so
   // coords-check correctly suppresses step() while still letting the
   // SHORT-tap path toggle chrome.
-  const touchStart = useRef<{ x: number; y: number; stripOrigin: boolean } | null>(null);
+  const touchStart = useRef<{ x: number; y: number; stripOrigin: boolean; thumbOrigin: boolean } | null>(null);
 
   // Cap activeIdx if the parent re-feeds a shorter sources array between
   // renders (e.g. on photo delete). Keep us pointing at a valid entry.
@@ -161,7 +161,19 @@ export default function ImageFullscreenViewer({
         stripOrigin = true;
       }
     }
-    touchStart.current = { x: t0.clientX, y: t0.clientY, stripOrigin };
+    // Story 28.2 round-3 (Init 17 / Codex P2): thumbOrigin is the NARROW
+    // signal for chrome-toggle deferral. Only actual thumb-button taps
+    // (data-thumb-idx="N") need to defer the chrome flip to the thumb's
+    // own onClick handler. Padded/empty strip areas (gap-1.5, px-3, py-2)
+    // had stripOrigin=true but no thumb to defer to, creating dead-zone
+    // taps that never toggled chrome. thumbOrigin is naturally false in
+    // the hidden-strip state because the strip is `pointer-events-none`
+    // and e.target is the viewer root, so the chrome-restore path on
+    // hidden-strip taps still fires correctly.
+    const target = e.target;
+    const thumbOrigin =
+      target instanceof Element && target.closest("[data-thumb-idx]") !== null;
+    touchStart.current = { x: t0.clientX, y: t0.clientY, stripOrigin, thumbOrigin };
   };
 
   const onTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
@@ -178,17 +190,14 @@ export default function ImageFullscreenViewer({
     if (Math.abs(dx) < SWIPE_THRESHOLD_PX) {
       // Short tap — toggle chrome visibility (designer §5).
       //
-      // Story 28.2 round-2 (Codex P2): when the tap lands on the VISIBLE
-      // strip, defer to the strip thumb's own onClick handler (which
-      // fires immediately after touchend via synthesized click). Toggling
-      // chrome here would race with that click — chrome flips to false
-      // BEFORE the click event registers, breaking the thumb-select
-      // interaction. When chrome is HIDDEN, strip-area tap restores
-      // chrome (canonical recovery) — but the strip is `pointer-events-
-      // none` in that state so e.target is the viewer root anyway; the
-      // chrome restore via `setChromeVisible((v) => !v)` is the right
-      // behavior here.
-      if (start.stripOrigin && chromeVisible) {
+      // Story 28.2 round-3 (Codex P2): defer chrome toggle ONLY when the
+      // touch landed on an actual thumb button (data-thumb-idx). Otherwise
+      // padded/empty areas of the visible strip become dead-zone taps that
+      // never toggle chrome. thumbOrigin already implies the visible state
+      // (hidden strip is pointer-events-none → closest('[data-thumb-idx]')
+      // returns null → thumbOrigin=false → chrome toggles normally to
+      // restore overlay).
+      if (start.thumbOrigin) {
         return;
       }
       setChromeVisible((v) => !v);
