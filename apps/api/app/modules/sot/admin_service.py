@@ -422,9 +422,12 @@ def hard_delete_model(
             full.unlink(missing_ok=True)
         # P3-1 fix-up on Codex review aa6a8eb: also remove the Story 13.2
         # thumbnail sidecar (<storage_path>.thumb.webp); it has no ModelFile
-        # row, so the cascade above can't reach it.
+        # row, so the cascade above can't reach it. Story 22.1 / Decision W
+        # adds the same cleanup for the gallery-tier sidecar.
         thumb = full.with_name(full.name + ".thumb.webp")
         thumb.unlink(missing_ok=True)
+        gallery = full.with_name(full.name + ".gallery.webp")
+        gallery.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -726,9 +729,12 @@ def delete_model_file(
         full_path.unlink(missing_ok=True)
     # P3-1 fix-up on Codex review aa6a8eb: also remove the Story 13.2 thumbnail
     # sidecar (<storage_path>.thumb.webp), which is NOT represented by a
-    # ModelFile row and would otherwise leak on every normal delete.
+    # ModelFile row and would otherwise leak on every normal delete. Story
+    # 22.1 / Decision W extends the same cleanup to the gallery-tier sidecar.
     thumb_path = full_path.with_name(full_path.name + ".thumb.webp")
     thumb_path.unlink(missing_ok=True)
+    gallery_path = full_path.with_name(full_path.name + ".gallery.webp")
+    gallery_path.unlink(missing_ok=True)
 
 
 def set_thumbnail(
@@ -1374,11 +1380,7 @@ def update_note(
     # `body_en` (backfilled at migration time) and silently hide the
     # admin's fresh edit. Story 16.2 will introduce explicit body_pl +
     # body_en editor fields and remove the need for this mirror.
-    if (
-        note.kind == NoteKind.description
-        and "body" in data
-        and "body_en" not in data
-    ):
+    if note.kind == NoteKind.description and "body" in data and "body_en" not in data:
         note.body_en = note.body
 
     note.updated_at = datetime.datetime.now(datetime.UTC)

@@ -183,12 +183,16 @@ def get_model_files(
         "set; If-None-Match returns 304 on cache hit. `?download=true` adds a "
         "Content-Disposition with the original filename. `?variant=thumb` returns the "
         "Story 13.2 / Decision P WebP thumbnail variant (800px longest side, q80) when "
-        "it exists on disk; falls back to the original blob when the variant is missing "
-        "(e.g. for files uploaded before the thumbnail pipeline shipped and not yet "
-        "backfilled, OR for non-image kinds where the variant is never generated). 404 "
-        "if the file row is not found OR doesn't belong to the given model (defense "
-        "against cross-model file id confusion). 404 if the row exists but the on-disk "
-        "blob is missing (integrity issue). 500 if storage path resolution escapes the "
+        "it exists on disk; `?variant=gallery` returns the Story 22.1 / Decision W "
+        "WebP gallery-tier variant (1920px longest side, q80 — designer-locked per "
+        "22-3-designer-ux-spec.md §3) when it exists on disk. Both variants silently "
+        "fall back to the original blob when the sibling is missing (e.g. for files "
+        "uploaded before the pipeline shipped and not yet backfilled, OR for non-image "
+        "kinds where variants are never generated). 404 if the file row is not found "
+        "OR doesn't belong to the given model (defense against cross-model file id "
+        "confusion). 404 if the row exists but the on-disk blob is missing (integrity "
+        "issue — applies even when a stale variant sidecar lingers, since variants are "
+        "derivatives of the original). 500 if storage path resolution escapes the "
         "storage root (should never happen; defense in depth). Requires authenticated "
         "user (any role: admin / member / agent). Initiative 6 default-deny posture "
         "(architecture.md § Initiative 6 Decision M). Anonymous share-recipients access "
@@ -227,33 +231,45 @@ def get_model_file_content(
     except ValueError as exc:
         raise HTTPException(status_code=500, detail="Invalid storage path") from exc
 
-    # Story 13.2 / Decision P — variant routing. The thumbnail is a sibling
-    # file (``<storage_path>.thumb.webp``) written by the generate_thumbnail
-    # arq task on image-kind upload. When ``variant=thumb`` is requested AND
-    # the sibling exists, serve WebP at image/webp media type. Backward-compat
-    # fallback to the original blob when the sibling is missing keeps the
-    # endpoint safe for pre-pipeline files and ungenerated kinds.
+    # Story 13.2 / Decision P + Story 22.1 / Decision W — variant routing.
+    # Two tiers, both materialised by ``generate_thumbnail`` arq task on
+    # image-kind upload and stored as sibling files of the original:
+    #   thumb   → ``<storage_path>.thumb.webp``    (800 px, ~50 KB)
+    #   gallery → ``<storage_path>.gallery.webp`` (1920 px, ~150-500 KB)
+    # When the requested variant's sibling exists, serve WebP at image/webp
+    # media type. Backward-compat fallback to the original blob when the
+    # sibling is missing keeps the endpoint safe for pre-pipeline files,
+    # ungenerated kinds, and the gallery-tier backfill catch-up window
+    # right after Story 22.1 deploy.
     #
-    # Integrity gate (P2-2 fix-up on Codex review aa6a8eb): the thumbnail is
-    # a *derivative* of the original. If the original file is gone on disk
-    # the model is broken — return 404 even when the .thumb.webp sidecar
-    # still exists. Without this check, a stale sidecar (e.g. left behind
-    # after a manual blob delete that bypassed delete_model_file) would mask
-    # the integrity issue by silently serving the WebP.
+    # Integrity gate (P2-2 fix-up on Codex review aa6a8eb): variants are
+    # *derivatives* of the original. If the original file is gone on disk
+    # the model is broken — return 404 even when a variant sidecar still
+    # exists. Without this check, a stale sidecar (e.g. left behind after
+    # a manual blob delete that bypassed delete_model_file) would mask the
+    # integrity issue by silently serving the WebP. This gate applies to
+    # BOTH variant tiers since both are derivatives.
     if not candidate.is_file():
         raise HTTPException(status_code=404, detail="File missing in storage")
 
     served = candidate
     served_mime = row.mime_type
+    variant_candidate: Path | None = None
     if variant == "thumb":
-        thumb_candidate = candidate.with_name(candidate.name + ".thumb.webp")
+        variant_candidate = candidate.with_name(candidate.name + ".thumb.webp")
+    elif variant == "gallery":
+        # Story 22.1 / Decision W — gallery-tier variant mirrors the thumb
+        # branch exactly: resolve + base-check + sibling-is-file gate + same
+        # silent-fallback semantics. The only difference is the suffix.
+        variant_candidate = candidate.with_name(candidate.name + ".gallery.webp")
+    if variant_candidate is not None:
         # Resolve + re-check under base for defense in depth.
         try:
-            thumb_candidate.resolve().relative_to(base)
+            variant_candidate.resolve().relative_to(base)
         except (ValueError, OSError):
-            thumb_candidate = candidate  # fall back to original
-        if thumb_candidate != candidate and thumb_candidate.is_file():
-            served = thumb_candidate
+            variant_candidate = candidate  # fall back to original
+        if variant_candidate != candidate and variant_candidate.is_file():
+            served = variant_candidate
             served_mime = "image/webp"
 
     etag = file_etag(served)

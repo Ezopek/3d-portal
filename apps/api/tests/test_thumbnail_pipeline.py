@@ -32,8 +32,12 @@ from app.core.db.models import (
 )
 from app.core.db.session import get_engine
 from app.workers.generate_thumbnail import (
+    GALLERY_LONGEST_SIDE_PX,
+    GALLERY_SUFFIX,
     THUMBNAIL_LONGEST_SIDE_PX,
     THUMBNAIL_SUFFIX,
+    gallery_path_for,
+    generate_gallery_sync,
     generate_thumbnail_sync,
     thumbnail_path_for,
 )
@@ -673,3 +677,373 @@ def test_hard_delete_model_removes_thumbnail_sidecars(client):
     assert not thumb_abs.exists(), (
         "thumbnail sidecar should be removed by hard-delete (P3-1 fix-up)"
     )
+
+
+# ---------------------------------------------------------------------------
+# Story 22.1 / FR16-TIER-1 / Decision W — gallery-tier (1920 px) pipeline
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "label,size",
+    [
+        ("portrait_3000x4000_jpeg", (3000, 4000)),
+        ("landscape_4000x3000_jpeg", (4000, 3000)),
+    ],
+)
+def test_gallery_jpeg_size_budget(tmp_path, label, size):
+    """AC7 / NFR16-PERF-1 — every typical phone-photo JPEG produces ≤500 KB gallery WebP."""
+    settings = get_settings()
+    content_dir = settings.portal_content_dir
+    rel_path = f"models/test-gallery-{label}/files/{uuid.uuid4().hex}.jpg"
+    abs_path = content_dir / rel_path
+    _write_jpeg(abs_path, size=size)
+
+    engine = get_engine()
+    with Session(engine) as s:
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        file_id = _seed_image_file(
+            s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
+        )
+        s.commit()
+
+    result = generate_gallery_sync(engine, file_id, content_dir=content_dir)
+
+    assert result["status"] == "ok", result
+    assert result["gallery_path"] == rel_path + GALLERY_SUFFIX
+    assert result["size_bytes"] is not None
+    assert result["size_bytes"] <= 500 * 1024, (
+        f"{label}: gallery {result['size_bytes']} bytes exceeds NFR16-PERF-1 500 KB budget"
+    )
+
+    gallery_abs = gallery_path_for(abs_path)
+    assert gallery_abs.is_file()
+    with Image.open(gallery_abs) as out:
+        assert out.format == "WEBP"
+        # 1920 px longest side preserves aspect ratio.
+        assert max(out.size) <= GALLERY_LONGEST_SIDE_PX
+        # The longest edge should actually hit 1920 (within rounding) for
+        # source images larger than 1920 — guards against the helper
+        # silently defaulting to a smaller tier value.
+        assert max(out.size) >= GALLERY_LONGEST_SIDE_PX - 4, (
+            f"{label}: gallery longest edge {max(out.size)} did not reach {GALLERY_LONGEST_SIDE_PX}"
+        )
+        # Aspect-ratio preservation within rounding tolerance.
+        in_ratio = size[0] / size[1]
+        out_ratio = out.size[0] / out.size[1]
+        assert abs(in_ratio - out_ratio) < 0.02
+
+
+def test_gallery_png_with_alpha_size_budget(tmp_path):
+    """AC7 — alpha-channel PNG still fits the 500 KB gallery budget."""
+    settings = get_settings()
+    content_dir = settings.portal_content_dir
+    rel_path = f"models/test-gallery-png-alpha/files/{uuid.uuid4().hex}.png"
+    abs_path = content_dir / rel_path
+    _write_png_with_alpha(abs_path, size=(2000, 3000))
+
+    engine = get_engine()
+    with Session(engine) as s:
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        file_id = _seed_image_file(
+            s,
+            model_id,
+            content=abs_path.read_bytes(),
+            storage_path=rel_path,
+            mime="image/png",
+            original_name="screenshot.png",
+        )
+        s.commit()
+
+    result = generate_gallery_sync(engine, file_id, content_dir=content_dir)
+    assert result["status"] == "ok", result
+    assert result["size_bytes"] is not None
+    assert result["size_bytes"] <= 500 * 1024, (
+        f"PNG-with-alpha gallery {result['size_bytes']} bytes exceeds NFR16-PERF-1 500 KB budget"
+    )
+
+
+def test_gallery_idempotent_second_run_is_skipped(tmp_path):
+    """AC2 — re-running ``generate_gallery_sync`` on the same file is a no-op."""
+    settings = get_settings()
+    content_dir = settings.portal_content_dir
+    rel_path = f"models/test-gallery-idemp/files/{uuid.uuid4().hex}.jpg"
+    abs_path = content_dir / rel_path
+    _write_jpeg(abs_path, size=(2400, 1600))
+
+    engine = get_engine()
+    with Session(engine) as s:
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        file_id = _seed_image_file(
+            s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
+        )
+        s.commit()
+
+    first = generate_gallery_sync(engine, file_id, content_dir=content_dir)
+    assert first["status"] == "ok"
+    gallery_abs = gallery_path_for(abs_path)
+    first_mtime = gallery_abs.stat().st_mtime_ns
+
+    second = generate_gallery_sync(engine, file_id, content_dir=content_dir)
+    assert second["status"] == "skipped"
+    # File must not have been rewritten — mtime preserved.
+    assert gallery_abs.stat().st_mtime_ns == first_mtime
+
+
+def test_gallery_row_missing():
+    """AC2 — structured ``row_missing`` for unknown model_file_id."""
+    engine = get_engine()
+    result = generate_gallery_sync(engine, uuid.uuid4())
+    assert result["status"] == "row_missing"
+    assert result["gallery_path"] is None
+
+
+def test_gallery_non_image_kind_no_op():
+    """AC2 — STL / archive kinds: structured-skip, no file ops attempted."""
+    engine = get_engine()
+    with Session(engine) as s:
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        file_id = _seed_image_file(
+            s,
+            model_id,
+            content=b"NOT_AN_IMAGE",
+            storage_path=f"models/{model_id}/files/{uuid.uuid4().hex}.stl",
+            kind=ModelFileKind.stl,
+            mime="model/stl",
+            original_name="model.stl",
+        )
+        s.commit()
+    result = generate_gallery_sync(engine, file_id)
+    assert result["status"] == "not_image"
+
+
+def test_gallery_original_missing_on_disk(tmp_path):
+    """AC2 — DB row exists but storage_path doesn't — structured warning, no crash."""
+    engine = get_engine()
+    with Session(engine) as s:
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        file_id = _seed_image_file(
+            s,
+            model_id,
+            content=b"missing-bytes",
+            storage_path=f"models/{model_id}/files/{uuid.uuid4().hex}.jpg",
+        )
+        s.commit()
+    result = generate_gallery_sync(engine, file_id)
+    assert result["status"] == "missing"
+    assert result["reason"] == "original_missing"
+
+
+def test_variant_gallery_serves_webp_when_present(client):
+    """AC5 — ``?variant=gallery`` + sibling exists → WebP body + image/webp Content-Type."""
+    engine = get_engine()
+    settings = get_settings()
+    content_dir = settings.portal_content_dir
+
+    rel_path = f"models/test-variant-gallery-present/files/{uuid.uuid4().hex}.jpg"
+    abs_path = content_dir / rel_path
+    _write_jpeg(abs_path, size=(2400, 1800))
+
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        file_id = _seed_image_file(
+            s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
+        )
+        s.commit()
+
+    # Generate the gallery variant inline.
+    result = generate_gallery_sync(engine, file_id, content_dir=content_dir)
+    assert result["status"] == "ok"
+
+    client.cookies.set("portal_access", admin_token(admin_id))
+    r = client.get(f"/api/models/{model_id}/files/{file_id}/content?variant=gallery")
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"] == "image/webp"
+    # First 4 bytes of a WebP file: "RIFF"; bytes 8-11: "WEBP".
+    assert r.content[:4] == b"RIFF"
+    assert r.content[8:12] == b"WEBP"
+
+
+def test_variant_gallery_falls_back_to_original_when_missing(client):
+    """AC5 — ``?variant=gallery`` + sibling missing → serves original blob + original MIME."""
+    engine = get_engine()
+    settings = get_settings()
+    content_dir = settings.portal_content_dir
+
+    rel_path = f"models/test-variant-gallery-missing/files/{uuid.uuid4().hex}.jpg"
+    abs_path = content_dir / rel_path
+    _write_jpeg(abs_path, size=(800, 600))
+
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        file_id = _seed_image_file(
+            s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
+        )
+        s.commit()
+
+    # No gallery generation → variant=gallery must fall back to original.
+    client.cookies.set("portal_access", admin_token(admin_id))
+    r = client.get(f"/api/models/{model_id}/files/{file_id}/content?variant=gallery")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/jpeg"
+
+
+def test_variant_gallery_returns_404_when_original_missing_even_if_sidecar_present(client):
+    """AC5 — integrity gate (P2-2) applies to gallery sidecar too."""
+    engine = get_engine()
+    settings = get_settings()
+    content_dir = settings.portal_content_dir
+
+    rel_path = f"models/test-gallery-orig-missing/files/{uuid.uuid4().hex}.jpg"
+    abs_path = content_dir / rel_path
+    _write_jpeg(abs_path, size=(1600, 1200))
+
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        file_id = _seed_image_file(
+            s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
+        )
+        s.commit()
+
+    # Render the variant so the .gallery.webp sidecar exists.
+    result = generate_gallery_sync(engine, file_id, content_dir=content_dir)
+    assert result["status"] == "ok"
+    gallery_abs = gallery_path_for(abs_path)
+    assert gallery_abs.is_file(), "fixture precondition: sidecar must exist"
+
+    # Simulate stale-sidecar: delete the original blob, keep the sidecar.
+    abs_path.unlink()
+    assert gallery_abs.is_file()
+
+    client.cookies.set("portal_access", admin_token(admin_id))
+    r = client.get(f"/api/models/{model_id}/files/{file_id}/content?variant=gallery")
+    assert r.status_code == 404, r.text
+
+
+# ---------------------------------------------------------------------------
+# Story 22.1 — arq task composite return ({"thumbnail": ..., "gallery": ...})
+# ---------------------------------------------------------------------------
+
+
+def test_arq_task_returns_composite_both_tiers(tmp_path):
+    """AC4 — arq entry point produces BOTH tiers in a composite return dict."""
+    import asyncio
+    import sys
+
+    gt_mod = sys.modules["app.workers.generate_thumbnail"]
+
+    settings = get_settings()
+    content_dir = settings.portal_content_dir
+    rel_path = f"models/test-arq-composite/files/{uuid.uuid4().hex}.jpg"
+    abs_path = content_dir / rel_path
+    _write_jpeg(abs_path, size=(2400, 1800))
+
+    engine = get_engine()
+    with Session(engine) as s:
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        file_id = _seed_image_file(
+            s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
+        )
+        s.commit()
+
+    # Direct invocation of the arq entry-point coroutine — no worker needed.
+    result = asyncio.run(gt_mod.generate_thumbnail(None, file_id))
+
+    assert set(result.keys()) == {"thumbnail", "gallery"}, result
+    assert result["thumbnail"]["status"] == "ok"
+    assert result["thumbnail"]["thumbnail_path"] == rel_path + THUMBNAIL_SUFFIX
+    assert result["gallery"]["status"] == "ok"
+    assert result["gallery"]["gallery_path"] == rel_path + GALLERY_SUFFIX
+    # Both sidecars on disk.
+    assert thumbnail_path_for(abs_path).is_file()
+    assert gallery_path_for(abs_path).is_file()
+
+
+def test_arq_task_failure_isolation_per_tier(tmp_path, monkeypatch):
+    """AC4 — a failure in one tier does NOT block the other tier."""
+    import asyncio
+    import sys
+
+    gt_mod = sys.modules["app.workers.generate_thumbnail"]
+
+    settings = get_settings()
+    content_dir = settings.portal_content_dir
+    rel_path = f"models/test-arq-isolation/files/{uuid.uuid4().hex}.jpg"
+    abs_path = content_dir / rel_path
+    _write_jpeg(abs_path, size=(1600, 1200))
+
+    engine = get_engine()
+    with Session(engine) as s:
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        file_id = _seed_image_file(
+            s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
+        )
+        s.commit()
+
+    # Force the thumb tier to throw mid-render; the gallery tier must still
+    # succeed and surface its own status in the composite return.
+    original_render = gt_mod._render_thumbnail
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("synthetic thumbnail failure")
+
+    monkeypatch.setattr(gt_mod, "_render_thumbnail", _boom, raising=True)
+    try:
+        result = asyncio.run(gt_mod.generate_thumbnail(None, file_id))
+    finally:
+        monkeypatch.setattr(gt_mod, "_render_thumbnail", original_render, raising=True)
+
+    assert result["thumbnail"]["status"] == "error"
+    assert "synthetic thumbnail failure" in result["thumbnail"]["reason"]
+    # Gallery tier independent — must succeed.
+    assert result["gallery"]["status"] == "ok"
+    assert gallery_path_for(abs_path).is_file()
+
+
+def test_delete_model_file_removes_gallery_sidecar(client):
+    """AC4 — admin DELETE on a ModelFile clears the .gallery.webp sidecar too."""
+    engine = get_engine()
+    settings = get_settings()
+    content_dir = settings.portal_content_dir
+
+    rel_path = f"models/test-delete-gallery-sidecar/files/{uuid.uuid4().hex}.jpg"
+    abs_path = content_dir / rel_path
+    _write_jpeg(abs_path, size=(1600, 1200))
+
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        cat_id = _seed_category(s)
+        model_id = _seed_model(s, cat_id)
+        file_id = _seed_image_file(
+            s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
+        )
+        s.commit()
+
+    # Render BOTH variants so both sidecars exist.
+    generate_thumbnail_sync(engine, file_id, content_dir=content_dir)
+    generate_gallery_sync(engine, file_id, content_dir=content_dir)
+    thumb_abs = thumbnail_path_for(abs_path)
+    gallery_abs = gallery_path_for(abs_path)
+    assert thumb_abs.is_file()
+    assert gallery_abs.is_file()
+
+    client.cookies.set("portal_access", admin_token(admin_id))
+    r = client.delete(f"/api/admin/models/{model_id}/files/{file_id}")
+    assert r.status_code == 204, r.text
+
+    assert not abs_path.exists()
+    assert not thumb_abs.exists()
+    assert not gallery_abs.exists(), "gallery sidecar should be removed by DELETE (Story 22.1)"
