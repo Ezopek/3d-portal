@@ -266,7 +266,17 @@ export default function ImageFullscreenViewer({
               data-testid="image-viewer-strip"
               className={cn(
                 "flex h-20 shrink-0 items-center gap-1.5 overflow-x-auto bg-background/70 px-3 py-2 transition-opacity duration-150",
-                chromeVisible ? "opacity-100" : "opacity-0",
+                // Story 22.3 round-3 (Codex P2): when chrome is hidden,
+                // disable hit-testing on the strip so tap-to-restore
+                // falls through to the viewer root. Without
+                // `pointer-events-none` the strip's lower 20px stays a
+                // dead zone (still in flex layout, just transparent),
+                // and the round-2 strip-touch guard would still
+                // intercept touches → user couldn't restore chrome by
+                // tapping the bottom area.
+                chromeVisible
+                  ? "opacity-100"
+                  : "pointer-events-none opacity-0",
               )}
               aria-hidden={!chromeVisible}
             >
