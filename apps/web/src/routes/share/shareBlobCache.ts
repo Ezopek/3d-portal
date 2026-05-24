@@ -122,10 +122,22 @@ export function acquireShareBlob(src: string): Promise<string> {
       // Slot was acquired synchronously and now leaked — release it.
       _releaseFetchSlot();
     }
-    // Slot-queued path: slotWait promise will resolve eventually but
-    // no fetch was dispatched. Convert to a rejecting promise so the
-    // queued slot still gets released when slotWait fulfills.
-    throw syncErr;
+    // Story 27.1 round-3 (Codex round-2 P2): return a REJECTED promise
+    // rather than re-throwing. acquireShareBlob's caller is
+    // AnonymousImage which uses `.then().catch()` — a sync throw would
+    // bypass its catch handler and leak the `_pending` increment from
+    // the top of this function. Returning rejected promise lets the
+    // standard catch handle the error AND keeps the signature
+    // consistent ("acquireShareBlob always returns Promise<string>").
+    // Also explicitly decrement _pending here since the cold-fetch
+    // resolve never gets to clean it up.
+    const pendingCount = _pending.get(src) ?? 0;
+    if (pendingCount > 1) {
+      _pending.set(src, pendingCount - 1);
+    } else {
+      _pending.delete(src);
+    }
+    return Promise.reject(syncErr);
   }
   const promise: Promise<string> = fetchInit
     .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`img_${r.status}`))))

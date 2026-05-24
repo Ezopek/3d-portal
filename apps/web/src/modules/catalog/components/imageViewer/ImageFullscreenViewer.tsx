@@ -176,10 +176,21 @@ export default function ImageFullscreenViewer({
     // don't intercept. Pinch-zoom + swipe-down-close stay deferred.
     if (Math.abs(dy) > SWIPE_VERTICAL_TOLERANCE_PX) return;
     if (Math.abs(dx) < SWIPE_THRESHOLD_PX) {
-      // Short tap — toggle chrome visibility (designer §5). Tap-in-strip-
-      // area still works (restores chrome from hidden state), regardless
-      // of `stripOrigin` flag — strip-origin only suppresses NAVIGATION
-      // (drag), not the tap-to-toggle behavior.
+      // Short tap — toggle chrome visibility (designer §5).
+      //
+      // Story 28.2 round-2 (Codex P2): when the tap lands on the VISIBLE
+      // strip, defer to the strip thumb's own onClick handler (which
+      // fires immediately after touchend via synthesized click). Toggling
+      // chrome here would race with that click — chrome flips to false
+      // BEFORE the click event registers, breaking the thumb-select
+      // interaction. When chrome is HIDDEN, strip-area tap restores
+      // chrome (canonical recovery) — but the strip is `pointer-events-
+      // none` in that state so e.target is the viewer root anyway; the
+      // chrome restore via `setChromeVisible((v) => !v)` is the right
+      // behavior here.
+      if (start.stripOrigin && chromeVisible) {
+        return;
+      }
       setChromeVisible((v) => !v);
       return;
     }
