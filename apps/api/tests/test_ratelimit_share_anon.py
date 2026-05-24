@@ -42,12 +42,23 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def share_anon_client(monkeypatch, tmp_path):
-    """TestClient(create_app()) + fakeredis swap. Anonymous (no cookies)."""
+    """TestClient(create_app()) + fakeredis swap. Anonymous (no cookies).
+
+    Init 16 Story 23.3: per-token middleware threshold is bumped HIGH so
+    these per-(token, IP) tests remain isolated from per-token cap interference.
+    The per-token middleware has its own dedicated test file
+    (``test_ratelimit_share_per_token.py``).
+    """
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/s.db")
     monkeypatch.setenv("ADMIN_EMAIL", "admin@localhost.localdomain")
     monkeypatch.setenv("ADMIN_PASSWORD", "pw")
     monkeypatch.setenv("JWT_SECRET", "test-secret-not-real")
     monkeypatch.setenv("TOTP_FERNET_KEY", "ZmFrZS10ZXN0LWtleS0zMi1ieXRlcy1mb3ItdGVzdHM=")
+    # Disable per-token cap (Story 23.3) for these tests — they target the
+    # per-(token, IP) middleware behavior in isolation. Bump per-token cap
+    # WAY above any volume these tests exercise (max ~120 reqs in any single
+    # test); the per-token middleware then never fires here.
+    monkeypatch.setenv("RATELIMIT_SHARE_PER_TOKEN_THRESHOLD", "100000")
 
     from app.core.config import get_settings
     from app.core.db.session import get_engine
@@ -193,7 +204,7 @@ def test_anon_cap_60_requests_pass_61st_returns_429(share_anon_client):
     # All 60 requests share the same (token, IP) bucket
     for i in range(60):
         r = c.get("/api/share/abc/files")
-        assert r.status_code != 429, f"request {i+1} unexpectedly hit cap: {r.text}"
+        assert r.status_code != 429, f"request {i + 1} unexpectedly hit cap: {r.text}"
     # 61st must be rate-limited
     r = c.get("/api/share/abc/files")
     assert r.status_code == 429, f"expected 429 on 61st, got {r.status_code}: {r.text}"
@@ -220,10 +231,7 @@ def test_anon_cap_is_per_ip(share_anon_client):
     # Saturate token X from IP 1
     for _ in range(60):
         c.get("/api/share/tokenX/files", headers={"X-Real-IP": "10.0.0.1"})
-    assert (
-        c.get("/api/share/tokenX/files", headers={"X-Real-IP": "10.0.0.1"}).status_code
-        == 429
-    )
+    assert c.get("/api/share/tokenX/files", headers={"X-Real-IP": "10.0.0.1"}).status_code == 429
     # Same token from a different IP — fresh bucket
     r = c.get("/api/share/tokenX/files", headers={"X-Real-IP": "10.0.0.2"})
     assert r.status_code != 429, f"IP isolation broken: {r.text}"

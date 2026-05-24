@@ -221,6 +221,61 @@ def share_anon_retry_after_seconds() -> int:
     return get_settings().ratelimit_share_anon_window_seconds
 
 
+def share_anon_per_token_ratelimit_key(request: Request) -> str | None:
+    """Per-token (IP-independent) rate-limit key for /api/share/{token}/*.
+
+    Initiative 16 / Decision Y (Story 23.3, FR16-RATELIMIT-PER-TOKEN-1; closes
+    TB-026 sub#6 per-token operator-decision addition). Layered defense on
+    top of the Init 12 Story 19.1 per-(token, IP) middleware: an attacker
+    distributing a single scraped share token across a botnet (M IPs * 60
+    req/min/IP = M * 60 req/min/token) defeats the per-IP cap. This per-token
+    cap binds the total request volume per token regardless of source IP,
+    bounding the worst-case outbound traffic per leaked token to 60 req/min
+    * 200 KB ~= 12 MB/min (vs. ~12 GB/min without it on a 1000-IP botnet).
+
+    Returns ``None`` for any non-``/api/share/{token}/...`` request (the
+    middleware then short-circuits without touching Redis). For matching
+    requests returns ``token:{sha256_prefix_16}`` — same token-hashing
+    discipline as Story 19.1 (no cleartext token in Redis keys/logs) but
+    NO ``:ip:...`` suffix, so all requests for the same token share one
+    bucket regardless of source IP.
+
+    Key formula:
+      - URL ``/api/share/abc123/files`` from IP ``10.0.0.1`` →
+        key ``ratelimit:share_anon_per_token:token:<hash16>``
+      - URL ``/api/share/abc123/files`` from IP ``10.0.0.2`` →
+        SAME key ``ratelimit:share_anon_per_token:token:<hash16>``
+
+    Composability with Story 19.1 per-(token, IP) middleware: both middlewares
+    fire on every matching request. EITHER overage returns 429 (not BOTH
+    required). Per-IP cap catches casual abuse; per-token cap catches
+    distributed scraping.
+    """
+    path = request.url.path
+    if not path.startswith("/api/share/"):
+        return None
+    parts = path.split("/", 4)
+    # /api/share/<token>/... → ["", "api", "share", "<token>", "<rest>"]
+    if len(parts) < 4 or not parts[3]:
+        return None
+    token = parts[3]
+    import hashlib
+
+    token_hash = hashlib.sha256(token.encode()).hexdigest()[:16]
+    return f"token:{token_hash}"
+
+
+def share_anon_per_token_retry_after_seconds() -> int:
+    """Window duration (settings-driven) for per-token /api/share/* rate limit.
+
+    Story 23.3 (FR16-RATELIMIT-PER-TOKEN-1). Mirrors the call-time settings
+    read in ``share_anon_retry_after_seconds`` so operator-tuned windows
+    (via ``RATELIMIT_SHARE_PER_TOKEN_WINDOW_SECONDS`` env override) propagate
+    to the Retry-After header without restart-after-config-edit gotchas.
+    """
+    return get_settings().ratelimit_share_per_token_window_seconds
+
+
 class RateLimitMiddleware:
     """Sliding-window rate-limit middleware (one Redis pipeline per request)."""
 

@@ -61,6 +61,34 @@ class Settings(BaseSettings):
     ratelimit_share_anon_window_seconds: int = 60
     ratelimit_share_anon_threshold: int = 60  # 1 req/sec rolling per (token, IP)
     ratelimit_share_anon_soft_alert_threshold: int = 30
+    # Rate-limiting (Story 23.3, Decision Y — per-token share view DDoS cap)
+    # Operator-calibrated 2026-05-24 via Init 16 AskUserQuestion. Layered on top
+    # of the per-(token, IP) cap above: binds total req volume per token regardless
+    # of source IP, so a botnet wielding a leaked token cannot defeat the per-IP
+    # cap by distributing across many IPs. FR16-RATELIMIT-PER-TOKEN-1.
+    ratelimit_share_per_token_window_seconds: int = Field(default=60, ge=10, le=3600)
+    ratelimit_share_per_token_threshold: int = Field(default=60, ge=1, le=100000)
+    # Soft-alert threshold is OPTIONAL (default disabled). Empty-string env var
+    # (compose forwarding `${VAR:-}` when unset by operator) coerces to None via
+    # the field_validator below — without it, pydantic would reject "" for int.
+    ratelimit_share_per_token_soft_alert_threshold: int | None = Field(
+        default=None, ge=1, le=100000
+    )
+
+    @field_validator("ratelimit_share_per_token_soft_alert_threshold", mode="before")
+    @classmethod
+    def _empty_str_to_none(cls, v: object) -> object:
+        """Coerce empty-string env-var to None for the optional soft-alert field.
+
+        ``${RATELIMIT_SHARE_PER_TOKEN_SOFT_ALERT_THRESHOLD:-}`` in docker-compose
+        produces an empty string when the operator has not set the env var.
+        Pydantic would otherwise reject "" for an int|None field at startup-
+        config-load, breaking the "default disabled" contract from the spec.
+        """
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
+
     # Story 8.5: admin-issued password-reset link TTL bounds.
     password_reset_ttl_seconds: int = Field(default=3600, ge=60, le=86400)
 

@@ -11,6 +11,8 @@ from app.core.auth.ratelimit import (
     login_ratelimit_key,
     refresh_ratelimit_key,
     register_ratelimit_key,
+    share_anon_per_token_ratelimit_key,
+    share_anon_per_token_retry_after_seconds,
     share_anon_ratelimit_key,
     share_anon_retry_after_seconds,
     share_ratelimit_key,
@@ -157,6 +159,23 @@ def create_app() -> FastAPI:
         threshold=settings.ratelimit_share_threshold,
         soft_alert_threshold=settings.ratelimit_share_soft_alert_threshold,
         retry_after_seconds_fn=share_retry_after_seconds,
+    )
+    # Initiative 16 Story 23.3 (Decision Y) — anonymous /api/share/{token}/*
+    # PER-TOKEN DDoS cap (FR16-RATELIMIT-PER-TOKEN-1; closes TB-026 sub#6
+    # per-token addition). Layered defense on top of the per-(token, IP) cap
+    # below. Added FIRST in code so under Starlette LIFO it is the INNER
+    # layer: per-(token, IP) (cheaper key, more common abuse vector) wraps
+    # outermost and catches single-IP bursts first; per-token catches
+    # distributed botnet scraping when per-IP would not. EITHER overage
+    # returns 429.
+    app.add_middleware(
+        RateLimitMiddleware,
+        scope="share_anon_per_token",
+        key_fn=share_anon_per_token_ratelimit_key,
+        window_seconds=settings.ratelimit_share_per_token_window_seconds,
+        threshold=settings.ratelimit_share_per_token_threshold,
+        soft_alert_threshold=settings.ratelimit_share_per_token_soft_alert_threshold,
+        retry_after_seconds_fn=share_anon_per_token_retry_after_seconds,
     )
     # Initiative 12 Story 19.1 (Decision Q) — anonymous /api/share/{token}/*
     # DDoS cap. Operator-calibrated 2026-05-23: 60 req/min per (token, IP).
