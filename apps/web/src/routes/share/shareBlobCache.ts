@@ -104,10 +104,29 @@ export function acquireShareBlob(src: string): Promise<string> {
   // `clearShareBlobCache()`, the generation check on resolve still
   // rejects the (now-stale) result and the slot is released via the
   // same finally.
+  //
+  // Story 27.1 round-2 (Codex P3): wrap the fetch-init construction in
+  // try/catch so a SYNC throw (e.g. malformed URL, `URL` constructor
+  // throwing on bad input) releases the just-acquired slot. Without this,
+  // a sync-throw on bad input would leak `_concurrentFetches += 1` forever
+  // until page reload. Production rarely hits sync `fetch()` throws but
+  // the leak permanence makes the defensive path worth the 3 LOC.
   const slotWait = _acquireFetchSlot();
-  const fetchInit = slotWait === undefined
-    ? fetch(src, { credentials: "omit" })
-    : slotWait.then(() => fetch(src, { credentials: "omit" }));
+  let fetchInit: Promise<Response>;
+  try {
+    fetchInit = slotWait === undefined
+      ? fetch(src, { credentials: "omit" })
+      : slotWait.then(() => fetch(src, { credentials: "omit" }));
+  } catch (syncErr) {
+    if (slotWait === undefined) {
+      // Slot was acquired synchronously and now leaked — release it.
+      _releaseFetchSlot();
+    }
+    // Slot-queued path: slotWait promise will resolve eventually but
+    // no fetch was dispatched. Convert to a rejecting promise so the
+    // queued slot still gets released when slotWait fulfills.
+    throw syncErr;
+  }
   const promise: Promise<string> = fetchInit
     .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`img_${r.status}`))))
     .then((blob) => {
