@@ -244,7 +244,7 @@ function DragHandle({
     <button
       type="button"
       aria-label={t("catalog.actions.dragHandle")}
-      className="cursor-grab text-muted-foreground"
+      className="cursor-grab touch-none text-muted-foreground"
       {...attributes}
       {...listeners}
     >
