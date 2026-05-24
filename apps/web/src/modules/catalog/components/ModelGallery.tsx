@@ -28,12 +28,18 @@ function srcFor(modelId: string, fileId: string): string {
 // to the original blob when the `.gallery.webp` sibling is missing,
 // keeping rollout backward-compatible while the .190 backfill runs.
 //
-// Thumbnail strip below intentionally stays on the un-varianted srcFor
-// for this story (operator scope: main frame only). A follow-up story
-// could migrate the strip to `?variant=thumb` to mirror CardCarousel
-// (Story 13.2) and avoid pulling original blobs at thumb resolution.
+// Story 26.2 (Init 17 / TB-046): thumb strip below now consumes
+// `?variant=thumb` (mirrors Story 22.2's ShareCarousel migration) so
+// 64×64 thumbnail displays load the WebP variant (~50 KB) instead of
+// the original 4-8 MB blob. Backend endpoint silently falls back to
+// the original blob when the `.thumb.webp` sibling is missing, so the
+// rollout stays backward-compatible during partial backfill windows.
 function galleryUrlFor(modelId: string, fileId: string): string {
   return `${srcFor(modelId, fileId)}?variant=gallery`;
+}
+
+function thumbUrlFor(modelId: string, fileId: string): string {
+  return `${srcFor(modelId, fileId)}?variant=thumb`;
 }
 
 /**
@@ -190,7 +196,7 @@ export function ModelGallery({
             }`}
           >
             <img
-              src={srcFor(modelId, img.id)}
+              src={thumbUrlFor(modelId, img.id)}
               alt={img.original_name}
               loading="lazy"
               className="h-full w-full object-cover"
