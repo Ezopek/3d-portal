@@ -10,7 +10,6 @@ import uuid
 
 from sqlmodel import Session, select
 
-from app.core.auth.jwt import encode_token
 from app.core.db.models import (
     AuditLog,
     Category,
@@ -21,12 +20,7 @@ from app.core.db.models import (
     UserRole,
 )
 from app.core.db.session import get_engine
-
-JWT_SECRET = "test-secret-not-real"
-
-
-def _admin_token(user_id: uuid.UUID) -> str:
-    return encode_token(subject=str(user_id), role="admin", secret=JWT_SECRET, ttl_minutes=30)
+from tests._test_helpers import admin_token
 
 
 def _seed_admin(session: Session) -> uuid.UUID:
@@ -84,7 +78,7 @@ def test_create_note_201(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/notes",
         json={"kind": "description", "body": "This is a note."},
@@ -104,7 +98,7 @@ def test_create_note_404_model(client):
         admin_id = _seed_admin(s)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{uuid.uuid4()}/notes",
         json={"kind": "description", "body": "Note."},
@@ -120,7 +114,7 @@ def test_create_note_audit(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/notes",
         json={"kind": "operational", "body": "Audit body."},
@@ -153,7 +147,7 @@ def test_patch_note_200(client):
         note_id = _seed_note(s, model_id, admin_id)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.patch(
         f"/api/admin/notes/{note_id}",
         json={"body": "Updated body."},
@@ -177,7 +171,7 @@ def test_patch_note_mirrors_body_to_body_en_on_description_kind(client):
         note_id = _seed_note(s, model_id, admin_id)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.patch(
         f"/api/admin/notes/{note_id}",
         json={"body": "Fresh legacy edit."},
@@ -205,7 +199,7 @@ def test_patch_note_404(client):
         admin_id = _seed_admin(s)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.patch(
         f"/api/admin/notes/{uuid.uuid4()}",
         json={"body": "X"},
@@ -222,7 +216,7 @@ def test_patch_note_audit(client):
         note_id = _seed_note(s, model_id, admin_id)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     client.patch(
         f"/api/admin/notes/{note_id}",
         json={"body": "Patched body."},
@@ -253,7 +247,7 @@ def test_delete_note_204(client):
         note_id = _seed_note(s, model_id, admin_id)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.delete(
         f"/api/admin/notes/{note_id}",
     )
@@ -269,7 +263,7 @@ def test_delete_note_404(client):
         admin_id = _seed_admin(s)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.delete(
         f"/api/admin/notes/{uuid.uuid4()}",
     )

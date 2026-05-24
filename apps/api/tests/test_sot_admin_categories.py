@@ -10,7 +10,6 @@ import uuid
 
 from sqlmodel import Session, select
 
-from app.core.auth.jwt import encode_token
 from app.core.db.models import (
     AuditLog,
     Category,
@@ -19,12 +18,7 @@ from app.core.db.models import (
     UserRole,
 )
 from app.core.db.session import get_engine
-
-JWT_SECRET = "test-secret-not-real"
-
-
-def _admin_token(user_id: uuid.UUID) -> str:
-    return encode_token(subject=str(user_id), role="admin", secret=JWT_SECRET, ttl_minutes=30)
+from tests._test_helpers import admin_token
 
 
 def _seed_admin(session: Session) -> uuid.UUID:
@@ -61,7 +55,7 @@ def test_create_category_201(client):
         s.commit()
 
     slug = f"new-cat-{uuid.uuid4().hex[:8]}"
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         "/api/admin/categories",
         json={"slug": slug, "name_en": "New Category", "name_pl": "Nowa Kategoria"},
@@ -81,7 +75,7 @@ def test_create_category_with_parent(client):
         s.commit()
 
     slug = f"child-{uuid.uuid4().hex[:8]}"
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         "/api/admin/categories",
         json={"slug": slug, "name_en": "Child", "parent_id": str(parent_id)},
@@ -96,7 +90,7 @@ def test_create_category_400_unknown_parent(client):
         admin_id = _seed_admin(s)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         "/api/admin/categories",
         json={"slug": "child-x", "name_en": "Child", "parent_id": str(uuid.uuid4())},
@@ -116,7 +110,7 @@ def test_create_category_409_slug_conflict(client):
         s.add(child)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         "/api/admin/categories",
         json={"slug": child_slug, "name_en": "Dup", "parent_id": str(parent_id)},
@@ -131,7 +125,7 @@ def test_create_category_audit(client):
         s.commit()
 
     slug = f"audit-cat-{uuid.uuid4().hex[:8]}"
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         "/api/admin/categories",
         json={"slug": slug, "name_en": "Audit Cat"},
@@ -162,7 +156,7 @@ def test_patch_category_200(client):
         cat_id = _seed_category(s)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.patch(
         f"/api/admin/categories/{cat_id}",
         json={"name_en": "Updated Category"},
@@ -177,7 +171,7 @@ def test_patch_category_404(client):
         admin_id = _seed_admin(s)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.patch(
         f"/api/admin/categories/{uuid.uuid4()}",
         json={"name_en": "X"},
@@ -193,7 +187,7 @@ def test_patch_category_cycle_self(client):
         cat_id = _seed_category(s)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.patch(
         f"/api/admin/categories/{cat_id}",
         json={"parent_id": str(cat_id)},
@@ -212,7 +206,7 @@ def test_patch_category_cycle_grandchild(client):
         s.commit()
 
     # Try to set grandparent's parent to its grandchild
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.patch(
         f"/api/admin/categories/{grandparent_id}",
         json={"parent_id": str(child_id)},
@@ -232,7 +226,7 @@ def test_delete_category_204(client):
         cat_id = _seed_category(s)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.delete(
         f"/api/admin/categories/{cat_id}",
     )
@@ -248,7 +242,7 @@ def test_delete_category_404(client):
         admin_id = _seed_admin(s)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.delete(
         f"/api/admin/categories/{uuid.uuid4()}",
     )
@@ -269,7 +263,7 @@ def test_delete_category_409_has_models(client):
         s.add(m)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.delete(
         f"/api/admin/categories/{cat_id}",
     )
@@ -285,7 +279,7 @@ def test_delete_category_409_has_children(client):
         _seed_category(s, parent_id=parent_id)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.delete(
         f"/api/admin/categories/{parent_id}",
     )

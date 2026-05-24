@@ -25,7 +25,6 @@ from app.core.db.session import get_engine
 from app.main import create_app
 from app.modules.auth.totp.service import encrypt_secret
 
-JWT_SECRET = "test-secret-not-real"
 FERNET_KEY = "ZmFrZS10ZXN0LWtleS0zMi1ieXRlcy1mb3ItdGVzdHM="
 KNOWN_TOTP_SECRET = "JBSWY3DPEHPK3PXP"
 PASSWORD = "Sup3rPassword!"
@@ -39,7 +38,7 @@ def _make_client(tmp_path, monkeypatch, *, enforce: str):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/s.db")
     monkeypatch.setenv("ADMIN_EMAIL", "admin@localhost.localdomain")
     monkeypatch.setenv("ADMIN_PASSWORD", "pw")
-    monkeypatch.setenv("JWT_SECRET", JWT_SECRET)
+    monkeypatch.setenv("JWT_SECRET", "test-secret-not-real")
     monkeypatch.setenv("TOTP_FERNET_KEY", FERNET_KEY)
     monkeypatch.setenv("COOKIE_SECURE", "false")
     monkeypatch.setenv("ENFORCE_2FA_FOR_ROLES", enforce)

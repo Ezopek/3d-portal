@@ -28,7 +28,6 @@ from app.modules.auth.totp.service import (
     generate_recovery_codes_batch,
 )
 
-JWT_SECRET = "test-secret-not-real"
 FERNET_KEY = "ZmFrZS10ZXN0LWtleS0zMi1ieXRlcy1mb3ItdGVzdHM="
 KNOWN_TOTP_SECRET = "JBSWY3DPEHPK3PXP"  # canonical pyotp docs example
 

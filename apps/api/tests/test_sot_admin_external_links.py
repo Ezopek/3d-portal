@@ -10,7 +10,6 @@ import uuid
 
 from sqlmodel import Session, select
 
-from app.core.auth.jwt import encode_token
 from app.core.db.models import (
     AuditLog,
     Category,
@@ -20,12 +19,7 @@ from app.core.db.models import (
     UserRole,
 )
 from app.core.db.session import get_engine
-
-JWT_SECRET = "test-secret-not-real"
-
-
-def _admin_token(user_id: uuid.UUID) -> str:
-    return encode_token(subject=str(user_id), role="admin", secret=JWT_SECRET, ttl_minutes=30)
+from tests._test_helpers import admin_token
 
 
 def _seed_admin(session: Session) -> uuid.UUID:
@@ -82,7 +76,7 @@ def test_create_link_201(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/external-links",
         json={
@@ -109,7 +103,7 @@ def test_create_link_409_source_conflict(client):
         _seed_link(s, model_id, source="printables")
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/external-links",
         json={"source": "printables", "url": "https://printables.com/model/999"},
@@ -123,7 +117,7 @@ def test_create_link_404_model(client):
         admin_id = _seed_admin(s)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{uuid.uuid4()}/external-links",
         json={"source": "other", "url": "https://example.com"},
@@ -139,7 +133,7 @@ def test_create_link_audit(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/external-links",
         json={"source": "thingiverse", "url": "https://thingiverse.com/thing/1"},
@@ -173,7 +167,7 @@ def test_patch_link_200(client):
         s.commit()
 
     new_url = "https://updated.example.com/xyz"
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.patch(
         f"/api/admin/external-links/{link_id}",
         json={"url": new_url},
@@ -188,7 +182,7 @@ def test_patch_link_404(client):
         admin_id = _seed_admin(s)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.patch(
         f"/api/admin/external-links/{uuid.uuid4()}",
         json={"url": "https://x.com"},
@@ -207,7 +201,7 @@ def test_patch_link_409_source_conflict(client):
         _seed_link(s, model_id, source="thingiverse")
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.patch(
         f"/api/admin/external-links/{link1_id}",
         json={"source": "thingiverse"},
@@ -224,7 +218,7 @@ def test_patch_link_audit(client):
         link_id = _seed_link(s, model_id)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     client.patch(
         f"/api/admin/external-links/{link_id}",
         json={"url": "https://audit-updated.example.com"},
@@ -254,7 +248,7 @@ def test_delete_link_204(client):
         link_id = _seed_link(s, model_id)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.delete(
         f"/api/admin/external-links/{link_id}",
     )
@@ -270,7 +264,7 @@ def test_delete_link_404(client):
         admin_id = _seed_admin(s)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.delete(
         f"/api/admin/external-links/{uuid.uuid4()}",
     )

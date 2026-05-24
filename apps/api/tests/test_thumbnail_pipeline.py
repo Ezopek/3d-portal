@@ -21,7 +21,6 @@ import pytest
 from PIL import Image
 from sqlmodel import Session
 
-from app.core.auth.jwt import encode_token
 from app.core.config import get_settings
 from app.core.db.models import (
     Category,
@@ -38,16 +37,11 @@ from app.workers.generate_thumbnail import (
     generate_thumbnail_sync,
     thumbnail_path_for,
 )
+from tests._test_helpers import admin_token
 
 # ---------------------------------------------------------------------------
 # Seeding helpers (mirror test_sot_admin_files.py)
 # ---------------------------------------------------------------------------
-
-JWT_SECRET = "test-secret-not-real"
-
-
-def _admin_token(user_id: uuid.UUID) -> str:
-    return encode_token(subject=str(user_id), role="admin", secret=JWT_SECRET, ttl_minutes=30)
 
 
 def _seed_admin(session: Session) -> uuid.UUID:
@@ -353,7 +347,7 @@ def test_image_upload_enqueues_thumbnail(client, _patch_arq_pool):
     files = {"file": ("tiny.jpg", buf.getvalue(), "image/jpeg")}
     data = {"kind": "image"}
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(f"/api/admin/models/{model_id}/files", files=files, data=data)
     assert r.status_code == 201, r.text
 
@@ -381,7 +375,7 @@ def test_stl_upload_does_not_enqueue_thumbnail(client, _patch_arq_pool):
     files = {"file": ("part.stl", b"solid x\nendsolid", "model/stl")}
     data = {"kind": "stl"}
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(f"/api/admin/models/{model_id}/files", files=files, data=data)
     assert r.status_code == 201, r.text
 
@@ -421,7 +415,7 @@ def test_variant_thumb_serves_webp_when_present(client):
     result = generate_thumbnail_sync(engine, file_id, content_dir=content_dir)
     assert result["status"] == "ok"
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.get(f"/api/models/{model_id}/files/{file_id}/content?variant=thumb")
     assert r.status_code == 200, r.text
     assert r.headers["content-type"] == "image/webp"
@@ -450,7 +444,7 @@ def test_variant_thumb_falls_back_to_original_when_missing(client):
         s.commit()
 
     # No thumbnail generation → variant=thumb must fall back.
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.get(f"/api/models/{model_id}/files/{file_id}/content?variant=thumb")
     assert r.status_code == 200
     assert r.headers["content-type"] == "image/jpeg"
@@ -477,7 +471,7 @@ def test_variant_absent_returns_original(client):
     # Render variant first so we can prove the no-variant path bypasses it.
     generate_thumbnail_sync(engine, file_id, content_dir=content_dir)
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.get(f"/api/models/{model_id}/files/{file_id}/content")
     assert r.status_code == 200
     assert r.headers["content-type"] == "image/jpeg"
@@ -523,7 +517,7 @@ def test_variant_thumb_returns_404_when_original_missing_even_if_sidecar_present
     assert not abs_path.is_file()
     assert thumb_abs.is_file(), "sidecar must still be present for the test to be meaningful"
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.get(f"/api/models/{model_id}/files/{file_id}/content?variant=thumb")
     assert r.status_code == 404, r.text
     # Original-blob path also 404s — same integrity gate, no variant.
@@ -639,7 +633,7 @@ def test_delete_model_file_removes_thumbnail_sidecar(client):
     thumb_abs = thumbnail_path_for(abs_path)
     assert thumb_abs.is_file()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.delete(f"/api/admin/models/{model_id}/files/{file_id}")
     assert r.status_code == 204, r.text
 
@@ -671,7 +665,7 @@ def test_hard_delete_model_removes_thumbnail_sidecars(client):
     thumb_abs = thumbnail_path_for(abs_path)
     assert thumb_abs.is_file()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.delete(f"/api/admin/models/{model_id}?hard=true")
     assert r.status_code == 200, r.text
 

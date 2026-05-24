@@ -28,17 +28,26 @@ from app.core.auth.jwt import encode_token
 from app.core.config import get_settings
 from app.core.db.models import Category, Model, ModelFile, ModelFileKind, ModelStatus
 from app.core.db.session import get_engine
-
-JWT_SECRET = "test-secret-not-real"
+from tests._test_helpers import admin_token, agent_token, member_token
 
 
 def _mint_cookie(client, role):
-    token = encode_token(
-        subject=str(uuid.uuid4()),
-        role=role,
-        secret=JWT_SECRET,
-        ttl_minutes=30,
-    )
+    user_id = uuid.uuid4()
+    if role == "admin":
+        token = admin_token(user_id)
+    elif role == "agent":
+        token = agent_token(user_id)
+    elif role == "member":
+        token = member_token(user_id)
+    else:
+        # Fallback for unsupported roles (e.g. the "rogue" test below) —
+        # source secret from settings to match the centralized helper shape.
+        token = encode_token(
+            subject=str(user_id),
+            role=role,
+            secret=get_settings().jwt_secret,
+            ttl_minutes=30,
+        )
     client.cookies.set(ACCESS_COOKIE, token)
 
 
@@ -263,7 +272,7 @@ def test_sot_categories_unknown_role_returns_403(client):
     token = encode_token(
         subject=str(uuid.uuid4()),
         role="rogue",
-        secret=JWT_SECRET,
+        secret=get_settings().jwt_secret,
         ttl_minutes=30,
     )
     client.cookies.set(ACCESS_COOKIE, token)

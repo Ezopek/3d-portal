@@ -10,8 +10,6 @@ import uuid
 
 from sqlmodel import Session, select
 
-from app.core.auth.jwt import encode_token
-from app.core.config import get_settings
 from app.core.db.models import (
     AuditLog,
     Category,
@@ -22,44 +20,11 @@ from app.core.db.models import (
     UserRole,
 )
 from app.core.db.session import get_engine
+from tests._test_helpers import admin_token, agent_token, member_token
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-# Use the currently-effective settings.jwt_secret rather than a hardcoded
-# constant. Other tests in the suite (e.g. test_csrf_middleware.py with
-# JWT_SECRET="s") call monkeypatch.setenv("JWT_SECRET", ...) without
-# clearing get_settings()'s LRU cache, so a hardcoded constant here can
-# disagree with whichever secret the middleware actually decodes against
-# in full-suite context (Story 18.4 Codex round-2 P2).
-
-
-def _admin_token(user_id: uuid.UUID) -> str:
-    return encode_token(
-        subject=str(user_id),
-        role="admin",
-        secret=get_settings().jwt_secret,
-        ttl_minutes=30,
-    )
-
-
-def _agent_token(user_id: uuid.UUID) -> str:
-    return encode_token(
-        subject=str(user_id),
-        role="agent",
-        secret=get_settings().jwt_secret,
-        ttl_minutes=30,
-    )
-
-
-def _member_token(user_id: uuid.UUID) -> str:
-    return encode_token(
-        subject=str(user_id),
-        role="member",
-        secret=get_settings().jwt_secret,
-        ttl_minutes=30,
-    )
 
 
 def _seed_admin(session: Session) -> uuid.UUID:
@@ -135,7 +100,7 @@ def test_create_model_201(client):
         cat_id = _seed_category(s)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         "/api/admin/models",
         json={"name_en": "My Model", "category_id": str(cat_id)},
@@ -160,7 +125,7 @@ def test_create_model_400_unknown_category(client):
         admin_id = _seed_admin(s)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         "/api/admin/models",
         json={"name_en": "Orphan", "category_id": str(uuid.uuid4())},
@@ -182,7 +147,7 @@ def test_create_model_409_slug_collision(client):
         m = s.get(Model, existing_id)
         existing_slug = m.slug
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         "/api/admin/models",
         json={"name_en": "Dupe", "category_id": str(cat_id), "slug": existing_slug},
@@ -197,7 +162,7 @@ def test_create_model_auto_slug(client):
         cat_id = _seed_category(s)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         "/api/admin/models",
         json={"name_en": "Auto Slug Model", "category_id": str(cat_id)},
@@ -215,7 +180,7 @@ def test_create_model_writes_audit_log(client):
         cat_id = _seed_category(s)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         "/api/admin/models",
         json={"name_en": "Audit Create", "category_id": str(cat_id)},
@@ -247,7 +212,7 @@ def test_patch_model_200(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.patch(
         f"/api/admin/models/{model_id}",
         json={"name_en": "Patched Name"},
@@ -262,7 +227,7 @@ def test_patch_model_404_unknown(client):
         admin_id = _seed_admin(s)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.patch(
         f"/api/admin/models/{uuid.uuid4()}",
         json={"name_en": "X"},
@@ -281,7 +246,7 @@ def test_patch_model_404_soft_deleted(client):
         s.add(m)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.patch(
         f"/api/admin/models/{model_id}",
         json={"name_en": "Ghost"},
@@ -302,7 +267,7 @@ def test_patch_model_409_slug_collision(client):
         m1 = s.get(Model, m1_id)
         taken_slug = m1.slug
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.patch(
         f"/api/admin/models/{m2_id}",
         json={"slug": taken_slug},
@@ -318,7 +283,7 @@ def test_patch_model_writes_audit_log(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.patch(
         f"/api/admin/models/{model_id}",
         json={"name_en": "Updated Name"},
@@ -351,7 +316,7 @@ def test_soft_delete_200(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.delete(
         f"/api/admin/models/{model_id}",
     )
@@ -371,7 +336,7 @@ def test_soft_delete_idempotent(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r1 = client.delete(f"/api/admin/models/{model_id}")
     assert r1.status_code == 200
     r2 = client.delete(f"/api/admin/models/{model_id}")
@@ -386,7 +351,7 @@ def test_soft_delete_writes_audit_log(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.delete(f"/api/admin/models/{model_id}")
     assert r.status_code == 200
 
@@ -416,7 +381,7 @@ def test_restore_200(client):
         s.add(m)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/restore",
     )
@@ -440,7 +405,7 @@ def test_restore_writes_audit_log(client):
         s.add(m)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{model_id}/restore",
     )
@@ -469,7 +434,7 @@ def test_hard_delete_admin_200(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.delete(
         f"/api/admin/models/{model_id}?hard=true",
     )
@@ -488,7 +453,7 @@ def test_hard_delete_agent_403(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
-    client.cookies.set("portal_access", _agent_token(agent_id))
+    client.cookies.set("portal_access", agent_token(agent_id))
     r = client.delete(
         f"/api/admin/models/{model_id}?hard=true",
     )
@@ -506,7 +471,7 @@ def test_hard_delete_writes_audit_log_with_snapshot(client):
         s.add(m)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.delete(
         f"/api/admin/models/{model_id}?hard=true",
     )
@@ -556,7 +521,7 @@ def test_hard_delete_cleans_storage_files(client):
 
     assert full_path.is_file()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.delete(
         f"/api/admin/models/{model_id}?hard=true",
     )
@@ -590,7 +555,7 @@ def test_set_thumbnail_200(client):
         file_id = f.id
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.put(
         f"/api/admin/models/{model_id}/thumbnail",
         json={"file_id": str(file_id)},
@@ -621,7 +586,7 @@ def test_set_thumbnail_400_cross_model_file(client):
         file_id = f.id
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.put(
         f"/api/admin/models/{m2_id}/thumbnail",
         json={"file_id": str(file_id)},
@@ -638,7 +603,7 @@ def test_set_thumbnail_400_unknown_file(client):
         model_id = _seed_model(s, cat_id)
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.put(
         f"/api/admin/models/{model_id}/thumbnail",
         json={"file_id": str(uuid.uuid4())},
@@ -667,7 +632,7 @@ def test_set_thumbnail_writes_audit_log(client):
         file_id = f.id
         s.commit()
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.put(
         f"/api/admin/models/{model_id}/thumbnail",
         json={"file_id": str(file_id)},
@@ -705,7 +670,7 @@ def test_member_role_create_403(client):
         member_id = _seed_member(s)
         s.commit()
 
-    client.cookies.set("portal_access", _member_token(member_id))
+    client.cookies.set("portal_access", member_token(member_id))
     r = client.post(
         "/api/admin/models",
         json={"name_en": "X", "category_id": str(uuid.uuid4())},
@@ -768,7 +733,7 @@ def test_reorder_photos_assigns_sequential_positions(client):
         m_id = str(m.id)
         f_ids = [str(f3.id), str(f1.id), str(f2.id)]
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{m_id}/photos/reorder",
         json={"ordered_ids": f_ids},
@@ -801,7 +766,7 @@ def test_reorder_photos_rejects_unknown_file(client):
         s.refresh(m)
         m_id = str(m.id)
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         f"/api/admin/models/{m_id}/photos/reorder",
         json={"ordered_ids": [str(uuid.uuid4())]},
@@ -857,7 +822,7 @@ def test_list_files_returns_image_kinds_in_position_order(client):
         s.commit()
         m_id = str(m.id)
 
-    client.cookies.set("portal_access", _admin_token(admin_id))
+    client.cookies.set("portal_access", admin_token(admin_id))
     r = client.get(f"/api/models/{m_id}/files?kind=image")
     assert r.status_code == 200
     items = r.json()["items"]

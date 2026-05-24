@@ -34,7 +34,6 @@ from app.modules.auth.totp.service import (
     generate_recovery_codes_batch,
 )
 
-JWT_SECRET = "test-secret-not-real"
 FERNET_KEY = "ZmFrZS10ZXN0LWtleS0zMi1ieXRlcy1mb3ItdGVzdHM="
 
 
@@ -80,7 +79,7 @@ def _login_as(c: TestClient, user: User) -> None:
     token = encode_token(
         subject=str(user.id),
         role=user.role.value,
-        secret=JWT_SECRET,
+        secret=get_settings().jwt_secret,
         ttl_minutes=30,
     )
     c.cookies.set("portal_access", token, path="/api")

@@ -30,7 +30,6 @@ from app.modules.auth.totp.service import (
     generate_recovery_codes_batch,
 )
 
-JWT_SECRET = "test-secret-not-real"
 FERNET_KEY = "ZmFrZS10ZXN0LWtleS0zMi1ieXRlcy1mb3ItdGVzdHM="
 KNOWN_TOTP_SECRET = "JBSWY3DPEHPK3PXP"
 PASSWORD = "Sup3rPassword!"
@@ -46,7 +45,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/s.db")
     monkeypatch.setenv("ADMIN_EMAIL", "admin@localhost.localdomain")
     monkeypatch.setenv("ADMIN_PASSWORD", "pw")
-    monkeypatch.setenv("JWT_SECRET", JWT_SECRET)
+    monkeypatch.setenv("JWT_SECRET", "test-secret-not-real")
     monkeypatch.setenv("TOTP_FERNET_KEY", FERNET_KEY)
     monkeypatch.setenv("COOKIE_SECURE", "false")
     # T-DISABLE-4 needs the post-disable login to take the single-factor
@@ -127,7 +126,7 @@ def _login_as(c: TestClient, user: User) -> None:
     token = encode_token(
         subject=str(user.id),
         role=user.role.value,
-        secret=JWT_SECRET,
+        secret=get_settings().jwt_secret,
         ttl_minutes=30,
     )
     c.cookies.set("portal_access", token, path="/api")
