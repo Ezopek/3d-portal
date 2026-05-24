@@ -466,6 +466,128 @@ def test_anon_models_files_content_returns_401(share_fixture):
     assert r.status_code == 401
 
 
+# ===========================================================================
+# Story 22.1 round-2 (Codex P2) — variant routing on share asset endpoint.
+# Mirrors the authenticated `/api/models/.../content` variant branch.
+# ===========================================================================
+
+
+def _seed_sibling(share_fixture_tuple, file_id_key: str, suffix: str, content: bytes):
+    """Write a sibling variant file next to an existing share-fixture file."""
+    from pathlib import Path
+
+    _c, _token, ids = share_fixture_tuple
+    storage_root = Path(get_settings().portal_content_dir).resolve()
+    # Fixture stores files as f"models/{model_id}/files/{file_uuid}.bin"; mirror
+    # that layout for the sibling.
+    file_id = ids[file_id_key]
+    # The fixture's `_seed_file` doesn't expose the exact storage_path, but it's
+    # deterministic: `models/{model_id}/files/{file_uuid}.bin`. We look up the
+    # row via the engine to recover storage_path.
+    from sqlmodel import Session
+    from sqlmodel import select as sel
+
+    from app.core.db.models import ModelFile as MF
+
+    engine = get_engine()
+    with Session(engine) as s:
+        row = s.exec(sel(MF).where(MF.id == file_id)).first()
+        assert row is not None, f"fixture key {file_id_key!r} not found in DB"
+        path = storage_root / row.storage_path
+    sibling = path.with_name(path.name + suffix)
+    sibling.write_bytes(content)
+    return sibling
+
+
+def test_variant_gallery_serves_webp_when_sibling_present(share_fixture):
+    """`?variant=gallery` returns the .gallery.webp sibling with WebP MIME."""
+    c, token, ids = share_fixture
+    sibling = _seed_sibling(share_fixture, "img_a", ".gallery.webp", b"GALLERY_WEBP_BYTES")
+    try:
+        r = c.get(f"/api/share/{token}/files/{ids['img_a']}/content?variant=gallery")
+        assert r.status_code == 200, r.text
+        assert r.content == b"GALLERY_WEBP_BYTES"
+        assert r.headers["content-type"] == "image/webp"
+    finally:
+        sibling.unlink(missing_ok=True)
+
+
+def test_variant_thumb_serves_webp_when_sibling_present(share_fixture):
+    """`?variant=thumb` returns the .thumb.webp sibling with WebP MIME."""
+    c, token, ids = share_fixture
+    sibling = _seed_sibling(share_fixture, "img_a", ".thumb.webp", b"THUMB_WEBP_BYTES")
+    try:
+        r = c.get(f"/api/share/{token}/files/{ids['img_a']}/content?variant=thumb")
+        assert r.status_code == 200, r.text
+        assert r.content == b"THUMB_WEBP_BYTES"
+        assert r.headers["content-type"] == "image/webp"
+    finally:
+        sibling.unlink(missing_ok=True)
+
+
+def test_variant_gallery_falls_back_to_original_when_sibling_missing(share_fixture):
+    """When the .gallery.webp sibling doesn't exist, fall back to original blob."""
+    c, token, ids = share_fixture
+    # No sibling seeded — variant param ignored, original served.
+    r = c.get(f"/api/share/{token}/files/{ids['img_a']}/content?variant=gallery")
+    assert r.status_code == 200, r.text
+    assert r.content == b"IMG_A"
+    # Original MIME type preserved (not coerced to image/webp).
+    assert r.headers["content-type"] != "image/webp"
+
+
+def test_variant_unknown_value_serves_original(share_fixture):
+    """An unrecognized variant value (e.g. `bogus`) silently falls back to original."""
+    c, token, ids = share_fixture
+    r = c.get(f"/api/share/{token}/files/{ids['img_a']}/content?variant=bogus")
+    assert r.status_code == 200, r.text
+    assert r.content == b"IMG_A"
+
+
+def test_variant_records_audit_when_sibling_served(share_fixture):
+    """Audit row's `variant` field captures the variant when a sibling was served."""
+    import json
+
+    c, token, ids = share_fixture
+    sibling = _seed_sibling(share_fixture, "img_a", ".gallery.webp", b"GALLERY_AUDIT")
+    try:
+        r = c.get(f"/api/share/{token}/files/{ids['img_a']}/content?variant=gallery")
+        assert r.status_code == 200
+        engine = get_engine()
+        with Session(engine) as s:
+            row = s.exec(
+                select(AuditLog)
+                .where(AuditLog.action == "share.asset.fetched")
+                .order_by(AuditLog.at.desc())
+            ).first()
+            assert row is not None
+            after = json.loads(row.after_json or "{}")
+            assert after.get("variant") == "gallery", after
+    finally:
+        sibling.unlink(missing_ok=True)
+
+
+def test_variant_audit_variant_null_when_fallback_to_original(share_fixture):
+    """When variant request falls back to original (no sibling), audit `variant` is None."""
+    import json
+
+    c, token, ids = share_fixture
+    r = c.get(f"/api/share/{token}/files/{ids['img_a']}/content?variant=gallery")
+    assert r.status_code == 200
+    engine = get_engine()
+    with Session(engine) as s:
+        row = s.exec(
+            select(AuditLog)
+            .where(AuditLog.action == "share.asset.fetched")
+            .order_by(AuditLog.at.desc())
+        ).first()
+        assert row is not None
+        after = json.loads(row.after_json or "{}")
+        # Null when fallback happened — distinguishes "variant served" from
+        # "variant requested but missing" in audit log.
+        assert after.get("variant") is None, after
+
+
 def test_share_resolve_emits_share_scoped_urls(share_fixture):
     """Share-resolve emits `/api/share/{token}/files/{fid}/content` URLs.
 

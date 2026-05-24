@@ -1,6 +1,7 @@
 import contextlib
 import hashlib
 import uuid
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -365,7 +366,12 @@ async def list_share_files(
         "responses post-revoke). No ETag (would short-circuit scope check). The "
         "endpoint is anonymous-allowed under the `/api/share/*` prefix (no auth "
         "dependency); pre-Initiative-6 it was implicit via the nginx allowlist that "
-        "Story 10.3 cutover removed."
+        "Story 10.3 cutover removed. "
+        "Story 22.1 round-2 — `?variant=thumb` and `?variant=gallery` query params "
+        "now route to the WebP sibling files written by `generate_thumbnail` "
+        "(800px and 1920px longest-edge respectively); falls back silently to the "
+        "original blob when the sibling is missing. Mirrors the authenticated "
+        "`/api/models/.../content` variant routing exactly."
     ),
 )
 async def get_share_asset(
@@ -374,6 +380,7 @@ async def get_share_asset(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
     download: bool = False,
+    variant: str | None = Query(default=None),
 ) -> Response:
     """Serve a share-scoped binary asset to an anonymous share recipient.
 
@@ -499,6 +506,33 @@ async def get_share_asset(
         )
         raise HTTPException(404, "Share asset not found")
 
+    # Story 22.1 round-2 (Codex P2) — variant routing for share-scoped assets.
+    # Mirror sot/router.py:248 pattern: when ?variant=thumb|gallery is requested
+    # AND the sibling file exists on disk, serve the sibling with WebP MIME type.
+    # Silent fallback to original when sibling missing (matches authenticated
+    # surface semantics). Without this, share recipients receive the full 4-8 MB
+    # original blob even after Story 22.1 backfill populates `.thumb.webp` +
+    # `.gallery.webp` sidecars — TB-037 frontend story 22.2 will wire
+    # ShareCarousel main frame to `?variant=gallery` so this branch is the
+    # critical handshake.
+    served = candidate
+    served_mime = file_row.mime_type
+    variant_candidate: Path | None = None
+    if variant == "thumb":
+        variant_candidate = candidate.with_name(candidate.name + ".thumb.webp")
+    elif variant == "gallery":
+        variant_candidate = candidate.with_name(candidate.name + ".gallery.webp")
+    if variant_candidate is not None:
+        try:
+            variant_candidate.resolve().relative_to(base)
+        except (ValueError, OSError):
+            # Path escape (should never happen — sibling derives from already-
+            # validated candidate) or stat failure → fall back to original.
+            variant_candidate = candidate
+        if variant_candidate != candidate and variant_candidate.is_file():
+            served = variant_candidate
+            served_mime = "image/webp"
+
     # Step 4: audit emission BEFORE serving (captures access intent)
     record_event(
         get_engine(),
@@ -512,6 +546,7 @@ async def get_share_asset(
             "target_file_id": str(file_id),
             "target_file_kind": file_row.kind.value,
             "download": download,
+            "variant": variant if served != candidate else None,
             "ip": client_ip,
         },
     )
@@ -542,8 +577,8 @@ async def get_share_asset(
     # cached state) but they are NOT a security hole. The "no validators"
     # variant of Decision N has been retired as overly aggressive.
     return FileResponse(
-        candidate,
-        media_type=file_row.mime_type,
+        served,
+        media_type=served_mime,
         filename=file_row.original_name if download else None,
         headers={"Cache-Control": "no-store"},
     )
