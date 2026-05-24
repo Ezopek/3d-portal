@@ -13,7 +13,7 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { fetchShareView, type ShareModelView } from "@/lib/share-api";
@@ -129,6 +129,76 @@ function AnonymousImage({
 }
 
 /**
+ * Story 22.2 round-2 (Codex P2) — lazy-loading variant of AnonymousImage that
+ * defers the share-asset fetch until the element scrolls into (or near) the
+ * viewport. Wraps an IntersectionObserver around a placeholder div; only
+ * mounts the real AnonymousImage once `isIntersecting` fires.
+ *
+ * Why: Story 22.2 round-1 made the strip fetch `?variant=thumb` and the main
+ * frame fetch `?variant=gallery` — different URLs defeated the previously
+ * implicit dedupe between strip[activeIdx] and main, raising eager fetches
+ * from N to N+1 per N-image carousel. On shares with >60 images, the
+ * (token, IP) 60 req/min cap (Init 12 Story 19.1) would trigger 429 on the
+ * 61st fetch and leave a thumbnail stuck on the loading placeholder.
+ *
+ * Lazy-load reduces eager strip fetches to ~visible-window (typically 5-7
+ * thumbs at first paint instead of all N). The `rootMargin: "200px"` pre-warm
+ * keeps the next-just-off-screen thumbs loading early enough to avoid a
+ * visible flash during scroll. Falls back to immediate mount in JSDOM /
+ * environments without IntersectionObserver (defensive).
+ */
+function LazyAnonymousImage({
+  src,
+  alt,
+  className,
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+}) {
+  const [shouldFetch, setShouldFetch] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    // Defensive: JSDOM doesn't ship IntersectionObserver. Fall back to
+    // immediate eager fetch so vitest tests keep matching the
+    // AnonymousImage behaviour they previously asserted.
+    if (typeof window === "undefined" || typeof window.IntersectionObserver === "undefined") {
+      setShouldFetch(true);
+      return undefined;
+    }
+    const node = sentinelRef.current;
+    if (node === null) {
+      setShouldFetch(true);
+      return undefined;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setShouldFetch(true);
+            observer.disconnect();
+            return;
+          }
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  if (!shouldFetch) {
+    return (
+      <div
+        ref={sentinelRef}
+        className={`${className ?? ""} bg-muted/30`}
+        aria-label={alt}
+      />
+    );
+  }
+  return <AnonymousImage src={src} alt={alt} className={className} />;
+}
+
+/**
  * Initiative 12 Story 19.5 — carousel for the anonymous share view, parity
  * with `ModelGallery` on the authenticated catalog detail page. One image
  * visible at a time + thumbnail strip + prev/next chevrons. Each frame goes
@@ -225,7 +295,7 @@ function ShareCarousel({
                 idx === activeIdx ? "border-primary" : "border-transparent hover:border-border",
               )}
             >
-              <AnonymousImage
+              <LazyAnonymousImage
                 src={`${url}?variant=thumb`}
                 alt=""
                 className="size-full object-cover"
