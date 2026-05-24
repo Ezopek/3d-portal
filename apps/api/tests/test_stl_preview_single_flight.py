@@ -25,7 +25,7 @@ from unittest.mock import MagicMock
 import fakeredis.aioredis
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.core.auth.jwt import encode_token
 from app.core.db.models import (
@@ -347,4 +347,107 @@ def test_share_list_no_dispatch_when_current_preview_set_complete(sf_client):
     ]
     assert len(preview_enqueues) == 0, (
         f"complete 4-view set should suppress dispatch; got {preview_enqueues!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Story 23.2 round-2 (Codex P2#1) — file-list endpoint sha8 filter
+# ---------------------------------------------------------------------------
+
+
+def test_file_list_filters_stl_preview_rows_by_current_sha8(sf_client):
+    """FILE-LIST-FILTER (Codex P2#1): ``/api/share/<token>/files`` MUST
+    honor the same sha8 source-tracking filter that ``resolve_share``
+    applies to its ``images`` array. Without it, stale orphan
+    ``stl_preview`` rows (prior STL geometry) AND pre-Story-23.2
+    legacy rows (named ``iso.png`` with no sha8 stamp) would leak
+    through the file-list endpoint even though they are filtered out
+    of the resolve view.
+
+    Seeds: 4 current-STL previews + 4 orphan previews (sha8 "deadbeef")
+    + 1 legacy preview (``iso.png``) + the seeded STL row. Expected
+    file-list entries: 4 current previews + 1 STL = 5. Orphan + legacy
+    rows MUST NOT appear.
+    """
+    c, admin_token, ids, _fake, _arq = sf_client
+
+    from app.core.db.session import get_engine
+
+    _seed_preview_rows(model_id=ids["model"], sha8="deadbeef", label="orphan")
+    with Session(get_engine()) as s:
+        legacy = ModelFile(
+            model_id=ids["model"],
+            kind=ModelFileKind.stl_preview,
+            original_name="iso.png",
+            storage_path=f"models/{ids['model']}/stl_previews/legacy-iso-list.png",
+            sha256=uuid.uuid4().hex,
+            size_bytes=10,
+            mime_type="image/png",
+            position=0,
+        )
+        s.add(legacy)
+        s.commit()
+        s.refresh(legacy)
+        legacy_id = str(legacy.id)
+    current_ids = _seed_preview_rows(model_id=ids["model"], sha8=ids["stl_sha8"], label="current")
+
+    share_token = _mint_share_token(c, admin_token, ids["model"])
+    r = c.get(f"/api/share/{share_token}/files")
+    assert r.status_code == 200, r.text
+    body = r.json()
+
+    surfaced_ids = {item["id"] for item in body["items"]}
+
+    # Current STL row (kind=stl) + 4 current previews = 5 surfaced.
+    assert str(ids["stl"]) in surfaced_ids, "primary STL row dropped from file-list"
+    for fid in current_ids:
+        assert str(fid) in surfaced_ids, f"current preview {fid} missing from file-list"
+
+    # Legacy + orphan IDs MUST be absent.
+    assert legacy_id not in surfaced_ids, (
+        f"legacy stl_preview row ({legacy_id}) leaked into file-list: {body['items']!r}"
+    )
+    # Orphan rows: every preview kind whose name contains "deadbeef"
+    # was orphan-tagged; check none surfaced.
+    orphan_names = [item for item in body["items"] if "deadbeef" in (item["original_name"] or "")]
+    assert orphan_names == [], f"orphan-sha8 previews leaked into file-list: {orphan_names!r}"
+
+    # ``total`` MUST match the actual filtered count (count query is on the
+    # same base_filter as the items query — both apply the sha8 clause).
+    assert body["total"] == len(body["items"]), (
+        f"total ({body['total']}) ≠ items count ({len(body['items'])}); "
+        "count query likely skipped the sha8 preview clause"
+    )
+
+
+def test_file_list_hides_all_stl_previews_when_no_primary_stl(sf_client):
+    """FILE-LIST-FILTER-NO-STL: when the model has no primary STL row,
+    every ``stl_preview`` row is hidden from the file-list endpoint —
+    auto-renders are keyed to an STL we no longer have, so the
+    previews are orphans by definition.
+    """
+    c, admin_token, ids, _fake, _arq = sf_client
+
+    from app.core.db.session import get_engine
+
+    # Delete the seeded STL so the model has zero STL rows.
+    with Session(get_engine()) as s:
+        stl_row = s.exec(
+            select(ModelFile)
+            .where(ModelFile.model_id == ids["model"])
+            .where(ModelFile.kind == ModelFileKind.stl)
+        ).one()
+        s.delete(stl_row)
+        s.commit()
+
+    # Seed previews under what WAS the current sha8 — now orphans.
+    _seed_preview_rows(model_id=ids["model"], sha8=ids["stl_sha8"], label="orphaned-by-stl-delete")
+
+    share_token = _mint_share_token(c, admin_token, ids["model"])
+    r = c.get(f"/api/share/{share_token}/files")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    preview_items = [item for item in body["items"] if item["kind"] == "stl_preview"]
+    assert preview_items == [], (
+        f"file-list surfaced stl_preview rows despite no primary STL: {preview_items!r}"
     )

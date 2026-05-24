@@ -5,7 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import func, nullslast
+from sqlalchemy import func, nullslast, or_
 from sqlmodel import Session, select
 
 from app.core.audit import record_event
@@ -111,16 +111,26 @@ async def resolve_share(
             # run-state stays in ``render:stl_preview:<model_file_id>``.
             redis_client = request.app.state.redis.get()
             lock_key = f"share:stl_preview_lock:{stl_for_preview}"
-            acquired = await redis_client.set(lock_key, b"1", nx=True, ex=300)
+            # Story 23.2 round-2 (Codex P2#2) — owner-token Redis lock.
+            # Store a random per-acquire token AS the lock value so the
+            # worker's ``finally`` block can check-and-delete atomically
+            # (via Lua EVAL) — an older worker whose 300s TTL has lapsed
+            # cannot stomp a FRESH lock that a subsequent dispatch has
+            # acquired between TTL expiry and the older worker finishing.
+            lock_token = uuid.uuid4().hex
+            acquired = await redis_client.set(lock_key, lock_token, nx=True, ex=300)
             if acquired:
                 try:
                     await request.app.state.arq.enqueue_job(
-                        "render_stl_previews", str(stl_for_preview)
+                        "render_stl_previews", str(stl_for_preview), lock_token
                     )
                 except Exception:
                     # If enqueue fails AFTER lock acquired, release it
                     # immediately so the next request can retry without
-                    # waiting the full 300s TTL.
+                    # waiting the full 300s TTL. No race risk here — the
+                    # lock was just set in THIS request and no time has
+                    # elapsed for an older worker to interfere; a plain
+                    # delete is acceptable.
                     with contextlib.suppress(Exception):
                         await redis_client.delete(lock_key)
                     import logging
@@ -274,10 +284,40 @@ async def list_share_files(
     # secondary surface). Worker idempotency uses complete 4-view set check
     # so partial renders or post-STL-replace re-uploads retry.
 
+    # Story 23.2 round-2 (Codex P2#1) — file-list MUST honor the same
+    # sha8-source-tracking filter that ``resolve_share`` applies to its
+    # ``images`` array. Without it, stale orphan ``stl_preview`` rows
+    # (from a prior STL geometry) AND pre-Story-23.2 legacy rows (named
+    # ``iso.png`` without sha8 stamp) leak through the file-list
+    # endpoint even though they are filtered out of the resolve view.
+    # Fetch the primary STL's sha256 the same way resolve_share does,
+    # then constrain stl_preview rows to those whose original_name
+    # carries the current sha8 suffix. Non-preview kinds (image / print
+    # / stl) are unaffected by the disjunction.
+    primary_stl = session.exec(
+        select(ModelFile.sha256)
+        .where(
+            ModelFile.model_id == record.model_id,
+            ModelFile.kind == ModelFileKind.stl,
+        )
+        .order_by(ModelFile.created_at.asc())
+    ).first()
+    stl_sha8: str | None = primary_stl[:8] if primary_stl else None
+    if stl_sha8 is not None:
+        preview_clause = or_(
+            ModelFile.kind != ModelFileKind.stl_preview,
+            ModelFile.original_name.like(f"%-{stl_sha8}.png"),
+        )
+    else:
+        # No primary STL → no stl_preview row is valid (the auto-render
+        # is keyed to an STL we no longer have); hide them all.
+        preview_clause = ModelFile.kind != ModelFileKind.stl_preview
+
     offset = (page - 1) * page_size
     base_filter = (
         ModelFile.model_id == record.model_id,
         ModelFile.kind.in_(_SHARE_ALLOWED_KINDS),
+        preview_clause,
     )
     total = session.exec(select(func.count()).select_from(ModelFile).where(*base_filter)).one()
 

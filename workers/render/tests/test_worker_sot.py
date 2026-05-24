@@ -614,3 +614,266 @@ def test_render_stl_previews_releases_lock_on_failure(tmp_db_engine):
     result = asyncio.run(render_stl_previews(ctx, stl_id))
     assert result["status"] == "failed", result
     redis.delete.assert_awaited_with(f"share:stl_preview_lock:{stl_id}")
+
+
+# ---------------------------------------------------------------------------
+# Story 23.2 round-2 (Codex P1) — legacy stl_preview row migration
+# ---------------------------------------------------------------------------
+
+
+def _compute_png_sha256(bytes_payload: bytes) -> str:
+    import hashlib as _hashlib
+
+    return _hashlib.sha256(bytes_payload).hexdigest()
+
+
+@pytest.mark.parametrize(
+    "collide",
+    [
+        pytest.param(False, id="distinct-sha256"),
+        pytest.param(True, id="colliding-sha256"),
+    ],
+)
+def test_render_stl_previews_purges_legacy_rows_before_render(tmp_db_engine, collide):
+    """LEGACY-MIGRATION (Codex P1): pre-Story-23.2 ``stl_preview`` rows
+    (named ``iso.png`` / ``front.png`` / ``side.png`` / ``top.png`` with
+    no sha8 stamp) MUST be deleted — both DB row and on-disk file —
+    before the sha8-stamped re-render runs.
+
+    Two failure modes the purge protects against:
+
+    1. ``(model_id, sha256, kind)`` unique constraint: identical PNG
+       bytes (same STL geometry, deterministic renderer) → identical
+       sha256 → INSERT collides → commit rolls back → share recipient
+       gets zero previews + retries keep failing. Covered by the
+       ``colliding-sha256`` parameter — legacy rows pre-seeded with the
+       SAME sha256 the fake renderer will produce.
+    2. Hidden previews: legacy rows survive in DB but are filtered out
+       by the resolve_share sha8 LIKE filter → orphan rows linger,
+       confusing operators and inflating storage. Covered by the
+       ``distinct-sha256`` parameter.
+    """
+    engine, tmp_root = tmp_db_engine
+    content_dir = tmp_root / "content"
+    content_dir.mkdir()
+
+    sha256_a = "a" * 64  # current STL sha8 == "aaaaaaaa"
+    model_id_str, stl_id = _seed_model_with_stl(engine, content_dir, sha256=sha256_a)
+    model_uuid = uuid.UUID(model_id_str)
+
+    from app.core.db.models import ModelFile, ModelFileKind
+
+    # In the ``colliding-sha256`` parameter, write the SAME PNG bytes
+    # the fake renderer will produce ("collide-<view>") and compute the
+    # matching sha256 — so the legacy rows occupy the
+    # ``(model_id, sha256, kind=stl_preview)`` slot that the fresh
+    # render WILL try to claim. Without the purge, the new INSERT
+    # hits the unique constraint.
+    legacy_files: list[Path] = []
+    legacy_ids: list[uuid.UUID] = []
+    label = "collide" if collide else "post-migration"
+    with Session(engine) as s:
+        for view in ("iso", "front", "side", "top"):
+            legacy_uuid = uuid.uuid4()
+            rel = f"models/{model_uuid}/stl_previews/{legacy_uuid}.png"
+            dst = content_dir / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            payload = f"{label}-{view}".encode()
+            dst.write_bytes(payload)
+            legacy_files.append(dst)
+            row = ModelFile(
+                id=legacy_uuid,
+                model_id=model_uuid,
+                kind=ModelFileKind.stl_preview,
+                original_name=f"{view}.png",  # bare name, no sha8 — LEGACY
+                storage_path=rel,
+                sha256=(
+                    _compute_png_sha256(payload)
+                    if collide
+                    else f"legacy-{view}-sha256-{legacy_uuid.hex}"
+                ),
+                size_bytes=len(payload),
+                mime_type="image/png",
+                position=None,
+            )
+            s.add(row)
+            legacy_ids.append(legacy_uuid)
+        s.commit()
+
+    redis = MagicMock()
+    redis.set = AsyncMock(return_value=None)
+    redis.delete = AsyncMock(return_value=None)
+    redis.eval = AsyncMock(return_value=1)
+    _captured, fake_render_views = _fake_render_views_factory(label=label)
+
+    with patch("render.worker.render_views", fake_render_views):
+        from render.worker import render_stl_previews
+
+        ctx = {
+            "redis": redis,
+            "engine": engine,
+            "content_dir": content_dir,
+            "image_size": 256,
+        }
+        result = asyncio.run(render_stl_previews(ctx, stl_id))
+    assert result["status"] == "done", result
+
+    # Assert: legacy DB rows deleted; legacy files unlinked; 4 new
+    # sha8-stamped rows present.
+    with Session(engine) as s:
+        previews = list(
+            s.exec(select(ModelFile).where(ModelFile.kind == ModelFileKind.stl_preview)).all()
+        )
+        names = sorted(p.original_name for p in previews)
+        assert names == [
+            "front-aaaaaaaa.png",
+            "iso-aaaaaaaa.png",
+            "side-aaaaaaaa.png",
+            "top-aaaaaaaa.png",
+        ], names
+        for legacy_id in legacy_ids:
+            assert not any(p.id == legacy_id for p in previews), (
+                f"legacy row {legacy_id} survived purge"
+            )
+    for f in legacy_files:
+        assert not f.exists(), f"legacy file {f} survived disk-unlink"
+
+
+# ---------------------------------------------------------------------------
+# Story 23.2 round-2 (Codex P2#2) — lock owner-token race
+# ---------------------------------------------------------------------------
+
+
+def test_render_stl_previews_lock_release_does_not_stomp_newer_token(tmp_db_engine):
+    """LOCK-OWNER-TOKEN (Codex P2#2): worker's ``finally`` block MUST
+    use Lua check-and-delete so a stale older worker (whose lock TTL
+    expired and a NEWER dispatch has since acquired a fresh lock) does
+    NOT stomp the newer lock on exit.
+
+    Simulates the race:
+      t0  request A enqueues job J_A, acquires lock with token "old"
+      t1  job J_A sits in arq queue past 300s TTL → lock expires
+      t2  request B enqueues job J_B, acquires fresh lock with token "new"
+      t3  worker J_A finally runs → MUST NOT delete the "new" lock
+
+    Uses ``fakeredis.aioredis`` so the EVAL semantics match Redis
+    server behavior (script atomicity + ARGV/KEYS bindings).
+    """
+    import fakeredis.aioredis
+
+    engine, tmp_root = tmp_db_engine
+    content_dir = tmp_root / "content"
+    content_dir.mkdir()
+
+    sha256_a = "a" * 64
+    _model_id, stl_id = _seed_model_with_stl(engine, content_dir, sha256=sha256_a)
+    lock_key = f"share:stl_preview_lock:{stl_id}"
+
+    _captured, fake_render_views = _fake_render_views_factory()
+
+    async def scenario() -> tuple[dict[str, str], bytes | None]:
+        # FakeRedis client + render call MUST share one event loop to
+        # avoid "Queue bound to a different event loop" errors.
+        fake_redis = fakeredis.aioredis.FakeRedis()
+        await fake_redis.set(lock_key, "new", ex=300)
+        with patch("render.worker.render_views", fake_render_views):
+            from render.worker import render_stl_previews
+
+            ctx = {
+                "redis": fake_redis,
+                "engine": engine,
+                "content_dir": content_dir,
+                "image_size": 256,
+            }
+            # Older worker invoked with the OLDER token. Its lock has long
+            # since expired and a newer dispatch has installed "new".
+            r = await render_stl_previews(ctx, stl_id, "old")
+        survivor = await fake_redis.get(lock_key)
+        return r, survivor
+
+    result, surviving = asyncio.run(scenario())
+    assert result["status"] == "done", result
+    # The NEWER lock MUST survive — older worker's Lua EVAL only deletes
+    # the key if its value still equals "old", which it doesn't.
+    assert surviving == b"new", (
+        f"older worker stomped the newer lock; got {surviving!r}, expected b'new'"
+    )
+
+
+def test_render_stl_previews_lock_release_clears_matching_token(tmp_db_engine):
+    """LOCK-OWNER-TOKEN-HAPPY: when worker's token matches the stored
+    lock value (no race), the Lua check-and-delete clears the key so a
+    subsequent dispatcher can re-acquire immediately.
+    """
+    import fakeredis.aioredis
+
+    engine, tmp_root = tmp_db_engine
+    content_dir = tmp_root / "content"
+    content_dir.mkdir()
+
+    sha256_a = "a" * 64
+    _model_id, stl_id = _seed_model_with_stl(engine, content_dir, sha256=sha256_a)
+    lock_key = f"share:stl_preview_lock:{stl_id}"
+
+    _captured, fake_render_views = _fake_render_views_factory()
+
+    async def scenario() -> tuple[dict[str, str], bytes | None]:
+        fake_redis = fakeredis.aioredis.FakeRedis()
+        await fake_redis.set(lock_key, "mine", ex=300)
+        with patch("render.worker.render_views", fake_render_views):
+            from render.worker import render_stl_previews
+
+            ctx = {
+                "redis": fake_redis,
+                "engine": engine,
+                "content_dir": content_dir,
+                "image_size": 256,
+            }
+            r = await render_stl_previews(ctx, stl_id, "mine")
+        survivor = await fake_redis.get(lock_key)
+        return r, survivor
+
+    result, surviving = asyncio.run(scenario())
+    assert result["status"] == "done", result
+    assert surviving is None, "matching-token release should clear the lock"
+
+
+def test_render_stl_previews_legacy_token_falls_back_to_unconditional_delete(tmp_db_engine):
+    """LOCK-OWNER-TOKEN-BACKCOMPAT: when ``lock_token == ""`` (legacy
+    invocation, no token to check), the worker falls back to
+    unconditional delete to preserve pre-round-2 semantics. Protects
+    any in-flight arq job that was enqueued before the round-2
+    signature change rolled out.
+    """
+    import fakeredis.aioredis
+
+    engine, tmp_root = tmp_db_engine
+    content_dir = tmp_root / "content"
+    content_dir.mkdir()
+
+    sha256_a = "a" * 64
+    _model_id, stl_id = _seed_model_with_stl(engine, content_dir, sha256=sha256_a)
+    lock_key = f"share:stl_preview_lock:{stl_id}"
+
+    _captured, fake_render_views = _fake_render_views_factory()
+
+    async def scenario() -> tuple[dict[str, str], bytes | None]:
+        fake_redis = fakeredis.aioredis.FakeRedis()
+        await fake_redis.set(lock_key, "whatever", ex=300)
+        with patch("render.worker.render_views", fake_render_views):
+            from render.worker import render_stl_previews
+
+            ctx = {
+                "redis": fake_redis,
+                "engine": engine,
+                "content_dir": content_dir,
+                "image_size": 256,
+            }
+            # No third positional arg → default "" → unconditional delete path.
+            r = await render_stl_previews(ctx, stl_id)
+        survivor = await fake_redis.get(lock_key)
+        return r, survivor
+
+    result, surviving = asyncio.run(scenario())
+    assert result["status"] == "done", result
+    assert surviving is None, "legacy-token path should unconditionally delete"

@@ -28,6 +28,26 @@ _STATUS_TTL_SECONDS = 60 * 60
 # photos, which always have arbitrary names.
 AUTO_RENDER_NAMES: tuple[str, ...] = tuple(f"{view}-render.png" for view in VIEW_NAMES)
 
+# Story 23.2 round-2 (Codex P1) — legacy stl_preview row names. Pre-Story-23.2
+# rows were stamped with bare ``{view}.png`` (no sha8 suffix). When the
+# worker re-renders for a model that has these legacy rows, the new PNGs
+# can collide on the ``(model_id, sha256, kind)`` unique constraint OR
+# the share-list sha8 filter will hide both old + new behind the filter.
+# We delete legacy rows up front so the fresh render lands cleanly.
+LEGACY_STL_PREVIEW_NAMES: frozenset[str] = frozenset(f"{view}.png" for view in VIEW_NAMES)
+
+# Story 23.2 round-2 (Codex P2#2) — Lua atomic check-and-delete script.
+# Releases a Redis lock ONLY if the stored value matches the expected
+# owner token. Prevents an older worker (whose lock has expired) from
+# stomping a NEWER lock that a subsequent dispatch has just acquired.
+_LOCK_RELEASE_LUA = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+  return redis.call("del", KEYS[1])
+else
+  return 0
+end
+"""
+
 logger = logging.getLogger(__name__)
 
 
@@ -195,6 +215,7 @@ async def render_model(
 async def render_stl_previews(
     ctx: dict[str, Any],
     model_file_id: str,
+    lock_token: str = "",
 ) -> dict[str, str]:
     """Render 4 STL preview views (iso/front/side/top) for one STL file row.
 
@@ -235,6 +256,47 @@ async def render_stl_previews(
                 await redis.set(status_key, b"failed", ex=_STATUS_TTL_SECONDS)
                 return {"status": "failed", "reason": f"STL file {model_file_id} not found"}
 
+            stl_sha8 = stl_row.sha256[:8]
+            # Snapshot stl_row scalars before any commit. SQLAlchemy expires
+            # attributes on commit by default, which would trigger a refresh
+            # query on next access (harmless but wasteful).
+            stl_model_id = stl_row.model_id
+            stl_storage_path = stl_row.storage_path
+
+            # Story 23.2 round-2 (Codex P1) — purge legacy pre-Story-23.2
+            # stl_preview rows for this model BEFORE the idempotency
+            # check + render. Legacy rows have bare ``{view}.png``
+            # original_names (no sha8 stamp); they are hidden by the
+            # share-list sha8 filter but, more critically, would
+            # collide on the ``(model_id, sha256, kind)`` unique
+            # constraint if a fresh render produced identical PNG bytes
+            # for the same STL geometry (same input → same sha256 →
+            # INSERT fails → commit rolls back → share recipient gets
+            # zero previews + retries keep failing). Drop both DB row
+            # AND on-disk file so the namespace is clean for the
+            # sha8-stamped re-render.
+            legacy_rows = list(
+                session.exec(
+                    select(ModelFile)
+                    .where(ModelFile.model_id == stl_model_id)
+                    .where(ModelFile.kind == ModelFileKind.stl_preview)
+                    .where(ModelFile.original_name.in_(LEGACY_STL_PREVIEW_NAMES))
+                ).all()
+            )
+            for legacy in legacy_rows:
+                target = content_dir / legacy.storage_path
+                try:
+                    target.unlink(missing_ok=True)
+                except OSError as exc:
+                    logger.warning("failed to delete legacy stl_preview file %s: %s", target, exc)
+                session.delete(legacy)
+            if legacy_rows:
+                # Commit eagerly — the legacy delete is independent of the
+                # render outcome (we want them gone even if render fails,
+                # so the next retry has a clean namespace). The session
+                # exits without an explicit commit otherwise.
+                session.commit()
+
             # Idempotency guard — require the COMPLETE 4-view set (one per
             # VIEW_NAMES entry) before skipping. Partial renders (1-3 rows
             # committed before crash) AND post-STL-replace re-uploads must
@@ -246,12 +308,11 @@ async def render_stl_previews(
             # STL geometry; orphan previews from a prior STL (delete +
             # reupload, or upload-new + curation swap) do NOT count toward
             # the 4-view completion gate, so the new STL renders fresh.
-            stl_sha8 = stl_row.sha256[:8]
             existing_count = session.exec(
                 select(func.count())
                 .select_from(ModelFile)
                 .where(
-                    ModelFile.model_id == stl_row.model_id,
+                    ModelFile.model_id == stl_model_id,
                     ModelFile.kind == ModelFileKind.stl_preview,
                     ModelFile.original_name.like(f"%-{stl_sha8}.png"),
                 )
@@ -260,11 +321,11 @@ async def render_stl_previews(
                 await redis.set(status_key, b"done", ex=_STATUS_TTL_SECONDS)
                 return {"status": "skipped", "reason": "previews already exist"}
 
-            stl_path = content_dir / stl_row.storage_path
+            stl_path = content_dir / stl_storage_path
             if not stl_path.is_file():
                 await redis.set(status_key, b"failed", ex=_STATUS_TTL_SECONDS)
                 return {"status": "failed", "reason": f"STL missing on disk: {stl_path}"}
-            model_id = stl_row.model_id
+            model_id = stl_model_id
 
         with tempfile.TemporaryDirectory(prefix="portal-stl-preview-") as tmp:
             tmp_dir = Path(tmp)
@@ -331,8 +392,23 @@ async def render_stl_previews(
         # done / skipped / failed paths; if release fails the 300s TTL
         # is the safety net so the next share-view hit can re-dispatch
         # without waiting indefinitely.
+        #
+        # Story 23.2 round-2 (Codex P2#2) — owner-token race fix. If
+        # this job sat in the arq queue past the lock's 300s TTL,
+        # the lock has expired and a subsequent dispatcher MAY have
+        # acquired a FRESH lock for the same STL. An unconditional
+        # delete would stomp the new lock and let duplicate dispatches
+        # through. Use a Lua check-and-delete script so the release
+        # fires ONLY when the stored value still matches THIS worker's
+        # token. The empty-token fallback preserves pre-round-2
+        # semantics for any in-flight legacy invocation that doesn't
+        # carry a token.
+        lock_key = f"share:stl_preview_lock:{model_file_id}"
         try:
-            await redis.delete(f"share:stl_preview_lock:{model_file_id}")
+            if lock_token:
+                await redis.eval(_LOCK_RELEASE_LUA, 1, lock_key, lock_token)
+            else:
+                await redis.delete(lock_key)
         except Exception:
             logger.warning("stl_preview lock release failed", exc_info=True)
 
