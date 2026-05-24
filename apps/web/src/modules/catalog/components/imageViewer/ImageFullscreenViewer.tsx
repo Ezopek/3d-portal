@@ -196,12 +196,24 @@ export default function ImageFullscreenViewer({
           onTouchStart={onTouchStart}
           onTouchEnd={onTouchEnd}
         >
-          {/* Main frame fills available space; thumb strip sits below. */}
-          <div className="relative flex flex-1 items-center justify-center overflow-hidden">
+          {/* Main frame fills available space; thumb strip sits below.
+              Story 26.1 (Init 17 / TB-044): `min-h-0` is the canonical
+              flexbox trick to allow the main-frame container to SHRINK
+              below the intrinsic size of its content (large images).
+              Without it, the `<img>`'s intrinsic 4k/8k height would expand
+              the flex item, pushing the strip + nav chevrons OFF the
+              viewport on wide screens. */}
+          <div className="relative flex flex-1 min-h-0 items-center justify-center overflow-hidden">
             {renderImage({
               src: active.fullUrl,
               alt: active.alt,
-              className: "max-h-full max-w-full object-contain",
+              // Story 26.1 (Init 17 / TB-044): explicit max-h-[calc(95vh-5rem)]
+              // (DialogContent height = 95vh; strip height = h-20 = 5rem)
+              // so the image NEVER computes a height larger than the
+              // available main-frame area. Combined with `min-h-0` above,
+              // this keeps the strip + nav chevrons always in viewport
+              // regardless of source image aspect ratio.
+              className: "max-h-[calc(95vh-5rem)] max-w-full object-contain",
             })}
 
             {/* Chrome layer — counter, close, chevrons. Fades when
