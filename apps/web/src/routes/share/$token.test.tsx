@@ -256,6 +256,120 @@ describe("share blob cache — stale-generation guard (Story 23.1 round-2, Codex
   });
 });
 
+describe("share blob cache — fetch concurrency semaphore (Story 27.1 / TB-047)", () => {
+  it("SEMAPHORE-1: caps in-flight fetches at MAX_CONCURRENT_FETCHES + queues overflow", async () => {
+    // Scenario: 8 concurrent acquireShareBlob calls for 8 distinct URLs.
+    // Semaphore (cap=4) should let only 4 fetches actually dispatch; the
+    // remaining 4 wait in the queue. As each in-flight fetch resolves,
+    // the next queued one proceeds.
+    const deferreds = Array.from({ length: 8 }, () => defer<Response>());
+    let fetchCallIndex = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => {
+      const d = deferreds[fetchCallIndex];
+      fetchCallIndex += 1;
+      if (d === undefined) throw new Error("fetch called more than 8 times");
+      return d.promise;
+    });
+
+    const urls = Array.from({ length: 8 }, (_, i) => `https://example.test/sem-${i}.jpg`);
+    urls.forEach((u) => {
+      const p = shareBlobState.acquire(u);
+      // Silent catch — generation guard / stale-pending paths shouldn't trip
+      // here but defensive against fetch mock peculiarities.
+      p.catch(() => {});
+    });
+
+    // Microtasks flush — Promise chain inside acquireShareBlob steps once
+    // through `_acquireFetchSlot().then(() => fetch(...))`. After flush,
+    // first 4 should have actually called fetch (= 4 in-flight slots
+    // consumed); remaining 4 should be sitting in the queue.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(shareBlobState.semaphore.concurrentFetches).toBe(4);
+    expect(shareBlobState.semaphore.queueLength).toBe(4);
+    expect(fetchCallIndex).toBe(4);
+
+    // Resolve the first 4 in-flight fetches. Each release should pull the
+    // next queued caller and let it dispatch a fetch.
+    await act(async () => {
+      for (let i = 0; i < 4; i++) {
+        deferreds[i]!.resolve(new Response(new Blob([`b${i}`]), { status: 200 }));
+      }
+      // Drain microtasks so .then() handlers + .finally() releases fire.
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+
+    // After first 4 resolve, _concurrentFetches stays at 4 (4 queued moved
+    // up + acquired slots; original 4 released theirs). Queue drained.
+    expect(shareBlobState.semaphore.concurrentFetches).toBe(4);
+    expect(shareBlobState.semaphore.queueLength).toBe(0);
+    expect(fetchCallIndex).toBe(8);
+
+    // Resolve remaining 4.
+    await act(async () => {
+      for (let i = 4; i < 8; i++) {
+        deferreds[i]!.resolve(new Response(new Blob([`b${i}`]), { status: 200 }));
+      }
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+
+    // All 8 fetched + released; concurrentFetches back to 0; queue empty.
+    expect(shareBlobState.semaphore.concurrentFetches).toBe(0);
+    expect(shareBlobState.semaphore.queueLength).toBe(0);
+  });
+
+  it("SEMAPHORE-2: release fires even when fetch rejects (slot freed for queued callers)", async () => {
+    // Scenario: 5 concurrent acquireShareBlob calls. First 4 acquire slots
+    // and dispatch. We REJECT the first fetch (simulating 503 / network
+    // error). The 5th queued caller MUST be able to acquire the freed slot
+    // and proceed — slot must release even on rejection.
+    const deferreds = Array.from({ length: 5 }, () => defer<Response>());
+    let fetchCallIndex = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => {
+      const d = deferreds[fetchCallIndex];
+      fetchCallIndex += 1;
+      if (d === undefined) throw new Error("fetch called more than 5 times");
+      return d.promise;
+    });
+
+    const urls = Array.from({ length: 5 }, (_, i) => `https://example.test/sem-rej-${i}.jpg`);
+    urls.forEach((u) => {
+      const p = shareBlobState.acquire(u);
+      p.catch(() => {});
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(shareBlobState.semaphore.concurrentFetches).toBe(4);
+    expect(shareBlobState.semaphore.queueLength).toBe(1);
+    expect(fetchCallIndex).toBe(4);
+
+    // Reject the first fetch (e.g. simulated 503 — fetch resolves with
+    // !r.ok which rejects in the chain).
+    await act(async () => {
+      deferreds[0]!.resolve(new Response(null, { status: 503 }));
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+
+    // Queued caller (5th) should have acquired the freed slot + dispatched.
+    expect(fetchCallIndex).toBe(5);
+    expect(shareBlobState.semaphore.concurrentFetches).toBe(4);
+    expect(shareBlobState.semaphore.queueLength).toBe(0);
+
+    // Cleanup: resolve remaining 4 so the test exits cleanly.
+    await act(async () => {
+      for (let i = 1; i < 5; i++) {
+        deferreds[i]!.resolve(new Response(new Blob([`b${i}`]), { status: 200 }));
+      }
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+
+    expect(shareBlobState.semaphore.concurrentFetches).toBe(0);
+    expect(shareBlobState.semaphore.queueLength).toBe(0);
+  });
+});
+
 describe("share blob cache — page-mount-scoped invalidation (TB-033 P2#2)", () => {
   it("REVOCATION-1: route-component unmount revokes cached URLs + clears all maps", async () => {
     // Behavioral simulation: directly invoke the reset helper (which mirrors

@@ -33,6 +33,43 @@ const _pending = new Map<string, number>();
 // fresh cache — leaving the remounted image stuck on a pre-revocation blob.
 let _generation = 0;
 
+// Story 27.1 (Init 17 / TB-047 / Decision Z): concurrency semaphore caps
+// simultaneous in-flight `/api/share/<token>/files/*` fetches at 4 — one
+// below the nginx `limit_conn share_anon_conn 5` hard cap (Story 19.2).
+// Operator HAR capture 2026-05-24 (`tmp/share_gallery.har`) showed 8
+// fetches launched within 1ms on share-view mount → 5 prześliznęły się
+// przez limit_conn → 3 instant 503s. Story 22.2 round-2 LazyAnonymousImage
+// reduced the eager-strip-mount window but didn't deterministically cap
+// the burst count. This semaphore does — overflow callers wait for a
+// release rather than fire-and-fail at the nginx layer.
+const MAX_CONCURRENT_FETCHES = 4;
+let _concurrentFetches = 0;
+const _fetchQueue: Array<() => void> = [];
+
+// Sync-when-available: returns `undefined` when a slot is immediately
+// granted (so the caller can chain fetch synchronously and existing
+// tests + microtask timing assumptions stay intact); returns a Promise
+// only when the request must queue. Story 27.1 semaphore composition
+// with Story 23.1's promise-chain shape works cleanly either way.
+function _acquireFetchSlot(): Promise<void> | undefined {
+  if (_concurrentFetches < MAX_CONCURRENT_FETCHES) {
+    _concurrentFetches += 1;
+    return undefined;
+  }
+  return new Promise<void>((resolve) => {
+    _fetchQueue.push(() => {
+      _concurrentFetches += 1;
+      resolve();
+    });
+  });
+}
+
+function _releaseFetchSlot(): void {
+  _concurrentFetches -= 1;
+  const next = _fetchQueue.shift();
+  if (next !== undefined) next();
+}
+
 export function acquireShareBlob(src: string): Promise<string> {
   const cached = _shareBlobCache.get(src);
   if (cached !== undefined) {
@@ -59,7 +96,19 @@ export function acquireShareBlob(src: string): Promise<string> {
   // both the resolve handler and the finally cleanup will see the mismatch
   // and refuse to mutate the (now-newer) cache state.
   const fetchGeneration = _generation;
-  const promise: Promise<string> = fetch(src, { credentials: "omit" })
+  // Story 27.1 — semaphore wraps the fetch dispatch. Slot is acquired
+  // synchronously when available (preserves existing tests' microtask
+  // assumptions) OR via promise chain when queued. Slot released in the
+  // `.finally()` block below. The `_pending` and generation disciplines
+  // remain orthogonal: even if a consumer's slot wait races with
+  // `clearShareBlobCache()`, the generation check on resolve still
+  // rejects the (now-stale) result and the slot is released via the
+  // same finally.
+  const slotWait = _acquireFetchSlot();
+  const fetchInit = slotWait === undefined
+    ? fetch(src, { credentials: "omit" })
+    : slotWait.then(() => fetch(src, { credentials: "omit" }));
+  const promise: Promise<string> = fetchInit
     .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`img_${r.status}`))))
     .then((blob) => {
       const objUrl = URL.createObjectURL(blob);
@@ -91,6 +140,10 @@ export function acquireShareBlob(src: string): Promise<string> {
       if (_shareBlobInflight.get(src) === promise) {
         _shareBlobInflight.delete(src);
       }
+      // Story 27.1 — release semaphore slot AFTER the fetch settles (success
+      // OR failure OR stale-generation reject). The next queued caller (if
+      // any) acquires the freed slot via its push'd callback.
+      _releaseFetchSlot();
     });
   _shareBlobInflight.set(src, promise);
   return promise;
@@ -158,6 +211,23 @@ export const __test_share_blob_state = {
   acquire: acquireShareBlob,
   release: releaseShareBlob,
   /** Mirrors the route-component cleanup so tests can reset module state
-   *  between cases without invoking React unmount. */
-  reset: clearShareBlobCache,
+   *  between cases without invoking React unmount. Also force-resets the
+   *  Story 27.1 semaphore (which `clearShareBlobCache` doesn't touch in
+   *  production — see Decision Z rationale on slot accounting under
+   *  in-flight-during-unmount). */
+  reset: (): void => {
+    clearShareBlobCache();
+    _concurrentFetches = 0;
+    _fetchQueue.length = 0;
+  },
+  /** Story 27.1 (Init 17 / TB-047) — semaphore introspection for vitest. */
+  semaphore: {
+    get concurrentFetches() {
+      return _concurrentFetches;
+    },
+    get queueLength() {
+      return _fetchQueue.length;
+    },
+    maxConcurrent: MAX_CONCURRENT_FETCHES,
+  },
 };
