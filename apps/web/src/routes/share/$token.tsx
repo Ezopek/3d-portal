@@ -12,12 +12,23 @@
 //     (`/api/share/<token>/...`) — never the authenticated `/api/sot/...` path.
 
 import { createFileRoute } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Maximize2 } from "lucide-react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { fetchShareView, type ShareModelView } from "@/lib/share-api";
 import { cn } from "@/lib/utils";
+// Story 22.3 (TB-037 viewer) — symmetric fullscreen image viewer mount.
+// Imported via the lazy barrel so the viewer body is code-split out of the
+// share route's initial chunk (which already carries the Three.js viewer
+// gated by its own Suspense above) per [[feedback_lazy_import_discipline]].
+// The cookie-credential boundary stays at the `renderImage` prop:
+// ShareCarousel passes `AnonymousImage` so blob fetches keep
+// `credentials:"omit"` (NFR10/12).
+import {
+  ImageFullscreenViewer,
+  type ImageSource,
+} from "@/modules/catalog/components/imageViewer";
 
 import {
   acquireShareBlob,
@@ -222,12 +233,34 @@ function ShareCarousel({
   altLabel: string;
 }) {
   const { t } = useTranslation();
-  const ordered: string[] = [];
-  if (thumbnailUrl !== null) ordered.push(thumbnailUrl);
-  for (const url of imageUrls) {
-    if (url !== thumbnailUrl) ordered.push(url);
-  }
+  // Memoise `ordered` so dependent useMemo (viewerSources) keeps a stable
+  // reference across renders — required for rules-of-hooks order + the
+  // exhaustive-deps lint when feeding the array as a hook dep.
+  const ordered = useMemo<string[]>(() => {
+    const out: string[] = [];
+    if (thumbnailUrl !== null) out.push(thumbnailUrl);
+    for (const url of imageUrls) {
+      if (url !== thumbnailUrl) out.push(url);
+    }
+    return out;
+  }, [thumbnailUrl, imageUrls]);
   const [activeIdx, setActiveIdx] = useState(0);
+  // Story 22.3 — fullscreen viewer mount state. Hooks placed above the
+  // early-return guards (rules-of-hooks). The viewer pulls `?variant=full`
+  // (original-resolution blob, falling through to the un-varianted path
+  // when the backend's variant resolver has no `.full.webp` sibling) and
+  // reuses `AnonymousImage` so the credentialless contract (NFR10/12)
+  // holds on every blob fetch.
+  const [fullscreenOpen, setFullscreenOpen] = useState(false);
+  const viewerSources = useMemo<ImageSource[]>(
+    () =>
+      ordered.map((url, idx) => ({
+        fullUrl: `${url}?variant=full`,
+        thumbUrl: `${url}?variant=thumb`,
+        alt: `${altLabel} ${idx + 1}`,
+      })),
+    [ordered, altLabel],
+  );
 
   if (ordered.length === 0) {
     return null;
@@ -254,12 +287,30 @@ function ShareCarousel({
 
   return (
     <section className="space-y-2" aria-label={t("share.view.carousel_label")}>
-      <div className="relative">
-        <AnonymousImage
-          src={mainUrl}
-          alt={altLabel}
-          className="aspect-[4/3] w-full rounded border border-border object-contain bg-muted/30"
-        />
+      <div className="group relative">
+        <button
+          type="button"
+          data-testid="share-fullscreen-trigger"
+          onClick={() => setFullscreenOpen(true)}
+          aria-label={t("catalog.image_viewer.trigger_label")}
+          className="block w-full cursor-zoom-in"
+        >
+          <AnonymousImage
+            src={mainUrl}
+            alt={altLabel}
+            className="aspect-[4/3] w-full rounded border border-border object-contain bg-muted/30"
+          />
+        </button>
+        <button
+          type="button"
+          data-testid="share-fullscreen-icon"
+          onClick={() => setFullscreenOpen(true)}
+          aria-label={t("catalog.image_viewer.trigger_label")}
+          title={t("catalog.image_viewer.trigger_tooltip")}
+          className="absolute right-2 top-2 grid h-9 w-9 place-items-center rounded-full bg-gallery-control/40 text-gallery-control-foreground transition-opacity hover:bg-gallery-control/60 focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+        >
+          <Maximize2 className="h-4 w-4" />
+        </button>
         {showNav && (
           <>
             <button
@@ -303,6 +354,16 @@ function ShareCarousel({
             </button>
           ))}
         </div>
+      )}
+      {fullscreenOpen && (
+        <Suspense fallback={null}>
+          <ImageFullscreenViewer
+            sources={viewerSources}
+            initialIndex={activeIdx}
+            onClose={() => setFullscreenOpen(false)}
+            renderImage={AnonymousImage}
+          />
+        </Suspense>
       )}
     </section>
   );

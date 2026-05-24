@@ -1,9 +1,17 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight, Maximize2 } from "lucide-react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ModelFileRead } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
+// Story 22.3 (TB-037 viewer) — symmetric fullscreen image viewer mount.
+// Imported via the lazy barrel so the viewer body is code-split out of the
+// catalog detail route's initial chunk per [[feedback_lazy_import_discipline]].
+// Wrapped in <Suspense fallback={null}> below.
+import {
+  ImageFullscreenViewer,
+  type ImageSource,
+} from "@/modules/catalog/components/imageViewer";
 
 function isImage(f: ModelFileRead): boolean {
   return f.kind === "image" || f.kind === "print";
@@ -55,9 +63,33 @@ export function ModelGallery({
   thumbnailFileId?: string | null;
 }) {
   const { t } = useTranslation();
-  const images = withThumbnailFirst(files.filter(isImage), thumbnailFileId);
+  // Memoise the filtered + reordered image list so downstream `useMemo`
+  // deps stay reference-stable across renders (also flags identity to the
+  // exhaustive-deps lint).
+  const images = useMemo(
+    () => withThumbnailFirst(files.filter(isImage), thumbnailFileId),
+    [files, thumbnailFileId],
+  );
   const [activeId, setActiveId] = useState<string | null>(images[0]?.id ?? null);
   const [imageLoaded, setImageLoaded] = useState(false);
+  // Story 22.3 — fullscreen viewer mount state. Hooks placed above the
+  // early return so they fire on every render path (rules-of-hooks). The
+  // heavy `ImageFullscreenViewer` module only resolves the first time the
+  // user opens fullscreen (lazy barrel).
+  const [fullscreenOpen, setFullscreenOpen] = useState(false);
+  const viewerSources = useMemo<ImageSource[]>(
+    () =>
+      images.map((img) => ({
+        // ?variant=full requests the original blob (Story 22.1 router
+        // collapses ?variant=full to the un-varianted path; the explicit
+        // query string keeps the URL stable across re-renders for cache
+        // dedupe purposes).
+        fullUrl: `${srcFor(modelId, img.id)}?variant=full`,
+        thumbUrl: `${srcFor(modelId, img.id)}?variant=thumb`,
+        alt: img.original_name,
+      })),
+    [images, modelId],
+  );
   // Reset blur-up state when the active image changes so subsequent picks
   // also show the loading transition.
   useEffect(() => {
@@ -85,19 +117,37 @@ export function ModelGallery({
   return (
     <div className="space-y-2">
       <div className="group relative aspect-[4/3] overflow-hidden rounded bg-muted">
-        <img
-          data-testid="gallery-main"
-          src={galleryUrlFor(modelId, active.id)}
-          alt={active.original_name}
-          onLoad={() => setImageLoaded(true)}
-          onError={() => setImageLoaded(true)}
-          className={cn(
-            "absolute inset-0 h-full w-full object-contain transition duration-150 will-change-[filter,opacity]",
-            imageLoaded
-              ? "scale-100 blur-0 opacity-100"
-              : "scale-105 blur-[8px] opacity-25",
-          )}
-        />
+        <button
+          type="button"
+          data-testid="gallery-fullscreen-trigger"
+          onClick={() => setFullscreenOpen(true)}
+          aria-label={t("catalog.image_viewer.trigger_label")}
+          className="absolute inset-0 block h-full w-full cursor-zoom-in"
+        >
+          <img
+            data-testid="gallery-main"
+            src={galleryUrlFor(modelId, active.id)}
+            alt={active.original_name}
+            onLoad={() => setImageLoaded(true)}
+            onError={() => setImageLoaded(true)}
+            className={cn(
+              "h-full w-full object-contain transition duration-150 will-change-[filter,opacity]",
+              imageLoaded
+                ? "scale-100 blur-0 opacity-100"
+                : "scale-105 blur-[8px] opacity-25",
+            )}
+          />
+        </button>
+        <button
+          type="button"
+          data-testid="gallery-fullscreen-icon"
+          onClick={() => setFullscreenOpen(true)}
+          aria-label={t("catalog.image_viewer.trigger_label")}
+          title={t("catalog.image_viewer.trigger_tooltip")}
+          className="absolute right-2 top-2 grid h-9 w-9 place-items-center rounded-full bg-gallery-control/40 text-gallery-control-foreground transition-opacity hover:bg-gallery-control/60 focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+        >
+          <Maximize2 className="h-4 w-4" />
+        </button>
         {total > 1 && (
           <>
             <button
@@ -118,7 +168,9 @@ export function ModelGallery({
             >
               <ChevronRight className="h-5 w-5" />
             </button>
-            <div className="pointer-events-none absolute right-2 top-2 rounded bg-gallery-control/50 px-1.5 py-0.5 text-xs text-gallery-control-foreground">
+            {/* Counter moved to bottom-right to leave top-right for the
+                Story 22.3 Maximize2 fullscreen trigger (designer §2). */}
+            <div className="pointer-events-none absolute bottom-2 right-2 rounded bg-gallery-control/50 px-1.5 py-0.5 text-xs text-gallery-control-foreground">
               {activeIdx + 1} / {total}
             </div>
           </>
@@ -146,6 +198,18 @@ export function ModelGallery({
           </button>
         ))}
       </div>
+      {fullscreenOpen && (
+        <Suspense fallback={null}>
+          <ImageFullscreenViewer
+            sources={viewerSources}
+            initialIndex={activeIdx}
+            onClose={() => setFullscreenOpen(false)}
+            renderImage={({ src, alt, className }) => (
+              <img src={src} alt={alt} className={className} />
+            )}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
