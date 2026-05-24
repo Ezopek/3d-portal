@@ -174,6 +174,88 @@ describe("share blob cache — StrictMode refcount hardening (TB-033 P2#1)", () 
   });
 });
 
+describe("share blob cache — stale-generation guard (Story 23.1 round-2, Codex P2 fix-up)", () => {
+  it("STALE-GENERATION-1: clearShareBlobCache during inflight rejects the old resolve + protects fresh cache state", async () => {
+    // Scenario: Mount A starts a cold fetch. Before that fetch resolves the
+    // route unmounts (clearShareBlobCache runs). Mount B then re-acquires
+    // the same URL — starting a NEW cold fetch with a fresh generation. The
+    // OLD fetch finally resolves AFTER Mount B's `_pending` counter was set.
+    //
+    // Without the generation guard, the OLD resolve would consume Mount B's
+    // `_pending[src]`, stamp the OLD blob URL into the fresh cache with
+    // refCount=1, and reject the NEW fetch by making Mount B's pendingCount
+    // hit 0 — Mount B ends up displaying a pre-revocation blob.
+    //
+    // With the guard, the OLD resolve detects the generation mismatch,
+    // revokes its own URL, and throws "share_blob_stale_generation" so the
+    // NEW fetch's resolve handler can consume Mount B's pending counter
+    // cleanly.
+    const oldFetchDeferred = defer<Response>();
+    const newFetchDeferred = defer<Response>();
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementationOnce(() => oldFetchDeferred.promise)
+      .mockImplementationOnce(() => newFetchDeferred.promise);
+
+    const SRC = "https://example.test/stale-gen.jpg";
+
+    // Mount A: cold fetch dispatched, captures generation 0.
+    const oldAcquire = shareBlobState.acquire(SRC);
+    expect(shareBlobState.pending.get(SRC)).toBe(1);
+    expect(shareBlobState.inflight.has(SRC)).toBe(true);
+
+    // Attach a silent catch so the unhandled rejection doesn't trip vitest
+    // — production callers already handle this in the AnonymousImage
+    // useEffect via `.catch(() => {})`.
+    oldAcquire.catch(() => {});
+
+    // Route unmount mid-flight: clear the cache + bump generation to 1.
+    shareBlobState.reset();
+    expect(shareBlobState.pending.size).toBe(0);
+    expect(shareBlobState.inflight.size).toBe(0);
+
+    // Mount B: starts a NEW cold fetch with generation 1.
+    const newAcquire = shareBlobState.acquire(SRC);
+    expect(shareBlobState.pending.get(SRC)).toBe(1);
+    expect(shareBlobState.inflight.has(SRC)).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    // OLD fetch resolves first. Generation guard fires: OLD blob URL is
+    // revoked and the promise rejects with the stale-generation marker.
+    // The fresh `_pending` counter (from Mount B) MUST stay at 1; no
+    // entry for SRC may appear in `_shareBlobCache` yet.
+    await act(async () => {
+      oldFetchDeferred.resolve(new Response(new Blob(["old"]), { status: 200 }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(revokeObjectURLSpy).toHaveBeenCalledTimes(1);
+    expect(shareBlobState.cache.has(SRC)).toBe(false);
+    expect(shareBlobState.pending.get(SRC)).toBe(1);
+    // Inflight map must still hold the NEW promise (identity guard in the
+    // OLD finally must not delete it).
+    expect(shareBlobState.inflight.has(SRC)).toBe(true);
+
+    // NEW fetch resolves second. Generation matches; cache entry materializes
+    // with refCount=1 (the live Mount B consumer).
+    await act(async () => {
+      newFetchDeferred.resolve(new Response(new Blob(["new"]), { status: 200 }));
+      await newAcquire;
+    });
+
+    const cached = shareBlobState.cache.get(SRC);
+    expect(cached?.refCount).toBe(1);
+    expect(cached?.url).toBe("blob:fake/2"); // second createObjectURL call
+    expect(shareBlobState.pending.size).toBe(0);
+    expect(shareBlobState.inflight.has(SRC)).toBe(false);
+    // OLD blob URL revoked once (stale-generation path). The NEW URL is
+    // still live in the cache, NOT revoked.
+    expect(revokeObjectURLSpy).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURLSpy).toHaveBeenCalledWith("blob:fake/1");
+  });
+});
+
 describe("share blob cache — page-mount-scoped invalidation (TB-033 P2#2)", () => {
   it("REVOCATION-1: route-component unmount revokes cached URLs + clears all maps", async () => {
     // Behavioral simulation: directly invoke the reset helper (which mirrors

@@ -25,6 +25,13 @@
 const _shareBlobCache = new Map<string, { url: string; refCount: number }>();
 const _shareBlobInflight = new Map<string, Promise<string>>();
 const _pending = new Map<string, number>();
+// Story 23.1 round-2 (Codex P2 fix-up): generation counter wycina stale
+// in-flight fetches whose `clearShareBlobCache()` ran between their dispatch
+// and their resolve. Without this guard, an OLD fetch resolving AFTER a
+// route unmount + remount could pollute the NEW cache state by consuming
+// the new `_pending[src]` counter and stamping the OLD blob URL into the
+// fresh cache — leaving the remounted image stuck on a pre-revocation blob.
+let _generation = 0;
 
 export function acquireShareBlob(src: string): Promise<string> {
   const cached = _shareBlobCache.get(src);
@@ -47,10 +54,23 @@ export function acquireShareBlob(src: string): Promise<string> {
     // return the same URL when it lands. No refCount mutation here.
     return inflight;
   }
-  const promise = fetch(src, { credentials: "omit" })
+  // Capture the generation at fetch dispatch time. If
+  // `clearShareBlobCache()` bumps `_generation` before this fetch resolves,
+  // both the resolve handler and the finally cleanup will see the mismatch
+  // and refuse to mutate the (now-newer) cache state.
+  const fetchGeneration = _generation;
+  const promise: Promise<string> = fetch(src, { credentials: "omit" })
     .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`img_${r.status}`))))
     .then((blob) => {
       const objUrl = URL.createObjectURL(blob);
+      if (fetchGeneration !== _generation) {
+        // The cache was cleared mid-flight (route unmount → remount). This
+        // fetch's response is for the PREVIOUS page-life; drop it without
+        // touching the current `_pending` / `_shareBlobCache` so the new
+        // fetch dispatched by the remount can resolve cleanly.
+        URL.revokeObjectURL(objUrl);
+        throw new Error("share_blob_stale_generation");
+      }
       const pendingCount = _pending.get(src) ?? 0;
       _pending.delete(src);
       if (pendingCount > 0) {
@@ -63,7 +83,14 @@ export function acquireShareBlob(src: string): Promise<string> {
       throw new Error("share_blob_all_consumers_unmounted");
     })
     .finally(() => {
-      _shareBlobInflight.delete(src);
+      // Promise-identity guard: if `clearShareBlobCache()` already wiped
+      // the inflight map and a NEW fetch took this slot, do NOT delete the
+      // NEW promise. Only remove the entry if it still points at THIS
+      // promise. This pairs with the generation guard above so neither the
+      // resolve handler nor the cleanup can stomp on fresh state.
+      if (_shareBlobInflight.get(src) === promise) {
+        _shareBlobInflight.delete(src);
+      }
     });
   _shareBlobInflight.set(src, promise);
   return promise;
@@ -107,6 +134,11 @@ export function releaseShareBlob(src: string): void {
  *     cross-token-nav cache benefit traded away is theoretical.
  */
 export function clearShareBlobCache(): void {
+  // Bump generation FIRST so any in-flight fetch dispatched before this
+  // clear (still hanging onto a now-stale `fetchGeneration`) will see the
+  // mismatch in its resolve handler and refuse to pollute the fresh cache.
+  // Story 23.1 round-2 (Codex P2 fix-up).
+  _generation += 1;
   for (const entry of _shareBlobCache.values()) {
     URL.revokeObjectURL(entry.url);
   }
