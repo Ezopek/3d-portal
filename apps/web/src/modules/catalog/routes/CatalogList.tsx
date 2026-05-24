@@ -175,12 +175,21 @@ export function CatalogList() {
         {/* Initiative 13 Story 20.2 — admin-only "Add Model" CTA in the
             catalog toolbar. Operator-aligned 2026-05-23: top-right placement
             next to filter controls. AddModelButton role-gates on isAdmin
-            (non-admin users see nothing in this slot). */}
-        <div className="flex items-start justify-between gap-3 px-3 pt-3">
+            (non-admin users see nothing in this slot).
+            Story 28.1 (Init 17 / TB-048): outer flex uses `items-center`
+            so the AddModelButton's vertical center aligns with the
+            FilterRibbon's (FilterRibbon is internally a single-row
+            `items-center` flex of search input + facet dropdowns).
+            The previous `items-start` + magic `pt-1` on the button
+            wrapper produced a small mis-baseline that operator's
+            hands-on (`tmp/add_model_misalligned.png`) flagged. The
+            `pt-1` hack is now removed since `items-center` does the
+            alignment canonically. */}
+        <div className="flex items-center justify-between gap-3 px-3 pt-3">
           <div className="min-w-0 flex-1">
             <FilterRibbon state={filterState} tagsById={tagsById} onChange={setFilters} />
           </div>
-          <div className="shrink-0 pt-1">
+          <div className="shrink-0">
             <AddModelButton />
           </div>
         </div>
