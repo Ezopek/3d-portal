@@ -179,8 +179,17 @@ def generate_thumbnail_sync(
         try:
             size_bytes = _render_thumbnail(original_abs, thumb_abs)
         except UnidentifiedImageError as exc:
+            # Story 27.2 (Init 17 / TB-045): inline `model_file_id` +
+            # `storage_path` into the message body so operator's
+            # `docker compose logs api | grep unidentified` returns
+            # actionable hits. The structured `extra={...}` is preserved
+            # for GlitchTip / structured-log consumers; only the message
+            # template format changes.
             _LOG.warning(
-                "thumbnail.unidentified",
+                "thumbnail.unidentified: model_file_id=%s storage_path=%s error=%s",
+                str(model_file_id),
+                row.storage_path,
+                str(exc),
                 extra={
                     "event.action": "thumbnail.unidentified",
                     "labels.model_file_id": str(model_file_id),
@@ -417,8 +426,13 @@ def generate_gallery_sync(
         try:
             size_bytes = _render_gallery(original_abs, gallery_abs)
         except UnidentifiedImageError as exc:
+            # Story 27.2 (Init 17 / TB-045): inline file_id + storage_path
+            # into message body (mirrors thumbnail counterpart above).
             _LOG.warning(
-                "gallery.unidentified",
+                "gallery.unidentified: model_file_id=%s storage_path=%s error=%s",
+                str(model_file_id),
+                row.storage_path,
+                str(exc),
                 extra={
                     "event.action": "gallery.unidentified",
                     "labels.model_file_id": str(model_file_id),
