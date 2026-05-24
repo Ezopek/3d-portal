@@ -59,7 +59,10 @@ describe("ModelGallery", () => {
   it("renders main image from first image/print file", () => {
     render(<ModelGallery modelId={MODEL_ID} files={FILES} />);
     const main = screen.getByTestId("gallery-main") as HTMLImageElement;
-    expect(main.getAttribute("src")).toContain(`/api/models/${MODEL_ID}/files/f2/content`);
+    // Story 22.2 — main frame consumes the gallery tier variant.
+    expect(main.getAttribute("src")).toBe(
+      `/api/models/${MODEL_ID}/files/f2/content?variant=gallery`,
+    );
   });
 
   it("renders thumbnail strip with all image/print files", () => {
@@ -73,6 +76,9 @@ describe("ModelGallery", () => {
     const thumbs = screen.getAllByTestId("gallery-thumb");
     fireEvent.click(thumbs[1]!);
     const main = screen.getByTestId("gallery-main") as HTMLImageElement;
-    expect(main.getAttribute("src")).toContain(`/api/models/${MODEL_ID}/files/f3/content`);
+    // Story 22.2 — main frame consumes the gallery tier variant.
+    expect(main.getAttribute("src")).toBe(
+      `/api/models/${MODEL_ID}/files/f3/content?variant=gallery`,
+    );
   });
 });

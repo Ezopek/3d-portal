@@ -13,6 +13,21 @@ function srcFor(modelId: string, fileId: string): string {
   return `/api/models/${modelId}/files/${fileId}/content`;
 }
 
+// Story 22.2 (FR16-CAROUSEL-TIER-1) — catalog detail main frame requests
+// the gallery tier variant (~150-500 KB). Story 22.1 (commit a04a61f)
+// shipped backend variant routing on the authenticated
+// /api/models/<id>/files/<fid>/content endpoint; it falls back silently
+// to the original blob when the `.gallery.webp` sibling is missing,
+// keeping rollout backward-compatible while the .190 backfill runs.
+//
+// Thumbnail strip below intentionally stays on the un-varianted srcFor
+// for this story (operator scope: main frame only). A follow-up story
+// could migrate the strip to `?variant=thumb` to mirror CardCarousel
+// (Story 13.2) and avoid pulling original blobs at thumb resolution.
+function galleryUrlFor(modelId: string, fileId: string): string {
+  return `${srcFor(modelId, fileId)}?variant=gallery`;
+}
+
 /**
  * Push the chosen catalog thumbnail to the front of the gallery so the
  * default-active image matches what users see in the list view. Admin order
@@ -72,7 +87,7 @@ export function ModelGallery({
       <div className="group relative aspect-[4/3] overflow-hidden rounded bg-muted">
         <img
           data-testid="gallery-main"
-          src={srcFor(modelId, active.id)}
+          src={galleryUrlFor(modelId, active.id)}
           alt={active.original_name}
           onLoad={() => setImageLoaded(true)}
           onError={() => setImageLoaded(true)}

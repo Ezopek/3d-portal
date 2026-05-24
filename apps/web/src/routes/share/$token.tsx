@@ -171,11 +171,22 @@ function ShareCarousel({
   const onPrev = () => setActiveIdx((i) => (i === 0 ? ordered.length - 1 : i - 1));
   const onNext = () => setActiveIdx((i) => (i + 1) % ordered.length);
 
+  // Story 22.2 (FR16-CAROUSEL-TIER-1) — main frame consumes the gallery
+  // tier (~150-500 KB) instead of the original (4-8 MB). Story 22.1
+  // round-2 (commit 05ad8f0) extended the anonymous /api/share/<token>/
+  // files/<fid>/content endpoint to accept `?variant=gallery` and serve
+  // the `.gallery.webp` sibling, falling back silently to the original
+  // when the sibling is missing (backward-compatible during rollout
+  // before the .190 backfill completes). AnonymousImage's cache key is
+  // the full URL, so each variant maps to its own cache bucket — no
+  // invalidation needed.
+  const mainUrl = `${activeUrl}?variant=gallery`;
+
   return (
     <section className="space-y-2" aria-label={t("share.view.carousel_label")}>
       <div className="relative">
         <AnonymousImage
-          src={activeUrl}
+          src={mainUrl}
           alt={altLabel}
           className="aspect-[4/3] w-full rounded border border-border object-contain bg-muted/30"
         />
@@ -215,7 +226,7 @@ function ShareCarousel({
               )}
             >
               <AnonymousImage
-                src={url}
+                src={`${url}?variant=thumb`}
                 alt=""
                 className="size-full object-cover"
               />
