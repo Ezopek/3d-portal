@@ -79,7 +79,15 @@ export default function ImageFullscreenViewer({
   // Touch tracking for swipe-LR. We deliberately do NOT attach onMouseDown
   // — desktop users have chevrons + arrow keys; pointer drags would
   // conflict with click-to-toggle-chrome on track-pad clicks.
-  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  // Story 28.2 (Init 17 / TB-043 round-3 follow-up): capture
+  // `stripOrigin` flag from coords (not target.contains) so the gesture
+  // guard works whether the strip is interactive (chrome visible) OR
+  // pointer-events-none (chrome hidden, Story 22.3 round-3 patch). On
+  // hidden-strip drag, target is the viewer root (passes through) but
+  // touch coordinates still land inside the strip's bounding rect, so
+  // coords-check correctly suppresses step() while still letting the
+  // SHORT-tap path toggle chrome.
+  const touchStart = useRef<{ x: number; y: number; stripOrigin: boolean } | null>(null);
 
   // Cap activeIdx if the parent re-feeds a shorter sources array between
   // renders (e.g. on photo delete). Keep us pointing at a valid entry.
@@ -135,20 +143,25 @@ export default function ImageFullscreenViewer({
   };
 
   const onTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    // Story 22.3 round-2 (Codex P2): ignore gestures that originate
-    // inside the bottom thumb-strip — the strip is `overflow-x-auto`
-    // and horizontal drag on it should scroll the strip, not navigate
-    // between images. Without this guard, dragging the strip on
-    // mobile/tablet calls step() and changes the active photo before
-    // the user can scroll to later thumbnails.
-    const strip = stripRef.current;
-    if (strip !== null && e.target instanceof Node && strip.contains(e.target)) {
-      touchStart.current = null;
-      return;
-    }
     const t0 = e.touches[0];
     if (t0 === undefined) return;
-    touchStart.current = { x: t0.clientX, y: t0.clientY };
+    // Story 28.2 (Init 17 / TB-043): coords-based stripOrigin check.
+    // Compare touch clientY to strip's bounding rect vertical bounds
+    // (works whether strip is interactive OR pointer-events-none —
+    // hidden-strip touches DO reach the viewer root via pass-through
+    // but their coordinates still land inside strip bounds, so the
+    // guard fires correctly). Previous `strip.contains(e.target)`
+    // check missed the hidden-strip case because target was the
+    // viewer root (Story 22.3 round-3 Codex P3).
+    let stripOrigin = false;
+    const strip = stripRef.current;
+    if (strip !== null) {
+      const rect = strip.getBoundingClientRect();
+      if (t0.clientY >= rect.top && t0.clientY <= rect.bottom) {
+        stripOrigin = true;
+      }
+    }
+    touchStart.current = { x: t0.clientX, y: t0.clientY, stripOrigin };
   };
 
   const onTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
@@ -163,10 +176,19 @@ export default function ImageFullscreenViewer({
     // don't intercept. Pinch-zoom + swipe-down-close stay deferred.
     if (Math.abs(dy) > SWIPE_VERTICAL_TOLERANCE_PX) return;
     if (Math.abs(dx) < SWIPE_THRESHOLD_PX) {
-      // Short tap — toggle chrome visibility (designer §5).
+      // Short tap — toggle chrome visibility (designer §5). Tap-in-strip-
+      // area still works (restores chrome from hidden state), regardless
+      // of `stripOrigin` flag — strip-origin only suppresses NAVIGATION
+      // (drag), not the tap-to-toggle behavior.
       setChromeVisible((v) => !v);
       return;
     }
+    // Story 28.2 (Init 17 / TB-043): strip-origin drags never navigate.
+    // Either the visible strip is being scrolled (native overflow-x-auto)
+    // OR the hidden strip area was touched (chrome-restore via the SHORT
+    // path above already fired if it was a tap). Suppressing step() here
+    // closes the round-3 Codex P3.
+    if (start.stripOrigin) return;
     // Long horizontal swipe — navigate. dx < 0 = swipe-left = next image.
     if (total > 1) {
       step(dx < 0 ? 1 : -1);
