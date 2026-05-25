@@ -21,26 +21,27 @@ import { useShareResolve } from "./useShareResolve";
 // fall through to AnonymousShareView so the recipient sees the existing
 // "share link expired" copy.
 //
-// Story 30.2 round-2+3 (Codex P2 ×2) — the second-phase model-detail
-// fetch is explicitly status-checked here (rather than letting
+// Story 30.2 round-2+3+4+5 (Codex P2 chain) — the second-phase model-
+// detail fetch is explicitly status-checked here (rather than letting
 // CatalogDetailBody's internal generic-error UI render) so the post-
-// resolve 404 race (CatalogDetailBody's /api/models/:id returns 404
-// because the model was soft-deleted between the resolve and the
+// resolve 404 race (model soft-deleted between the resolve and the
 // detail fetch) surfaces the same share-expired UX as the resolve-side
-// 404. Without this guard the race-window-deleted model would surface
-// a generic "errors.network" retry button, which is the wrong copy for
-// a share-context recipient.
+// 404. The probe result IS the render source-of-truth (passed to
+// `CatalogDetailRender`) so validation + rendering stay atomic — no
+// secondary CatalogDetailBody fetch that could race against the probe.
 //
-// Round-3 (Codex P2 follow-up) — the probe runs through a SHARE-SPECIFIC
-// queryKey (`useShareModelProbe`) instead of the catalog `useModel` so
-// it doesn't inherit the catalog's 30s `staleTime` or the default retry
-// backoff. Sharing the catalog cache would let a recently-fetched-then-
-// deleted model render as valid (cached success short-circuits the
-// probe); default retries would delay the 404 → AnonymousShareView
-// fallthrough behind exponential backoff. Cost: one extra network
-// round-trip per share visit (CatalogDetailBody still fires its own
-// catalog-keyed useModel). Accepted as the price of fully closing the
-// revocation/deletion contract on the share path.
+// Round-5 design — `useShareModelProbe` uses the CANONICAL
+// `['sot', 'models', id]` queryKey (NOT a private share key) so admin
+// mutations (`useReplaceTags`, `useUpdateModel`, file uploads/deletes,
+// etc.) that invalidate the canonical cache also re-trigger the
+// share-view probe. To keep freshness despite the shared cache, the
+// probe overrides observer options: staleTime 0 + refetchOnMount
+// "always" + retry false, so every share-page mount issues a fresh
+// GET regardless of cached state. Trade-off accepted: React Query's
+// stale-while-revalidate may render the cached value for one frame
+// during the in-flight refetch on warm-cache visits — bounded flash,
+// rare in practice (requires same-tab visit to /catalog/$id within
+// the last 30s AND deletion between the visits).
 //
 // Other failure modes:
 //   - 401 (defensive, shouldn't happen — caller is authenticated): same
