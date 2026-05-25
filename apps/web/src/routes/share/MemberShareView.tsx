@@ -1,3 +1,6 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
+
 import { ApiError } from "@/lib/api";
 import { CatalogDetailRender } from "@/modules/catalog/routes/CatalogDetail";
 import { EmptyState } from "@/ui/custom/EmptyState";
@@ -75,6 +78,24 @@ export function MemberShareView({ token }: { token: string }) {
     error: modelErr,
     refetch: modelRefetch,
   } = useShareModelProbe(modelId ?? "");
+
+  // Round-6 (Codex P2 follow-up) — the round-5 switch to the canonical
+  // queryKey means a successful share visit seeds the long-lived
+  // ['sot', 'models', id] cache that `/catalog/$id` reads. If the
+  // recipient navigates to /catalog/<id> within the canonical 30s
+  // staleTime, they'd see the share-snapshot rather than a fresh fetch
+  // (and a 404/500 from the probe would also linger). Clear the
+  // canonical entry on share-route unmount — mirrors the existing
+  // `clearShareBlobCache()` page-mount invalidation pattern in
+  // $token.tsx (Story 23.1 Decision X.1 policy A).
+  const qc = useQueryClient();
+  useEffect(() => {
+    return () => {
+      if (modelId) {
+        qc.removeQueries({ queryKey: ["sot", "models", modelId] });
+      }
+    };
+  }, [modelId, qc]);
 
   if (resolveLoading) {
     return <LoadingState variant="skeleton-detail" />;
