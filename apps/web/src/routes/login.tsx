@@ -17,12 +17,23 @@ interface LoginSearch {
 // Accept ONLY same-origin relative paths starting with a single "/" and
 // free of control chars. Reject "//evil.com" (protocol-relative URL —
 // browsers interpret as https://evil.com), absolute URLs, "javascript:"
-// scheme, embedded newlines/null/control bytes. Invalid values are
-// silently dropped — the post-login fallback to "/" applies.
+// scheme, embedded newlines/null/control bytes.
+//
+// Story 30.1 round-2 (Codex P2) — also reject ANY backslash. Browsers
+// treat `\` as `/` in special-URL parsing (WHATWG URL spec); the
+// pre-decoded form `/%5C%5Cevil.com` decodes to `/\\evil.com`, which
+// passes the leading-`//` guard yet resolves to `https://evil.com/`
+// via `new URL("/\\evil.com", origin)`. Reject backslash anywhere in
+// the path to close the bypass; same-origin paths never legitimately
+// contain `\`.
+//
+// Invalid values are silently dropped — the post-login fallback to
+// "/" applies.
 function _isSafeReturnPath(value: string): boolean {
   if (value.length === 0) return false;
   if (!value.startsWith("/")) return false;
   if (value.startsWith("//")) return false;
+  if (value.includes("\\")) return false;
   // eslint-disable-next-line no-control-regex
   if (/[\x00-\x1f\x7f]/.test(value)) return false;
   return true;

@@ -368,4 +368,16 @@ describe("validateSearch open-redirect hardening (Story 30.1 AC-8)", () => {
     expect(validate({ next: 123 })).toEqual({});
     expect(validate({ next: null })).toEqual({});
   });
+
+  it("RU-3: rejects backslash paths (Codex P2 round-2 — WHATWG URL \\=/ parity)", () => {
+    // WHATWG URL spec treats `\` as `/` in special-URL parsing, so any
+    // backslash bypasses the leading-`//` guard but still resolves
+    // cross-origin via `new URL("/\\evil.com", origin)`. Drop any value
+    // containing `\` — same-origin paths never legitimately use it.
+    expect(validate({ next: "/\\evil.com" })).toEqual({});
+    expect(validate({ next: "/\\\\evil.com" })).toEqual({});
+    expect(validate({ next: "/path\\evil.com" })).toEqual({});
+    expect(validate({ next: "/safe/segment/\\evil.com/subpath" })).toEqual({});
+    expect(validate({ next: "/path\\" })).toEqual({});
+  });
 });
