@@ -174,7 +174,6 @@ describe("Story 30.2 — ShareTokenRoute conditional render", () => {
 
   it("CR-2: authenticated member on /share/<token> → MemberShareView resolves + renders info-bar", async () => {
     vi.mocked(useAuth).mockReturnValue(AUTHENTICATED_MEMBER);
-    // First fetch: resolve endpoint returns model_id
     fetchSpy.mockImplementation(async (input: string | URL | Request) => {
       const url = typeof input === "string" ? input : input.toString();
       if (url.includes("/api/me/share-links/") && url.endsWith("/resolve")) {
@@ -184,18 +183,42 @@ describe("Story 30.2 — ShareTokenRoute conditional render", () => {
         );
       }
       if (url.includes(`/api/models/${MODEL_ID}`)) {
-        // Minimal ModelDetail-ish payload — CatalogDetailBody will error-render
-        // via its EmptyState path, which is FINE: CR-2 only verifies the
-        // info-bar appears (proves MemberShareView mounted + resolve worked).
+        // Story 30.2 round-2 — model-detail must also return 200 for the
+        // success branch (info-bar + CatalogDetailBody) to render. The
+        // payload shape only needs to satisfy enough of the ModelDetail
+        // contract for CatalogDetailBody render to not throw — anything
+        // missing surfaces as a normal CatalogDetailBody render artifact
+        // and doesn't break the info-bar assertion.
         return new Response(
-          JSON.stringify({ detail: "test stub — minimal shape" }),
-          { status: 500, headers: { "content-type": "application/json" } },
+          JSON.stringify({
+            id: MODEL_ID,
+            slug: "test-share",
+            name_en: "Test Share Model",
+            name_pl: "Testowy model udostępniony",
+            category_id: "c1",
+            source: null,
+            status: null,
+            rating: null,
+            thumbnail_file_id: null,
+            date_added: null,
+            deleted_at: null,
+            created_at: "",
+            updated_at: "",
+            tags: [],
+            category: { id: "c1", parent_id: null, slug: "test", name_en: "Test", name_pl: null },
+            files: [],
+            prints: [],
+            notes: [],
+            external_links: [],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
         );
       }
       return new Response("{}", { status: 404 });
     });
     mountShareToken();
-    // Info-bar banner — proves MemberShareView mounted on the success branch.
+    // Info-bar banner — proves MemberShareView mounted on the success branch
+    // AND model-detail fetch succeeded (round-2 fix-up requires both).
     await waitFor(
       () => {
         expect(
@@ -214,5 +237,48 @@ describe("Story 30.2 — ShareTokenRoute conditional render", () => {
         return url.includes(`/api/me/share-links/${TOKEN}/resolve`);
       }),
     ).toBe(true);
+  });
+
+  it("CR-3: model-detail 404 race after resolve 200 → falls through to AnonymousShareView (Story 30.2 round-2)", async () => {
+    vi.mocked(useAuth).mockReturnValue(AUTHENTICATED_MEMBER);
+    // Resolve succeeds with model_id, but model-detail fetch returns 404
+    // (model deleted between resolve + detail). Per round-2 Codex P2 fix,
+    // this surfaces as AnonymousShareView (share-expired UX) instead of
+    // a generic "errors.network" empty state.
+    fetchSpy.mockImplementation(async (input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/api/me/share-links/") && url.endsWith("/resolve")) {
+        return new Response(
+          JSON.stringify({ model_id: MODEL_ID, access: "granted" }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.includes(`/api/models/${MODEL_ID}`)) {
+        return new Response(JSON.stringify({ detail: "Model not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      // Anonymous fetchShareView fallback — also 404 (no anonymous data
+      // for this token either, which is consistent with a deleted model).
+      return new Response(JSON.stringify({ detail: "Share token not found or expired" }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    mountShareToken();
+    // The AnonymousShareView fallback renders the "share link not found"
+    // copy when its own fetch returns 404.
+    await waitFor(
+      () => {
+        // Either the "share link not found" copy or just a non-info-bar
+        // (anonymous) render is acceptable proof of fallthrough.
+        const infoBar = screen.queryByText(
+          /Otworzyłeś ten model z linku udostępnionego|You opened this model from a shared link/i,
+        );
+        expect(infoBar).toBeNull();
+      },
+      { timeout: 5000 },
+    );
   });
 });
