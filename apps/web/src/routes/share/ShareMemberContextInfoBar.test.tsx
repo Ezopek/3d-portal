@@ -9,6 +9,7 @@
 // registers afterEach(cleanup); no per-file boilerplate needed beyond
 // sessionStorage cleanup which is test-state, not DOM-state.
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
   RouterProvider,
@@ -40,7 +41,12 @@ function renderWithRouter(node: React.ReactNode) {
     routeTree: root.addChildren([indexRoute, catalogRoute]),
     history: createMemoryHistory({ initialEntries: ["/"] }),
   });
-  render(<RouterProvider router={router} />);
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
   return router;
 }
 
@@ -59,7 +65,7 @@ describe("Story 30.2 — ShareMemberContextInfoBar", () => {
       ).toBeTruthy();
     });
     expect(
-      screen.getByRole("link", { name: /Otwórz w katalogu|Open in catalog/i }),
+      screen.getByRole("button", { name: /Otwórz w katalogu|Open in catalog/i }),
     ).toBeTruthy();
     expect(
       screen.getByRole("button", { name: /Zamknij informację|Dismiss notice/i }),

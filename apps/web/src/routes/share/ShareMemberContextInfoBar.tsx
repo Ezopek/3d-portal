@@ -1,4 +1,5 @@
-import { Link } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { Info, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -43,6 +44,8 @@ function _writeDismissed(modelId: string): void {
 
 export function ShareMemberContextInfoBar({ modelId }: { modelId: string }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
   const [dismissed, setDismissed] = useState<boolean>(() => _readDismissed(modelId));
 
   // Re-check dismissed state when modelId changes (different share link
@@ -58,6 +61,20 @@ export function ShareMemberContextInfoBar({ modelId }: { modelId: string }) {
     setDismissed(true);
   };
 
+  // Round-7 (Codex P1 follow-up) — evict the canonical model cache
+  // SYNCHRONOUSLY before navigating to /catalog/$id. Without this, the
+  // catalog route's `useModel` observer can subscribe to the share-
+  // populated cache entry BEFORE MemberShareView's unmount-cleanup
+  // useEffect fires, then sticks to the cached snapshot for up to 30s
+  // because removeQueries doesn't invalidate already-mounted observers.
+  // Doing the evict here guarantees the catalog mount sees an empty
+  // cache → forced fresh GET. (MemberShareView's unmount-cleanup stays
+  // in place for the browser-back / direct-URL navigation paths.)
+  const handleOpenInCatalog = () => {
+    qc.removeQueries({ queryKey: ["sot", "models", modelId] });
+    void navigate({ to: "/catalog/$id", params: { id: modelId } });
+  };
+
   return (
     <div
       role="status"
@@ -68,13 +85,13 @@ export function ShareMemberContextInfoBar({ modelId }: { modelId: string }) {
         <span>{t("share.member_context.banner")}</span>
       </div>
       <div className="flex items-center gap-2">
-        <Link
-          to="/catalog/$id"
-          params={{ id: modelId }}
+        <button
+          type="button"
+          onClick={handleOpenInCatalog}
           className="text-sm font-medium underline-offset-4 hover:underline"
         >
           {t("share.member_context.open_in_catalog")}
-        </Link>
+        </button>
         <button
           type="button"
           onClick={handleDismiss}
