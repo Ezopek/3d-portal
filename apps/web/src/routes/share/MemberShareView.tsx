@@ -1,5 +1,5 @@
 import { ApiError } from "@/lib/api";
-import { CatalogDetailBody } from "@/modules/catalog/routes/CatalogDetail";
+import { CatalogDetailRender } from "@/modules/catalog/routes/CatalogDetail";
 import { EmptyState } from "@/ui/custom/EmptyState";
 import { LoadingState } from "@/ui/custom/LoadingState";
 
@@ -60,8 +60,15 @@ export function MemberShareView({ token }: { token: string }) {
   // the catalog cache — see round-3 rationale above). useShareModelProbe
   // disables itself when modelId is empty so the resolve-pending window
   // doesn't fire a spurious GET /api/models/.
+  //
+  // Round-4 (Codex P2 follow-up): we now USE the probe's data directly
+  // as the render source-of-truth (passing to CatalogDetailRender). This
+  // makes validation + rendering atomic — there is no second
+  // CatalogDetailBody fetch that could race with a between-requests
+  // delete and surface stale or generic-network UX.
   const modelId = resolveData?.model_id;
   const {
+    data: modelData,
     isLoading: modelLoading,
     isError: modelError,
     error: modelErr,
@@ -114,10 +121,15 @@ export function MemberShareView({ token }: { token: string }) {
     );
   }
 
+  if (modelData === undefined) {
+    // Defensive — should not reach (covered by modelLoading + modelError).
+    return <LoadingState variant="skeleton-detail" />;
+  }
+
   return (
     <div className="space-y-4 px-4 pt-4">
       <ShareMemberContextInfoBar modelId={modelId} />
-      <CatalogDetailBody id={modelId} />
+      <CatalogDetailRender detail={modelData} />
     </div>
   );
 }
