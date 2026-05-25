@@ -56,8 +56,15 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
   }, [auth.isLoading, auth.isAuthenticated, isSharePath, isPublicPath, navigate, pathname, searchStr]);
 
-  // Share path: render bare children (no shell chrome).
-  if (isSharePath) {
+  // Initiative 18 Story 30.2 (Decision AB) — bypass share-path chrome ONLY
+  // when the caller is anonymous. Authenticated callers on /share/<token>
+  // get the full AppShell (TopBar + ModuleRail) so MemberShareView can
+  // render the canonical member experience at the share URL (Variant γ
+  // enrich-in-place). Anonymous render continues to use the route-local
+  // header rendered by $token.tsx itself (with Story 30.3 chrome additions:
+  // ThemeToggle + LangToggle + SignInButton).
+  const shouldBypassForShare = isSharePath && !auth.isAuthenticated;
+  if (shouldBypassForShare) {
     return <>{children}</>;
   }
 

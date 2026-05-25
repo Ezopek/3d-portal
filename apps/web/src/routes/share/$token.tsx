@@ -47,9 +47,12 @@ import type { StlFile } from "@/modules/catalog/components/viewer3d/types";
 // amended carve-out 2026-05-25, CHROME affordances are membership-path
 // completion, NOT share-view content enrichment — anonymous CONTENT below
 // (carousel, STL, description, footer) stays terminus.
+import { useAuth } from "@/shell/AuthContext";
 import { LangToggle } from "@/shell/LangToggle";
 import { ThemeToggle } from "@/shell/ThemeToggle";
+import { LoadingState } from "@/ui/custom/LoadingState";
 
+import { MemberShareView } from "./MemberShareView";
 import { SignInButton } from "./SignInButton";
 
 /**
@@ -415,7 +418,7 @@ function shareStlFile(data: ShareModelView, title: string): StlFile {
   };
 }
 
-function AnonymousShareView({ token }: { token: string }) {
+export function AnonymousShareView({ token }: { token: string }) {
   const { t, i18n } = useTranslation();
   const [data, setData] = useState<ShareModelView | null>(null);
   const [error, setError] = useState<"not_found" | "fetch_failed" | null>(null);
@@ -587,6 +590,7 @@ function AnonymousShareView({ token }: { token: string }) {
 
 function ShareTokenRoute() {
   const { token } = Route.useParams();
+  const auth = useAuth();
   // Story 23.1 (TB-033 P2#2) — Decision X.1 policy A: page-mount-scoped
   // blob-cache invalidation. On route unmount, revoke every cached object
   // URL and clear all three maps so a subsequent re-mount of /share/<token>
@@ -595,12 +599,25 @@ function ShareTokenRoute() {
   // would continue seeing cached photos until manual refresh. After this
   // cleanup, navigating away + back triggers fresh fetches that will
   // surface the now-revoked token's 404/403. Full rationale lives in
-  // `shareBlobCache.clearShareBlobCache`.
+  // `shareBlobCache.clearShareBlobCache`. The cleanup applies to both
+  // anonymous + member branches — the member branch may not use
+  // AnonymousImage, but the cleanup is benign in that case (empty maps).
   useEffect(() => {
     return () => {
       clearShareBlobCache();
     };
   }, []);
+
+  // Initiative 18 Story 30.2 (Decision AB) — split on useAuth() result.
+  // While auth resolves, render a skeleton placeholder rather than picking
+  // a branch prematurely (the alternative would flash anonymous content
+  // for ~50ms then swap to member view when /auth/me resolves).
+  if (auth.isLoading) {
+    return <LoadingState variant="skeleton-detail" />;
+  }
+  if (auth.isAuthenticated) {
+    return <MemberShareView token={token} />;
+  }
   return <AnonymousShareView token={token} />;
 }
 

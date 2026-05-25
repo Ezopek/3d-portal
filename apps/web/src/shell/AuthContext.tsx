@@ -1,13 +1,6 @@
 import * as Sentry from "@sentry/react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { useQuery } from "@tanstack/react-query";
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 
 import { api } from "@/lib/api";
 import type { MeResponse, Role } from "@/lib/api-types";
@@ -40,73 +33,31 @@ const AuthCtx = createContext<AuthState>(ANONYMOUS);
 // AuthProvider effect below; defaults to ANONYMOUS until the provider mounts.
 let authSnapshot: { isAuthenticated: boolean } = { isAuthenticated: false };
 
-// Initiative 10 Story 16.3 (NFR10-SHARE-SECURITY-1) — track pathname
-// reactively so that client-side SPA navigation (history.pushState) from
-// authenticated routes onto /share/<token> disables the /auth/me query.
-// `window.location` is not React-reactive; popstate covers back/forward;
-// history.pushState is monkey-patched once at module load to fire a
-// synthetic event the listener picks up.
-function _emitLocationChange(): void {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new Event("portal:locationchange"));
-}
-
-if (typeof window !== "undefined" && !("_portalPathnameHooked" in window)) {
-  const origPushState = window.history.pushState.bind(window.history);
-  const origReplaceState = window.history.replaceState.bind(window.history);
-  window.history.pushState = (...args) => {
-    origPushState(...args);
-    _emitLocationChange();
-  };
-  window.history.replaceState = (...args) => {
-    origReplaceState(...args);
-    _emitLocationChange();
-  };
-  window.addEventListener("popstate", _emitLocationChange);
-  (window as unknown as { _portalPathnameHooked: true })._portalPathnameHooked = true;
-}
-
-function useReactivePathname(): string {
-  const [pathname, setPathname] = useState<string>(() =>
-    typeof window === "undefined" ? "/" : window.location.pathname,
-  );
-  useEffect(() => {
-    const onChange = () => setPathname(window.location.pathname);
-    window.addEventListener("portal:locationchange", onChange);
-    return () => window.removeEventListener("portal:locationchange", onChange);
-  }, []);
-  return pathname;
-}
+// Initiative 18 Story 30.2 (Decision AB) — Init 10 Story 16.3 originally
+// disabled the /auth/me query on /share/* routes (via a useReactivePathname
+// hook + `enabled: !isAnonymousShareRoute` gate + ANONYMOUS short-circuit)
+// so the share view stayed anonymous-by-design even for logged-in users.
+// Init 18 Decision AB REVERSES this carve-out so /share/<token> can render
+// the canonical member experience (MemberShareView) for B5 callers
+// (recipient state: active member receiving a share link from another
+// member).
+//
+// The NFR10-SHARE-SECURITY-1 credentialless data contract on
+// /api/share/<token>/* (the asset endpoints) stays intact — fetchShareView()
+// in @/lib/share-api still uses `credentials: "omit"` for those endpoints.
+// Only /auth/me carries cookies, which is correct: it's not a /api/share/*
+// endpoint, and the auth-state knowledge is the prerequisite for the
+// Variant γ enrich-in-place render at /share/<token>.
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const pathname = useReactivePathname();
-  const isAnonymousShareRoute = pathname.startsWith("/share/");
-  const qc = useQueryClient();
-
-  // When the route flips onto /share/*, invalidate any cached auth state so
-  // a subsequent re-enable (user navigates back to a protected route) does
-  // not return a stale logged-in snapshot. This is defense-in-depth — the
-  // `enabled` flag already prevents new fetches, but a memoized cache hit
-  // could leak.
-  useEffect(() => {
-    if (isAnonymousShareRoute) {
-      qc.removeQueries({ queryKey: ["auth", "me"] });
-    }
-  }, [isAnonymousShareRoute, qc]);
-
   const meQuery = useQuery<MeResponse>({
     queryKey: ["auth", "me"],
     queryFn: () => api<MeResponse>("/auth/me"),
     retry: false,
     staleTime: 5 * 60 * 1000,
-    enabled: !isAnonymousShareRoute,
   });
 
   const value = useMemo<AuthState>(() => {
-    // Share routes: query is disabled, isPending stays true forever. Short-
-    // circuit to ANONYMOUS so child components see a stable not-loading
-    // anonymous state instead of an infinite spinner.
-    if (isAnonymousShareRoute) return ANONYMOUS;
     if (meQuery.isPending) return { ...ANONYMOUS, isLoading: true };
     if (meQuery.isError) return ANONYMOUS;
     const u = meQuery.data!;
@@ -119,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: true,
       isLoading: false,
     };
-  }, [isAnonymousShareRoute, meQuery.isPending, meQuery.isError, meQuery.data]);
+  }, [meQuery.isPending, meQuery.isError, meQuery.data]);
 
   useEffect(() => {
     authSnapshot = { isAuthenticated: value.isAuthenticated };

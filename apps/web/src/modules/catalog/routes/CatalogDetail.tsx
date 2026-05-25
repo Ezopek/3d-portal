@@ -10,8 +10,14 @@ import { useModel } from "@/modules/catalog/hooks/useModel";
 import { EmptyState } from "@/ui/custom/EmptyState";
 import { LoadingState } from "@/ui/custom/LoadingState";
 
-export function CatalogDetail() {
-  const { id } = useParams({ from: "/catalog/$id" });
+/**
+ * Initiative 18 Story 30.2 — extracted into a prop-accepting body so the
+ * canonical catalog detail render is reusable from `MemberShareView`
+ * (B5 enrich-in-place at /share/<token>). Pure behavior-preserving
+ * refactor: the route wrapper `CatalogDetail` still drives `/catalog/$id`
+ * via `useParams`; only the body became prop-driven.
+ */
+export function CatalogDetailBody({ id }: { id: string }) {
   const { data: detail, isLoading, isError, refetch } = useModel(id);
 
   if (isLoading) {
@@ -50,4 +56,9 @@ export function CatalogDetail() {
       </div>
     </article>
   );
+}
+
+export function CatalogDetail() {
+  const { id } = useParams({ from: "/catalog/$id" });
+  return <CatalogDetailBody id={id} />;
 }
