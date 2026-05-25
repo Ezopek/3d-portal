@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -49,6 +50,28 @@ class ShareModelView(BaseModel):
     # large-mesh confirm dialog before parsing. None when no STL exists or
     # when the backend can't determine the size — the gate then skips.
     stl_size_bytes: int | None = None
+
+
+class ShareResolveResponse(BaseModel):
+    """Initiative 18 Story 30.1 (Decision AA) — minimal projection for the
+    authenticated share-resolve endpoint at GET /api/me/share-links/{token}/resolve.
+
+    Exactly two fields. NO token-state fields (expires_at / revoked_at /
+    created_by / token) per AC-11 enumeration-protection contract: the
+    response is consumed by any authenticated user (not just the token's
+    creator), so leaking creation/expiry metadata would enable a brute-force
+    probe to infer token state from non-404 responses.
+
+    The ``access`` field is forward-compat for B7 (future granular sharing):
+    today it is always ``"granted"``; when granular sharing lands, B7
+    callers without model access will receive ``access="request_needed"``
+    plus a distinct response body shape that surfaces a request-access
+    affordance. The literal type today blocks accidental introduction of
+    other values without a deliberate schema change.
+    """
+
+    model_id: uuid.UUID
+    access: Literal["granted"]
 
 
 # Initiative 12 Story 19.4 (Decision T) — anonymous share file list endpoint.

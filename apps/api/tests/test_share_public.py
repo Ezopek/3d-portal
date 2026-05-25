@@ -209,14 +209,8 @@ def test_share_files_list_returns_files_with_share_scoped_urls(client):
     stl_entry = items_by_id[str(ids["stl"])]
 
     # Decision N — share-scoped content URLs.
-    assert (
-        img_entry["content_url"]
-        == f"/api/share/{created['token']}/files/{ids['img']}/content"
-    )
-    assert (
-        stl_entry["content_url"]
-        == f"/api/share/{created['token']}/files/{ids['stl']}/content"
-    )
+    assert img_entry["content_url"] == f"/api/share/{created['token']}/files/{ids['img']}/content"
+    assert stl_entry["content_url"] == f"/api/share/{created['token']}/files/{ids['stl']}/content"
     assert img_entry["kind"] == "image"
     assert img_entry["original_name"] == "hero.png"
     assert stl_entry["kind"] == "stl"

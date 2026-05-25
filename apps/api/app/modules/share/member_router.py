@@ -16,13 +16,16 @@ the existing flow, so the list is normally empty for them.
 from __future__ import annotations
 
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from sqlmodel import Session, select
 
 from app.core.audit import record_event
 from app.core.auth.dependencies import current_user
-from app.core.db.session import get_engine
-from app.modules.share.models import ShareToken
+from app.core.db.models import Model
+from app.core.db.session import get_engine, get_session
+from app.modules.share.models import ShareResolveResponse, ShareToken
 from app.modules.share.service import ShareService
 
 router = APIRouter(prefix="/api/me/share-links", tags=["share", "member"])
@@ -85,3 +88,42 @@ async def revoke_my_share_link(
         after={"token": token, "model_id": str(record.model_id)},
     )
     return Response(status_code=204)
+
+
+@router.get(
+    "/{token}/resolve",
+    response_model=ShareResolveResponse,
+    summary="Resolve a share token to its model_id for the authenticated caller",
+    description=(
+        "Initiative 18 Story 30.1 (Decision AA) — paired with Story 30.2 "
+        "`MemberShareView` to enable B5 (active member receiving a share "
+        "link from another member) enrich-in-place rendering at "
+        "/share/<token>. Returns 200 with {model_id, access:'granted'} for "
+        "a valid token + non-soft-deleted model. Uniform 404 on invalid / "
+        "expired / revoked / soft-deleted (NFR18-TOKEN-ENUMERATION-1). "
+        "Does NOT touch the /api/share/<token>/* public credentialless "
+        "family (Decision AA prefix separation preserves NFR10 contract). "
+        "Read-only: NO audit emission (mirrors list_my_share_links + "
+        "anonymous share-resolve read-pattern conventions)."
+    ),
+)
+async def resolve_my_share_link(
+    token: str,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    _user_id: uuid.UUID = current_user,
+) -> ShareResolveResponse:
+    record = await _service(request).resolve(token)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Share token not found or expired")
+
+    # AC-5 soft-delete check — uniform 404 (NOT a distinct "model gone"
+    # detail). Same enumeration-oracle defense as the anonymous
+    # /api/share/<token> resolve_share handler.
+    model = session.exec(
+        select(Model).where(Model.id == record.model_id, Model.deleted_at.is_(None))
+    ).first()
+    if model is None:
+        raise HTTPException(status_code=404, detail="Share token not found or expired")
+
+    return ShareResolveResponse(model_id=record.model_id, access="granted")

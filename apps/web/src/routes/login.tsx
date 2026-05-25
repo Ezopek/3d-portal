@@ -13,6 +13,21 @@ interface LoginSearch {
   reset?: "success";
 }
 
+// Initiative 18 Story 30.1 AC-8 — defend against open-redirect via ?next.
+// Accept ONLY same-origin relative paths starting with a single "/" and
+// free of control chars. Reject "//evil.com" (protocol-relative URL —
+// browsers interpret as https://evil.com), absolute URLs, "javascript:"
+// scheme, embedded newlines/null/control bytes. Invalid values are
+// silently dropped — the post-login fallback to "/" applies.
+function _isSafeReturnPath(value: string): boolean {
+  if (value.length === 0) return false;
+  if (!value.startsWith("/")) return false;
+  if (value.startsWith("//")) return false;
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f]/.test(value)) return false;
+  return true;
+}
+
 type SubState = "email_password" | "second_factor";
 
 function Login() {
@@ -196,7 +211,9 @@ export const Route = createFileRoute("/login")({
   component: Login,
   validateSearch: (raw: Record<string, unknown>): LoginSearch => {
     const out: LoginSearch = {};
-    if (typeof raw.next === "string" && raw.next.length > 0) out.next = raw.next;
+    if (typeof raw.next === "string" && _isSafeReturnPath(raw.next)) {
+      out.next = raw.next;
+    }
     if (raw.reset === "success") out.reset = "success";
     return out;
   },

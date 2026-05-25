@@ -335,3 +335,37 @@ describe("Login forced-enrollment flow (Story 7.4)", () => {
     });
   });
 });
+
+// ─── Initiative 18 Story 30.1 AC-8 — validateSearch open-redirect hardening ───
+describe("validateSearch open-redirect hardening (Story 30.1 AC-8)", () => {
+  const validate = LoginRoute.options.validateSearch as (
+    raw: Record<string, unknown>,
+  ) => { next?: string; reset?: "success" };
+
+  it("RU-1: accepts safe same-origin relative paths starting with single /", () => {
+    expect(validate({ next: "/share/abc123" })).toEqual({ next: "/share/abc123" });
+    expect(validate({ next: "/catalog/xyz" })).toEqual({ next: "/catalog/xyz" });
+    expect(validate({ next: "/settings/2fa" })).toEqual({ next: "/settings/2fa" });
+    expect(validate({ next: "/" })).toEqual({ next: "/" });
+    expect(validate({ next: "/catalog?category_id=xyz&page=2" })).toEqual({
+      next: "/catalog?category_id=xyz&page=2",
+    });
+  });
+
+  it("RU-2: drops unsafe next values silently (open-redirect / scheme / control-char guards)", () => {
+    expect(validate({ next: "//evil.com/path" })).toEqual({});
+    expect(validate({ next: "//attacker.com" })).toEqual({});
+    expect(validate({ next: "https://evil.com" })).toEqual({});
+    expect(validate({ next: "http://evil.com" })).toEqual({});
+    expect(validate({ next: "javascript:alert(1)" })).toEqual({});
+    expect(validate({ next: "\n/path" })).toEqual({});
+    expect(validate({ next: "/path\x00null" })).toEqual({});
+    expect(validate({ next: "" })).toEqual({});
+    expect(validate({ next: "relative-no-slash" })).toEqual({});
+    // Preserves unrelated reset key when next is dropped
+    expect(validate({ next: "//evil.com", reset: "success" })).toEqual({ reset: "success" });
+    // Non-string next is ignored
+    expect(validate({ next: 123 })).toEqual({});
+    expect(validate({ next: null })).toEqual({});
+  });
+});
