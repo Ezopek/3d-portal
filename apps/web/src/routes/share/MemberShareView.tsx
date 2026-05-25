@@ -1,11 +1,11 @@
 import { ApiError } from "@/lib/api";
-import { useModel } from "@/modules/catalog/hooks/useModel";
 import { CatalogDetailBody } from "@/modules/catalog/routes/CatalogDetail";
 import { EmptyState } from "@/ui/custom/EmptyState";
 import { LoadingState } from "@/ui/custom/LoadingState";
 
 import { AnonymousShareView } from "./$token";
 import { ShareMemberContextInfoBar } from "./ShareMemberContextInfoBar";
+import { useShareModelProbe } from "./useShareModelProbe";
 import { useShareResolve } from "./useShareResolve";
 
 // Initiative 18 Story 30.2 (FR18-MEMBER-SHARE-VIEW-1) — B5 enrich-in-place
@@ -21,16 +21,26 @@ import { useShareResolve } from "./useShareResolve";
 // fall through to AnonymousShareView so the recipient sees the existing
 // "share link expired" copy.
 //
-// Story 30.2 round-2 (Codex P2) — the second-phase model-detail fetch is
-// explicitly status-checked here (rather than letting CatalogDetailBody's
-// internal generic-error UI render) so the post-resolve 404 race
-// (CatalogDetailBody's /api/models/:id returns 404 because the model
-// was soft-deleted between the resolve and the detail fetch) surfaces
-// the same share-expired UX as the resolve-side 404. Without this guard
-// the race-window-deleted model would surface a generic "errors.network"
-// retry button, which is the wrong copy for a share-context recipient.
-// React Query dedupes by queryKey — CatalogDetailBody's useModel(id)
-// shares the same cache as this probing call, so no double network round.
+// Story 30.2 round-2+3 (Codex P2 ×2) — the second-phase model-detail
+// fetch is explicitly status-checked here (rather than letting
+// CatalogDetailBody's internal generic-error UI render) so the post-
+// resolve 404 race (CatalogDetailBody's /api/models/:id returns 404
+// because the model was soft-deleted between the resolve and the
+// detail fetch) surfaces the same share-expired UX as the resolve-side
+// 404. Without this guard the race-window-deleted model would surface
+// a generic "errors.network" retry button, which is the wrong copy for
+// a share-context recipient.
+//
+// Round-3 (Codex P2 follow-up) — the probe runs through a SHARE-SPECIFIC
+// queryKey (`useShareModelProbe`) instead of the catalog `useModel` so
+// it doesn't inherit the catalog's 30s `staleTime` or the default retry
+// backoff. Sharing the catalog cache would let a recently-fetched-then-
+// deleted model render as valid (cached success short-circuits the
+// probe); default retries would delay the 404 → AnonymousShareView
+// fallthrough behind exponential backoff. Cost: one extra network
+// round-trip per share visit (CatalogDetailBody still fires its own
+// catalog-keyed useModel). Accepted as the price of fully closing the
+// revocation/deletion contract on the share path.
 //
 // Other failure modes:
 //   - 401 (defensive, shouldn't happen — caller is authenticated): same
@@ -46,17 +56,17 @@ export function MemberShareView({ token }: { token: string }) {
     refetch: resolveRefetch,
   } = useShareResolve(token);
 
-  // Probe the model-detail endpoint shape; same queryKey as CatalogDetailBody
-  // so React Query dedupes the network round. Gated on `enabled` so the
-  // network call only fires once resolve hands us a model_id (avoids a
-  // spurious GET /api/models/ during the resolve-pending window).
+  // Probe the model-detail endpoint via a share-specific queryKey (NOT
+  // the catalog cache — see round-3 rationale above). useShareModelProbe
+  // disables itself when modelId is empty so the resolve-pending window
+  // doesn't fire a spurious GET /api/models/.
   const modelId = resolveData?.model_id;
   const {
     isLoading: modelLoading,
     isError: modelError,
     error: modelErr,
     refetch: modelRefetch,
-  } = useModel(modelId ?? "", { enabled: modelId !== undefined });
+  } = useShareModelProbe(modelId ?? "");
 
   if (resolveLoading) {
     return <LoadingState variant="skeleton-detail" />;
