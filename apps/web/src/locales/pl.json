@@ -498,6 +498,8 @@
   "share.dialog.errors.copy_failed": "Kopiowanie nie powiodło się — zaznacz i skopiuj ręcznie.",
   "share.view.brand": "Portal 3D",
   "share.view.banner_anonymous": "Oglądasz udostępniony model",
+  "share.view.signin_cta": "Zaloguj się",
+  "share.view.signin_aria": "Zaloguj się, aby zobaczyć więcej opcji",
   "share.view.stl_viewer_loading": "Ładowanie podglądu 3D…",
   "share.view.carousel_label": "Galeria zdjęć",
   "share.view.carousel_prev": "Poprzednie zdjęcie",

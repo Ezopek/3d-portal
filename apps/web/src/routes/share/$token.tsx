@@ -41,6 +41,16 @@ import {
 // Three into every route's initial bundle (Codex Story 19.7 P2).
 import { Viewer3DInline } from "@/modules/catalog/components/viewer3d";
 import type { StlFile } from "@/modules/catalog/components/viewer3d/types";
+// Initiative 18 Story 30.3 / FR18-CHROME-ADDITIONS-1 — share-view header
+// gains three right-aligned controls (ThemeToggle + LangToggle + SignInButton)
+// mirroring member TopBar order. Per [[feedback_share_view_scope_boundary]]
+// amended carve-out 2026-05-25, CHROME affordances are membership-path
+// completion, NOT share-view content enrichment — anonymous CONTENT below
+// (carousel, STL, description, footer) stays terminus.
+import { LangToggle } from "@/shell/LangToggle";
+import { ThemeToggle } from "@/shell/ThemeToggle";
+
+import { SignInButton } from "./SignInButton";
 
 /**
  * Anonymous STL download button — fetches the file as a credentialless blob
@@ -478,9 +488,16 @@ function AnonymousShareView({ token }: { token: string }) {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-background/95 px-4 py-3 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2">
           <span className="text-sm font-semibold text-foreground">{t("share.view.brand")}</span>
-          <span className="text-xs text-muted-foreground">{t("share.view.banner_anonymous")}</span>
+          <span className="flex-1 text-xs text-muted-foreground">
+            {t("share.view.banner_anonymous")}
+          </span>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <LangToggle />
+            <SignInButton token={token} />
+          </div>
         </div>
       </header>
 

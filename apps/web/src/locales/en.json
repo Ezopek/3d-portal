@@ -498,6 +498,8 @@
   "share.dialog.errors.copy_failed": "Copy failed — please select and copy manually.",
   "share.view.brand": "3D Portal",
   "share.view.banner_anonymous": "You're viewing a shared model",
+  "share.view.signin_cta": "Sign in",
+  "share.view.signin_aria": "Sign in to access more options",
   "share.view.stl_viewer_loading": "Loading 3D preview…",
   "share.view.carousel_label": "Photo gallery",
   "share.view.carousel_prev": "Previous photo",
