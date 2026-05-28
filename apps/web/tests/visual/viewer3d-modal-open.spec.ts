@@ -26,7 +26,10 @@ test.describe("viewer3d — modal open selector", () => {
       .getByRole("button", { name: /toggle 3d preview for cube\.stl/i })
       .click();
     await page.locator("canvas").first().waitFor({ state: "visible" });
-    await page.getByRole("button", { name: /expand|powiększ/i }).click();
+    await page
+      .locator(`#viewer-row-${STL_ID}`)
+      .getByRole("button", { name: /expand|powiększ/i })
+      .click();
     await page.getByRole("dialog").waitFor({ state: "visible" });
     await page
       .getByRole("dialog")
