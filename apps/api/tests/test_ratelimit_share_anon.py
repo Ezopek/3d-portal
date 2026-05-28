@@ -238,7 +238,7 @@ def test_anon_cap_is_per_ip(share_anon_client):
 
 
 def test_non_share_paths_bypass_anon_cap(share_anon_client):
-    """Hitting /api/health 100× must NOT count against any share-anon bucket."""
+    """Hitting /api/health 100x must NOT count against any share-anon bucket."""
     c = share_anon_client
     for _ in range(100):
         r = c.get("/api/health")

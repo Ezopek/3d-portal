@@ -92,7 +92,10 @@ test.describe("Admin DropdownMenus + Tooltip — open-state baselines (E5.12c)",
     await page.getByRole("tab", { name: /^pliki\b/i }).click();
     await page.getByRole("button", { name: /toggle 3d preview for cube\.stl/i }).click();
     await page.locator("canvas").first().waitFor({ state: "visible" });
-    await page.getByRole("button", { name: /expand|powiększ/i }).click();
+    await page
+      .locator(`#viewer-row-${VIEWER_STL_ID}`)
+      .getByRole("button", { name: /expand|powiększ/i })
+      .click();
     await page.getByRole("dialog").waitFor({ state: "visible" });
     // Hover the "Reset view" toolbar button. viewer3d.tooltip.reset = "Resetuj widok".
     const dialog = page.getByRole("dialog");

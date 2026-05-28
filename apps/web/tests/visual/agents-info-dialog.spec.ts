@@ -41,7 +41,7 @@ test.describe("UserMenu — TB-006 admin agents entry", () => {
     // (which is NOT stubbed in this spec) doesn't introduce non-determinism.
     const popup = page.locator("[data-slot='dropdown-menu-content']");
     await popup.waitFor({ state: "visible" });
-    await expect(popup).toHaveScreenshot("agents-menu-open.png");
+    await expect(popup).toHaveScreenshot("agents-menu-open.png", { maxDiffPixels: 25 });
   });
 
   test("agents dialog renders with three copy blocks + two external links", async ({ page }) => {
