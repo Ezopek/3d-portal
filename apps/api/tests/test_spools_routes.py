@@ -293,9 +293,7 @@ async def test_summary_cold_cache_returns_200_with_empty_arrays(asgi_app, monkey
     async def _raise(*args, **kwargs):
         raise httpx.ConnectError("simulated outage")
 
-    monkeypatch.setattr(
-        "app.modules.spools.client.SpoolmanClient._get", _raise, raising=True
-    )
+    monkeypatch.setattr("app.modules.spools.client.SpoolmanClient._get", _raise, raising=True)
 
     ac.cookies.set("portal_access", _member_cookie())
     r = await ac.get("/api/spools/summary")
@@ -316,9 +314,7 @@ async def test_summary_cold_cache_returns_200_with_empty_arrays(asgi_app, monkey
 
 
 @pytest.mark.asyncio
-async def test_summary_warm_cache_with_old_last_success_ts_still_returns_200(
-    asgi_app, monkeypatch
-):
+async def test_summary_warm_cache_with_old_last_success_ts_still_returns_200(asgi_app, monkeypatch):
     ac, fake = asgi_app
     snapshot = _build_snapshot()
     five_minutes_ago = datetime.now(UTC) - timedelta(minutes=5)
@@ -327,9 +323,7 @@ async def test_summary_warm_cache_with_old_last_success_ts_still_returns_200(
     async def _raise(*args, **kwargs):
         raise httpx.ConnectError("simulated outage")
 
-    monkeypatch.setattr(
-        "app.modules.spools.client.SpoolmanClient._get", _raise, raising=True
-    )
+    monkeypatch.setattr("app.modules.spools.client.SpoolmanClient._get", _raise, raising=True)
 
     ac.cookies.set("portal_access", _member_cookie())
     r = await ac.get("/api/spools/summary")
@@ -450,11 +444,7 @@ def test_share_router_files_have_no_auth_depends_on_anon_handlers():
     import re
 
     share_router_path = (
-        Path(__file__).resolve().parent.parent
-        / "app"
-        / "modules"
-        / "share"
-        / "router.py"
+        Path(__file__).resolve().parent.parent / "app" / "modules" / "share" / "router.py"
     )
     text = share_router_path.read_text()
     handler_pattern = re.compile(
@@ -466,9 +456,7 @@ def test_share_router_files_have_no_auth_depends_on_anon_handlers():
         window = text[match.start() : match.start() + 2500]
         for symbol in ("current_user", "current_admin", "current_member_or_admin"):
             if symbol in window:
-                violations.append(
-                    f"{match.group(0)} carries '{symbol}' within next 2500 chars"
-                )
+                violations.append(f"{match.group(0)} carries '{symbol}' within next 2500 chars")
                 break
     assert not violations, (
         "NFR10 credentialless contract regression: /api/share/<token>/* handler "
