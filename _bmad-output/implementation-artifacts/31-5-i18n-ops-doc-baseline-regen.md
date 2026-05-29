@@ -1,6 +1,6 @@
 # Story 31.5: i18n parity sweep + ops doc addendum + baseline regen
 
-Status: review (Codex round-2 fix-up 2026-05-29 applied — pending re-review; epic-31 sprint-status flip deferred to actual close-out per AC-6)
+Status: done / approved (Codex round-3 native re-review against `00807ec` returned MERGE-READY 2026-05-29 — 0 Critical, 0 Important, 1 non-blocking Minor on AC-1 grep doc wording; epic-31 sprint-status flip applied in the same close-out commit as Story 31.5 lands; ff-merge + bmad-retrospective to follow as separate operator-driven steps)
 
 ## Story
 
@@ -192,8 +192,8 @@ After Story 31.5 lands:
 - [x] **T3** (AC-3) — Run `npm run test:visual`; confirm 364 passed / 24 skipped state.
 - [x] **T4** (AC-4) — Read `_bmad-output/triage-backlog.md`; confirm zero Init 19 entries.
 - [x] **T5** (AC-5) — Confirm grep invariants.
-- [ ] **T6** (AC-6) — **Close-out pending.** Flip `epic-31` to done in `sprint-status.yaml`. Deferred until Story 31.5 actually ff-merges to `main`; the branch presently remains in review and only the `31-5-i18n-ops-doc-baseline-regen` row has been flipped `backlog → review`. The `epic-31: backlog` row is unchanged and stays unchanged on this branch — flipping it before merge would create the artifact inconsistency Codex round-2 flagged.
-- [x] **T7** (close-out) — Commit subject `docs(ops): Spoolman operations addendum + Init 19 i18n parity close-out (Story 31.5, Init 19)`; ff-merge deferred (epic retrospective gate); push deferred until retrospective runs.
+- [x] **T6** (AC-6) — Flipped `epic-31: backlog → done` and `31-5-i18n-ops-doc-baseline-regen: review → done` in `sprint-status.yaml` as part of this close-out commit, applied after Codex round-3 native re-review against `00807ec` returned MERGE-READY (0 Critical, 0 Important, 1 non-blocking Minor). `epic-31-retrospective: pending` stays unchanged per AC-6 — the bmad-retrospective skill runs as a separate operator-driven session step. The artifact moves to internally-consistent done/done/pending state in this commit; ff-merge to `main` is the immediately-following operator step.
+- [x] **T7** (close-out) — Two close-out commit subjects, both ship: the dev-story + ops addendum at `docs(ops): Spoolman operations addendum + Init 19 i18n parity close-out (Story 31.5, Init 19)` (3a5707b), and the review close-out at `docs(bmad): Story 31.5 review close-out — Codex re-review MERGE-READY + epic-31 flip (Story 31.5, Init 19)` (this commit). Ff-merge to `main` is operator-driven; push deferred until after the bmad-retrospective session.
 
 ## Dev Agent Record
 
@@ -314,6 +314,44 @@ git diff main --stat
 ```
 
 Round-2 fix-up commit subject: `docs(bmad): apply Codex Story 31.5 round-2 review fix-up (breadcrumb-absence doctrine, T6 close-out gate, sprint-status pre-enum) (Story 31.5, Init 19)`.
+
+#### Codex re-review round-3 (2026-05-29, native against `00807ec`) — verdict MERGE-READY
+
+Codex re-reviewed the round-2 fix-up commit `00807ec` and returned **MERGE-READY** with the following triage:
+
+- **Critical: 0**
+- **Important: 0**
+- **Minor: 1** — **non-blocking** — wording nit on the AC-1 grep doc instructions: the `grep -c '"modules.spools'` pattern in the equal-count first pass leaves the trailing `.` off the prefix (matches `"modules.spools` as a prefix, including the bare top-level `modules.spools` side-nav key as well as the desired `modules.spools.*` subtree), whereas the parallel `grep -c '"landing\.'` pattern correctly escapes the period and pins the dot. The asymmetry is harmless in practice (the equal-count pass is documented as the cheap-first-signal layer, not the load-bearing audit — the Python key-set + interpolation comparison further down is what actually proves AC-1), and the count is verified consistent with the load-bearing pass in the Dev Agent Record (14/14 + 1/1 + 6/6). The doctrinally-tighter form would be `grep -c '"modules\.spools\.'` (escape both dots, exclude the bare top-level key from the spool-subtree count). **Not blocking merge** — Codex explicitly flagged this as a documentation hygiene nit. Recorded here for a future docs sweep; left in-place in AC-1 for traceability with the as-executed audit.
+
+**Items confirmed unchanged in round-3** — all round-1 + round-2 fix-ups carried forward verbatim:
+
+- Route-prefix attributions (`GET /api/spools/summary` / `/api/spools/spools` / `/api/spools/filaments`) — confirmed correct.
+- `SPOOLMAN_LOW_STOCK_THRESHOLD_G` upgrade guidance (Vite-build-time consumer, redeploy required, MVP-A out-of-scope) — confirmed correct.
+- GlitchTip breadcrumb-absence doctrine on both surfaces (story spec AC-2 + `docs/operations.md`) — confirmed correct and symmetrically applied.
+- AC-1 load-bearing Python key-set + interpolation-surface comparison snippet + Dev Agent Record numbers — confirmed correct.
+- T6 close-out gate framing (the "epic flip happens only after the artifacts are committed for ff-merge") + sprint-status pre-enumeration entry — confirmed correct.
+- OD8 LAN-only bind verification recipe — confirmed correct.
+- Pre-enumeration "Modified files" + "New files" listing matches the actual `git diff main --stat` — confirmed correct.
+
+**Verification re-run for close-out**
+
+```bash
+# Sprint-status post-close-out invariant:
+grep -nE '^  (epic-31|epic-31-retrospective|31-5-i18n-ops-doc-baseline-regen):' \
+     _bmad-output/implementation-artifacts/sprint-status.yaml
+# → epic-31: done (flipped in this commit); 31-5-i18n-ops-doc-baseline-regen: done
+#   (flipped in this commit); epic-31-retrospective: pending (unchanged — AC-6).
+
+# Pre-enumeration ↔ diff consistency post-close-out:
+git diff main --stat
+# → docs/operations.md, _bmad-output/implementation-artifacts/sprint-status.yaml,
+#   _bmad-output/implementation-artifacts/31-5-i18n-ops-doc-baseline-regen.md
+#   match the Pre-enumeration "Modified files" + "New files" listing.
+```
+
+Close-out commit subject: `docs(bmad): Story 31.5 review close-out — Codex re-review MERGE-READY + epic-31 flip (Story 31.5, Init 19)`.
+
+Ff-merge to `main` and the bmad-retrospective session run as separate operator-driven steps after this commit lands.
 
 ## Out of scope
 
