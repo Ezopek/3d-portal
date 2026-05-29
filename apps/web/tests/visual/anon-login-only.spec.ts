@@ -33,13 +33,13 @@ test.beforeEach(async ({ page }) => {
 
 test("anonymous user at / lands on /login with no module rail", async ({ page }) => {
   await page.goto("/");
-  // `/` route has `beforeLoad: () => throw redirect({ to: "/catalog" })`
-  // (see `apps/web/src/routes/index.tsx`), so the redirect chain is
-  // `/` → `/catalog` → `/login?next=%2Fcatalog` (AuthGate captures the
-  // post-beforeLoad pathname). The Decision O contract is "anonymous
-  // user lands on /login carrying pathname-as-next"; what pathname
-  // AuthGate sees is governed by route-level redirects firing first.
-  await page.waitForURL(/\/login\?next=%2Fcatalog$/, { timeout: 5_000 });
+  // Story 31.4 (Init 19): `/` graduated from a redirect-to-/catalog stub
+  // to a real LandingPage component. AuthGate now captures the literal `/`
+  // as the post-redirect next param (was `%2Fcatalog` pre-31.4 because of
+  // the route-level redirect firing first). The Decision O contract is
+  // unchanged — anonymous user lands on /login carrying pathname-as-next;
+  // only the captured pathname shifts because the redirect deferral ended.
+  await page.waitForURL(/\/login\?next=%2F$/, { timeout: 5_000 });
   await waitForReady(page);
   // Module rail + top bar MUST NOT be in the DOM for anonymous users.
   // ModuleRail is keyed by its role=nav landmark or a known data-attr;

@@ -1,25 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { Route as IndexRoute } from "./index";
+import { LandingPage } from "@/modules/landing/LandingPage";
 
-// Index route is a redirect-only stub: v1 has just one working module (catalog),
-// so / has no useful landing — it should hand off immediately.
+// Story 31.4 (Init 19) — / graduates from a redirect-only stub to a real
+// landing surface hosting the LowStockCard. The pre-31.4 redirect-to-
+// /catalog deferral was explicitly conditioned on "second module ships";
+// /spools now ships (Story 31.3), so the upgrade is intentional.
 describe("/ (landing)", () => {
-  it("redirects to /catalog via beforeLoad", () => {
-    const beforeLoad = IndexRoute.options.beforeLoad;
-    expect(beforeLoad).toBeTypeOf("function");
-    let thrown: unknown;
-    try {
-      // beforeLoad is called by the router with a context; we only care that
-      // it throws a redirect descriptor with the right `to`.
-      (beforeLoad as (ctx: unknown) => unknown)({});
-    } catch (e) {
-      thrown = e;
-    }
-    expect(thrown).toBeDefined();
-    // TanStack Router's `redirect()` returns a Response-like object; its
-    // navigation target lives at `.options.to`.
-    const r = thrown as { options?: { to?: string } };
-    expect(r.options?.to).toBe("/catalog");
+  it("renders the LandingPage component (no redirect)", () => {
+    expect(IndexRoute.options.component).toBe(LandingPage);
+    expect(IndexRoute.options.beforeLoad).toBeUndefined();
   });
 });

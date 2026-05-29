@@ -1,11 +1,10 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 
-// V1 ships with one working module (catalog); the other module slots are
-// "Coming soon" stubs. A landing grid linking to four stubs and one real
-// module is a confusing first impression, so / hands off straight to the
-// catalog. Replace with a proper landing once a second module ships.
+import { LandingPage } from "@/modules/landing/LandingPage";
+
+// Story 31.4 (Init 19) — graduates the redirect-to-/catalog stub into a real
+// landing surface now that two modules ship real implementations (catalog +
+// spools). Hosts the LowStockCard for the FR19-LOWSTOCK-1 demoable signal.
 export const Route = createFileRoute("/")({
-  beforeLoad: () => {
-    throw redirect({ to: "/catalog" });
-  },
+  component: LandingPage,
 });

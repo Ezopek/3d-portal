@@ -563,5 +563,17 @@
   "modules.spools.index.archived_badge": "Archived",
   "modules.spools.states.empty": "No spools in Spoolman.",
   "modules.spools.states.unavailable": "Spoolman is unreachable. Try again in a moment.",
-  "modules.spools.states.error": "Could not load spools."
+  "modules.spools.states.error": "Could not load spools.",
+  "modules.spools.lowstock.title": "Low stock",
+  "modules.spools.lowstock.loading": "Checking spool levels…",
+  "modules.spools.lowstock.error": "Could not load low-stock list.",
+  "modules.spools.lowstock.all_ok": "Every spool is above the threshold.",
+  "modules.spools.lowstock.unavailable": "Spoolman is unreachable.",
+  "modules.spools.lowstock.more_count": "and {{n}} more",
+  "landing.title": "Dashboard",
+  "landing.subtitle": "Welcome back. Pick a module to dive in.",
+  "landing.tile.catalog.label": "Catalog",
+  "landing.tile.catalog.description": "Browse models, filters, and detail pages.",
+  "landing.tile.spools.label": "Spools",
+  "landing.tile.spools.description": "Live filament inventory mirrored from Spoolman."
 }

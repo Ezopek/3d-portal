@@ -563,5 +563,17 @@
   "modules.spools.index.archived_badge": "Zarchiwizowana",
   "modules.spools.states.empty": "Brak szpul w Spoolman.",
   "modules.spools.states.unavailable": "Spoolman jest nieosiągalny. Spróbuj za chwilę.",
-  "modules.spools.states.error": "Nie udało się załadować szpul."
+  "modules.spools.states.error": "Nie udało się załadować szpul.",
+  "modules.spools.lowstock.title": "Mało filamentu",
+  "modules.spools.lowstock.loading": "Sprawdzanie stanu szpul…",
+  "modules.spools.lowstock.error": "Nie udało się załadować listy.",
+  "modules.spools.lowstock.all_ok": "Każda szpula jest powyżej progu.",
+  "modules.spools.lowstock.unavailable": "Spoolman jest nieosiągalny.",
+  "modules.spools.lowstock.more_count": "i jeszcze {{n}}",
+  "landing.title": "Pulpit",
+  "landing.subtitle": "Witaj. Wybierz moduł, by zacząć.",
+  "landing.tile.catalog.label": "Katalog",
+  "landing.tile.catalog.description": "Przeglądaj modele, filtry i strony szczegółów.",
+  "landing.tile.spools.label": "Szpule",
+  "landing.tile.spools.description": "Aktualny stan filamentów z Spoolman."
 }
