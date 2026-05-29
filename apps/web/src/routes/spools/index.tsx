@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { ComingSoonStub } from "@/ui/custom/ComingSoonStub";
+import { SpoolsIndexPage } from "@/modules/spools/components/SpoolsIndexPage";
 
 export const Route = createFileRoute("/spools/")({
-  component: () => <ComingSoonStub moduleKey="spools" />,
+  component: SpoolsIndexPage,
 });

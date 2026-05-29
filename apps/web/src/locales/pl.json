@@ -555,5 +555,13 @@
   "catalog.description.body_en": "Opis (angielski)",
   "catalog.description.body_pl": "Opis (polski)",
   "catalog.description.bilingual_hint": "Wypełnij oba języki jeśli to możliwe — katalog renderuje wersję pasującą do locale, a druga jest fallbackiem.",
-  "common.saving": "Zapisuję…"
+  "common.saving": "Zapisuję…",
+  "modules.spools.index.title": "Szpule",
+  "modules.spools.index.loading": "Ładowanie szpul…",
+  "modules.spools.index.last_updated": "Ostatnia aktualizacja {{time}}",
+  "modules.spools.index.last_updated_with_ago": "Ostatnia aktualizacja {{time}} ({{count}} min temu)",
+  "modules.spools.index.archived_badge": "Zarchiwizowana",
+  "modules.spools.states.empty": "Brak szpul w Spoolman.",
+  "modules.spools.states.unavailable": "Spoolman jest nieosiągalny. Spróbuj za chwilę.",
+  "modules.spools.states.error": "Nie udało się załadować szpul."
 }

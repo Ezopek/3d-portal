@@ -555,5 +555,13 @@
   "catalog.description.body_en": "English description",
   "catalog.description.body_pl": "Polish description",
   "catalog.description.bilingual_hint": "Fill both languages when possible — the catalog renders the locale-matching version with the other as fallback.",
-  "common.saving": "Saving…"
+  "common.saving": "Saving…",
+  "modules.spools.index.title": "Spools",
+  "modules.spools.index.loading": "Loading spools…",
+  "modules.spools.index.last_updated": "Last updated {{time}}",
+  "modules.spools.index.last_updated_with_ago": "Last updated {{time}} ({{count}}m ago)",
+  "modules.spools.index.archived_badge": "Archived",
+  "modules.spools.states.empty": "No spools in Spoolman.",
+  "modules.spools.states.unavailable": "Spoolman is unreachable. Try again in a moment.",
+  "modules.spools.states.error": "Could not load spools."
 }
