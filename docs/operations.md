@@ -574,3 +574,122 @@ Sibling configs revert commit: `~/repos/configs/` `4be33d3` (revert of
 `70cb5ba`), deployed via sibling `sync.sh` 2026-05-21 — `.180` nginx
 reloaded successfully; 3d.ezop.ddns.net no longer carries a server-level
 IP allowlist; portal-self-auth is the sole boundary.
+
+## Spoolman read-only inventory (Initiative 19)
+
+Initiative 19 MVP-A ships a read-only mirror of the homelab Spoolman
+instance at `192.168.2.190:7912`. The portal API caches the inventory in
+Redis on a 60s arq poll cadence and surfaces it through three auth-
+bearing routes (`/api/spools/summary` / `/spools` / `/filaments`), the
+`/spools` index page, and the landing-page `LowStockCard`. Direct
+Spoolman UI usage on the LAN is preserved by design — the portal does
+not own the Spoolman database, and write surfaces are out of MVP-A
+scope (Phase C trigger).
+
+### Environment variables
+
+| Slot | Default | Purpose | Owner |
+|---|---|---|---|
+| `SPOOLMAN_URL` | `http://spoolman:8000` (Decision AE P4b — portal-api on the shared docker network resolves the `spoolman` hostname). Fallback `http://192.168.2.190:7912` (P4a — operator override when the configs-side network attachment slips). | Base URL the portal API uses for Spoolman's `/api/v1/*` endpoints. Empty value is invalid; the client raises at startup. | `apps/api/app/core/config.py` (Story 31.1). |
+| `SPOOLMAN_AUTH_TOKEN` | empty | Reserved future Spoolman auth (Phase C trigger; not exercised in MVP-A). Empty value disables the `Authorization` header. | Same. |
+| `SPOOLMAN_LOW_STOCK_THRESHOLD_G` | **NOT IMPLEMENTED in MVP-A** — the current threshold is the hardcoded `LOW_STOCK_THRESHOLD_G = 200` constant at `apps/web/src/modules/spools/components/LowStockCard.lib.ts`. | The "low stock" cutoff (grams; strict `<` comparator) below which a spool surfaces on the landing `LowStockCard`. | FE component-level constant. Promote to a runtime env slot (similar shape to `SPOOLMAN_URL`) when operator wants to tune without redeploy. The upgrade path is single-file: replace the constant with an `import.meta.env.VITE_SPOOLMAN_LOW_STOCK_THRESHOLD_G ?? 200` read at the same call site. |
+
+### Soft-fail behavior
+
+When Spoolman is unreachable, the portal degrades gracefully
+(FR19-FAILURE-1) — NEVER 5xx:
+
+- **`GET /api/spools/summary`** returns HTTP 200 with empty arrays +
+  `last_success_ts: null` when both the cache is empty AND the live
+  fetch fails (cold-cache + outage). When the cache is warm but
+  Spoolman is currently down, the prior snapshot is served with the
+  original (stale) `last_success_ts`; the FE indicator computes
+  "Xm temu" from the delay.
+- **`/spools` route** renders the explicit `EmptyState` "Spoolman jest
+  nieosiągalny" with no Retry (the arq cron repopulates the cache
+  automatically when Spoolman returns).
+- **Landing `LowStockCard`** renders the same soft-fail empty state
+  inside the card; the rest of the dashboard (hero + quick-link tiles)
+  continues to render normally.
+
+Cache topology (Story 31.1, byte-pinned keys — change requires SCP):
+
+| Key | TTL | Owner |
+|---|---|---|
+| `spools:summary:v1` | 30s | `SpoolsService.refresh_summary()` writes JSON-encoded snapshot. |
+| `spools:summary:last-success-ts` | no TTL | Sibling key; survives cache rotation so the FE staleness indicator can compute arbitrary delays. |
+| `spools:poll-lock` | 90s | SETNX single-poller leader-election; only the lock holder calls Spoolman. |
+
+arq poll cadence: 60s (FR19-CACHE-1 freshness budget; matches FE
+`staleTime: 60_000` on `["spools","summary"]` queryKey).
+
+### OD8 LAN-only bind verification recipe
+
+Spoolman is configured for LAN-only exposure (operator decision
+2026-05-29): NOT `0.0.0.0`, NOT `::`; explicitly bound to the host's
+LAN interface `192.168.2.190:7912`. To verify the bind on `.190`:
+
+```bash
+docker inspect spoolman --format '{{json .NetworkSettings.Ports}}' | jq
+# Expect: "8000/tcp": [ { "HostIp": "192.168.2.190", "HostPort": "7912" } ]
+# REJECT:  HostIp: "0.0.0.0" or HostIp: "::"  (Docker default
+#           all-interfaces exposure leaks Spoolman onto every
+#           host interface).
+```
+
+If the bind drifts to `0.0.0.0` / `::`, STOP and escalate:
+
+1. The Spoolman compose file lives at
+   `~/repos/configs/docker-compose-recipes/spoolman.yml`.
+2. The expected `ports` entry: `- "192.168.2.190:7912:8000"`.
+3. Fix on the configs side, re-deploy via `~/repos/configs/sync.sh`,
+   re-run the inspect above to re-confirm.
+
+The bind invariant exists because the operator + phone consume
+Spoolman directly on the LAN (printer pushes filament-usage updates
+live); a strict `127.0.0.1`-only bind would break that workflow. The
+configs-side coordination ownership is documented in the SCP
+(`_bmad-output/planning-artifacts/sprint-change-proposal-2026-05-29-spoolman.md`
+§4.5) — the 3d-portal repo does NOT carry the compose file (HC2 trip-
+wire: portal never edits configs files).
+
+### GlitchTip breadcrumb category troubleshooting
+
+All Spoolman client calls emit a Sentry breadcrumb at category
+`spoolman.client` (Story 31.1 AC-6). When triaging a low-stock card
+error or a `/spools` 200-with-empty-arrays response in GlitchTip,
+filter the event's breadcrumb timeline by:
+
+```
+category:spoolman.client
+```
+
+Breadcrumbs surface: `endpoint` (`GET /api/v1/spool` / `/filament` /
+`/vendor`), `duration_ms`, `status_code`, and the failure level
+(`info` on success, `warning` on `httpx.RequestError` /
+`httpx.HTTPStatusError` / circuit-breaker open). Matching
+structured-log records carry the same `event.action`
+(`spools.client.call` / `spools.client.error` / `spools.poll.refresh`
+/ `spools.poll.error`) + `labels.external_service=spoolman` for grep
+filtering on the JSON log stream.
+
+If GlitchTip shows ZERO `spoolman.client` breadcrumbs during an
+outage triage, the issue is upstream (network / DNS / docker
+network split), not the portal client — the breadcrumbs emit
+unconditionally on every call attempt (including the circuit-open
+short-circuit path, which logs `error_class=SpoolmanCircuitOpenError`).
+
+### Cross-references
+
+- Story 31.1 — backend client + cache + poll job.
+  `_bmad-output/implementation-artifacts/31-1-backend-spoolman-client-cache-poll.md`.
+- Story 31.2 — `/api/spools/*` routes + DTO cost-carry.
+  `_bmad-output/implementation-artifacts/31-2-backend-spools-routes-dto-cost-carry.md`.
+- Story 31.3 — `/spools` index page + soft-fail states.
+  `_bmad-output/implementation-artifacts/31-3-frontend-spools-route-index-page.md`.
+- Story 31.4 — landing dashboard + `LowStockCard`.
+  `_bmad-output/implementation-artifacts/31-4-frontend-landing-low-stock-card.md`.
+- Story 31.5 — this addendum + i18n parity sweep close-out.
+  `_bmad-output/implementation-artifacts/31-5-i18n-ops-doc-baseline-regen.md`.
+- Architecture: `_bmad-output/planning-artifacts/architecture.md` § Initiative 19 (Decisions AD + AE + AF).
+- Source SCP: `_bmad-output/planning-artifacts/sprint-change-proposal-2026-05-29-spoolman.md`.
