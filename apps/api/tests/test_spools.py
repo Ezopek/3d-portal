@@ -488,6 +488,43 @@ async def test_service_get_summary_lock_release_race_retries_live_fetch(
     assert calls == 2
 
 
+async def test_service_refresh_summary_lock_release_is_ownership_safe_under_ttl_expiry_race(
+    fake_redis_factory,
+) -> None:
+    """Regression for adversarial review: if the SETNX lease expires mid-poll
+    and a second worker acquires its own lock, the first worker's ``finally``
+    MUST NOT delete the second worker's lock value. Lock release has to be
+    ownership-safe (per-refresh unique token + compare-and-delete) rather
+    than an unconditional ``DEL`` of the contract key.
+    """
+    factory, fake = fake_redis_factory
+    intruder_token = b"intruder-token-v2"
+
+    mock_client = AsyncMock(spec=SpoolmanClient)
+
+    async def hijack_lock(*, lock_held: bool | None = None):
+        # Simulate TTL expiry + second-worker takeover while the first poll
+        # is still in flight: overwrite the lock value with a foreign token
+        # the way Redis would after our lease expired and another worker
+        # SETNX'd a fresh value of its own.
+        await fake.set(_LOCK_KEY, intruder_token)
+        return [SpoolmanSpool.model_validate(_spool_fixture(1))]
+
+    mock_client.list_spools.side_effect = hijack_lock
+    mock_client.list_filaments.return_value = [
+        SpoolmanFilament.model_validate(_filament_fixture(1))
+    ]
+    mock_client.list_vendors.return_value = [SpoolmanVendor.model_validate(_vendor_fixture())]
+
+    service = SpoolsService(redis_factory=factory, client=mock_client)
+    await service.refresh_summary()
+
+    # The intruder's lock MUST survive — the first worker's finally has to
+    # compare-and-delete on its own token, not unconditionally ``DEL`` the
+    # contract key.
+    assert await fake.get(_LOCK_KEY) == intruder_token
+
+
 async def test_service_refresh_summary_drains_sibling_calls_before_lock_release(
     fake_redis_factory,
 ) -> None:

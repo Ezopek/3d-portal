@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 from datetime import UTC, datetime
 
 import httpx
+from redis.exceptions import WatchError
 
 from app.core.redis import RedisFactory
 from app.modules.spools.client import SpoolmanCircuitOpenError, SpoolmanClient
@@ -89,6 +91,25 @@ class SpoolsService:
             return SpoolmanSnapshot.model_validate_json(cached)
         return None
 
+    async def _release_lock(self, token: bytes) -> None:
+        async with self._redis.pipeline(transaction=True) as pipe:
+            while True:
+                try:
+                    await pipe.watch(_LOCK_KEY)
+                    current = await pipe.get(_LOCK_KEY)
+                    if current != token:
+                        await pipe.unwatch()
+                        return
+                    pipe.multi()
+                    pipe.delete(_LOCK_KEY)
+                    await pipe.execute()
+                    return
+                except WatchError:
+                    # Foreign writer touched the key between WATCH and EXEC —
+                    # re-read; if value still matches our token, retry the CAD;
+                    # otherwise leave the new owner's lock untouched.
+                    continue
+
     async def get_last_success_ts(self) -> datetime | None:
         raw = await self._redis.get(_LAST_SUCCESS_KEY)
         if raw is None:
@@ -97,7 +118,13 @@ class SpoolsService:
         return datetime.fromisoformat(value)
 
     async def refresh_summary(self) -> SpoolmanSnapshot | None:
-        lock_acquired = await self._redis.set(_LOCK_KEY, b"1", nx=True, ex=_LOCK_EXPIRY_SECONDS)
+        # Per-refresh unique token so the lock-release path can compare-and-
+        # delete on its own value (AC-9 ownership invariant) instead of blindly
+        # deleting whatever currently sits at _LOCK_KEY — guards the
+        # TTL-expiry race where the 90s lease lapses and a second worker
+        # SETNX'd a fresh lock of its own before our finally fires.
+        token = secrets.token_hex(16).encode()
+        lock_acquired = await self._redis.set(_LOCK_KEY, token, nx=True, ex=_LOCK_EXPIRY_SECONDS)
         if not lock_acquired:
             # AC-9 — another worker holds the lock; idempotent skip.
             return None
@@ -157,6 +184,13 @@ class SpoolsService:
             # semantics (warm-cache requests keep serving the prior snapshot).
             return None
         finally:
-            # Best-effort lock release; TTL covers the case where the worker
-            # crashes mid-poll.
-            await self._redis.delete(_LOCK_KEY)
+            # Ownership-safe lock release via WATCH/MULTI/EXEC compare-and-
+            # delete: only DEL when the stored value still matches our
+            # per-refresh token. Guards the TTL-expiry race where the 90s
+            # lease lapsed and another worker SETNX'd a fresh lock — that
+            # foreign value is left intact. TTL covers worker crashes mid-
+            # poll. Lua EVAL would be a one-call equivalent but the project's
+            # fakeredis test harness lacks lupa, so transactions are the
+            # safest primitive supported by both production redis-py and
+            # the test fake without an extra dependency.
+            await self._release_lock(token)
