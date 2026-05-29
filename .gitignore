@@ -61,8 +61,41 @@ workers/render/.local-renders/
 # Implementation plans — kept local-only on purpose (may reference internal hosts/paths)
 docs/plans/
 
-# BMAD planning + implementation artifacts — local-only (may reference internal hosts/paths)
-_bmad-output/
+# BMAD planning + implementation artifacts.
+# Default-deny everything under _bmad-output/, then explicitly re-include the
+# curated subset documented in AGENTS.md § BMAD artifact tracking. Scratch
+# (story-automator runs, codex-review logs, raw audit dumps, code-reviews/)
+# stays local because it can reference internal hosts/paths and bloats history.
+_bmad-output/**
+
+# Curated top-level docs
+!_bmad-output/project-context.md
+!_bmad-output/triage-backlog.md
+
+# Planning artifacts — PRD, architecture, epics, sprint change proposals,
+# product briefs, readiness reports, and the _runtime/ + archive/ history.
+!_bmad-output/planning-artifacts/
+!_bmad-output/planning-artifacts/**/
+!_bmad-output/planning-artifacts/**/*.md
+!_bmad-output/planning-artifacts/**/*.yaml
+
+# Implementation artifacts — story specs, retros, sprint-status.
+# audit-raw/, code-reviews/, codex-review dumps, and *.log dumps stay local.
+!_bmad-output/implementation-artifacts/
+!_bmad-output/implementation-artifacts/*.md
+!_bmad-output/implementation-artifacts/sprint-status.yaml
+_bmad-output/implementation-artifacts/codex-review-*.md
+_bmad-output/implementation-artifacts/codex-review-*.log
+_bmad-output/implementation-artifacts/code-reviews/
+_bmad-output/implementation-artifacts/audit-raw/
+
+# UX specs
+!_bmad-output/ux/
+!_bmad-output/ux/**/*.md
+
+# Brainstorming sessions
+!_bmad-output/brainstorming/
+!_bmad-output/brainstorming/*.md
 
 tmp/
 

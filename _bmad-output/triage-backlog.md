@@ -1,0 +1,1416 @@
+# Triage Backlog — quick-dev candidates
+
+> **Purpose:** Landing pad for candidates that need Ezop's promotion decision before becoming a quick-dev story. Two sources feed this file:
+> 1. **Threshold mechanism** — pre-existing issues flagged in 3+ separate BMAD stories' Dev Agent Records auto-create a candidate here (per `~/.claude/projects/-home-ezop-repos-3d-portal/memory/feedback_preexisting_issue_threshold.md`). Threshold itself is tentative — re-evaluation after Epic 4 + Epic 5 retros.
+> 2. **Direct surfacing** — observations from retros, sanity checks, or operational work that don't justify immediate fix but should not be lost.
+>
+> **Promotion rule:** Ezop manually decides candidate → quick-dev story. Auto-creation of full quick-dev stubs is NOT in scope.
+>
+> **Hygiene:** This file is gitignored (`_bmad-output/`). Mark candidates as `promoted`, `declined`, or `done` when their fate is decided rather than deleting entries — keeps the trail.
+
+---
+
+## Active candidates
+
+### TB-052 — Defensive-policy carve-out reversal pattern (codify Init 10 → Init 18 NFR10 reversal)
+
+**Status:** candidate (operator-approved Init 18 retro intake 2026-05-29; awaiting Ezop promotion decision — recommend defer until second-instance trigger)
+**Surfaced:** 2026-05-28, Init 18 retro §2 W3 + §5 A3 (`_bmad-output/implementation-artifacts/init-18-retro-2026-05-28.md`)
+**Flag count:** 1 (Init 18 Decision AB carve-out reversal of Init 10 Story 16.3 NFR10-SHARE-SECURITY-1; pattern will recur as more "Init N defensive policy needs loosening for Init N+M use case" cases land)
+**Priority:** P3 (process aid; N=1 today — second instance is the cleaner promotion signal)
+
+**Context.** Init 10 Story 16.3 added NFR10-SHARE-SECURITY-1 disabling `/auth/me` on `/share/*` routes to keep the share view anonymous-by-design. Init 18 Decision AB (B5 membership-path completion) needed to reverse that gate for authenticated members visiting their own shares. The reversal was done correctly via a 4-step recipe surfaced in §2 W3 of the retro:
+
+1. Explicit reversal in code with comment block citing both Inits + both rationales (DONE at `apps/web/src/shell/AuthContext.tsx:36-46`).
+2. Verification that the ACTUAL invariant the policy was protecting is still enforced by a DIFFERENT mechanism (NFR10 data contract is enforced by `fetchShareView`'s `credentials: "omit"` in `apps/web/src/lib/share-api.ts`, NOT by AuthContext gating).
+3. Pre-merge grep invariant proving (2) still holds (Init 18 G2 grep over `apps/web/src/lib/share-api.ts`).
+4. SCP / architecture decision capturing the reversal as a decision artifact (Decision AB in `sprint-change-proposal-2026-05-25-init18.md`).
+
+The retro's read: this is a reusable pattern for "Init N defensive policy P needs loosening for Init N+M use case U" — a class of work that will recur as the brownfield surface grows (auth gating, NFR-SECURITY, anonymous-surface posture, CSRF gates). Worth codifying as a process memory so the next reversal does not have to rediscover the four-step recipe.
+
+**Surface affected:** any future story/initiative loosening a defensive policy from an earlier initiative. Phase B (anonymous CONTENT parity at `/share/<token>`, future-initiative candidate per `[[feedback_share_view_scope_boundary]]` amended carve-out) is the most likely near-term trigger.
+
+**Scope estimate (if promoted):** ~30 min. Pure process artifact — new feedback memory entry `feedback_defensive_policy_carve_out_reversal.md` capturing the 4-step recipe + the Init 10 → Init 18 worked example, cross-referenced from `[[feedback_auth_boundary_contract_audit]]` and AGENTS.md § "Frontend auth gating discipline". OR fold the same content as a subsection into the existing `feedback_auth_boundary_contract_audit` entry. No code change.
+
+**Code map (worked example, read before authoring memory):**
+- `apps/web/src/shell/AuthContext.tsx:36-46` — the reversal comment block + the both-directions-of-WHY pattern.
+- `apps/web/src/lib/share-api.ts` — `fetchShareView` `credentials: "omit"` (the mechanism that actually carries the NFR10 invariant post-reversal).
+- `_bmad-output/implementation-artifacts/sprint-change-proposal-2026-05-25-init18.md` — Decision AB framing.
+- `_bmad-output/implementation-artifacts/init-18-retro-2026-05-28.md` §2 W3 — the four-step recipe authored as retro lesson.
+
+**Why a candidate, not a hot-fix:** N=1 makes the abstraction shape less confident; one worked example is rarely enough to lock the canonical recipe. Promote on the next defensive-policy reversal trigger when the second instance validates (or amends) the four-step shape.
+
+**Recommended action:** Defer until a second carve-out reversal surfaces (Phase B or any future Init N → Init N+M auth/security-policy loosening). Until then: in-place reference is the retro §2 W3 plus the `AuthContext.tsx:36` comment block.
+
+---
+
+### TB-051 — Spec magic-constant contract-pointing justification (smell-test rule)
+
+**Status:** done — implemented-as-process-aid 2026-05-29 by Laura/ITCM liaison as Init 19 readiness pass. Memory file `~/.claude/projects/-home-ezop-repos-3d-portal/memory/feedback_scp_pre_enumeration_phase.md` authored from scratch (the directory was empty) with section C "Magic-constant contract rule": the core rule (every numeric / time / size literal must point to the CONTRACT it serves, not to a peer usage or framework default; if no contract drives the value, explicitly mark it arbitrary/default), good/bad examples (staleTime: 0 for FR contract = good; staleTime: 5min "matches meQuery" = bad; pageSize: 25 explicitly arbitrary = good), scope expansion beyond cache constants (retry counts, timeout durations, page sizes, rate-limit windows, polling budgets — cf. TB-016 Finding A; nginx `limit_conn`; semaphore caps — Story 27.1 cap=4 cited as a GOOD contract-pointing justification), authoring nudge ("write the because clause first, the value second"), cross-link to `[[feedback-auth-boundary-contract-audit]]`. Init 18 Story 30.2 AC-2 worked example folded inline. Bundled with TB-050 in the same memory file as both belong to the same spec-authoring discipline scope. Stretch (spec-template prompt in `_bmad/skills/bmad-create-story/SKILL.md`) deferred until evidence the manual rule does not stick; validation cadence: next 2-3 React Query / time-budget stories' spec authoring. No code change. Sprint-status sub-key `19-readiness-tb-051-spec-magic-constants` flipped pending → done. **Prior status preserved below for history.**
+
+**Prior status:** promoted as Init 19 readiness/process-aid scope (operator decision 2026-05-29 via Laura/ITCM liaison; bundled with TB-050 — same memory file, same spec-authoring discipline). Implementation pending — see `sprint-status.yaml` § Initiative 19. No code change; process-memory edit only.
+**Surfaced:** 2026-05-28, Init 18 retro §3 L3 + §5 A2 (`_bmad-output/implementation-artifacts/init-18-retro-2026-05-28.md`)
+**Flag count:** 1 (Story 30.2 spec AC-2 `staleTime: 5 * 60 * 1000` "matches AuthContext meQuery staleTime" — P1 bug prescribed inline in the spec, caught at round-1 Codex review)
+**Priority:** P2 (process aid; root-caused a P1 fix-up cycle; cheap to encode; high diagnostic value across all future spec authoring)
+
+**Context.** Story 30.2 spec at `_bmad-output/implementation-artifacts/30-2-conditional-render-member-share-view-info-bar.md` AC-2 prescribed `staleTime: 5 * 60 * 1000` (5 min) with the justification "matches AuthContext meQuery staleTime". The justification is true (the values match) but irrelevant — the contracts diverge: auth state changes when the same user acts; share-token state changes when ANOTHER user revokes. Different invariants → different staleTime budgets. The developer (autonomous mode) implemented exactly what the spec prescribed; Codex round-1 caught it as P1.
+
+The retro frames it as a **spec-class miss, not a dev-execution miss**: the spec told the developer to write the wrong code. The fix is a lightweight spec smell-test: **every magic time / size constant in a spec must point to the CONTRACT it serves, not the OTHER PLACE it appears.** Examples:
+
+- Good: `staleTime: 0` because "revocation must surface on next visit per FR18-X" — points to a contract.
+- Bad: `staleTime: 5min` because "matches meQuery" — points to another usage.
+- Good: `gcTime: 0` because "AC-5 requires no cached blob to outlive the share-view route" — points to a contract.
+- Bad: `gcTime: 5min` because "matches React Query default" — points to a default.
+
+The rule applies more broadly than cache constants: retry counts, timeout durations, page sizes, rate-limit windows, polling budgets (cf. TB-016 Finding A — the 60 s polling budget was justified by "fits the happy-path mesh size" rather than by a contract over mesh-size distribution).
+
+**Surface affected:** all `bmad-create-story` and `bmad-correct-course` spec authoring. Each spec carries multiple magic constants today.
+
+**Scope estimate (if promoted):** ~30-45 min. Pure process artifact — extend `feedback_scp_pre_enumeration_phase` memory entry with a "magic-constant contract check" subsection, OR file a standalone `feedback_spec_magic_constant_contracts` memory. Optional: add a 1-line bullet to the `bmad-create-story` spec template prompting "for each numeric constant in AC, cite the CONTRACT it serves (not the place it was copied from)". No code change.
+
+**Code map (worked example + extension targets):**
+- `_bmad-output/implementation-artifacts/30-2-conditional-render-member-share-view-info-bar.md` AC-2 — the spec line that printed the bug ("matches AuthContext meQuery staleTime").
+- `~/.claude/projects/-home-ezop-repos-3d-portal/memory/feedback_scp_pre_enumeration_phase.md` — extension target.
+- `_bmad/skills/bmad-create-story/SKILL.md` — spec-template prompt (if applied).
+- Init 18 retro §3 L3 + §5 A2 — full justification.
+
+**Recommended action:** Promote bundled with TB-050 as a 2-in-1 process-memory update — they share scope (spec authoring discipline) and target the same memory file. Validate on the next 2-3 React Query / time-budget stories' spec authoring.
+
+---
+
+### TB-050 — Cache-coherence enumeration extension to pre-enumeration phase
+
+**Status:** done — implemented-as-process-aid 2026-05-29 by Laura/ITCM liaison as Init 19 readiness pass. Memory file `~/.claude/projects/-home-ezop-repos-3d-portal/memory/feedback_scp_pre_enumeration_phase.md` authored from scratch (the directory was empty) with section B "Cache-topology enumeration": the trigger condition (story reads/mutates via React Query / TanStack / shared API cache), the four coupled invariants from the Init 18 deep-dive (revocation surfaces promptly / admin mutations propagate / probe-and-render atomic / share-seeded cache does not contaminate `/catalog/<id>`), the 5-row table (staleness budget / retry policy / cache propagation on mutations / cache eviction on route exit / cache seeding on this route) × (this story / related route-or-hook), the decision rule (columns agree → reuse OK; columns disagree → spec MUST resolve as explicit design choice in AC with candidate resolutions named: private cache, shared canonical queryKey + observer override, shared cache + post-mutation invalidate), reference implementation of the terminus shape (`apps/web/src/routes/share/useShareModelProbe.ts` + MemberShareView unmount + `$token.tsx` info-bar nav sync evict), anti-pattern reference to Story 30.2 spec AC-2, link to retro §3 L1 + §4 cause-effect chain, validation cadence note. Section A "Existence checklist" also written (the pre-existing pre-enumeration rule had only been referenced in triage-backlog.md prior to this pass; now codified inline). Bundled with TB-051 in the same memory file. Stretch (spec-template prompt in `_bmad/skills/bmad-create-story/SKILL.md` + CI grep over new spec files for `staleTime`/`gcTime`/`queryKey` literals without an adjacent contract reference) deferred until evidence the manual rule does not stick. No code change. Sprint-status sub-key `19-readiness-tb-050-cache-coherence-enumeration` flipped pending → done. **Prior status preserved below for history.**
+
+**Prior status:** promoted as Init 19 readiness/process-aid scope (operator decision 2026-05-29 via Laura/ITCM liaison; highest-leverage of the three Init 18 retro candidates; bundled with TB-051 — same memory file, same spec-authoring discipline). Implementation pending — see `sprint-status.yaml` § Initiative 19. No code change; process-memory edit only.
+**Surfaced:** 2026-05-28, Init 18 retro §3 L1 + §5 A1 + §4 deep-dive cause-effect chain (`_bmad-output/implementation-artifacts/init-18-retro-2026-05-28.md`)
+**Flag count:** 1 (Story 30.2 rounds 2-7 — all six successive P1/P2 Codex follow-ups lived in the same problem space: resolve-cache-and-mutation-coherence; longest Codex chain in 3d-portal history)
+**Priority:** P1 (process aid; addresses the root cause of the longest fix-up chain on record; high-leverage for any future TanStack / React Query story — currently the dominant FE data-fetching surface)
+
+**Context.** All six Story 30.2 P1/P2 follow-ups (rounds 2 through 7) lived in the same problem space. The spec prescribed concrete `staleTime` / `gcTime` / queryKey values but did NOT enumerate the FOUR coupled invariants that those values must jointly satisfy:
+
+1. **Revocation/expiry must surface promptly** on next visit → force fresh GET, no staleness.
+2. **Admin mutations on the same model must propagate immediately** → ride canonical cache so `useReplaceTags` / `useUpdateModel` / `useDeleteModel` invalidations reach the share view.
+3. **Probe and render must be atomic** → race between two fetches surfaces wrong UX (`errors.network` instead of `share-expired`); one cache entry, one source of truth.
+4. **Share-seeded cache must not contaminate subsequent `/catalog/<id>` visit** → unmount cleanup + sync evict on info-bar nav.
+
+Invariants 1 + 4 want a private cache (isolated from catalog). Invariants 2 + 3 want the canonical cache. The Story 30.2 spec landed on a configuration that satisfied 1 but broke 2 + 3 + 4; rounds 2-7 oscillated through the design space until a satisfying configuration was found (canonical queryKey + observer-level force-fresh override + unmount eviction + sync info-bar-nav eviction). An enumeration phase that named those four invariants up front would have collapsed rounds 3 + 4 + 5 into a single design choice. Rounds 2, 6, 7 emerged from genuine semantic subtleties of React Query's stale-while-revalidate / observer model and would likely have surfaced regardless — but cutting three rounds out of seven is the kind of compression worth investing 15 min of spec authoring for.
+
+The retro proposes extending `feedback_scp_pre_enumeration_phase` (today: "what files / methods / fixtures already exist?") with a parallel "cache topology table" subsection on stories that fetch data and might share data with other surfaces:
+
+| Concern | Source: this story | Source: any related route/hook |
+|---|---|---|
+| Staleness budget | ? | ? |
+| Retry policy | ? | ? |
+| Cache propagation (mutations) | ? | ? |
+| Cache eviction on route exit | ? | ? |
+| Cache seeding on this route | ? | ? |
+
+If two columns disagree → design-decision spec MUST resolve (private cache vs shared cache + observer-level override). Two columns agreeing → simple reuse OK. The pattern is parallel in shape to the Init 12 use-case-enumeration miss that surfaced Init 18 itself: both are "the thing you didn't list as something to think about" failures.
+
+**Surface affected:** all `bmad-create-story` work for stories that touch React Query / TanStack Query data fetching (today: most FE stories — catalog, share, admin, viewer3d, sessions, 2FA enrollment). Backend caching (Redis TTL, in-memory LRU) would benefit from a parallel "TTL coherence" table but is out of scope for the v1 promotion.
+
+**Scope estimate (if promoted):** ~45-60 min. Extend `feedback_scp_pre_enumeration_phase.md` with a "Cache topology enumeration" subsection: the 5-row table + the 4-invariant list + the Init 18 worked example (link to retro). Add a 1-2-line prompt to the `bmad-create-story` spec template: "if the story fetches data via React Query, fill in the cache-topology table; if any column diverges from a related route/hook, name the design choice in AC." OPTIONAL stretch: add a CI grep over new spec files for `staleTime` / `gcTime` / `queryKey` literals without an adjacent contract reference — defer until evidence the manual rule does not stick.
+
+**Code map (extension targets + worked example):**
+- `~/.claude/projects/-home-ezop-repos-3d-portal/memory/feedback_scp_pre_enumeration_phase.md` — extension target.
+- `_bmad/skills/bmad-create-story/SKILL.md` — spec-template prompt (if applied).
+- Worked example (Init 18 deep-dive): retro §3 L1 + §4 cause-effect chain.
+- Reference implementation of "canonical queryKey + observer-level force-fresh override" (the round-5..7 terminus shape): `apps/web/src/routes/share/useShareModelProbe.ts` + `apps/web/src/routes/share/MemberShareView.tsx` unmount cleanup.
+- Anti-pattern reference: `_bmad-output/implementation-artifacts/30-2-conditional-render-member-share-view-info-bar.md` AC-2 (the spec line that prescribed the round-1 bug — also a TB-051 trigger).
+
+**Recommended action:** Promote as the next standalone process-aid quick-dev. Bundle with TB-051 (magic-constant contracts) since they share scope and target the same memory file. Validate on the next 2-3 React Query stories' spec authoring; revisit the table shape after 3 applications.
+
+---
+
+### TB-049 — Codex Playwright MCP hang mitigation strategy
+
+**Status:** done (Init 17.5 hot-fix 2026-05-25 — Option D config-fix, NOT Option B disable). Shipped pre-Init-18 as standalone tooling cleanup after operator-directed 3-agent research consensus.
+**Resolution:** Two root causes diagnosed via parallel research subagents 2026-05-25: (a) [`@playwright/mcp` CLI flag `--no-sandbox` NOT forwarded to `browserType.launch`](https://github.com/microsoft/playwright-mcp/issues/883) — only working channel is JSON config `browser.launchOptions.args`; (b) WSL2 kernel 6.6.87.2-microsoft-standard-WSL2 does NOT expose `kernel.unprivileged_userns_clone` (verified locally) — Chromium setuid sandbox cannot init, throws `sandbox_host_linux.cc:41 Check failed: shutdown: Operation not permitted (1)`. See [microsoft/WSL#2242](https://github.com/Microsoft/WSL/issues/2242), [microsoft/WSL#3749](https://github.com/microsoft/WSL/issues/3749). No sysctl tweak fixes this on WSL2 — kernel just doesn't ship those knobs.
+
+**Fix applied:**
+1. `~/.codex/playwright-mcp.json` — JSON config with `browser.launchOptions.args=["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage"]`
+2. `~/.codex/config.toml` `[mcp_servers.playwright]` — updated to pass `--config /home/ezop/.codex/playwright-mcp.json --headless --isolated --no-sandbox` (belt-and-suspenders: JSON config + CLI flag)
+3. Memory updates: global `tool_agent_browser.md` extended with Codex side notes appendix; project `feedback_browser_automation_choice.md` filed (per-stack-per-task-class forward rule)
+
+**Smoke test 2026-05-25 ~00:30 (commit 71b3dda):** Codex `codex review --commit 71b3dda -c review_model=gpt-5.4-mini` completed exit 0 in ~6 min wall time (vs previous 1h30m+ hangs). Log: 441kB. **Zero sandbox cascade signatures** (`sandbox_host`, `setsockopt`, `crashpad`, `FATAL.*chrome` all 0 matches). Single text match for "Operation not permitted" was Codex quoting this TB entry. Verdict: "I couldn't identify a concrete regression introduced by this diff" — CLEAN.
+
+**Bonus:** Codex 2nd-pass review with working sandbox CONFIRMS the round-3 fix's "preserved hidden-strip restore path", retroactively validating my dismissal of Codex round-4 P2 as a false-positive that resulted from the prior config's broken visual validation path.
+
+**Forward-applicable:** rule codified in [[feedback_browser_automation_choice]] memory — config-fix Option D was correct over Option B disable. Keeps Codex's visual validation capability for touch/UI reviews, just removes the hang.
+
+**Surfaced (legacy):** 2026-05-24 (Init 17 retro after 3 events Init 16 + Init 17 stories 22.3 + 28.1 + 28.2)
+**Surfaced:** 2026-05-24, recurring pattern across two consecutive initiatives (now 3 events)
+**Flag count:** 3 (Init 16 Story 22.3 + Init 17 Story 28.1 + Init 17 Story 28.2 round-3 review of 71b3dda)
+**Priority:** P3 (operational annoyance; manual kill+retry workaround works; no broken work output)
+
+**Context.** Three confirmed Codex review hangs at `mcp: playwright/browser_run_code_unsafe started`:
+- Init 16 Story 22.3 round-3 (commit cbbed23): Codex hung ~1h30m, 14 stale playwright procs orphaned; killed + retried; retry returned clean P3-only review.
+- Init 17 Story 28.1 (commit 82875d2): Codex hung 7:40+ elapsed; killed + retried during Init 17 Phase F.
+- Init 17 Story 28.2 round-3 (commit 71b3dda): Codex review on gpt-5.4-mini launched into Playwright spawn (`browser_run_code_unsafe`); chromium_headless_shell failed with `sandbox_host_linux.cc:41 Check failed: shutdown: Operation not permitted (1)`; Codex then tried google-chrome directly with `--no-sandbox --remote-debugging-port=9223` workaround. Verdict awaiting at TB promotion time; pattern confirms touch-interaction Codex reviews always reach for browser validation. **This is the trigger event for active promotion.**
+
+Pattern: Codex tries to spawn Playwright via its MCP to validate touch/visual behavior; the spawn locks (possibly Playwright daemon contention, WSL2 MCP socket issue, OR Codex MCP timeout misconfig). Hang doesn't self-recover. **Confirmed across 3 stories spanning 2 initiatives → no longer one-off.**
+
+**Mitigation options (per Init 17 retro §3.1):**
+- **Option A** (watchdog wrapper): monitor `ps -p <pid> -o etime` on background Codex reviews; auto-kill at 15 min with retry.
+- **Option B** (disable Playwright MCP for Codex): pass config flag limiting MCP to Bash + Read only. Cleanest if supported by codex-cli; verify against current docs.
+- **Option C** (status quo): accept the pattern; manually monitor + kill when reviews exceed normal wall time.
+
+**Scope estimate:**
+- Option A: ~30-45 min for watchdog Bash wrapper script + integration with existing `codex review` invocation pattern.
+- Option B: ~15-30 min config tweak + verification on 2-3 test reviews.
+- Option C: 0 min code change; just memory entry codifying the manual-watch pattern.
+
+**Recommended action:** Defer until 3rd hang event surfaces (per [[feedback_preexisting_issue_threshold]] threshold of 3 events for auto-promotion) OR operator surfaces frustration with manual-watch overhead. Promote then with Option B preferred (if codex-cli supports limiting MCP).
+
+**Code map (if Option A/B promoted):**
+- `~/.claude/codex-invocation-guide.md` (per [[feedback_codex_review_invocation]]) — operator's blessed invocation patterns; update with new flag if Option B.
+- (NEW) `infra/scripts/codex-review-watchdog.sh` (if Option A) — wrapper around `codex review ... | tee log` with `timeout`-or-pkill watchdog.
+
+---
+
+### TB-048 — Catalog toolbar "+ Dodaj model" button vertical-baseline misaligned with search input
+
+**Status:** done (Init 17 Story 28.1 — outer flex `items-start` → `items-center` + drop `pt-1` magic offset)
+**Commit:** `82875d2 fix(catalog): AddModelButton vertical-baseline aligned with toolbar (Story 28.1, TB-048)` (2026-05-24)
+**Resolution:** outer flex container in `CatalogList.tsx:179` switched from `items-start` to `items-center` (canonical center-alignment); dropped `pt-1` magic offset on AddModelButton wrapper. FilterRibbon is internally single-row with `items-center`, so its visual midline matches AddModelButton's center cleanly. Codex review on gpt-5.4-mini: 1×P3 (wrap-case button drift when FilterRibbon has many tags selected and wraps to multi-row) deferred as theoretical edge case — operator's hands-on scenario (`tmp/add_model_misalligned.png`) used non-wrapped state. Deploy 0.1.0+82875d2 to .190 PASS. Operator post-deploy hands-on verify required per NFR17-VISUAL-VERIFICATION-1.
+**Surfaced (legacy):** 2026-05-24 (operator hands-on)
+**Surfaced:** 2026-05-24, operator hands-on Init 16 close-out verify
+**Flag count:** 1 (direct observation)
+**Priority:** P3 (cosmetic only; doesn't break functionality)
+
+**Context.** Catalog toolbar contains the search input (`<Input placeholder="Szukaj">`), `+ tag` button, status/source/sort dropdowns, AND the NEW "+ Dodaj model" button (Story 20.2, commit 7f6dd10). Operator screenshot shows the "+ Dodaj model" button vertically misaligned with the search input baseline — appears either slightly above or below the input's center-line. The "+ tag" button DOES align with the search input correctly.
+
+Likely cause: AddModelButton component CSS missing `self-stretch` or similar baseline-alignment helper, OR Story 20.2 commit chose a different button size that doesn't match the row's intrinsic height. Possibly a `mt-*` margin on the input that AddModelButton doesn't mirror.
+
+**Surface affected:** admin users on `/catalog` page (member-role users don't see the button per AuthGate). Pure visual nit; click still works.
+
+**Scope estimate:** ~15-30 min. Inspect CatalogList.tsx toolbar JSX; adjust AddModelButton's wrapper className OR input's margin to align baselines. 1-3 LOC CSS.
+
+**Code map:**
+- `apps/web/src/modules/catalog/routes/CatalogList.tsx` — toolbar JSX
+- `apps/web/src/modules/admin/AddModelButton.tsx` — Story 20.2 button component
+
+**Recommended action:** Promote with TB-039 + TB-044..047 as Init 17 mini-SCP via `bmad-correct-course`. Small CSS fix, no design decision needed.
+
+---
+
+### TB-047 — Share-view burst-of-8 carousel mount still produces 503s on `limit_conn share_anon_conn 5`
+
+**Status:** done (Init 17 Story 27.1 + 2 round-2/3 Codex fix-ups — semaphore cap=4 in `shareBlobCache.ts`)
+**Commits:** `4abd745 fix(share): fetch concurrency semaphore cap=4 in shareBlobCache (Story 27.1, TB-047, Decision Z)` + `1dbc7f6 fix-up(share): release semaphore slot on sync fetch() throw (Story 27.1 round-2, Codex P3)` + `df7cfa0 fix-up: shareBlobCache sync-error rejection + viewer strip-tap deference (Story 27.1 round-3 + Story 28.2 round-2)` (2026-05-24)
+**Resolution:** NEW client-side semaphore in `shareBlobCache.ts` with cap=4 (one below nginx `limit_conn share_anon_conn 5`). Overflow callers queue via promise-chain release; as in-flight fetches settle, queued ones acquire freed slots. Sync-when-available semantics preserve existing-test microtask timing (returns `undefined` for immediate-grant, Promise for queued path). Composes orthogonally with Story 23.1's `_pending` refcount + generation guard + promise-identity inflight cleanup. 3 Codex rounds total: round-1 CLEAN; round-2 surfaced sync-throw slot leak (P3); round-3 surfaced sync-throw bypass of AnonymousImage `.catch()` + `_pending` leak (P2). Round-3 fix-up converts sync throw to rejected Promise + decrements `_pending`. 2 new vitest tests (SEMAPHORE-1 + SEMAPHORE-2) verifying 8-burst clamp + slot-release-on-rejection. Deploys 0.1.0+4abd745 + 0.1.0+1dbc7f6 + 0.1.0+df7cfa0 to .190 PASS. Operator post-deploy HAR re-capture expected to show ≤4 simultaneous share-asset connections + zero 503s under typical carousel mount.
+**Surfaced (legacy):** 2026-05-24 (operator HAR `tmp/share_gallery.har`)
+**Surfaced:** 2026-05-24, operator hands-on Init 16 close-out verify
+**Flag count:** 1 (direct observation + HAR analysis)
+**Priority:** P2 (UX regression: 503s leave thumbs stuck on loading placeholder)
+
+**Context.** Despite Story 22.2 round-2 LazyAnonymousImage mitigation + Story 22.1 gallery tier (10× smaller blobs), HAR from 2026-05-24 share-view load (`tmp/share_gallery.har`) confirms 3× 503 + 6× 200 in single page load:
+
+```
+21:41:58.795 200 variant=gallery  (main frame)
+21:41:58.797 200 variant=thumb    (strip)
+21:41:58.798 200 variant=thumb    (strip)
+21:41:58.798 200 variant=thumb    (strip)
+21:41:58.799 200 variant=thumb    (strip)
+21:41:58.799 503 variant=thumb    ← nginx rejected (wait=0ms)
+21:41:58.799 503 variant=thumb    ← nginx rejected (wait=1ms)
+21:41:58.800 503 variant=thumb    ← nginx rejected (wait=1ms)
+```
+
+All 8 fetches launched within a single millisecond → 5 got past `limit_conn share_anon_conn 5` (nginx Story 19.2) → 3 rejected immediately with 503 `server: nginx` + `content-type: text/html`. The `rootMargin: "200px"` pre-warm in LazyAnonymousImage (`apps/web/src/routes/share/$token.tsx:LazyAnonymousImage`) means the IntersectionObserver fires on more thumbs than strictly visible, causing the burst.
+
+**Root cause distinct from pre-Story-22.2 TB-036:** TB-036 was N×4MB fetches over slow uplink → slot-saturation. Current state is N×50KB but BURST-CONCURRENT-COUNT exceeds 5 → instant nginx 503.
+
+**Three fix paths (ordered by preference):**
+
+1. **(PREFERRED) Semaphore on `acquireShareBlob`** — cap concurrent in-flight share fetches at 4 (one below nginx limit) in `apps/web/src/routes/share/shareBlobCache.ts`. Queue any additional requests; they resume as in-flight slots release. ~20-30 LOC. Backward-compatible. Same pattern as the existing `_pending` map (Story 23.1) but with explicit concurrency cap. Stays under nginx limit deterministically regardless of LazyAnonymousImage pre-warm window.
+
+2. **Tighten `rootMargin` from 200px to ~50px** in LazyAnonymousImage — fewer eager fetches per first-paint. Cheap (1-line CSS-pattern fix). Trade-off: more loading-flash during scroll because off-screen thumbs aren't pre-warmed.
+
+3. **Raise nginx `limit_conn share_anon_conn` from 5 to 10** in `~/repos/configs/nginx/3d.ezop.ddns.net.conf`. Trade-off: relaxes DDoS defense surface by 2×; operator decision needed.
+
+**Scope estimate:** ~1h for option 1 (semaphore + test) + ~15 min for option 2 fallback if semaphore deemed too invasive. Option 3 is operator-side infra config + sync.sh deploy.
+
+**Code map:**
+- `apps/web/src/routes/share/shareBlobCache.ts` — semaphore lives here (option 1)
+- `apps/web/src/routes/share/$token.tsx:LazyAnonymousImage` — `rootMargin` constant (option 2)
+- `~/repos/configs/nginx/3d.ezop.ddns.net.conf` — `limit_conn share_anon_conn 5` (option 3, operator-side)
+
+**Recommended action:** Init 17 mini-SCP includes this. Default to option 1 (semaphore) for deterministic cap-compliance; fall back to option 2 if test scaffolding for semaphore proves expensive.
+
+---
+
+### TB-046 — ModelGallery (catalog detail) thumb strip loads full-resolution originals instead of `?variant=thumb`
+
+**Status:** done (Init 17 Story 26.2 — NEW `thumbUrlFor(modelId, fileId)` helper; strip switches from raw `srcFor` to `thumbUrlFor`)
+**Commit:** `f30f43a fix(catalog): ModelGallery strip consumes ?variant=thumb (Story 26.2, TB-046)` (2026-05-24)
+**Resolution:** Mirror Story 22.2's ShareCarousel-side pattern: added `thumbUrlFor(modelId, fileId)` helper returning `${srcFor(...)}?variant=thumb` to `ModelGallery.tsx`. Strip `<img>` switches from raw `srcFor` to `thumbUrlFor`. Main frame stays on `galleryUrlFor` (Story 22.2 baseline preserved). Backend silently falls back to original blob when `.thumb.webp` sibling is missing → backward-compatible during partial backfill windows. Per Story 22.4 operator backfill verification (`rendered_thumb=4 already_present_thumb=593` on .190 2026-05-24), thumb tier is populated for 99.5% of files on production. Recipient bandwidth on catalog-detail-page strip thumbs drops from ~4 MB × N to ~50 KB × N on first paint (~80× reduction). Codex review on gpt-5.4-mini CLEAN round-1: "narrow, intentional URL swap on the catalog detail thumbnail strip, matches the existing backend variant behavior and the established carousel pattern elsewhere in the app".
+**Surfaced (legacy):** 2026-05-24 (operator HAR `tmp/model_site.har`)
+**Surfaced:** 2026-05-24, operator hands-on Init 16 close-out verify
+**Flag count:** 1 (direct observation)
+**Priority:** P2 (perf regression — full-res blobs loaded as 64px thumbs)
+
+**Context.** Story 22.2 wired ShareCarousel main frame to `?variant=gallery` AND ShareCarousel strip to `?variant=thumb` (bonus). For ModelGallery (catalog detail surface) Story 22.2 ONLY migrated the main frame; the thumb strip stayed on un-varianted `srcFor()`. From `ModelGallery.tsx`:
+
+```typescript
+function galleryUrlFor(modelId, fileId) {
+  return `${srcFor(modelId, fileId)}?variant=gallery`;
+}
+// main frame uses galleryUrlFor
+// strip uses raw srcFor (no variant) → full-res blob
+```
+
+Inline comment in Story 22.2 noted this as deferred-follow-up: "A follow-up story could migrate the strip to `?variant=thumb` to mirror CardCarousel (Story 13.2) and avoid pulling original blobs at thumb resolution." That follow-up is TB-046.
+
+Operator HAR confirms: ModelGallery main frame fetches one image with `?variant=gallery`, then all subsequent thumb-strip fetches arrive WITHOUT any variant param (= original blob, potentially 4-8 MB each for 64×64 display).
+
+**Surface affected:** authenticated /catalog/$modelId detail page on any model with ≥2 photos. Bandwidth-relevant; harder to hit nginx caps because authenticated routes don't have the `share_anon_conn` limit, but still wasteful.
+
+**Scope estimate:** ~10-15 min. Mirror Story 22.2's ShareCarousel-side strip pattern: add `?variant=thumb` to ModelGallery strip URLs. 1-2 LOC change in `ModelGallery.tsx`. Visual baselines should be near-identical (browser scales WebP up minimally for 64px). No vitest changes expected.
+
+**Code map:**
+- `apps/web/src/modules/catalog/components/ModelGallery.tsx` — strip rendering at the bottom map block; add helper like `thumbUrlFor(modelId, fileId) => srcFor(...) + "?variant=thumb"`
+
+**Recommended action:** Init 17 mini-SCP includes this. Mechanical mirror of Story 22.2's share-side change. Could ALSO migrate to LazyImage pattern (catalog detail also has wide-image-set risk) but lower priority since authenticated route is rate-limit-free.
+
+---
+
+### TB-045 — Backfill `thumbnail.unidentified` warnings emit without `file_id` in stdout (diagnostic gap)
+
+**Status:** done (Init 17 Story 27.2 — inlined `model_file_id=%s storage_path=%s` into warning message body)
+**Commit:** `8079a86 fix(workers): backfill warnings inline model_file_id + storage_path (Story 27.2, TB-045)` (2026-05-24)
+**Resolution:** Changed warning message templates in `generate_thumbnail.py` for both `thumbnail.unidentified` (line 183) and `gallery.unidentified` (line 421) branches from bare action names to `<action>: model_file_id=%s storage_path=%s error=%s` format. Structured `extra={"labels.model_file_id": ..., "labels.storage_path": ..., "labels.error": ...}` payload preserved unchanged for GlitchTip / structured-log consumers. Operator can now `docker compose exec api python -m scripts.enqueue_thumbnail_backfill --inline | grep -E "(thumbnail|gallery)\.unidentified"` and get hits with file_id inline. Codex review on gpt-5.4-mini CLEAN round-1: "only changes the warning message text in the two unidentified-image branches to inline identifiers and path details; control flow and structured extra payloads are unchanged". Operator post-deploy verify: re-run backfill on .190 → capture file_id of 2 unidentified-format files → decide remediation (Pillow plugin? corrupt file? SVG? — per-file decision out of scope for Story 27.2).
+**Surfaced (legacy):** 2026-05-24 (post-Story-22.1 backfill rerun on .190; log `tmp/backfill_thumbnail_logs_2026_05_24.log`)
+**Surfaced:** 2026-05-24, post-Story-22.1 backfill rerun
+**Flag count:** 1 (direct observation in backfill log)
+**Priority:** P3 (diagnostic / operator-friction; workaround via DB query)
+
+**Context.** Backfill log (`tmp/backfill_thumbnail_logs_2026_05_24.log`) shows:
+
+```
+2026-05-24 19:17:29,023 WARNING app.workers.thumbnail thumbnail.unidentified
+2026-05-24 19:17:29,023 WARNING app.workers.thumbnail gallery.unidentified
+inspected=598 already_present_thumb=593 already_present_gallery=0
+enqueued=0 rendered_thumb=4 rendered_gallery=597 missing_original=0 errors=2
+```
+
+Smoke output is great (gallery tier 597/598 populated) but the 2 unidentified-format errors emit WITHOUT the `file_id` inline in the message. The structured `extra={"labels.model_file_id": ..., "labels.storage_path": ...}` payload from `generate_thumbnail.py:152-160` goes to Python's logger but the API container's default console formatter doesn't render `extra` fields into the message string. So `grep ... | grep file_id` returns nothing.
+
+Operator's diagnostic command (`docker compose logs api | grep unidentified | tail -10`) ALSO returned nothing because the backfill ran via `docker compose exec` (one-shot Python module), separate stdout channel from the container's main API process — the API container's logs don't capture the exec's stdout.
+
+**Two fix shapes:**
+
+1. **Inline the file_id into warning message string** (preferred). Change `generate_thumbnail.py:152-160` (and gallery counterpart) from:
+   ```python
+   _LOG.warning("thumbnail.unidentified", extra={"labels.model_file_id": ...})
+   ```
+   to:
+   ```python
+   _LOG.warning(
+       "thumbnail.unidentified: model_file_id=%s storage_path=%s",
+       str(model_file_id), row.storage_path,
+       extra={...},  # keep structured for GlitchTip
+   )
+   ```
+   Then console output shows: `WARNING thumbnail.unidentified: model_file_id=abc-123 storage_path=models/.../foo.png`. Operator can grep + remediate.
+
+2. **DB-query workaround helper** (defensive). NEW one-shot script `apps/api/scripts/find_unrendered_images.py` queries ModelFile rows where kind=image AND `.thumb.webp` sibling doesn't exist on disk. Operator runs post-backfill to find offenders. ~30 LOC.
+
+**Surface affected:** operator backfill workflows + future thumbnail pipeline triage.
+
+**Scope estimate:** ~30 min for option 1 (inline-format both warnings + verify by re-running backfill) OR ~1h for option 2 (new script + test). Option 1 is simpler + handles future thumbnail.* warnings uniformly.
+
+**Code map:**
+- `apps/api/app/workers/generate_thumbnail.py:152-160` (thumb warning) + parallel section for gallery
+- `apps/api/scripts/enqueue_thumbnail_backfill.py` — also has warning emission points
+
+**Recommended action:** Init 17 mini-SCP includes this. Operator can then re-run backfill, capture file_id, and remediate (one-shot DB UPDATE OR manual file inspection). The 1 underlying broken file likely needs operator domain knowledge to triage (corrupt? unsupported HEIC? SVG? need Pillow plugin?).
+
+---
+
+### TB-044 — Fullscreen image viewer fills viewport on wide screens, pushing thumb strip + nav chevrons off-screen
+
+**Status:** done (Init 17 Story 26.1 — flexbox `min-h-0` + `max-h-[calc(95vh-5rem)]` CSS)
+**Commit:** `da48018 fix(catalog): viewer main image respects available space (Story 26.1, TB-044)` (2026-05-24)
+**Resolution:** Two-part CSS fix in `ImageFullscreenViewer.tsx`: (1) added `min-h-0` to main-frame flex container — canonical flexbox trick allowing flex item to SHRINK below intrinsic content size (large `<img>`); (2) main image className changed from `max-h-full max-w-full object-contain` to `max-h-[calc(95vh-5rem)] max-w-full object-contain` — explicitly bounds image height to DialogContent height (95vh) minus strip height (h-20 = 5rem). Combined: image scales to fit available area regardless of source aspect ratio; strip + chevrons always in viewport. Operator's intent realized: "zdjęcie powinno skalować się do viewportu (zgodnie z ratio)". Codex review on gpt-5.4-mini CLEAN round-1: "matches the approved Story 26.1 plan: `min-h-0` is added to the flex container and the main image gets the explicit viewport-relative max-height needed to keep the strip and chevrons in view". Visual baselines for catalog-detail-image-viewer-open-* regen'd via Playwright (no diff at test-mock-image size; operator post-deploy hands-on verify required on REAL 4k/8k phone-photo content). Deploy 0.1.0+da48018 to .190 PASS.
+**Surfaced (legacy):** 2026-05-24 (operator hands-on, screenshots `tmp/full_pic_desktop.png` vs `tmp/full_pic_mobile.png`)
+**Surfaced:** 2026-05-24, operator hands-on Init 16 close-out verify
+**Flag count:** 1 (direct observation; reproduces on wide-screen desktop with portrait+landscape large images)
+**Priority:** P2 (UX regression on NEW Story 22.3 surface; viewer essentially broken for portrait images on widescreen)
+
+**Context.** Story 22.3 shipped ImageFullscreenViewer with `DialogContent className="h-[95vh] w-[98vw]"` + main image `className="max-h-full max-w-full object-contain"` and strip `className="h-20 shrink-0"`.
+
+Operator observation:
+- **Desktop (wide aspect ratio viewport)**: image with large dimensions (4k/8k) scales to fill the viewport HORIZONTALLY, computed image height pushes thumb strip BELOW the visible viewport. Strip + nav chevrons (at bottom of image area) are invisible to user.
+- **Mobile (narrow/tall viewport)**: same image with portrait aspect ratio scales vertically, also pushing strip off-screen — though chevrons stay visible per Codex round-3 patch since they're at `top-1/2` of main-frame container, not bottom-relative.
+- **Operator's expected behavior**: image should scale to fit the AVAILABLE main-frame area (viewport height MINUS strip area MINUS top chrome), preserving aspect ratio via `object-contain`. Strip should ALWAYS be visible at the bottom. For full-resolution viewing, user opens via right-click "View image in new tab" or a separate "Full" affordance.
+
+**Root cause analysis:** Flexbox `max-h-full` on the main image element references the flex item's height, but the flex item itself isn't given an explicit constraint that subtracts the strip's `h-20` (5rem). The chain `DialogContent → flex-col → main(flex-1)` should produce `(95vh - 5rem - any_chrome_padding)` for the main frame, but Tailwind's `max-h-full` on the `<img>` doesn't always compute correctly inside flex-1 because flex-1 grows to content size when content is larger than constraints — `<img>` with intrinsic size of 4096px takes precedence over `max-h-full`.
+
+**Fix shape (boring-tech):**
+Add `min-h-0` to the main-frame flex container (canonical flexbox trick to allow shrinking below content size):
+```tsx
+<div className="relative flex flex-1 min-h-0 items-center justify-center overflow-hidden">
+```
+PLUS replace image `max-h-full max-w-full object-contain` with explicit viewport-relative constraints:
+```tsx
+className: "max-h-[calc(95vh-5rem)] max-w-full object-contain"
+```
+The `calc(95vh - 5rem)` = DialogContent height (95vh) minus strip (h-20 = 5rem). When strip is hidden (`!showNav`), the strip's `h-20` doesn't occupy space, but `max-h-[calc(95vh-5rem)]` still applies → still good (image just has 5rem of unused space at bottom). Optionally compute the calc conditionally based on `showNav`.
+
+**Surface affected:** anyone opening the fullscreen viewer (anonymous /share/ + authenticated /catalog/) on:
+- Any image with longest dimension ≥ 1920px (designer-locked gallery tier dimension)
+- Browsers with viewport height < image's intrinsic height after aspect-ratio scaling
+
+For typical 4-8 MB phone photos (3000-4000px longest edge), this trips for almost everyone on desktop.
+
+**Scope estimate:** ~30-45 min. CSS-only fix (3-5 LOC) + visual baseline regen for `catalog-detail-image-viewer-open-*` + manual verify on real images. Designer (Sally subagent) can re-review the dimensions if there's debate about specific calc values (e.g., should it be `calc(95vh - 5rem - 2rem)` to leave breathing room?).
+
+**Code map:**
+- `apps/web/src/modules/catalog/components/imageViewer/ImageFullscreenViewer.tsx:181` (main frame flex container) + line 184 (image className via renderImage)
+- Possibly `apps/web/src/routes/share/$token.tsx` and `apps/web/src/modules/catalog/components/ModelGallery.tsx` if the calc needs viewport-relative tuning per consumer
+
+**Recommended action:** Init 17 mini-SCP — promote as a P2 (one of the biggest UX-visible items on the post-Init-16 surface). Could even justify a hot-fix-now session given the regression is on a brand-new Story 22.3 surface that the operator just enabled.
+
+---
+
+### TB-043 — ImageFullscreenViewer hidden-strip-drag interaction nuance (Story 22.3 round-3 Codex P3)
+
+**Status:** done (Init 17 Story 28.2 — coords-based `stripOrigin` flag + round-2 chrome-toggle race fix + round-3 dead-zone narrow + round-4 Codex P2 DISMISSED as technically incorrect)
+**Commits:** `55a9349 fix(catalog): viewer onTouchStart coords-based strip-origin guard (Story 28.2, TB-043)` + `df7cfa0 fix-up: shareBlobCache sync-error rejection + viewer strip-tap deference (Story 27.1 round-3 + Story 28.2 round-2)` + `71b3dda fix-up(catalog): viewer chrome-toggle deferral narrowed to actual thumb taps (Story 28.2 round-3, Codex P2)` (2026-05-24)
+**Resolution:** Switched onTouchStart guard from `strip.contains(e.target)` (which failed on hidden-strip + pointer-events-none because target was viewer root) to coordinate-based check using `stripRef.current?.getBoundingClientRect()` + comparing `touch.clientY` to strip's vertical bounds. `touchStart.current` now carries `{x, y, stripOrigin, thumbOrigin}`; onTouchEnd suppresses `step()` when `start.stripOrigin === true`. All 4 cells of gesture-state matrix (visible/hidden × tap/drag) handled correctly. Round-2 fix-up addressed Codex P2: unconditional short-tap chrome toggle raced with VISIBLE strip thumb's onClick — initially gated chrome-toggle on `!(stripOrigin && chromeVisible)` so visible-strip taps defer to thumb's onClick. Round-3 (bundle Codex on df7cfa0 returned 1×P2 dead-zone regression on padded strip areas) narrowed the gate further — introduced a SECOND `thumbOrigin` flag computed from `e.target.closest("[data-thumb-idx]")` at touchStart; chrome-toggle gate now checks `start.thumbOrigin` only (naturally false on padded strip areas + hidden-strip state). Two-flag design keeps the navigate-suppression path (coords-based `stripOrigin`) independent from the chrome-toggle deferral (target-based `thumbOrigin`). Pre-merge gates 71b3dda: typecheck PASS, lint PASS, viewer vitest 5/5 PASS, build PASS. Deploys 0.1.0+55a9349 + 0.1.0+df7cfa0 + 0.1.0+71b3dda to .190 PASS. **Round-4 Codex review of 71b3dda returned 1×P2 "hidden-strip thumb hits become dead zones" — DISMISSED as technically incorrect**: Codex's premise was that a thumb tap in the hidden strip would set `thumbOrigin=true` and short-circuit the chrome-restore path. In reality the strip has `pointer-events-none` in hidden state (line 333) and thumb buttons do NOT opt back in with `pointer-events-auto` (line 354) — per CSS spec the parent's pointer-events: none propagates to children, so the touch's `e.target` is the viewer root rather than the thumb, making `target.closest("[data-thumb-idx]")` return null and `thumbOrigin === false`. The chrome-toggle gate is bypassed and `setChromeVisible((v) => !v)` fires normally to restore overlay. Codex confused spatial location with event target; the scenario it described cannot physically occur with current CSS. Dismissal documented in init-17-retro § §3.3.
+**Surfaced (legacy):** 2026-05-24 (filed during Init 16 Story 22.3 round-3 Codex review)
+**Surfaced:** 2026-05-24, Codex round-3 review of commit cbbed23 (Story 22.3)
+**Flag count:** 1 (Codex P3 round-3)
+
+**Context.** Story 22.3 round-3 added `pointer-events-none` to the fullscreen image viewer's bottom thumb strip when `chromeVisible === false` to fix the dead-zone bug Codex flagged in round-2 (P2). The pointer-events-none makes the hidden strip transparent to events, so a tap on the bottom area falls through to the viewer root's tap-to-toggle-chrome handler.
+
+Codex round-3 P3 finding: the same fall-through also makes horizontal DRAGS that start in the hidden-strip area bypass the round-2 `strip.contains(e.target)` guard. A sloppy swipe starting from the bottom 20-80px (where the strip is, invisibly) now triggers `step()` navigation instead of just restoring chrome.
+
+**Why low priority:**
+- Strip is INVISIBLE when chrome is hidden — user doesn't know there's a strip-discrimination zone there.
+- Both behaviors are reasonable interpretations: (a) hidden-strip drag = swipe-navigate (current); (b) hidden-strip drag = restore chrome only (Codex preference).
+- The "correct" UX is subjective; Codex's preference is one valid stance, current behavior is another valid stance.
+
+**Fix shape (if promoted):**
+Change touch-target check from `stripRef.current.contains(e.target)` to coordinate-based check using `stripRef.current.getBoundingClientRect()`. Capture touchStart with `stripOrigin: boolean` flag. In `onTouchEnd`, if `stripOrigin === true`, suppress `step()` regardless of dx — but still allow tap-to-restore-chrome when dx < threshold. Requires careful handling to NOT interfere with thumb-button onClick when chrome IS visible.
+
+~15-25 LOC change in `apps/web/src/modules/catalog/components/imageViewer/ImageFullscreenViewer.tsx`.
+
+**Why a candidate, not a fix-now:** P3 priority; subjective UX preference; current behavior is not a bug per se. Promote if operator surfaces irritation about hidden-strip-drag navigating instead of restoring chrome.
+
+**Recommended action:** Defer. Re-evaluate post-deploy after operator hands-on session with the fullscreen viewer on a real touch device.
+
+---
+
+### TB-039 — Init 11-15 H2 backfill housekeeping to canonical docs (prd.md, architecture.md)
+
+**Status:** done (Init 17 Standalone Story 29.1 — compact H2 stubs pointing to source SCP)
+**Resolution:** Init 17 Standalone Story 29.1 backfilled Init 11/12/13/14/15 H2 sections across canonical docs as needed. epics.md gained Init 13/14/15 (Init 11 + 12 were already present); prd.md gained Init 11/12/13/14/15 (only Init 0-10 + 16+17 before); architecture.md gained Init 11/13/14/15 (Init 12 was already present). Each H2 stub: ~15-30 LOC compact catalog entry with status + source-SCP pointer + brief overview + FR/NFR/Decision list (where applicable) + cross-references. Full detail lives in source SCP `sprint-change-proposal-2026-05-23-init-11-15.md`. Doc-only edits in gitignored `_bmad-output/` — no git commit + no deploy required. Closes Init 11-15 H2 backfill housekeeping debt; future Init 18+ work won't need to ask "where's the Init 13 architecture decision?" — answer is in canonical doc now.
+**Surfaced (legacy):** 2026-05-24 (filed during Init 16 SCP enumeration phase)
+**Surfaced:** 2026-05-24, Init 16 SCP `bmad-correct-course` pre-enumeration phase
+**Flag count:** 1 (direct discovery during artifact grep: Init 11-15 SCP H2 content carried in source SCP only, not backfilled to canonical docs)
+
+**Context.** Init 11-15 SCP (`sprint-change-proposal-2026-05-23-init-11-15.md`, ~783 lines) introduced 5 new initiatives but did NOT backfill their H2 sections into the canonical `prd.md`, `architecture.md`, and (partially) `epics.md` docs at SCP-implementation time. Init 16 SCP pre-enumeration discovered:
+
+- `prd.md`: contains Initiative 0-10 H2s ONLY; missing Init 11, 12, 13, 14, 15.
+- `architecture.md`: contains Initiative 0-10 + 12; missing Init 11, 13, 14, 15.
+- `epics.md`: contains Initiative 0-3, 5-12; missing Init 13, 14, 15.
+
+Per [[feedback_docs_hygiene]] "level brownfield docs — adopt or archive": these H2 sections SHOULD be backfilled rather than left as carry-forward debt. Sprint-status.yaml (operational SoT) is correct and complete — `epic-18` through `epic-21` + `init-15-meta` all present. Canonical docs (human/agent reference layer) are the lag indicator.
+
+**Scope estimate (if promoted to quick-dev):** ~1-2 h. Mechanical work: 5 H2 sections × 3 docs (some already present in subset) = up to 15 H2 appends. Source content already authored in `sprint-change-proposal-2026-05-23-init-11-15.md` § Init 11-15 sub-sections — pull into canonical docs verbatim with minor cross-reference adjustment.
+
+**Why a candidate, not a hot-fix:** docs are reference; canonical docs being slightly behind SCP-of-record is tolerable for autonomous ITCM execution (the SCP IS the contract; canonical docs are convenience). Not a blocker for Init 16 stories. Promotion scheduled for Init 16 close-out hygiene pass per Init 16 SCP §5.5.
+
+**Recommended action:** Bundle with Init 16 close-out work (Task #9). If close-out scope balloons, defer to standalone quick-dev session post-Init-16. Either way, ship before Init 17 starts to keep the canonical docs aligned with the SoT for future ITCM sessions.
+
+**Code map:**
+- `_bmad-output/planning-artifacts/prd.md` — append after Init 10 H2 (line ~1509)
+- `_bmad-output/planning-artifacts/architecture.md` — append after Init 12 H2 (line ~2338)
+- `_bmad-output/planning-artifacts/epics.md` — append after Init 12 H2 (line ~3002)
+- Source content: `_bmad-output/planning-artifacts/sprint-change-proposal-2026-05-23-init-11-15.md` § Init 11 + § Init 12 + § Init 13 + § Init 14 + § Init 15
+
+**Cross-reference:** This candidate is also tracked in Init 16 SCP §5.5 + epics.md/prd.md/architecture.md Init 16 H2 "Note on H2 backfill debt" paragraph + Init 16 sprint-status comment.
+
+---
+
+### TB-038 — Mobile photo-reorder drag fights page scroll (PhotosTab dnd-kit `touch-action` missing)
+
+**Status:** done
+**Commit:** `ead5fcf fix(catalog,admin): touch-action none on PhotosTab DragHandle for mobile drag (Story 25.1, TB-038)` (2026-05-24)
+**Resolution:** Single Tailwind `touch-none` class addition (= `touch-action: none`) to DragHandle button at `apps/web/src/modules/catalog/components/tabs/PhotosTab.tsx:247`. The canonical dnd-kit + TouchSensor remedy per upstream guidance. Scope-preserving — only the grip icon swallows the touch gesture; the photo list (flex-1 button section with thumbnail + filename text) retains normal page scroll. Desktop PointerSensor unchanged. Typecheck + lint + vitest 4/4 PASS. Codex review (gpt-5.4-mini routine FE class) CLEAN on round-1: "narrowly scoped touch-action: none utility on the sortable handle, which is the standard dnd-kit remedy for touch reordering; I couldn't identify a discrete regression introduced by the change". Deploy 0.1.0+ead5fcf to .190 with symbolication + runbook fingerprint verify OK. Closes Story 25.1 / Init 16 Standalone Story.
+**Surfaced:** 2026-05-24, operator hands-on use on mobile
+**Flag count:** 1 (direct observation: Ezop reports drag-handle grabs the photo OK, but vertical finger move scrolls the whole page instead of repositioning the row — making mobile reorder effectively unusable)
+
+**Operator report (verbatim shape):** "gdy telefonie próbuje się zmienić kolejność zdjęć, to zdjęcie ok, chwyta się, ale gdy się przesuwa palec góra/dół, przesuwa się cała strona, więc nie da się zdjęcia dać wyżej lub niżej, bo wszystkie inne też chodzi niżej/wyżej".
+
+**Context.** Photo reordering in `PhotosTab.tsx` uses `@dnd-kit/core` with both `PointerSensor` (desktop) and `TouchSensor` (mobile, `delay: 250, tolerance: 5`) wired via `useSortable`. The `DragHandle` button at [PhotosTab.tsx:244-253](../apps/web/src/modules/catalog/components/tabs/PhotosTab.tsx#L244-L253) spreads dnd-kit's `{...attributes} {...listeners}` onto a `<button>` that carries only `cursor-grab text-muted-foreground` — no `touch-action` declaration. The sortable row at [PhotosTab.tsx:166-174](../apps/web/src/modules/catalog/components/tabs/PhotosTab.tsx#L166-L174) likewise has no `touch-action`.
+
+This is the canonical dnd-kit mobile pitfall documented at https://docs.dndkit.com/api-documentation/sensors/touch#touch-action — without `touch-action: none` on the draggable handle (or the entire sortable element), the browser claims the vertical pan gesture for native page scrolling BEFORE the TouchSensor can call `event.preventDefault()`. The 250 ms activation delay actually makes it worse: by the time the sensor wants to claim the gesture, the browser has already committed to scrolling.
+
+Same root cause likely affects any other dnd-kit sortable surface in the app on mobile, but PhotosTab is the only one currently consumed routinely on phone (admin uses tablet/desktop for most flows; this surface is explicitly mobile-relevant because Ezop curates photo order from his phone).
+
+**Surface affected:** admin photo reorder on touch devices (`/admin/models/:id` Photos tab). Desktop unaffected (PointerSensor + mouse). Members never see this — admin-only.
+
+**Fix shape:**
+
+Minimum viable:
+- Add Tailwind `touch-none` (= `touch-action: none`) to `DragHandle` button at [PhotosTab.tsx:247](../apps/web/src/modules/catalog/components/tabs/PhotosTab.tsx#L247). This is the dnd-kit-recommended spot — the handle is the only element that needs to swallow the gesture.
+- Verify on a real touch device that vertical drag now reorders rows without scrolling the page. Photo list itself can still be scrolled by touching outside the grip icon (the `flex-1` button area), so the scroll-reach UX is not lost — only the grip handle suppresses pan.
+
+Optional / nicer:
+- Consider whether `delay: 250` is still the right activation threshold once `touch-action: none` is in place — the delay was likely a defensive workaround for the very scroll-fight this fix addresses. May be reducible to `delay: 100` or moved to `distance`-based activation for snappier feel. Worth a usability pass with operator.
+
+**Scope estimate (if promoted to quick-dev):** ~30 min including a quick mobile verify pass (real device or browser devtools "Responsive" + touch emulation per [[feedback_frontend_visual_verification]]) and a unit-test note if the existing `PhotosTab` test suite touches drag behavior. No backend changes.
+
+**Code map:**
+- [PhotosTab.tsx:244-253](../apps/web/src/modules/catalog/components/tabs/PhotosTab.tsx#L244-L253) — `DragHandle` button needs `touch-none` (Tailwind) on `className`
+- [PhotosTab.tsx:46-51](../apps/web/src/modules/catalog/components/tabs/PhotosTab.tsx#L46-L51) — TouchSensor activation config (revisit only if operator wants snappier feel after primary fix)
+- https://docs.dndkit.com/api-documentation/sensors/touch#touch-action — upstream dnd-kit guidance
+
+**Why a candidate, not a blocker:** photo reorder still works on desktop; mobile-broken state is a UX regression in a low-traffic admin surface (only Ezop curates). Not a security or data-integrity issue.
+
+**Recommended action:** Promote as a quick-dev one-shot fix on next mobile-admin pass. Could be bundled with any other admin-mobile ergonomic issues if a small "admin mobile polish" batch surfaces. Designer/UX involvement not needed — this is mechanical CSS.
+
+---
+
+### TB-037 — Three-tier image variant pipeline (thumb / gallery / full) + fullscreen viewer
+
+**Status:** done
+**Commits (Init 16 Epic 22):** Story 22.1 a04a61f + 05ad8f0 (backend gallery tier worker + variant routing both surfaces + sidecar cleanup) + Story 22.2 d589e5f + 3c27913 (FE carousel main-frame consumes ?variant=gallery + lazy-load strip thumbs) + Story 22.3 812c7bd + d66c077 + cbbed23 (NEW symmetric fullscreen image viewer with lazy barrel + designer-locked UX shape + renderThumb prop + strip-touch ignore + pointer-events-none on hidden strip). Designer engagement via Sally subagent 2026-05-24 (UX spec at _bmad-output/implementation-artifacts/22-3-designer-ux-spec.md authoritative).
+**Resolution:** Three-tier image pipeline shipped end-to-end. thumb=128px (existing Story 13.2); gallery=1920px longest-edge (NEW Story 22.1, designer-locked); full=original (existing). All consumers wired: ShareCarousel main + ModelGallery main consume ?variant=gallery; ShareCarousel strip uses ?variant=thumb + LazyAnonymousImage (Story 22.2 round-2 mitigation); NEW symmetric fullscreen image viewer mounts on both /share/$token + /catalog/$modelId with renderImage prop boundary (AnonymousImage for credentialless on share; plain img on catalog). 4 Codex rounds total across 3 stories (1×P1+5×P2+1×P3 surfaced, all addressed or P3 deferred to TB-043). Visual baselines NEW (4) for viewer surface. Deploys 0.1.0+a04a61f, +05ad8f0, +d589e5f, +3c27913, +812c7bd, +d66c077, +cbbed23 all PASS on .190. Operator manual verify post-deploy: backfill rerun to populate gallery tier on existing files + sample carousel + viewer interactions on retina + mobile.
+
+**Status (legacy):** candidate (awaiting Ezop promotion decision; operator-proposed 2026-05-23 with explicit "designer powinien to krytycznym okiem przeanalizować")
+**Surfaced:** 2026-05-23, post-Init-12 share-view operator hands-on use
+**Flag count:** 1 (operator direct observation)
+**Strongly linked:** TB-036 (503 caps fired by overlapping concurrent fetches of full-res blobs; fixing TB-037 substantially reduces TB-036 occurrence)
+**Linked but separate:** TB-032 (`?variant=thumb2x` retina pipeline — could be subsumed if TB-037 lands with proper tier sizes)
+
+**Operator proposal (verbatim shape):**
+
+| Tier | Use case | Approx size |
+|---|---|---|
+| **(a) thumb** (existing) | Catalog cards + share carousel THUMBNAIL STRIP at bottom (przełączanie między zdjęciami) | ~10-50 KB WebP |
+| **(b) gallery** (NEW) | Main carousel frame in-page (the larger preview area shown when user picks an image). Sized to longest-edge of MAX possible viewport rendering | ~150-500 KB WebP estimated |
+| **(c) full** (existing as original) | Admin panel where photo order is set + NEW "Powiększ / Pełna jakość" button opening a fullscreen viewer (like 3D viewer modal) — image fills nearly full viewport with thumb strip at bottom for navigation | original 4-8+ MB |
+
+**Why this matters NOW:** post-Story 19.2 nginx throughput cap (2 MB/s + 5 concurrent per IP), the existing "load full-res in carousel" pattern means:
+- 4-5 MB image × 2 MB/s = ~3 sec per image (operator-observed: "zdjęcia w pełnej jakości ładują się 3/4 sekundy")
+- Carousel can mount 5+ AnonymousImage components concurrently → hits `limit_conn share_anon_conn 5` → some return 503 (see TB-036 HAR evidence).
+- Operator's framing: "akceptowalne, gdyby ktoś właśnie kliknął 'Powiększ' albo 'Pełen rozmiar' — ale to już w tej naszej galerii słabiej wygląda".
+
+**Fix shape (operator-proposed, designer-to-refine):**
+
+Backend (extends Story 13.2 thumbnail pipeline):
+- Generate-thumbnail worker produces TWO variants: `<basename>.thumb.webp` (existing) + `<basename>.gallery.webp` (NEW). Both at thumbnail-job dispatch time on upload.
+- New `?variant=gallery` endpoint route in `sot/router.py:variant routing` block — silently falls back to original (mirror existing pattern for backwards compat) when sibling missing.
+- Backfill script (`enqueue_thumbnail_backfill.py`) extended to also generate gallery tier for existing files (same pattern as current thumb backfill ran on 2026-05-23).
+
+Frontend (consumes via `?variant=`):
+- Catalog ModelCard + CardCarousel: keep `?variant=thumb` (Story 20.1 already dropped 2x srcSet candidate).
+- Share view ShareCarousel main frame: switch from `data.images` URLs (currently full) to `?variant=gallery`.
+- Share view ShareCarousel thumbnail strip: switch from `?variant=gallery` to `?variant=thumb`.
+- NEW "Powiększ / Pełna jakość" button in carousel header → opens fullscreen viewer (UX mimic of 3D viewer modal): image fills viewport, thumb strip at bottom, ESC/click-outside closes. Fetches `?variant=full` (= original blob, no query param).
+- Admin photo-order page: explicit `?variant=full` to ensure operator sees authoritative source quality.
+
+UX session needed (per operator clarification: "nasz designer powinien to krytycznym okiem przeanalizować, poprawić etc"):
+- Confirm gallery tier dimensions (operator's intuition: "do najmniejszej krawędzi takiej, jaka maksymalnie może nam się pojawić tam" — likely 1280px or 1920px longest-edge but designer to specify)
+- Confirm fullscreen viewer UX vs lightbox patterns (Lightbox, PhotoSwipe-style libraries exist if we want OOTB; or custom matching 3D viewer modal style)
+- Confirm trigger point ("Powiększ" button in header? click on main frame? keyboard shortcut?)
+
+**Scope estimate (if promoted to story cycle):** ~5-8h split across (a) backend worker variant + Alembic migration if storage shape changes (~2h), (b) FE carousel tier switch + fullscreen viewer modal (~3-4h), (c) UX session + designer iteration (~1h), (d) backfill re-run on .190 for gallery tier (operator-side manual, ~10 min).
+
+**Why a candidate, not in-init fix:** operator-explicit "nie musimy od razu naprawiać, możemy wrzucić do TB". Plus designer review needed before drafting story spec (matches [[feedback_voice_heavy_dedicated_grilling]] — UX placement + dimensions are voice-heavy).
+
+**Promotion vehicle:** next initiative kickoff via `bmad-correct-course`. Voice-heavy grilling upfront (per updated [[feedback_voice_heavy_dedicated_grilling]] timing rule): tier sizes + fullscreen UX shape + trigger pattern.
+
+**Code map:**
+- `apps/api/app/workers/generate_thumbnail.py` — extend to produce `.gallery.webp` alongside `.thumb.webp`.
+- `apps/api/app/modules/sot/router.py:230` — `?variant` routing block; add `gallery` branch.
+- `apps/api/scripts/enqueue_thumbnail_backfill.py` + `infra/scripts/backfill-thumbnails.sh` — extend for `gallery` tier sweep.
+- `apps/web/src/routes/share/$token.tsx:ShareCarousel` — switch main frame to `?variant=gallery`, thumb strip stays `?variant=thumb`.
+- NEW `apps/web/src/modules/share/ShareImageLightbox.tsx` (or similar) — fullscreen viewer modal.
+- NEW i18n keys: `share.view.gallery_fullscreen_open`, `share.view.gallery_fullscreen_close`.
+
+---
+
+### TB-036 — `/api/share/<token>/files/<id>/content` returning 503 on concurrent carousel fetches
+
+**Status:** done (transitively closed by TB-037)
+**Resolution:** Init 16 Epic 22 shipped the 3-tier image pipeline (TB-037). ShareCarousel main frame now consumes `?variant=gallery` (~150-500 KB) instead of full original (4-8 MB) → 10× smaller blob per fetch → slot released ~10× faster → far fewer concurrent fetches overlapping the Story 19.2 nginx caps (`limit_rate 2m` + `limit_conn share_anon_conn 5`). Plus Story 22.2 round-2 added LazyAnonymousImage on the share strip → eager fetches drop from N to ~visible-window. Net: legitimate carousel paint should no longer 429/503. Operator post-deploy HAR re-capture (Story 22.4 deferred operator-verify) confirms.
+
+**Status (legacy):** candidate (awaiting Ezop promotion decision; root cause pinned)
+**Surfaced:** 2026-05-23, operator hands-on use of `https://3d.ezop.ddns.net/share/ID5ZwLIWcybIc3zM7lpYG5V4BlNQxa4b` + HAR captured at `tmp/shared-model-example.har`
+**Flag count:** 1 (direct operator observation; 6× 503 in single HAR session vs 13× 200)
+**Strongly linked:** TB-037 (3-tier variant pipeline — primary fix; smaller blobs → faster slot release → less overlap → fewer 503s without needing to relax security cap)
+
+**Root cause (pinned from HAR):**
+
+Story 19.2 nginx config (`~/repos/configs/nginx.conf` + `nginx/3d.ezop.ddns.net.conf`):
+```
+limit_conn_zone $binary_remote_addr zone=share_anon_conn:10m;
+
+location ~ ^/api/share/[^/]+/files/ {
+    limit_rate 2m;
+    limit_conn share_anon_conn 5;   # ← 5 concurrent per IP
+    ...
+}
+```
+
+Carousel implementation in `apps/web/src/routes/share/$token.tsx:ShareCarousel`:
+- Main frame `<AnonymousImage src={activeUrl} />` mounts 1 fetch.
+- Thumbnail strip iterates `ordered.map((url) => <AnonymousImage src={url} />)` — for a model with N photos, mounts N AnonymousImage components, each firing its own `fetch(url, {credentials: "omit"})` on mount.
+- All fetches kick off concurrently from same IP (operator's browser) → 6th+ request hits `limit_conn` → Nginx returns **503 Service Unavailable**.
+
+HAR evidence: 13× 200 + 6× 503 on `/api/share/<token>/files/<file_id>/content` from single share view load. The 6× 503 fired when concurrent count exceeded 5.
+
+Operator-observed UX symptom: "zdjęcia niby pulsują i pokazują że się ładują, ale no jakby to chodziło szybciej (zmniejszając tier) to nikt by na pewno nie narzekał" — the `pulsuje` is AnonymousImage's loading placeholder; 503 ones never resolve to blob → placeholder forever (or until React refetches on re-render).
+
+**Three fix paths (ordered by recommendation):**
+
+1. **(PREFERRED) Ship TB-037 (3-tier variants).** Gallery tier ~150-500 KB vs current ~4-5 MB → 10× faster fetch → slot released ~10× faster → much less overlap → far fewer 503s without relaxing security cap. Solves root cause (overload), not symptom (cap).
+
+2. **Stagger carousel fetches client-side.** Update ShareCarousel to fire fetches sequentially (or in batches ≤ 5) instead of concurrent: prioritize active frame + adjacent thumbs first, lazy-load rest on intersection. ~2-3 LOC change but preserves "all images load eventually" UX.
+
+3. **Relax limit_conn cap.** Raise from 5 → 10 or 20. Sacrifices some DDoS defense (1 IP can saturate more concurrent slots). Not recommended unless TB-037 + #2 prove inadequate AND operator accepts the security trade-off.
+
+**Operator-explicit framing 2026-05-23:** "trzeba by ogarnąć czego to jest kwestia" — explicit triage ask, not in-init fix. File + address in next promotion.
+
+**Why a candidate, not in-init fix:** operator-stated "nie musimy od razu naprawiać, możemy wrzucić do TB". The 503 IS an active UX issue (some images don't load on first share-view paint) but operator has accepted as TB-able pending TB-037 design.
+
+**Recommended action:** Bundle promotion with TB-037 — fixing tier pipeline solves both. If TB-037 deferred for longer, ship #2 (stagger) as quick-dev stopgap (~1h). Don't ship #3 (cap relax) unless explicit operator opt-in after TB-037 proves insufficient.
+
+**Code map:**
+- `apps/web/src/routes/share/$token.tsx:ShareCarousel` (~lines 145-260): main frame + thumb strip both fire AnonymousImage fetches on mount.
+- `apps/web/src/routes/share/$token.tsx:_shareBlobInflight` cache (~lines 90-120): doesn't currently throttle outgoing fetches; could add semaphore-style concurrency cap before firing.
+- `~/repos/configs/nginx/3d.ezop.ddns.net.conf:21` — `limit_conn share_anon_conn 5` directive (relax option 3).
+- HAR evidence: `tmp/shared-model-example.har`.
+
+---
+
+### TB-035 — Thumbnail backfill: 1 `thumbnail.unidentified` warning (Pillow can't ID format)
+
+**Status:** deferred-to-operator-verify (transitively addressed by Story 22.4 hygiene plan)
+**Resolution:** Init 16 Story 22.4 (closed as operator-verify-pending) covers the verification path: operator re-runs `infra/scripts/backfill-thumbnails.sh --inline` on .190 to populate gallery tier (Story 22.1 backend change) + captures any `thumbnail.unidentified` OR `gallery.unidentified` warnings from container logs. If a file_id surfaces, follow-up TB candidate for that specific file's remediation (Pillow plugin add for HEIC/etc, OR mark file as broken). Story 22.4 sprint-status comment carries the exact verification commands.
+
+**Status (legacy):** candidate (awaiting Ezop promotion decision; no current user-observed failure)
+**Surfaced:** 2026-05-23, during `--inline` thumbnail backfill on .190 (Init 11-15 batch post-deploy cleanup)
+**Flag count:** 1 (single file out of 401 rendered + 1 errored = 402 attempted)
+
+**Context.** During the Init 11-15 batch close-out, ran `backfill-thumbnails.sh --inline` on .190 to fix the catalog full-res serving (~68% of files missing `.thumb.webp` siblings). Run completed: `inspected=590 already_present=188 enqueued=0 rendered=401 missing_original=0 errors=1`. The single error logged at `WARNING app.workers.thumbnail thumbnail.unidentified`. Pillow couldn't identify the file format — likely a corrupt blob, HEIC, RAW, SVG, or some other non-standard image variant.
+
+**Scope (if promoted):** ~15 min total:
+1. Pull the log line + extract `file_id` (single grep on api container stdout): `docker compose --env-file .env logs api 2>&1 | grep -E "thumbnail.unidentified|file_id" | tail -10`.
+2. Query DB for that ModelFile row: `original_name`, `mime_type`, `size_bytes`, parent `model_id`.
+3. Decide: (a) it's corrupt → operator delete + reupload OR mark as broken, (b) it's a real format Pillow doesn't support → consider Pillow plugin (e.g. `pillow-heif` for HEIC) OR document the unsupported-format class, (c) it's already-trivial-thumbnail (e.g. SVG) → no-op + skip warning.
+
+**Why a candidate, not a blocker:** 99.2% of catalog now serves WebP thumbnails; this 1 file falls back to original blob silently. No user-visible failure. Worth investigating for completeness but no urgency.
+
+**Code map:**
+- `apps/api/app/workers/generate_thumbnail.py` — Pillow invocation site + the `thumbnail.unidentified` warning emission.
+- `infra/scripts/backfill-thumbnails.sh --inline` — run mode that surfaced the warning.
+
+**Recommended action:** Promote in next batch's hygiene story or quick-dev session — single grep + DB query + decide-class. Operator promotes; ~15 min total.
+
+---
+
+### TB-034 — STL preview render: source-STL tracking + single-flight dispatch lock
+
+**Status:** done
+**Commits:** `57e8869 fix(share,workers): STL preview source-tracking + single-flight lock (Story 23.2, TB-034)` (2026-05-24) + `133edef fix-up(share,workers): legacy purge + file-list sha8 + lock owner-token (Story 23.2 round-2, Codex P1+P2+P2)` (2026-05-24)
+**Resolution:** Story 23.2 fixed both originally-flagged issues + 3 additional Codex-surfaced concerns. P2#1 (stale previews on STL replace): source-tracking via STL sha256[:8] suffix in `original_name` ("iso-abc123.png" pattern); worker idempotency query + share-router dispatch count + share-list query + file-list endpoint base_filter all use `LIKE '%-{stl_sha8}.png'` filter. P2#2 (race-condition duplicate dispatches): Redis SETNX dispatch-side lock with 300s TTL; worker releases in `finally` via Lua EVAL atomic check-and-delete; lock owner-token generated by dispatcher (uuid4.hex), passed to worker as enqueue_job arg. Round-2 Codex P1: legacy stl_preview row purge (delete legacy "iso.png"-style files + DB rows BEFORE render to avoid `(model_id, sha256, kind)` unique-constraint trip on identical re-renders). Round-2 Codex P2: file-list endpoint `/api/share/{token}/files` got sha8 filter parity with resolve_share. Round-2 Codex P2: lock owner-token via Lua to prevent stomping a newer lock after the 300s TTL expired. Tests: 4 dispatcher-side (SINGLE-FLIGHT-1/2 + SOURCE-TRACK-1/2) + 5 worker-side (legacy purge × 2 parametrized + owner-token race × 3) + 2 file-list parity tests = 11 new tests across `test_stl_preview_single_flight.py` + `test_worker_sot.py`. Pytest 870/870 PASS 3× consecutive deterministic (apps/api); 21/21 PASS (workers/render). ruff + alembic check CLEAN. Codex round-2 re-review CLEAN: "No actionable correctness issues were found in the reviewed commit; touched code consistently applies the current-STL sha8 filtering and protects worker lock release with an owner token". Deploys 0.1.0+57e8869 + 0.1.0+133edef to .190 PASS. Smart adaptations: app.state.redis RedisFactory.get(), `lock_token: str = ""` backward-compat default, fakeredis[lua] dev dep for Lua EVAL testing. TB-041 candidate (orphan stl_preview cleanup task) deferred per terminus. Closes Story 23.2 / Init 16 Epic E23 (2 of 3 stories).
+**Surfaced:** 2026-05-23, Story 19.6 round-2 Codex P2+P2 review on commit 2220581
+**Flag count:** 2 (Codex round-2 on Story 19.6 fix-up)
+
+**Context.** Story 19.6 (TB-026 sub-item #2) ships the STL preview render pipeline lazy-dispatched from /api/share/{token} resolve. Worker idempotency: skip if count of stl_preview rows for the model >= len(VIEW_NAMES) (4). Codex round-2 surfaced two follow-up hardening concerns:
+
+**P2 #1 — Stale previews on STL replace/delete.**
+The count-based guard cannot tell whether existing stl_preview rows came from the CURRENT STL or an older upload. If admin replaces the STL (delete + reupload, or upload new + select_for_render swap), worker still treats the 4 existing rows as "done" and the share view keeps showing previews of the previous geometry. Recipient sees stale model.
+
+Fix shape options:
+- Option A — key previews by source STL's sha256: `ModelFile.original_name = f"<view>-{stl_sha256[:8]}.png"`. Worker check counts only previews matching CURRENT primary STL's sha256. Stale previews from prior STLs are GC'd by a separate cleanup task.
+- Option B — `ModelFile.stl_preview_source_file_id` FK column linking each preview to its source STL row. ON DELETE CASCADE deletes previews when source STL row is deleted. Worker counts only previews with FK to current primary STL.
+- Operator picks at promotion time.
+
+**P2 #2 — Race condition: concurrent share-view hits enqueue duplicate render jobs.**
+Two recipients open `/api/share/<token>` simultaneously; both pass the `existing_preview_count < 4` check; both enqueue `render_stl_previews(stl_id)`. Worker's idempotency check fires AFTER fetch starts — both jobs may proceed to commit 4-view sets in parallel, producing 8 duplicate ModelFile rows in the carousel.
+
+Fix shape: single-flight lock via Redis SETNX with TTL:
+```python
+lock_key = f"share:stl_preview_lock:{stl_for_preview}"
+acquired = await redis.set(lock_key, "1", nx=True, ex=300)
+if acquired:
+    await arq.enqueue_job(...)
+# Worker releases lock on completion / failure.
+```
+~15 LOC change in share router dispatch path.
+
+**Why a candidate, not Story 19.6 round-3:** Operator currently has no STL-replace workflow + low concurrent share usage. Both regressions are theoretical for the current use base. Operator has explicitly opted to ship Init 12-15 quickly (per ITCM autonomous batch close-out).
+
+**Recommended action:** Promote when operator surfaces an STL-replace workflow OR when share-link distribution becomes high-concurrency (e.g. social media share, embedded widget). Otherwise defer.
+
+**Code map:**
+- `workers/render/render/worker.py:237-253` — idempotency guard (P2 #1 target).
+- `apps/api/app/modules/share/router.py:88-102` — dispatch + count check (P2 #2 target).
+- Codex review log: `/tmp/codex-review-19-6-fixup-2220581.log`.
+
+---
+
+### TB-033 — Share-view blob cache hardening (StrictMode refcount + revocation invalidation)
+
+**Status:** done
+**Commits:** `24acb89 fix(share): blob cache StrictMode refcount + revocation invalidation (Story 23.1, TB-033)` (2026-05-24) + `a19afcd fix-up(share): generation guard for stale in-flight fetches after clearShareBlobCache (Story 23.1 round-2, Codex P2)` (2026-05-24)
+**Resolution:** Story 23.1 hardened blob-cache against three classes of issues — P2#1 (StrictMode refcount leak via new `_pending: Map<string, number>` discipline; `acquireShareBlob` increments pending counter BEFORE fetch; cold resolve handler uses pending count as initial refCount; revoke + skip cache if 0), P2#2 (page-mount-scoped invalidation via `clearShareBlobCache()` in route's useEffect cleanup per Decision X.1 policy A), and round-2 Codex P2 (stale in-flight fetch guard via generation counter + promise-identity check in `.finally()` — OLD fetch resolving after `clearShareBlobCache()` no longer pollutes fresh cache state). Blob-cache helpers extracted to sibling module `shareBlobCache.ts` for cleaner separation. Vitest 419/419 PASS with 4 new tests (STRICTMODE-1, STRICTMODE-2, REVOCATION-1, STALE-GENERATION-1). Typecheck + lint + npm run build CLEAN. Backend pytest 19/19 share tests no-regression. Codex round-1 surfaced 1×P2 (stale generation); round-2 fix-up addressed it; round-2 re-review CLEAN. Deploys 0.1.0+24acb89 + 0.1.0+a19afcd to .190 with symbolication + runbook fingerprint verify OK both rounds. Closes Story 23.1 / Init 16 Epic E23 (1 of 3 stories).
+**Surfaced:** 2026-05-23, Story 19.5 round-2 Codex P2+P2 review on commit a28cdde
+**Flag count:** 2 (Codex round-2 on Story 19.5 fix-up; both P2 hardening concerns)
+
+**Context.** Story 19.5 round-2 introduced a module-level refcounted blob cache (`_shareBlobCache` + `_shareBlobInflight`) in `apps/web/src/routes/share/$token.tsx` so the carousel main frame + thumbnail strip share ONE fetch per URL, addressing self-DDoS at ~60+ photos under NFR12-DDOS-RATE-1 60 req/min cap. Codex round-2 surfaced two follow-up hardening issues:
+
+**P2 #1 — StrictMode refcount leak on cancelled inflight loads.**
+React.StrictMode (active in `apps/web/src/main.tsx`) mounts/cleans up effects once before the real mount in dev/tests. Fast carousel prev/next stepping triggers the same pattern. The piggy-back path in `acquireShareBlob` (line ~99-107) does `inflight.then((url) => { entry.refCount += 1 })` AFTER the primary fetch resolves and sets `refCount: 1`. If all consumers unmount BEFORE the fetch resolves, `releaseShareBlob` no-ops (cache empty at that time); when fetch resolves the cache entry is created with refCount=1 + every piggy-back .then increments — orphaned refs that are never decremented. Object URLs leaked, slow accretion under StrictMode.
+
+**P2 #2 — Cache bypasses share-token revocation for open tabs.**
+The cache is keyed only by URL; once a photo is fetched it stays reusable for the rest of the tab's lifetime. If the model owner revokes the share token or it expires while the recipient keeps the tab open, `acquireShareBlob` still returns the cached object URL — recipient continues seeing already-loaded photos. The existing "revoking a link immediately disconnects anonymous viewers" contract weakens for open tabs.
+
+**Why a candidate, not Story 19.5 round-3 fix-up:** both are P2 (not P1); 19.5 close-out was already 2 rounds deep; operator opted to ship Init 12-13-14 quickly. Hardening fits cleanly in a focused follow-up story (~1-2 h depending on revocation-invalidation design choice).
+
+**Fix shape sketch:**
+- **P2 #1**: track inflight subscribers in a separate count map (e.g. `_pending: Map<string, number>`); `acquireShareBlob` increments _pending[src] before fetch starts; in resolve handler, use _pending[src] as initial refCount (if 0 — all unmounted, revoke blob + skip cache). Add deterministic mounting test mocking StrictMode double-mount.
+- **P2 #2**: choose invalidation policy:
+  - Option A — page-mount-scoped cache (clear cache when `/share/$token` route unmounts). Simple; loses cache benefit across same-token navigation.
+  - Option B — TTL-based cache (e.g. 60s; force refetch after). Probabilistic; bandwidth cost on long tab sessions.
+  - Option C — server-driven invalidation via Last-Modified / ETag (HEAD request before reuse). Most accurate but adds round-trips. Operator decides at promotion.
+
+**Why a candidate, not a blocker:** operator currently has zero shared models with >60 photos AND zero token revocations of opened share tabs (anecdotal — no incident report). Both are theoretical regressions. Operator may choose to defer indefinitely.
+
+**Recommended action:** Promote when operator surfaces a real share-revocation use case OR when a model with >60 photos enters circulation. Otherwise defer; the fix shape sketch above keeps the trail.
+
+**Code map:**
+- `apps/web/src/routes/share/$token.tsx:88-148` — `_shareBlobCache`, `_shareBlobInflight`, `acquireShareBlob`, `releaseShareBlob`, `AnonymousImage`.
+- `apps/web/src/main.tsx` — React.StrictMode wrap.
+- Codex review log: `/tmp/codex-review-19-5-fixup-a28cdde.log`.
+
+---
+
+### TB-032 — `?variant=thumb2x` blob pipeline for retina cards (list→detail caching)
+
+**Status:** done — closed-by-displacement (housekeeping flip 2026-05-24 during Init 17 SCP enumeration — original TB-037 superseder already shipped in Init 16; status flipped from "candidate" to "closed-by-displacement → done" tracking)
+**Resolution:** Init 16 Epic 22 (TB-037) shipped a gallery tier at 1920px longest-edge, which subsumes the original TB-032 thumb2x design intent. The gallery tier already covers retina display needs (2x DPR on MacBook laptops + most desktops); a separate thumb2x intermediate would only add marginal value at the cost of pipeline complexity. Designer-spec 22-3-designer-ux-spec.md §3 rationale explicitly addresses this: "1920 px covers 1080p fullscreen-but-not-zoomed and all 2x DPR laptop main frames; falls short only on 4K/5K monitors viewing the gallery frame at full bleed, which is exactly the case the fullscreen viewer tier (original blob) handles." TB-032 retina-list-card use case is sufficiently served by the existing `?variant=thumb` (Story 20.1) for catalog grid + `?variant=gallery` (Story 22.2) for detail surfaces. If operator surfaces retina-card-specific complaint post-Init-16, re-evaluate.
+
+**Status (legacy):**
+
+**Status:** candidate (awaiting Ezop promotion decision; trade-off acknowledged)
+**Surfaced:** 2026-05-23, Story 20.1 Codex P2 on commit a9d7d18
+**Flag count:** 1 (Codex P2)
+
+**Context.** Story 20.1 (TB-027) dropped the `${thumbUrl} 1x, ${fullUrl} 2x` srcSet candidate from ModelCard + CardCarousel because retina users were burning bandwidth loading full-resolution images for cards. Trade-off: now retina users see slightly less crisp catalog thumbnails (browser scales WebP up) AND the list→detail navigation no longer warms the full-res cache (was: card loaded full-res, detail page reused cached blob; now: card loads thumb, detail loads full-res — two transfers).
+
+Codex P2 framing: "the change does reduce the bytes for the list card itself, but on high-DPI devices it stops warming the exact full-resolution URL that the detail gallery needs. That makes the common list→detail flow fetch a thumb and then the original again, which is a material regression in the primary browse path."
+
+Operator priority (2026-05-22): catalog list LOAD time. Bandwidth on initial /catalog page paint matters more than detail-page warm. Story 20.1 ships the primary fix; this candidate ships the optimization tier.
+
+**Fix shape:** new `?variant=thumb2x` server-side variant pipeline:
+- Backend: extend Story 13.2 thumbnail-job to ALSO produce a `<basename>.thumb2x.webp` at 2x dimensions of regular thumb (still WebP, still <100 KB but crisper on retina).
+- Backend: `/api/models/<id>/files/<id>/content?variant=thumb2x` endpoint resolves to the 2x WebP blob (falls back to original when missing, mirror Story 13.2's thumb fallback).
+- Frontend: ModelCard + CardCarousel re-add srcSet as `${thumbUrl} 1x, ${thumb2xUrl} 2x`. Retina users now get a crisp tier that's still bandwidth-bounded.
+
+**Scope estimate (if promoted to quick-dev):** ~2-3 h. Backend variant pipeline extension (~1 h) + Alembic migration if storage shape changes (~30 min) + FE srcSet add-back + tests (~1 h).
+
+**Why a candidate, not Story 20.1 round-2:** scope creep into thumbnail-pipeline territory; the trade-off acknowledged in 20.1 commit message + sprint-status note. Operator might find current thumb-only sufficient.
+
+**Recommended action:** Defer unless operator observes detail-page-load regression OR retina visual degradation becomes a complaint vector. Promote then; ~half-day quick-dev with backend variant work.
+
+**Code map:**
+- `apps/web/src/ui/custom/ModelCard.tsx:60-67` — srcSet site (re-add after thumb2x ships).
+- `apps/web/src/ui/custom/CardCarousel.tsx:150-160` — same.
+- `apps/api/app/modules/sot/router.py` — `?variant=thumb` endpoint; extend with `thumb2x`.
+- `apps/api/app/workers/__init__.py` — generate_thumbnail task; extend to produce thumb2x output.
+
+---
+
+### TB-030 — Centralized `_admin_token` test helper (eliminate hardcoded JWT_SECRET across 13 test files)
+
+**Status:** done
+**Commit:** `9453314 refactor(tests): centralize _admin_token helpers to tests/_test_helpers.py (Story 24.1, TB-030)` (2026-05-24)
+**Resolution:** NEW `apps/api/tests/_test_helpers.py` exports `admin_token`/`agent_token`/`member_token` reading `get_settings().jwt_secret` at call time. 13 target test files migrated + 1 T5 harmonization (`test_sot_admin_models.py`, -46 LOC clean drop-in). `test_last_active_middleware.py` skipped per T5 rule (per-file `_login_as` dynamic-role wrapper). Pytest 864/864 PASS deterministic 3× consecutive (NFR16-DETERMINISM-1). Ruff check + format CLEAN. Codex review (gpt-5.4-mini routine class) CLEAN: "mechanical refactor that centralizes the duplicated JWT test helpers without changing token shape or fixture behavior; no call site where the new shared helper would mint a different token or introduce a collection/import issue". Closes Story 24.1 / Init 16 Epic E24. Minor file-specific accommodations documented in commit body (test_sot_auth_boundary _mint_cookie wrapper for rogue role; test_2fa_verify dead JWT_SECRET dropped; test_2fa_disable + test_enforce_2fa_login inline conftest verbatim for setenv).
+**Surfaced:** 2026-05-23, Story 18.4 round-3 Codex P2 finding (commit 2ae6569 review)
+**Flag count:** 1 (Codex P2 round-3)
+
+**Context.** 13 test files hardcode `JWT_SECRET = "test-secret-not-real"` and route token helpers through that constant (`apps/api/tests/test_sot_admin_categories.py`, `test_sot_admin_external_links.py`, `test_sot_admin_tags.py`, `test_sot_admin_notes.py`, `test_sot_admin_files.py`, `test_sot_admin_prints.py`, `test_sot_auth_boundary.py`, `test_2fa_verify.py`, `test_2fa_enrollment.py`, `test_2fa_disable.py`, `test_2fa_regenerate.py`, `test_enforce_2fa_login.py`, `test_thumbnail_pipeline.py`). Story 18.4 round-2 fixed two of them (`test_last_active_middleware.py`, `test_sot_admin_models.py`) to use `get_settings().jwt_secret` instead. Codex round-3 P2 flag: the suite-wide pollution concern remains theoretical for the rest.
+
+**Why empirically safe today:** `apps/api/tests/conftest.py:99-106` (the `isolated_client` fixture) sets `JWT_SECRET="test-secret-not-real"` via monkeypatch + calls `get_settings.cache_clear()` BEFORE every test, and finally-block re-clears on teardown. So every test using `isolated_client` starts with a clean cache. Codex's theorized pollution from `test_csrf_middleware` (which sets `JWT_SECRET="s"`) doesn't propagate because conftest cache_clear runs again on the next test's setup. Full pytest suite: 846/846 PASS deterministic in Init 11 verification.
+
+**Why a candidate, not a fix-now:** scope creep. Story 18.4 was scoped to "TB-021 Failure A + Failure B"; touching 13 sibling files for a latent-only issue stretches the story beyond its mandate per [[feedback_default_to_bmad_workflow]]. The right vehicle is either (a) a focused refactor story that centralizes token-minting into `apps/api/tests/_test_helpers.py` (or similar) + sweeps all 13 files in one pass, OR (b) defer indefinitely if conftest cache_clear remains the canonical guardian.
+
+**Fix shape (if promoted):** centralized helper module with `admin_token(user_id)`, `agent_token(user_id)`, `member_token(user_id)` reading `get_settings().jwt_secret`; sweep 13 files to import + call the helper instead of file-local hardcoded constants. ~30-45 min refactor; pure cosmetic; no behavior change.
+
+**Code map:**
+- 13 test files listed above
+- Reference implementation: `apps/api/tests/test_last_active_middleware.py` (Story 18.4 commit be11035) + `apps/api/tests/test_sot_admin_models.py` (commit 2ae6569)
+- Conftest cache_clear discipline: `apps/api/tests/conftest.py:99-106` + 122-123
+
+**Recommended action:** Defer unless conftest cache_clear discipline weakens or a new "test runs without isolated_client" surface introduces a real failure. Promote then as a single chore-style refactor commit.
+
+---
+
+### TB-029 — Admin "Add model" CTA + modal (revert Story 16.4 discoverability deferral)
+
+**Status:** done
+**Commits:** `7f6dd10 feat(catalog,admin): Add Model CTA in catalog toolbar + modal (Story 20.2, TB-029)` (2026-05-23) + `83b225a fix-up(admin): AddModelModal scrollable + state-reset on close (Story 20.2 round-2, Codex P2 + P2)` (2026-05-23)
+**Resolution:** Status flipped 2026-05-24 during Init 16 SCP enumeration phase — pre-Init-16 reconciliation discovered TB-029 was already shipped via Init 13 Story 20.2 + round-2 fix-up (commits per above). AddModelForm extracted to `apps/web/src/modules/admin/AddModelForm.tsx` (reusable, compact prop), AddModelModal Dialog wrapper, AddModelButton admin-only catalog toolbar CTA. /admin/models/new route refactored to consume AddModelForm. 1 new i18n key per locale (`admin.catalog.add_model_cta`). Story 20.2 Codex round-2 P2+P2 (modal scrollable + state-reset on close) addressed in 83b225a. Originally noted as "UX designer input required" but operator pragmatic mid-Init-13 path chose toolbar-top-right + modal-with-existing-form (per AskUserQuestion 2026-05-23) without dedicated designer session — operator's intuition matched designer-recommended pattern based on Init 11-15 SCP §6.4. Net: discoverability gap closed; no Init 16 work needed for TB-029.
+**Surfaced:** 2026-05-22, operator hands-on batch (item #5 in Ezop's report)
+**Flag count:** 1 (direct observation: operator asked "jak się dostać do opcji dodania nowego modelu?")
+
+**Context.** Story 16.4 (admin manual model add UI, shipped Init 10) jawnie deferowała discoverability — commit `1f55d95` AC reads "operator can navigate via direct URL or browser bookmark." Operator-facing impact: there is no nav button or CTA in the UI; admin must remember `/admin/models/new` or bookmark it. Ezop's 2026-05-22 report flags this as not-his-decision and asks to add a discoverable entry point. Reasonable next step: a "Dodaj model" button in the catalog list page top-right, near filter/sort controls, opening either a modal form (preferred per Ezop) or routing to the existing `/admin/models/new` page. UX designer (`bmad-create-ux-design` / `bmad-agent-ux-designer`) should weigh in on modal-vs-route + button placement before implementation — voice-heavy UX item per [[feedback_voice_heavy_dedicated_grilling]].
+
+**Surface affected:** admin operators (member-role users do not see the CTA). Catalog list page (`/catalog`) is the natural host since that's where the operator already is when wanting to add a new model.
+
+**Scope estimate (if promoted to quick-dev):** ~3-5 h. Likely shape: (a) UX session to lock placement + modal-vs-route + form-vs-quick-add scope (~1 h with UX designer); (b) `AddModelButton` component in catalog top-right toolbar, role-gated to admin (~1 h); (c) if modal: extract the existing `/admin/models/new` form into a reusable component, mount in `AddModelModal` (~1-2 h); (d) tests + i18n + visual baseline (~1 h). Inline-form-in-modal is bigger than a "open the existing page" button — designer call.
+
+**Code map:**
+- `apps/web/src/modules/catalog/routes/CatalogList.tsx` — catalog list root; current toolbar location (filter/sort controls live here)
+- `apps/web/src/routes/admin/models/new.tsx` — existing form; candidate to refactor into reusable component for modal embedding
+- `apps/web/src/shell/AuthContext.tsx` — role gate; CTA visible only when `role === "admin"`
+- `apps/web/src/locales/{pl,en}/common.json` — i18n keys for button label + modal title
+
+**Why a candidate, not a blocker:** the feature works via direct URL; this is a discoverability gap, not a functional defect. Operator workaround (bookmark / typed URL) covers the path until promoted.
+
+**Recommended action:** Promote with UX designer engagement (`bmad-agent-ux-designer` first, then `bmad-quick-dev` or epic story depending on scope outcome). Likely scope: a discoverable CTA + modal-or-route decision codified by designer.
+
+---
+
+### TB-028 — Admin Users table scrolls page instead of table (mismatch with Invites pattern)
+
+**Status:** done
+**Commit:** `42d9add fix(admin): UsersPage table scrolls inside container not page (Story 18.2, TB-028)` (2026-05-23)
+**Resolution:** added `overflow-x-auto` class to existing wrapper div at `UsersPage.tsx:359`, mirroring `InvitesPage.tsx:228`. 6 mobile admin-users visual baselines regenerated (desktop unchanged — viewport never overflowed). UsersPage.test.tsx 19/19 PASS; lint + tsc clean; Codex review CLEAN ("matches existing invites-page pattern and addresses the mobile overflow issue without introducing a functional regression").
+**Surfaced:** 2026-05-22, operator hands-on batch (item #4 in Ezop's report)
+**Flag count:** 1 (direct observation: Ezop prefers Invites' table-only scroll over Users' whole-page scroll)
+
+**Context.** Admin Users page (`/admin/users`) renders the table without an `overflow-x-auto` wrapper, so when columns exceed viewport width the entire page scrolls horizontally. Admin Invites page (`/admin/invites`) wraps its table in `<div className="rounded border border-border overflow-x-auto">` ([InvitesPage.tsx:228](../apps/web/src/modules/admin/InvitesPage.tsx#L228)), so only the table itself scrolls inside its bordered container. Operator preference is unambiguously the Invites pattern.
+
+**Surface affected:** admin users viewing `/admin/users` on viewports narrower than the rendered table width. Members (non-admin) do not see this page.
+
+**Scope estimate (if promoted to quick-dev):** ~30 min. Single CSS wrapper addition mirroring InvitesPage. Worth verifying with a quick visual pass on narrow viewport via agent-browser per [[feedback_frontend_visual_verification]] — both before and after, to confirm overflow is contained.
+
+**Code map:**
+- [UsersPage.tsx:360](../apps/web/src/modules/admin/UsersPage.tsx#L360) — `<table className="w-full text-sm">` needs wrapping `<div className="rounded border border-border overflow-x-auto">` per Invites pattern
+- [InvitesPage.tsx:228](../apps/web/src/modules/admin/InvitesPage.tsx#L228) — reference pattern to mirror
+
+**Why a candidate, not a blocker:** the table functions correctly; this is a layout-ergonomics mismatch between two sibling admin pages. Promotion is low-cost, low-risk, high-consistency win.
+
+**Recommended action:** Promote as a quick-dev consistency fix; could be bundled with TB-029 (both touch admin UI ergonomics) if convenient.
+
+---
+
+### TB-027 — Catalog still serves full-resolution images for some models despite thumbnail job run
+
+**Status:** done (partial via Story 20.1, fully via Init 16 Epic 22)
+**Resolution:** Two-phase close.
+**Phase 1 — Story 20.1 (Init 13, commit a9d7d18):** dropped the `${thumbUrl} 1x, ${fullUrl} 2x` srcSet candidate from ModelCard + CardCarousel so retina users stop loading full-res for catalog grid. This was the primary user-observed regression (operator's 2026-05-22 catalog-load complaint).
+**Phase 2 — Init 16 Epic 22 (Stories 22.1+22.2):** added the gallery tier middle layer (1920px ~150-500 KB WebP) and wired ModelGallery + ShareCarousel main frames to consume `?variant=gallery`. Operator post-deploy verify (Story 22.4 deferred operator-verify) confirms via retina viewport devtools that catalog cards + detail carousel now serve gallery tier in the expected size band, not falling back to original. Closes the original TB-027 investigation requirement.
+
+**Status (legacy):** candidate (awaiting Ezop promotion decision; investigation phase first)
+**Surfaced:** 2026-05-22, operator hands-on batch (item #3 in Ezop's report)
+**Flag count:** 1 (direct observation: post thumbnail-job run on 2026-05-21, many catalog cards still load full-res)
+
+**Context.** Ezop ran a job on 2026-05-21 to (re)generate WebP thumbnail variants. ModelCard at [ui/custom/ModelCard.tsx:28-31](../apps/web/src/ui/custom/ModelCard.tsx#L28-L31) builds `fullUrl = /api/models/{id}/files/{thumbnail_file_id}/content` then appends `?variant=thumb` as `thumbUrl`. The `<img srcSet>` advertises `${thumbUrl} 1x, ${fullUrl} 2x` ([ModelCard.tsx:67](../apps/web/src/ui/custom/ModelCard.tsx#L67)). On retina / 2x DPR displays the browser prefers the `2x` candidate — which is the FULL-RES original, not a thumbnail. Possible root causes (need investigation phase before fix):
+
+1. **srcSet 2x design intent vs reality** — was retina-picks-full intentional (crisp on retina, bandwidth was acceptable) or oversight? If intentional, the perf complaint reframes the trade-off.
+2. **Variant file missing for older models** — backend `?variant=thumb` may silently fall back to original when the variant blob is missing. Job may have skipped models for some reason (error path, type filter, missing source format).
+3. **CardCarousel renders gallery images, not the thumbnail variant** — gallery files in carousel ([ModelCard.tsx:55-67](../apps/web/src/ui/custom/ModelCard.tsx#L55-L67)) may all use full-res for non-primary slides.
+
+**Surface affected:** anyone browsing the catalog grid; bandwidth/CDN impact + slow initial render on slow connections. Especially relevant given Init 10's anonymous share viewer (any DDoS-class concern compounds with #TB-026 download rate-limiting).
+
+**Scope estimate (if promoted to quick-dev):** ~2-4 h. Investigation phase (~1 h) to identify which of hypotheses (1)-(3) explains the user-observed pattern: open browser devtools network tab on catalog list, sample 5-10 cards, check actual served URL + Content-Length per response. Then targeted fix (~1-2 h) — either drop `2x` srcSet candidate, fix variant fallback to use thumbnail-of-thumbnail, or surface variant-missing as an admin warning. Plus a perf test or visual baseline tweak (~30 min).
+
+**Code map:**
+- [ModelCard.tsx:22-67](../apps/web/src/ui/custom/ModelCard.tsx#L22-L67) — thumbUrl + srcSet construction
+- `apps/api/app/modules/sot/admin_router.py` (around model file content endpoints) — `?variant=thumb` server-side handling
+- `apps/api/app/modules/files/` (or wherever file variants live) — variant generation + storage
+- Whichever job script Ezop ran on 2026-05-21 — verify per-model completion log to find skipped models
+
+**Why a candidate, not a blocker:** the catalog works; cards do render. This is a perf regression-vs-intent question. Worth understanding before patching.
+
+**Recommended action:** Promote with explicit investigation phase first ([[feedback_scp_pre_enumeration_phase]] — enumerate srcSet behavior across DPRs + variant fallback + carousel image source before drafting fix scope). Could surface as a doc-only outcome if (1) is the answer.
+
+---
+
+### TB-026 — Anonymous share view enrichment (carousel, STL preview images, 3D viewer, file list, description, download rate-limiting)
+
+**Status:** partially-done — sub#6 per-IP rate-limit (Story 19.1), sub#6 per-token additional cap (Story 23.3 / Init 16), sub#7 throughput cap (Story 19.2) all DONE; sub#1-5 (carousel, STL preview, 3D viewer, file list, description UX enrichment) OUT per [[feedback_share_view_scope_boundary]] post-Init-12 share-view UX terminus.
+**Resolution per sub-item (2026-05-24):**
+- **sub#1 carousel:** DONE via Init 12 Story 19.5 (commit 822d3c3 — ShareCarousel with thumbnail strip). Operator manual verify done.
+- **sub#2 STL preview renders:** DONE via Init 12 Story 19.6 + Init 16 Story 23.2 hardening (4-view iso/front/side/top render pipeline + sha256 source-tracking + single-flight lock).
+- **sub#3 3D viewer:** DONE via Init 12 Story 19.7 (Viewer3DInline with srcOverride hook from Story 20.3).
+- **sub#4 file list:** DONE via Init 12 Story 19.4 (commit b6c4337 — `/api/share/{token}/files` endpoint).
+- **sub#5 description:** DONE via Init 12 Story 19.5 (bilingual description rendering reuses DescriptionPanel from Story 16.1+16.2).
+- **sub#6 request-rate (per-IP):** DONE via Init 12 Story 19.1 (commits 2232b77 + 57faba1 — share_anon_ratelimit_key with 60 req/min/(token,IP) sliding window).
+- **sub#6 request-rate (per-token, NEW):** DONE via Init 16 Story 23.3 (commit 8f66c83 — share_anon_per_token_ratelimit_key as 5th middleware instance, 60 req/min/token regardless of source IP; defends against IP-pool botnet attackers).
+- **sub#7 throughput cap:** DONE via Init 12 Story 19.2 (nginx config in ~/repos/configs/nginx — limit_rate 2m + limit_conn share_anon_conn 5 per-IP). Operator deploy-side already shipped.
+**Net TB-026:** All originally-scoped sub-items either DONE or explicitly carved OUT per terminus rule. No remaining work. Post-Init-12 share-view UX terminus reaffirmed by operator 2026-05-24 ("wszystkie open backlog items minus terminus-out items").
+**Surfaced:** 2026-05-22, operator hands-on batch (item #2 in Ezop's report)
+**Flag count:** 1 (direct observation: share view is "too poor" vs authenticated catalog detail)
+
+**Context.** Init 10 Story 16.3 shipped the anonymous share viewer (`/share/<token>`) with deliberately minimal surface — static download button only, no 3D viewer (deferred via TB-022), no carousel, no derived previews. Operator post-cutover feedback: this is too austere; share recipients deserve at minimum (a) a carousel of model photos parallel to the authenticated detail page, (b) auto-generated STL preview renders (isometric / front / side / top, server-rendered to JPEG/WebP), (c) optionally an embedded 3D viewer (TB-022 prerequisite — share-scoped URL via `srcOverride`), (d) the full file list with per-file download (not just one STL), (e) the model description. Additionally — and important — **share downloads should be rate-limited AND throughput-limited** to prevent (i) DDoS-class abuse of public share endpoints and (ii) outbound-pipe saturation. Two distinct mitigations: request-rate cap (e.g., per-token-per-IP per minute) AND per-stream throughput cap (e.g., Nginx `limit_rate`).
+
+**Sub-items decomposition (likely epic):**
+
+1. **Carousel for share view** — parity with authenticated catalog detail; admin gallery order respected; uses share-scoped URLs per Init 6 Decision N
+2. **STL auto-render previews (iso/front/side/top)** — new backend job + storage shape (4 preview blobs per STL); render via three.js headless OR Open3D/Blender backend; populated lazily on first share access OR proactively via existing job pipeline
+3. **3D viewer on share view** — depends on TB-022 (Viewer3DInline `srcOverride` extension)
+4. **Full file list with per-file download** — extend share read endpoint to list all files; per-file download via share-scoped URL
+5. **Description on share view** — bilingual respect; uses Init 10 `body_pl + body_en` schema
+6. **Download rate-limit (request count)** — middleware per-share-token + per-IP; reject 429 above threshold; configurable via env
+7. **Download throughput-limit** — Nginx `limit_rate` or app-level streaming throttle; cap concurrent active downloads + per-stream bandwidth
+
+**Why this is epic-sized, not quick-dev:** 7 sub-items across FE (carousel, viewer integration), BE (file-list endpoint, throttle middleware), infra (Nginx config, possibly render-worker), and product (DDoS threat model + rate-limit thresholds). Per [[feedback_default_to_bmad_workflow]] and [[feedback_vanilla_bmad_first]] this should NOT be force-fit into quick-dev; canonical entry point on promotion is `bmad-correct-course` → likely PRD/epic update or new initiative scoping.
+
+**Code map:**
+- `apps/web/src/routes/share/$token.tsx` — share view root
+- `apps/web/src/modules/share/` — share components; carousel + file list additions land here
+- `apps/api/app/modules/share/router.py` — share read endpoint; expand to include description + full files
+- `apps/api/app/modules/share/service.py` — share-scoped URL builder; throttle hooks
+- `infra/nginx-180/3d-portal.conf` (and `infra/nginx-190/3d-portal.conf` if separate) — `limit_req_zone` + `limit_rate` per-location for `/api/share/<token>/files/*`
+- TB-022 referenced for Viewer3DInline `srcOverride` extension
+
+**Threat-vector enumeration (a-priori per [[feedback_security_vector_enumeration]]):** anonymous download endpoints are explicit DDoS attack surface. Threat shape: attacker scrapes valid share token (operator-shared link, log-leaked, referrer-leaked), then loops downloads to saturate uplink. Rate-limit defense: request-count cap stops simple loops. Throughput-limit defense: caps the damage even of single-stream attacks. Token-rotation defense: operators can revoke compromised tokens. NFR target on promotion: cap per-token download throughput at e.g. 5 MB/s and request rate at e.g. 60 / min; revisit numbers in initiative PRD.
+
+**Why a candidate, not a blocker:** the feature works for its current MVP scope — anonymous link receivers can download the STL. Enrichment is a UX uplift; rate-limit is a security hardening that should land BEFORE the share surface gets meaningful real-world traffic.
+
+**Recommended action:** Promote via `bmad-correct-course` → new initiative scoping (PRD update + epic decomposition). Rate-limit + throughput-limit sub-items (6+7) should be prioritized over UX uplifts; they ship as security-hardening even if (1)-(5) deferred.
+
+---
+
+### TB-025 — Add-note POST 404: `useCreateNote` POSTs to wrong path (`/admin/notes` missing model ID)
+
+**Status:** done
+**Commit:** `08e202b fix(catalog): POST add-note to /admin/models/{id}/notes (Story 18.1, TB-025)` (2026-05-23)
+**Resolution:** FE `useCreateNote.ts:17` now POSTs to `/admin/models/${input.model_id}/notes` matching API route at `admin_router.py:871`. Test mocks updated (`useCreateNote.test.tsx:28` + `AddNoteSheet.test.tsx:65`). 4/4 vitest tests PASS; lint + tsc clean; Codex review CLEAN ("aligns the create-note request path with the backend route"). NoteCreate schema does not include model_id; Pydantic v2 default `extra="ignore"` lets existing body shape pass through unchanged.
+**Surfaced:** 2026-05-22, operator hands-on batch (item #1 in Ezop's report; HAR captured at `tmp/notes_404.har`)
+**Flag count:** 1 (direct observation; HAR-confirmed 404)
+
+**Root cause (pinned from HAR + grep):** The frontend `useCreateNote.ts:17` POSTs to `"/admin/notes"`, but the API route is `POST /admin/models/{model_id}/notes` ([admin_router.py:871](../apps/api/app/modules/sot/admin_router.py#L871)). The 404 in the HAR (`POST https://3d.ezop.ddns.net/api/admin/notes → 404`) matches exactly: server has no route at `/api/admin/notes` for POST; it only has `/api/admin/notes/{note_id}` for PATCH/DELETE. Test `useCreateNote.test.tsx:28` asserts the same wrong path (`"/api/admin/notes"`) — they were wrong-together since the test was written. EditDescriptionSheet path is correct ([EditDescriptionSheet.test.tsx:156](../apps/web/src/modules/catalog/components/sheets/EditDescriptionSheet.test.tsx#L156)) and uses `/api/admin/models/m1/notes` — that's the canonical pattern.
+
+**Fix shape (one-commit quick-dev):**
+
+1. [useCreateNote.ts:17](../apps/web/src/modules/catalog/hooks/mutations/useCreateNote.ts#L17) — change `"/admin/notes"` → `` `/admin/models/${input.model_id}/notes` ``. The `model_id` is already on `CreateNoteInput`. Likely drop `model_id` from request body since it's now in the path (verify API contract — admin_router may accept body field redundantly or strictly).
+2. [useCreateNote.test.tsx:28](../apps/web/src/modules/catalog/hooks/mutations/useCreateNote.test.tsx#L28) — update expected URL to match new path.
+3. [AddNoteSheet.test.tsx:65](../apps/web/src/modules/catalog/components/sheets/AddNoteSheet.test.tsx#L65) — same expected-URL fix.
+4. Quick browser-verify per [[feedback_frontend_visual_verification]]: open a model in catalog, add a note, confirm 200 response + note appears in OperationalNotesTab.
+5. Surface gap analysis: how did this ship green? OperationalNotesTab + AddNoteSheet unit tests passed because both FE code and test mocked the wrong path together. There's no integration test that hits the real router. Worth a follow-up note (not blocking the fix) on whether the add-note flow deserves an MSW-or-contract integration test, since this class of FE↔BE path drift is invisible to pure-unit testing.
+
+**Surface affected:** any admin attempting to add an operational/general note via the AddNoteSheet flow in the catalog detail page. Description-note path (via `useUpsertDescription`) is unaffected — it uses the correct `/admin/models/${modelId}/notes` path.
+
+**Scope estimate (if promoted to quick-dev):** ~30 min code change + ~30 min verification + commit. Single quick-dev story.
+
+**Why a candidate, not a hot-fix:** add-note is admin-only and currently unreachable to non-admin users, so user-impact radius is bounded to operator + Ezop. No data loss path; the 404 is fail-safe. Promote via `bmad-quick-dev` at convenience.
+
+**Recommended action:** Promote to `bmad-quick-dev` next cycle. Bundle ONLY if a small batch is being prepared — do not delay other items waiting for this one (per [[feedback_collaboration_division]]: small, well-pinned fixes don't need ceremony).
+
+---
+
+### TB-024 — BMAD skill template updates from Init 10 retro
+
+**Status:** done
+**Commit:** `80f25d4 docs(bmad): add Init 10 retro lessons to story checklist + arch decision template (Init 15 / TB-024)` (2026-05-23)
+**Resolution:**
+- bmad-create-story checklist (`.claude/skills/bmad-create-story/checklist.md`) gains new §3.6 "Already-Shipped DISASTERS" mandating pre-SCP enumeration gate (codebase grep + sprint-status read + route-enforcement-gate inspection + per-item job-shape question). Historical examples (Init 10 Stories 16.4/16.5 scope-cut + Init 14 Story 21.1 verified-no-op) codified.
+- bmad-create-architecture template (`.claude/skills/bmad-create-architecture/architecture-decision-template.md`) gains "Authoring guidance" section requiring 4-cell read-path × write-path × {legacy, new} matrix for dual-field schema migrations. Worked example using Init 10 Decision L. Skip clause for pure renames.
+Both apply via per-project skill files; no code-side impact.
+**Surfaced:** 2026-05-22, Init 10 retrospective (party-mode: Amelia + Winston voices)
+**Flag count:** 1 (Init 10 retro convergence)
+
+**Context.** Init 10 retro identified two BMAD skill files that would benefit from checklist additions to avoid repeating the Init 10 process gaps:
+
+1. **bmad-create-story checklist** — add a "Verify against SoT + sprint-status for already-shipped endpoints" gate before the SCP `## H2` writing step. Init 10 Stories 16.4+16.5 scoped as "new endpoints" when admin_create_model + admin_upload_file already shipped with Init 0 SoT; ~70% scope cut discovered mid-story. The checklist addition makes the enumeration phase a procedural gate (mirrors the now-codified [[feedback_scp_pre_enumeration_phase]] memory at the skill level).
+
+2. **Architecture-decision template** — for every schema migration with dual-field (e.g. `body_pl + body_en`), enumerate read-path × write-path × {legacy, new} = minimum 4 path combinations in the Decision body. Init 10 Decision L was under-spec'd for the legacy edit path; Codex P1 caught the gap (mirror logic). Template addition forces the matrix in future schema-migration decisions.
+
+**Why a candidate, not a quick-dev:** these are workflow-tool updates (BMAD skill files under `~/.claude/skills/` or project-local `_bmad/` overrides), not portal code. Scope is small (~30-50 lines per skill checklist) but the verification target is meta — how do you regression-test a checklist addition? Operator should choose: ship these as direct edits to skill files (no Codex review available for skill files; trust + manual verify next initiative), OR ship as memory rules only (less discoverable for new agents but lower-touch).
+
+**Recommended action:** Promote when next initiative kickoff happens — natural place to apply + validate the additions on the first SCP draft.
+
+**Code map:**
+- `~/.claude/skills/bmad-create-story/checklist.md` or project-local `_bmad/custom/bmad-create-story.toml`
+- `~/.claude/skills/bmad-create-story/template.md` (for the architecture-decision template addition — actually applies to whichever skill produces architecture decisions; verify per skill catalog)
+
+---
+
+### TB-023 — Credentialless surface test fixture (NFR10-SHARE-SECURITY-1 maszynowo)
+
+**Status:** done (housekeeping flip 2026-05-24 during Init 17 SCP enumeration — already shipped via Init 14 Story 21.2; status field was stale)
+**Resolution:** SHIPPED via Init 14 Story 21.2 (commit `ea3bfd0`). `make_anonymous_client` helper + `assert_no_set_cookie_in_response` in conftest.py + 3 new credentialless contract tests in test_share_public.py (resolve, file-list, invalid-token; 13/13 PASS). Helper-not-fixture composition works with per-file client fixtures. Playwright `assertCredentialless` helper deferred (separate scaffolding); pytest contract is primary defense. Codex review CLEAN. NFR10-SHARE-SECURITY-1 contract now maszynowo enforced for share-router endpoints.
+**Surfaced:** 2026-05-22, Init 10 retrospective (party-mode: Murat voice)
+**Flag count:** 1 (Init 10 retro)
+
+**Context.** Init 10 Story 16.3 (anonymous share viewer, NFR10-SHARE-SECURITY-1) needed TWO rounds of Codex review to land correctly. Both rounds caught cookie-leak class bugs (round-1: img/STL cookies + AuthProvider `/auth/me` firing on /share/*; round-2: `crossOrigin="anonymous"` no-op on same-origin + non-reactive auth-skip across SPA nav). Codex worked as a lagging indicator. Murat's retro proposal: lock the no-cookie contract DOWN maszynowo with a dedicated test fixture class.
+
+**Scope (~50-100 LOC):**
+
+1. **pytest `anonymous_client` fixture** in `apps/api/tests/conftest.py` — yields a `TestClient` with NO cookies + NO auth headers + assertion helper `assert_no_set_cookie_in_response(response)` that fires on every share-token endpoint hit.
+
+2. **Apply to existing share-router tests** — `tests/test_share_public.py` + `tests/test_share_admin.py` (read paths only) gain a parameterized test class that exercises every `/api/share/<token>/*` endpoint with `anonymous_client` and asserts no `set-cookie` header in response, no `WWW-Authenticate` header, no Cache-Control allowing intermediate cache.
+
+3. **Playwright assertion helper** in `apps/web/tests/visual/_test.ts` — `assertCredentialless(page)` intercepts every network request from the `/share/<token>` route via `page.route("**/api/share/**", ...)` and asserts NO `Cookie` header on outgoing requests + NO `Set-Cookie` on responses. Hook into existing `anon-login-only.spec.ts` style tests for anonymous share routes (`/share/<token>` baseline).
+
+**Why a candidate, not Init 10 absorption:** this is genuine new test infrastructure (~50-100 LOC fixture + helpers + assertion class + test parameterization on existing files). Story-grade work, not a fix-up. Operator's blessing: "wolę chyba większe bezpieczeństwo" (2026-05-22) — green-lit, but execution belongs in a focused session.
+
+**Operator-blessed pen-test source:** ezop-kbk.ddns.net for out-of-network execution per [[reference_external_test_source]]; useful for the playwright/manual end-to-end credentialless verification (separate LAN + public-internet egress = real anonymous surface).
+
+**Risk asymmetry:** single regression that leaks portal_access cookie to `/api/share/*` = public session exposure for any logged-in user opening a share link. 50-100 LOC + 4-6 assertions is trivial polisa.
+
+**Recommended action:** Promote to a focused quick-dev session (~2-3h) when next session has spare capacity. Probably batches well with TB-022 (Viewer3DInline URL-construction hook) since both touch the share-anon surface.
+
+**Code map:**
+- `apps/api/tests/conftest.py` — add `anonymous_client` fixture (mirror existing `isolated_client` shape)
+- `apps/api/tests/test_share_public.py` + `tests/test_share_admin.py` — parameterized assertion class
+- `apps/web/tests/visual/_test.ts` — `assertCredentialless` helper
+- `apps/web/tests/visual/anon-login-only.spec.ts` (or new spec) — apply helper
+
+---
+
+### TB-022 — Viewer3DInline URL-construction hook for non-default auth contexts
+
+**Status:** done (housekeeping flip 2026-05-24 during Init 17 SCP enumeration — already shipped via Init 13 Story 20.3; status field was stale)
+**Resolution:** SHIPPED via Init 13 Story 20.3 (commits `8284032` primary + `027e710` lint fix-up). `StlFile.srcOverride: string | null` field added to types; Viewer3DInline + useStlGeometry route through conditional credentialless fetch when srcOverride is non-null. Init 12 Story 19.7 (share view 3D viewer) consumes this hook; Init 16 Story 22.3 (symmetric fullscreen image viewer) does NOT need it (image vs 3D surface). Pattern available for any future non-default-auth consumer. Codex CLEAN both rounds.
+**Surfaced:** 2026-05-22, Init 10 retrospective (party-mode: Winston voice)
+**Flag count:** 1 (Init 10 retro)
+
+**Context.** Init 10 Story 16.3 (anonymous share viewer) deferred inline 3D viewer for the `/share/<token>` route. The static "Download STL" button ships instead. Root cause: Viewer3DInline at `apps/web/src/modules/catalog/components/viewer3d/Viewer3DInline.tsx` builds its STL URL via `/api/models/{modelId}/files/{fileId}/content` which is auth-gated under Init 6 default-deny. Anonymous viewer would need a `srcOverride` prop or a share-scoped URL builder. Winston's retro framing: this is **pre-existing component-level debt** from Init 0 (Viewer3DInline always assumed authenticated URL contexts; Init 6's default-deny hardening + Init 10's anonymous route just made it visible). Boring-tech bias: do NOT build the abstraction "na zapas" after a single use-case; document the pattern, defer until a second non-default-auth context emerges (embedded preview / public gallery / external referrer / etc.).
+
+**Scope:** when next promoted, extend `StlFile` type at `apps/web/src/modules/catalog/components/viewer3d/types.ts:3-8` with an optional `srcOverride: string | null` field. When set, Viewer3DInline + Viewer3DModal + the parseStl worker + stlCache use `srcOverride` instead of the default `/api/models/{modelId}/files/{fileId}/content` URL builder. Anonymous share route then sets `srcOverride: data.stl_url` (share-scoped URL emitted by Init 6 Decision N backend).
+
+**Why a candidate (no SLA):** static download covers ~80% of share recipient's actual job (they want the file to print, not in-browser viewing). Anonymous in-browser 3D viewing is a stretch goal; ship only when a second use case justifies the abstraction.
+
+**Code map:**
+- `apps/web/src/modules/catalog/components/viewer3d/types.ts:3-8` — extend StlFile shape
+- `apps/web/src/modules/catalog/components/viewer3d/Viewer3DInline.tsx` — use srcOverride if set
+- `apps/web/src/modules/catalog/components/viewer3d/lib/stlCache.ts` — cache by URL not by `<modelId, fileId>` pair
+- `apps/web/src/routes/share/$token.tsx` — switch from `AnonymousDownloadButton` to `Viewer3DInline` with srcOverride
+
+---
+
+### TB-021 — Two pre-existing pytest failures unmasked by Story 15.1 fix
+
+**Status:** done
+**Commits:** `be11035 fix(tests): close TB-021 pytest pre-existing failures (Story 18.4)` + `2ae6569 fix-up(tests): use get_settings().jwt_secret in _admin_token helpers (Story 18.4 round-2)` (2026-05-23)
+**Resolution:**
+- **Failure A** (`test_redis_down_passes_through_with_warning` cross-file pollution): root cause = `app.core.logging.configure_logging()` does `root.handlers[:] = [handler]` during FastAPI lifespan startup, removing pytest's caplog handler. Fix: dedicated `_ListHandler` attached to `app.auth.last_active` logger directly via `last_active_caplog` fixture — sidesteps the root wipe. Mirrors `share_caplog` / `auth_ratelimit_caplog` pattern in `test_ratelimit_share_cap.py`.
+- **Failure B** (`test_list_files_returns_image_kinds_in_position_order` 401): test used unauthenticated `client` fixture; endpoint requires member-or-admin auth per Init 6 default-deny (NFR6-SEC-1). Fix: seed admin and set portal_access cookie.
+- **Defense-in-depth bonus:** both `_login_as` and `_admin_token` helpers now use `get_settings().jwt_secret` instead of hardcoded constant, defending against latent JWT_SECRET cache pollution from `monkeypatch.setenv` callers (caught by Codex round-2 P2).
+
+Full pytest suite: 846/846 PASS deterministic (NFR11-DETERMINISM-1). Codex round-3 P2 (apply same fix to 13 sibling files) filed as [TB-030] for future centralized helper — not in Story 18.4 scope.
+**Surfaced:** 2026-05-22, during Story 15.1 Phase 4 AC-3 full-suite verification
+**Flag count:** 2 distinct deterministic failures (both surfaced once, post-Story-15.1 unmasking)
+
+**Context.** Story 15.1 (Initiative 10, Epic 15) closed a pytest threading deadlock in `test_auth_refresh.py::test_concurrent_refresh_one_wins`. The deadlock previously blocked the test runner from reaching tests that come alphabetically AFTER `test_auth_refresh.py`. With the deadlock removed, the full pytest suite now runs to completion (~4 min wall) and reveals 2 deterministic failures that were always present but masked.
+
+**Failures (deterministic across 3 consecutive full-suite runs, variance=0):**
+
+1. **`tests/test_last_active_middleware.py::test_redis_down_passes_through_with_warning`**
+   - **PASSES in isolation** AND **PASSES at file level** (6/6 file-level tests green).
+   - **FAILS only in full-suite context** — cross-file test-isolation pollution from some earlier-running file.
+   - Categorically same class as Story 15.1's original problem (cumulative session-scoped state pollution), but on a different test surface.
+   - Likely root cause: another file's autouse fixture or session-scoped resource leaks into this file's `isolated_client_redis_down` fixture state, OR `caplog` capture interaction with a logger reconfiguration done by some earlier test.
+   - Code map: [apps/api/tests/test_last_active_middleware.py:282](apps/api/tests/test_last_active_middleware.py#L282) — the failing test.
+
+2. **`tests/test_sot_admin_models.py::test_list_files_returns_image_kinds_in_position_order`**
+   - **FAILS in isolation** with `401 Unauthorized` on `GET /api/models/{id}/files?kind=image`.
+   - Real test bug: test uses plain `client` fixture (no admin login) but calls an endpoint that requires `current_member_or_admin` per Init 6 default-deny posture (NFR6-SEC-1).
+   - The test was never updated post-Init-6 cutover (2026-05-20); the previous hang in `test_concurrent_refresh_one_wins` (which sorts alphabetically before this test file) blocked the runner from ever reaching this test, so the regression silently lived for ~2 days.
+   - Fix shape: add admin login to the test fixture chain, OR change the endpoint call to use an admin-authed client, OR add a `current_admin` fixture variant to conftest.py.
+   - Code map: [apps/api/tests/test_sot_admin_models.py:791-843](apps/api/tests/test_sot_admin_models.py#L791-L843) — the failing test.
+
+**Why a bundle (TB-021), not two TBs:** both surfaced in the same AC-3 verification of Story 15.1; both are pre-existing pre-Story-15.1; both are pytest-side test-fixture issues. Bundle keeps the trail coherent.
+
+**Why a candidate, not a Story 15.1 absorption:** per NFR10-SCOPE-1, Story 15.1 touches only `apps/api/tests/test_auth_refresh.py`. Neither failure is in that file, neither is caused by Story 15.1's fix (both predate it). Absorbing them would constitute scope creep. The unmasking is a positive side-effect of Story 15.1's fix; the actual fixes belong to a separate work unit.
+
+**Recommended promotion vehicle:** Story 15.2 (visual baselines refresh) is already scoped — adding pytest fixes would conflict. Story 15.3 (per-file `client` fixture refactor) is the natural absorber for failure #2 (which is a `client` fixture auth-scope mismatch) but not naturally for failure #1 (cross-file pollution). Two options:
+
+- **Option A — extend Story 15.3:** Story 15.3 already refactors `client` fixtures across ~16 files. Adding the admin-auth `client` variant + applying it to test_sot_admin_models.py is a natural extension. Failure #1 (test_last_active_middleware cross-file pollution) parks as standalone quick-dev or new Story 15.4.
+- **Option B — new Story 15.4 "pytest carry-forward cleanup":** dedicated story for these 2 + any other unmasked failures from Story 15.2/15.3 verification. Cleaner separation of concerns; smaller Story 15.3 surface.
+
+**Operator decides at promotion.** No urgency — both failures are pre-existing carry-forward; the catalog still functions correctly in production (failure #2 is test-only — the actual endpoint enforces auth correctly).
+
+**Determinism log (3 consecutive full-suite runs, Story 15.1 Phase 4):**
+
+| Run | Pass | Fail | Wall | Failures |
+|---|---|---|---|---|
+| 1 | 829 | 2 | 249s | test_last_active_middleware.test_redis_down_passes_through_with_warning + test_sot_admin_models.test_list_files_returns_image_kinds_in_position_order |
+| 2 | 829 | 2 | 249s | (same 2) |
+| 3 | 829 | 2 | 249s | (same 2) |
+
+Variance=0. Both failures are deterministic carry-forward; neither is flake.
+
+---
+
+### TB-018 — Test-isolation cleanup bundle (3 pre-existing test-suite issues) [FULLY RESOLVED]
+
+**Status note (2026-05-23):** All 3 sub-items closed via Init 9 Stories 14.1 + 14.2 + 14.3. Item #1 (18 vitest finder mismatches) via Story 14.1 (52 admin.invites.* i18n keys pulled forward from Story 12.1; cd6354a alternation pattern); item #2 (test_hydrate_creates_local_tree DB pollution) via Story 14.2 (fa4a628 — real sha256 + content-aware assertion making the test pollution-tolerant); item #3 (visual-regression hook flake) via Story 14.3 (313dd33 — 20 stale baselines regen post Story 14.1 i18n cascade). Init 14 Story 21.1 in sprint-change-proposal-2026-05-23-init-11-15.md was scoped against item #2 only — verified already closed during Story 21.1 pre-enumeration; no work needed.
+
+### TB-018 — Test-isolation cleanup bundle (3 pre-existing test-suite issues)
+
+**Status:** done (housekeeping flip 2026-05-24 during Init 17 SCP enumeration — all 3 sub-items already closed via prior initiatives; status field was stale)
+**Resolution:** All 3 sub-items resolved across Init 9 + Init 14:
+- Sub#1 (18 vitest finder mismatches in admin modules) — CLOSED via Init 9 Story 14.1 (commit ranges around 2026-05-21; 52 missing `admin.invites.*` i18n keys pulled forward from Story 12.1; TB-015 alternation pattern applied to finders; 18→0 verified 3× consecutive deterministic).
+- Sub#2 (test_hydrate_creates_local_tree DB pollution) — CLOSED via Init 9 Story 14.2 (commit fa4a628 — real sha256 + content-aware assertion making the test pollution-tolerant). Init 14 Story 21.1 pre-enumeration verified-no-op confirmed this closure (no work done in 21.1 — TB-018 sub#2 already CLOSED).
+- Sub#3 (visual-regression hook-context flake on admin-invites + admin-users baselines) — CLOSED via Init 9 Story 14.3 (commit 313dd33 — 20 stale baseline PNGs regen post-Story-14.1 i18n cascade; one TB-015 alternation widening; NFR9-DETERMINISM-1 3× consecutive variance=0 verified standalone + hook context).
+**Surfaced:** 2026-05-21, Init 6 close-out
+**Flag count:** 3 distinct pre-existing issues bundled (operator's explicit grouping; per-sub-item resolution paths documented above)
+**Surfaced:** 2026-05-21, Initiative 6 close-out, operator carry-forward report
+**Flag count:** 3 distinct pre-existing issues bundled (operator's explicit grouping)
+
+**Context.** Three separate test-suite flakes survived Initiative 6. None were Init-6-introduced; each predates the auth-boundary work and was not in scope. Operator's call: bundle into ONE dedicated cleanup story rather than three separate quick-devs — they share a common theme (test isolation / state pollution / cross-stage interaction) and benefit from a coherent fix pass.
+
+**Items in the bundle:**
+
+1. **18 vitest failures in `modules/admin/*` test files.** **CLOSED 2026-05-21 via Story 14.1.**
+   Affected: `InvitesPage.test.tsx`, `GenerateInviteModal.test.tsx`, `InviteTokenDisplayModal.test.tsx`, `ResetLinkDisplayModal.test.tsx`, `UsersPage.test.tsx`. Symptom class: text/role/label finder mismatches — the i18n keys + DOM shape have drifted from what the tests expect. Pre-Init-6 origin; the tests have been red for multiple sprints. **Resolution (Story 14.1, 2026-05-21):** the spec hypothesis (English-only finders vs Polish render) was VERIFIED FALSE during recon — root cause was that components called 52 `admin.invites.*` i18n keys that did NOT exist in pl.json or en.json (only `admin.tabs.invites` + `admin.tabs.invites_coming_soon` existed). Components were rendering literal key strings (`admin.invites.generate.role_label`) at test time. ITCM decision: pull forward the missing 52 keys from Story 12.1 FR7-ADMIN-INVITES-2 into Story 14.1 — the only path to green tests because no locale-tolerant finder could match literal key strings. Combined with the spec-anticipated test-finder fixes (TB-015 alternation pattern + absolute-URL substring tolerance per Codex `cd6354a`), 18 → 0 verified 3× consecutive (6/6 files, 37/37 tests PASS; full suite 92/92, 390/390 PASS). Story 12.1 inherits the `admin.invites.*` i18n keys as a closed dependency.
+
+2. **`test_hydrate_creates_local_tree` DB-state pollution.**
+   `test_sot_model_file_content.py::FAKE_STL_PAYLOAD_AAA` seeds a row that leaks into `/api/models` listing, which `test_hydrate_creates_local_tree` iterates — and the unexpected row breaks its expected count/shape. Originally flagged in Init 5 retro item #8. Likely fix shape: rollback teardown / transactional test scope / explicit clean-up fixture for the seed payload. Inspect `tests/conftest.py` for the active DB-isolation strategy; the pollution implies either a missing rollback or a session-scoped fixture that should be function-scoped.
+
+3. **Visual-regression hook-context flake on admin-invites + admin-users baselines.** **CLOSED 2026-05-21 via Story 14.3 (commit 313dd33).**
+   Original symptom framing ("standalone PASSES, hook FAILS") was a measurement artifact — comparing standalone admin-only scope (20 failures, all admin-*) vs hook full-suite scope (106 failures across many specs). At equal scope, both contexts produced IDENTICAL verdicts (zero diff). **Resolution (Story 14.3, commit 313dd33):** disambiguation outcome (a) STALE-BASELINE-ONLY post-Story-14.1 i18n cascade — NO genuine hook-context architectural divergence (port collision / build SHA drift / cache invalidation timing / env-var leak all empirically eliminated). 20 baseline PNGs regenerated (16 admin-invites + 4 admin-users-empty). One test-selector regex widening at `admin-invites.spec.ts:133-141` (Story 14.1 set pl.json `admin.invites.actions.generate = "Wygeneruj zaproszenie"` replacing orphan "Wystaw" copy; same TB-015 alternation pattern Story 14.1 applied to vitest finders). NFR9-DETERMINISM-1: 3× standalone + 3× hook all identical (variance = 0). AC-1/AC-2/AC-3/AC-4 PASS. Codex review on 313dd33: clean pass, "No discrete regression introduced by these changes" (log at `codex-review-14-3-313dd33.log`). Deployed 0.1.0+313dd33 to .190 (deploy.sh full chain incl. symbolication verify on GlitchTip issue 150 + agent runbook fingerprint verify all PASS). 86 unrelated carry-forward failures across 12 spec files explicitly OUT OF SCOPE per NFR9-SCOPE-1 (agents-info-dialog, anon-login-only, catalog-detail, catalog-list, dev, empty-states, focus-ring, login-2fa-verify, register, reset-password, v2-placeholders, viewer3d-mobile).
+
+**Why a bundle, not three TBs:** all three are pre-existing test-isolation gaps; one cleanup session with a coherent fix pass is more efficient than three discrete promotions. Operator explicitly grouped them this way in the 2026-05-21 batch report.
+
+**Why promote via `bmad-correct-course`, not quick-dev:** the bundle is a multi-area cleanup spanning vitest + pytest + playwright-hook. Correct-course will produce a Sprint Change Proposal that either (a) opens a new "Test Isolation Cleanup" mini-epic with 3 stories, or (b) appends as a 3-story extension to an existing epic — that scoping decision belongs to the SCP, not a quick-dev stub.
+
+**Recommended action:** Promote when Ezop has a dedicated cleanup session window (~half-day estimated). Not blocker-class — all three are pre-existing flakes that the team has tolerated for multiple sprints already. Surface again in 2-3 weeks if not promoted, in case the noise floor crosses the threshold.
+
+---
+
+### TB-017 — TOTP_FERNET_KEY rotation runbook (operational continuity reminder)
+
+**Status:** candidate (awaiting Ezop promotion decision; trigger date 2027-05-20)
+**Surfaced:** 2026-05-20, Epic 8 retrospective doc-verification phase (carry-over from Epic 6 retro item §8 + Epic 7 retro item §10); also re-flagged by Story 9.1 spec AC1 (the spec proposed a new `TB-008` slot for the same item — reconciled here rather than duplicated; spec's `TB-008` number was already in use for the unrelated `ModelExternalLink.url` index issue).
+**Flag count:** 4 (E6 retro + E7 retro + E8 retro + Story 9.1 spec).
+
+**Context.** Story 7.1 introduced Fernet symmetric encryption for `users.totp_secret`. The current `TOTP_FERNET_KEY` is provisioned in `.190 infra/.env` (single key, never rotated since 2026-05-19 enrollment). Fernet keys are cheap to rotate but require a multi-key migration window (decrypt with old key, re-encrypt with new key, swap keys, drop old key) because in-flight ciphertexts must remain decryptable across the rotation.
+
+**Why it matters.** Per Initiative 5 NFR5-SEC-* posture and Decision D (cleartext-surface invariant), the Fernet key is a load-bearing operator secret. Twelve months from the original provisioning (estimated trigger date **2027-05-20**) the operator should run a key-rotation pass per standard symmetric-key hygiene — partly as a drill, partly to avoid the key becoming an indefinite single point of compromise.
+
+**What's needed.**
+1. A runbook section in `docs/operations.md` (or new `docs/totp-fernet-rotation.md`) covering:
+   - Multi-key environment-variable shape (current Fernet implementation supports `MultiFernet([new_key, old_key])` — decrypt-fallback to old, encrypt with new).
+   - The 4-step rotation sequence: provision new key alongside old → restart api + arq-worker with both keys (new first in list) → run a re-encrypt loop over `users` table (read each `totp_secret`, decrypt with old, encrypt with new, write back) → drop the old key from env after re-encrypt verified.
+   - Verification: spot-check 2-3 users post-rotation can still successfully `POST /api/auth/2fa/verify`.
+   - Rollback if needed: re-add the old key to the env list, restart.
+2. A scheduled reminder mechanism (cron in `.190` or calendar) firing at 2027-05-20 to surface the runbook in operator's queue.
+
+**Why this is candidate, not quick-dev:** it's a +12-month operational reminder, not a code change. The runbook authoring is small (~30-50 lines) but the trigger date is far enough out that promotion-to-quick-dev should happen ≤2 months before the trigger date (2027-03-20), not now.
+
+**Code map:**
+- [apps/api/app/modules/auth/totp/service.py](../apps/api/app/modules/auth/totp/service.py) — Fernet construction site; would need to accept a list of keys for rotation
+- [apps/api/app/core/config.py](../apps/api/app/core/config.py) — `TOTP_FERNET_KEY` Settings field; would split into `TOTP_FERNET_KEYS` (comma-separated) for rotation mode
+- [docs/operations.md](../docs/operations.md) — runbook target file
+- `.190 infra/.env` — operator-side key provisioning (operator-local, not in git)
+
+**Decision needed at promotion time:** stick with single-key model + cold-rotation downtime drill OR switch to MultiFernet for hot rotation. Hot rotation is more complex but lets the key change without restarting services.
+
+---
+
+### TB-016 — Agent runbook doc-honesty tweaks from external-LLM feedback (poll budget + download-path leak + bilingual-name guidance)
+
+**Status:** done
+**Commits:** `750fd8c` (Init 10 Story 17.3 — Findings A+B+C runbook patches) + `0b3baf2` (Init 10 Story 17.4 — DOC-DRIFT-2 Drifts 3+17 closed) + `34adb07 fix(auth): move refresh_tokens indexes to __table_args__ to match migration 0009 (Story 18.5, TB-016 Drift 5)` (2026-05-23). Drift 16 verified absent during Story 18.5 pre-enumeration; spec rewrite was already cleaned in prior pass.
+**Resolution:** 17-drift carry-forward chain now fully resolved. 13 inline-patched during 2026-05-19 Sesja Z, Findings A+B+C (Drifts 6-onwards) closed by Story 17.3, Drifts 3+17 by Story 17.4, Drift 5 by Story 18.5 (`__table_args__` index name alignment with migration 0009), Drift 16 verified absent. `alembic check` reports "No new upgrade operations detected." after Story 18.5. Codex review on 34adb07 CLEAN.
+**Surfaced:** 2026-05-17 / 2026-05-18, external-LLM agent feedback (cross-model report) + operator direct surfacing — three findings bundled because same file + same review batch + same fix shape (small doc edits).
+**Flag count:** 3 (three distinct paper-cut observations on the same runbook).
+
+---
+
+**Finding A — Polling budget too tight for medium meshes**
+
+`docs/agents-add-model-runbook.md:418` claims the thumbnail-render polling budget is ~60 s (12 attempts × 5 s = 60 s) and prints `"render did not land in 60s — check the worker service log on .190"` on miss (line 425). A peer agent reported a render on a ~120k-triangle mesh that took ~74 s — succeeded, but only 14 s short of the documented "give up and dig in worker logs" threshold. Doc is too tight for medium meshes; the prescribed escalation (worker-log inspection) fires unnecessarily for what is normal render variance.
+
+Surface affected: any agent following the runbook with a medium-or-larger mesh (≳ 80-100k triangles); on slow machines or under worker contention even smaller meshes can exceed 60 s. False-positive escalation wastes the agent's time and may surface noise instead of a real worker bug.
+
+Code map:
+- [agents-add-model-runbook.md:418](../docs/agents-add-model-runbook.md#L418) — the "~60 s" claim + polling loop block
+- [agents-add-model-runbook.md:425](../docs/agents-add-model-runbook.md#L425) — the give-up message + escalation pointer
+- [agents-add-model-runbook.md:427](../docs/agents-add-model-runbook.md#L427) — the "common causes" list that would mislead on a slow-but-correct render
+
+Three concrete fix options (operator picks at promotion time):
+1. **Budget bump only** — change 12×5 s → 24×5 s (120 s budget). Smallest diff, covers the observed 74 s + reasonable headroom for ~200k triangle meshes. Update "~60 s" wording in line 418 + the give-up message in line 425.
+2. **Budget bump + qualifier** — same loop change, plus one sentence: "60 s is the nominal budget for small meshes (≤ ~50k triangles); 120 s holds for medium meshes (≤ ~200k); very large meshes may exceed even that — keep polling rather than escalating to worker logs unless the wall clock crosses ~3 min OR the API surfaces an explicit error." Educates the agent without making the snippet noisy.
+3. **Adaptive note (no code change)** — leave the 60 s snippet as the "happy path" but add a paragraph after line 425 explaining the variance: poll budget grows ~linearly with triangle count, ~60 s is for small meshes from Printables/Thingiverse, larger STL files need patience, and worker-log dive is only justified if the model-detail response stays unchanged for ~3 min.
+
+---
+
+**Finding B — Operator-specific download path leaks into shared runbook**
+
+`docs/agents-add-model-runbook.md:142` says: "the `agent-browser` CLI navigates to the model URL, clicks Download, the file lands in `D:\` on the Windows host. Move it into a temporary working directory via PowerShell ...". The `D:\` path is Ezop's Windows-host Chrome download directory (configured per `~/.claude/CLAUDE.md` § "Browser automation — agent-browser" — `--user-data-dir=E:\chrome-cdp` with browser-default downloads dir). It is NOT a property of the portal; it is a property of one operator's machine. Other operators / agents will have different defaults — `~/Downloads`, custom Chrome `user-data-dir` with its own setting, non-Windows OS entirely. The runbook should not prescribe this.
+
+The agent client (whether Claude, Codex, Gemini, future LLM) already knows where its own browser-automation tool drops files — agent-browser, Playwright MCP, Puppeteer, native browser hooks etc. each have their own conventions. The runbook should describe the abstract step ("retrieve the downloaded file from wherever your browser landed it; move into a temporary working dir; upload via the portal flow") and let the agent fill in the concrete path from its own environment knowledge.
+
+Code map:
+- [agents-add-model-runbook.md:142](../docs/agents-add-model-runbook.md#L142) — the `D:\` reference inside the browser-only-sources paragraph
+
+Fix sketch (single-sentence rewrite): replace "the file lands in `D:\` on the Windows host. Move it into a temporary working directory via PowerShell, then upload via the portal flow." with: "the file lands in whatever directory your browser-automation tool downloads to (consult its docs or your local agent-environment notes — e.g. `agent-browser`'s default mirrors the Chrome download dir). Move it into a temporary working directory in your environment, then upload via the portal flow." Drop the PowerShell mention — it presumes Windows; not all agents run on Windows hosts.
+
+Optional bonus: the next sentence already points at `~/.claude/CLAUDE.md` § "Browser automation — agent-browser" on the operator's machine — that pointer is fine to keep as a hint for Claude-specific agents but should be framed as one example of where an agent might find its setup notes, not the canonical place.
+
+---
+
+**Finding C — Bilingual name guidance is too passive; agents skip `name_pl`**
+
+`docs/agents-add-model-runbook.md:303` mentions `name_pl` only as a side note ("No Polish diacritics in `name_en`, no leading/trailing whitespace, no file extension. Polish translations belong in `name_pl`."). The example payload at line 395 sets ONLY `name_en` (`"name_en":"Prusa MK3 LED Lamp"`) — no `name_pl`. Schema-wise `name_pl` is `str | None` ([apps/api/app/modules/sot/schemas.py:23](../apps/api/app/modules/sot/schemas.py#L23)) so it's optional, but operator preference (Ezop, 2026-05-18) is for agents to actively populate BOTH names — translating one from the other — so the catalog renders cleanly in both UI locales (`i18n` PL/EN). Today agents read the runbook + example, see only `name_en` filled, and skip the Polish translation entirely.
+
+Surface affected: every agent-driven model import lands with `name_pl: null`, so users on the Polish UI locale see the English name as fallback. Functionally harmless (UI degrades to `name_en`), but defeats the bilingual catalog design.
+
+Code map:
+- [agents-add-model-runbook.md:303](../docs/agents-add-model-runbook.md#L303) — passive mention of `name_pl`
+- [agents-add-model-runbook.md:395](../docs/agents-add-model-runbook.md#L395) — example payload missing `name_pl`
+- [apps/api/app/modules/sot/schemas.py:22-23](../apps/api/app/modules/sot/schemas.py#L22) — `ModelCreate` schema confirming `name_pl: str | None`
+
+Fix sketch (two-spot edit):
+1. Rewrite line 303 from "Polish translations belong in `name_pl`" to something like: "**Always populate both `name_en` and `name_pl`** by translating one from the other — direction depends on the source page language. For brand-name compounds (e.g. "Prusa MK3 LED Lamp" → "Prusa MK3 lampka LED"), keep brand terms (`Prusa MK3`) verbatim and translate only the descriptive parts. If translation feels lossy (technical jargon, terms-of-art with no clean PL equivalent), fall back to `name_pl: null` and surface the case to the operator rather than guess."
+2. Update example payload at line 395 to set both names, e.g.: `"{\"name_en\":\"Prusa MK3 LED Lamp\",\"name_pl\":\"Prusa MK3 lampka LED\",\"category_id\":\"$CATEGORY_ID\",\"source\":\"printables\"}"`. Pedagogically: the example is what most agents copy from, so showing both fields populated normalizes the behavior far more than a paragraph above does.
+
+Why operator-direct rather than external-LLM: Ezop surfaced this directly during the same TB-016 conversation — bundle rationale is identical (same runbook, same doc-honesty class, same trivial-edit shape).
+
+---
+
+**Why a candidate, not a blocker (for all three findings):** the runbook works as advertised on the operator's setup. Finding A → agent that ignores the "give up" line just keeps polling and recovers; Finding B → agent on Windows happens to find the file where the runbook says; Finding C → catalog still renders, just falls back to `name_en` for Polish UI users. The risks are paper-cut friction, environment-mismatch confusion, and degraded-but-functional bilingual catalog — not pipeline correctness.
+
+**Why surface NOW:** Findings A+B from cross-LLM runbook smoke — the canonical detector for this class of paper-cuts (cf. NFR5 from Initiative 2 / Story 4.5). Finding C from operator direct surfacing during the same conversation. All three are fresh; encoding them now keeps the runbook empirically honest for the next external-agent runbook smoke (Codex / Gemini / future LLM) AND for the catalog's bilingual UX.
+
+**Recommended action:** Promote together to one doc commit when convenient. Suggested option mix:
+- Finding A: option 2 (budget bump + qualifier).
+- Finding B: full rewrite of [agents-add-model-runbook.md:142](../docs/agents-add-model-runbook.md#L142) per the fix sketch.
+- Finding C: rewrite line 303 + update example payload at line 395 per the fix sketch (the example change carries most of the pedagogical weight).
+
+Combined ~30 min including a quick re-run of the runbook smoke. Doc-only commit → auto-deploy skipped per `feedback_auto_deploy_dev.md`. Runbook fingerprint `49280ada…` baseline shifts on all three edits — re-baseline in same commit (single fingerprint roll, not three).
+
+---
+
+### DOC-DRIFT-2 — Initiative 5 planning artifacts drift from repo reality (surfaced during Stories 6.1, 6.5, 6.6, 6.7; partial cleanup landed during Epic 6 retro)
+
+**Status:** partially-done as of 2026-05-19 Sesja Z (Epic 6 retro) — 13 of 17 drifts inline-patched in `_bmad-output/planning-artifacts/{epics.md,architecture.md,prd.md}` during retro; remaining 4 are code-side (refresh_tokens autogenerate) or low-value cosmetic (Settings field naming) — see breakdown below
+**Surfaced:** 2026-05-19, Sesja G `bmad-create-story` for Story 6.1 + Stories 6.5/6.6/6.7 each surfaced additional drifts
+**Flag count:** 17 distinct drifts (bundled — same initiative, same source-doc set; partial patch landed at retro, remainder optional)
+**Partial cleanup commit:** N/A — all edits local-only to gitignored `_bmad-output/planning-artifacts/` (no deploy, no remote push)
+
+**Why a candidate, not a blocker:** Story 6.1 spec at [_bmad-output/implementation-artifacts/6-1-alembic-0012-invite-tokens-primitives.md](_bmad-output/implementation-artifacts/6-1-alembic-0012-invite-tokens-primitives.md) § "Project Structure Notes — drifts surfaced" already records each drift with evidence (file:line cite) + code-grounded apply-correction + per-drift follow-up patch sketch. Dev Sesja H (`bmad-dev-story`) executes the corrections; the docs themselves can be patched at any time without affecting code shipped under Init 5. Precedent: DOC-DRIFT-1 (architecture.md Decision G note added to backlog per Epic 1 retro 2026-05-10).
+
+**Cleanup status as of 2026-05-19 Sesja Z (Epic 6 retro doc-drift pass):**
+
+| # | Drift | Origin | Cleanup status |
+|---|---|---|---|
+| 1 | `alembic/versions/` vs `migrations/versions/` | 6.1 | ✅ patched in epics.md (3 locations) |
+| 2 | `KNOWN_ENTITY_TYPES` as action-name registry vs entity-type registry | 6.1 | ✅ patched in prd.md FR5-AUDIT-1 + 5 epics.md bullets |
+| 3 | `INTEGER PK` + `users.id` FK vs UUID + `user.id` (singular) | 6.1 | ✅ patched in architecture.md Decision B column table (lines 1437-1449) + Decision E column table (lines 1536-1547) — both now `UUID PK` + `UUID … FK user.id` with `ondelete=SET NULL` on Decision B audit-survives-delete columns per Decision A "DB row outlives Redis TTL". Verified 2026-05-29: `grep -nE "INTEGER PK\|INTEGER FK\|FK users\.id" _bmad-output/planning-artifacts/` returns zero matches. |
+| 4 | `Role` enum vs `UserRole(StrEnum)` | 6.1 | ✅ patched in architecture.md (all locations within Initiative 5) |
+| 5 | `refresh_tokens` autogenerate drift | 6.1 | ⏳ code-side cleanup; not a doc patch |
+| 6 | URL path `POST /api/share/` vs `/api/admin/share` | 6.5, 6.7 | ✅ patched in architecture.md per-route allowlist + decision text + epics.md story bullets |
+| 7 | `admin_user_cookies` conftest fixture non-existent | 6.5 | ✅ patched in architecture.md Decision C cascading |
+| 8 | `apps/api/tests/integration/` directory non-existent | 6.5 | ✅ patched in architecture.md Decision C cascading |
+| 9 | `_assert_member_or_admin` returning `User` vs `uuid.UUID` | 6.5 | ✅ patched in architecture.md Decision C pseudocode |
+| 10 | Detail string sentence vs snake_case | 6.5 | ✅ patched in architecture.md Decision C pseudocode |
+| 11 | `Annotated[User, Depends(...)]` vs bare `Depends(...)` | 6.5 | ✅ patched in architecture.md Decision C pseudocode |
+| 12 | Starlette `add_middleware` LIFO vs decorator outermost claim | 6.6 | ✅ patched in architecture.md Decision G middleware-placement paragraph |
+| 13 | `ZADD score=now member=now` collision pseudocode | 6.6, 6.7 | ✅ patched in architecture.md Decision G algorithm block |
+| 14 | `BaseHTTPMiddleware` pseudocode vs raw-ASGI shape | 6.7 | ✅ patched in architecture.md Decision G module bullet |
+| 15 | Soft-alert structured log name decomposition | 6.7 | ✅ patched in architecture.md Decision H soft-threshold bullet |
+| 16 | Settings field naming `ratelimit_share_*` vs `share_ratelimit_*` | 6.7 | ⏳ low-value cosmetic; spec vs code naming divergence; defer |
+| 17 | Test name `test_create_share_requires_admin` stale post-6.5 swap | 6.5 | ✅ code-side rename landed — `apps/api/tests/test_share_admin.py:70-74` defines `test_create_share_requires_authentication` with an inline comment block citing this drift. Verified 2026-05-29. |
+
+**Remaining deferred item** (Drift 16 only): low-priority cosmetic. Drift 5 closed via Story 18.5 (commit `34adb07`). Drift 17 closed in-tree (`apps/api/tests/test_share_admin.py:70-74` carries the renamed function `test_create_share_requires_authentication` plus a comment block citing this drift). Drift 3 (Decision B/E column-table rewrite) closed in the planning-artifact refresh that landed alongside Initiatives 6–7 (zero-match grep 2026-05-29 over `_bmad-output/planning-artifacts/` for `INTEGER PK` / `INTEGER FK` / `FK users.id`). Only Drift 16 (Settings field naming `ratelimit_share_*` vs `share_ratelimit_*`) is still open and is genuinely cosmetic — spec-vs-code naming divergence with no functional impact. Bookkeeping update authored 2026-05-29 as part of Init 19 readiness cleanup.
+
+**Drifts (one-line each — see story spec for full evidence + corrections):**
+
+1. **Path drift** — epics.md Story 6.1 + Story 7.1 bullet #1 cite `apps/api/alembic/versions/...`; actual per [apps/api/alembic.ini:8](../apps/api/alembic.ini#L8) `script_location = %(here)s/migrations`. Single s/alembic\/versions/migrations\/versions/ in epics.md.
+2. **Audit registry semantics** — epics.md Story 6.1 bullet #3 + prd.md FR5-AUDIT-1 phrase the audit-registry expansion as "audit action names registered in KNOWN_ENTITY_TYPES". Code at [apps/api/app/core/audit.py:27-42](../apps/api/app/core/audit.py#L27-L42) shows `KNOWN_ENTITY_TYPES` holds entity-type values, not actions. Reword: "actions emitted via `record_event()` against the existing entity-type registry; Story 6.1 adds entity-type `invite_token`; subsequent stories add `recovery_code` etc. as their entity scopes appear".
+3. **Decision B schema types** — architecture.md Decision B specifies `INTEGER PK AUTOINCREMENT` + `INTEGER FK users.id`. Init 0 schema uses UUID PKs + table `"user"` (singular) — see [apps/api/app/core/db/models/_user.py:17-19](../apps/api/app/core/db/models/_user.py#L17-L19). INTEGER FK to UUID PK is unimplementable; `users` (plural) does not exist. Patch Decision B column table: `INTEGER PK` → `UUID PK`, `INTEGER FK users.id` → `UUID FK user.id ondelete=SET NULL`, relax `generated_by_user_id` to nullable per Decision A "DB row outlives Redis TTL".
+4. **`Role` → `UserRole` enum naming** — architecture.md / prd.md use `Role.member` shorthand; actual class at [apps/api/app/core/db/models/_enums.py:10](../apps/api/app/core/db/models/_enums.py#L10) is `UserRole(StrEnum)`. Non-blocking (StrEnum stores as string); patch is cosmetic global s/Role\./UserRole./ inside Initiative 5 section.
+
+**Recommended action when promoted:** Single `docs(bmad)` commit on `main` patching the four drifts together. Surface: `_bmad-output/planning-artifacts/{epics.md,architecture.md,prd.md}`. `_bmad-output/` is gitignored, so the patch is local-only and auto-deploy is skipped per `feedback_auto_deploy_dev.md` regardless. Story 6.1's own "Project Structure Notes" section can stay verbatim — it serves as the historical trail of why the docs were patched. The four drift items can be removed from the spec only AFTER the patch lands; until then the spec is the source of truth for Sesja H dev agent.
+
+**Trigger for promotion:** either (a) right before Sesja H+ that creates Story 7.1 (where Drift 1 — `alembic/versions` → `migrations/versions` — repeats verbatim and would benefit from the cleanup landing first), (b) at Epic 6 retrospective (group with other DOC-DRIFT items if any surface during E6 dev), or (c) any time Ezop wants to clean accumulated drift before Init 5 closes.
+
+---
+
+### TB-015 — "Wyczyść pomiary" button in 3D viewer doesn't clear measurements
+
+**Status:** done
+**Commit:** `e59abe5 fix(viewer3d): re-enable pointer events on measure-clear footer (TB-015)` (2026-05-21)
+**Resolution:** Hypothesis #1 confirmed and fixed. The summary-panel wrapper in [Viewer3DModal.tsx:390](../apps/web/src/modules/catalog/components/viewer3d/Viewer3DModal.tsx#L390) carries `pointer-events-none` to let the empty modal-overlay area pass mouse events to the canvas (orbit/zoom/pan). List rows individually re-enable clicks via `pointer-events-auto` on each `<li>` at [MeasureSummary.tsx:50](../apps/web/src/modules/catalog/components/viewer3d/controls/MeasureSummary.tsx#L50) — that's why per-row × delete works — but the footer `<div>` wrapping the "Wyczyść pomiary" Button had no such override, so its click was swallowed. Fix: one-line addition of `pointer-events-auto` to the footer `<div>` at [MeasureSummary.tsx:82](../apps/web/src/modules/catalog/components/viewer3d/controls/MeasureSummary.tsx#L82), mirroring the existing per-row pattern. Inline viewer (`Viewer3DInline.tsx`) does not carry `pointer-events-none` on its `<details>` host and was unaffected by the bug; the fix is idempotent for inline. Spec: `_bmad-output/implementation-artifacts/spec-tb-015-measure-clear-clickable.md`. Added 5 host-integration tests in `MeasureSummary.test.tsx`, including the key TB-015 invariant test that mounts MeasureSummary under a `pointer-events-none` ancestor and asserts both (a) `closest(".pointer-events-auto")` returns non-null AND (b) the click actually reaches `onClear`. Tests 5/5 PASS deterministic 3× consecutive. Adversarial review (3 BMAD subagents — Blind Hunter / Edge Case Hunter / Acceptance Auditor): 0 intent_gap, 0 bad_spec, 3 patch (all auto-applied: parentElement fragility → closest() query, row-delete selector specificity → `getAllByRole("listitem") + within(row)`, inline-host coverage gap → absorbed into invariant test), 1 defer (TB-015-D1 in `deferred-work.md`: touch/mobile backdrop-blur pointer-events edge cases on iOS Safari — hypothesis only, same pattern already production-shipped via per-row `<li>` without report), 4 reject (noise). **Pre-existing pollution snapshot:** 18 vitest admin failures detected during full-suite verification (TB-018 scope, not TB-015 regression) — Initiative 9 Story 14.1 will close them. **Deploy:** auto via `infra/scripts/deploy.sh` per memory `feedback_auto_deploy_dev`.
+
+**Surfaced:** 2026-05-17, operator hands-on use
+**Surfaced:** 2026-05-17, operator hands-on use
+**Re-surfaced:** 2026-05-21, post-Init-6 batch report (item #3 in Ezop's batch)
+**Flag count:** 2 (direct observation, twice)
+
+**Root cause (pinned 2026-05-21 by recon):** Hypothesis #1 confirmed. The summary-panel wrapper in `Viewer3DModal.tsx:390` (and same pattern in `Viewer3DInline.tsx`) carries `className="... pointer-events-none ..."` so the whole subtree is click-transparent by default. List rows (and individual `×` close buttons) re-enable clicks via `pointer-events-auto` on the row element (`MeasureSummary.tsx:50`), which is why per-row delete works. The "Wyczyść pomiary" footer button sits in the footer div WITHOUT a `pointer-events-auto` override, so the click is swallowed by the canvas layer behind. Per-row `×` works because that row has the override; the footer button doesn't.
+
+**Fix shape:** one-line — add `pointer-events-auto` either to the button element itself or to the footer wrapper div. Verify with a quick visual+manual test in browser (per [[feedback_frontend_visual_verification]]) that the click actually clears AND the canvas pointer/orbit behavior behind the panel still works (the override should be scoped to the footer button, not extend to the canvas-overlap area).
+
+**Problem:** In the 3D viewer's measurement summary panel, the "Wyczyść pomiary" / "Clear measurements" button (`MeasureSummary.tsx:83-86`) appears as expected once at least one measurement is completed, but clicking it has no observable effect — completed measurements remain on the list AND on the 3D scene. On paper the wiring looks correct: button `onClick={onClear}` → `onClear={() => dispatch({ type: "clear" })}` (both `Viewer3DInline.tsx:354` and `Viewer3DModal.tsx:393`) → reducer case at `measureReducer.ts:149` returns `{ ...state, active: { stage: "empty" }, completed: [] }`. Something between the click and the render is silently breaking.
+
+**Surface affected:** any user with completed measurements in the inline viewer OR the modal viewer; both hosts share the same MeasureSummary component and the same reducer-dispatch shape, so a fix in one place should cover both.
+
+**Code map (for the promoted story):**
+- [MeasureSummary.tsx:83](../apps/web/src/modules/catalog/components/viewer3d/controls/MeasureSummary.tsx#L83) — the button itself
+- [Viewer3DInline.tsx:352-356](../apps/web/src/modules/catalog/components/viewer3d/Viewer3DInline.tsx#L352-L356) — inline host wiring
+- [Viewer3DModal.tsx:391-395](../apps/web/src/modules/catalog/components/viewer3d/Viewer3DModal.tsx#L391-L395) — modal host wiring
+- [measureReducer.ts:149-150](../apps/web/src/modules/catalog/components/viewer3d/measure/measureReducer.ts#L149) — the `clear` case
+- [measureReducer.test.ts:63,173](../apps/web/src/modules/catalog/components/viewer3d/measure/measureReducer.test.ts#L63) — existing unit tests for `clear` (they pass — so the reducer itself is correct in isolation)
+
+**Hypotheses to chase (in promotion-time investigation order):**
+1. **Pointer-events / z-index swallowing the click.** The summary panel sits over drei `<Html>` or similar canvas-overlay; if a sibling layer captures the click first, `onClick` never fires. Quick check: add a `console.log` in the inline arrow inside `onClick` and click — does it fire?
+2. **Effect that re-derives `completed` after dispatch.** Some `useEffect` in the host re-populates `state.completed` from a derived source (selection persistence, route param, persisted localStorage), masking the clear. Search for any `dispatch({ type: ... })` that runs in a useEffect with `completed.length` or similar dep.
+3. **Two reducer instances out of sync.** If `MeasureSummary` reads `measurements` from a different state source than the one being dispatched (e.g. parent re-creates the reducer on re-render, or there's a context+local split), `clear` updates one tree but the visible list reads another. Check that `useReducer` is called at a stable mount point and `state.completed` is the source passed to `MeasureSummary`.
+4. **Reducer test gap.** `measureReducer.test.ts` covers `clear` in isolation but not the full host-+reducer integration (button click → dispatch → re-render). Worth a one-test addition during the fix story.
+
+**Visual regression note:** the viewer3d-measure-pp + viewer3d-measure-plane baselines may or may not cover the "after clicking clear" state. Quick grep during the fix story will say whether new baselines are needed (likely yes — clear-state isn't currently in the open-state spec coverage matrix per E5.12).
+
+**Scope estimate (if promoted to quick-dev):** ~1.5-3 h depending on which hypothesis is correct. (1) is 10-min fix; (2-3) is ~1 h investigation + targeted fix + reducer-host integration test. Plus optional baseline addition (~30 min) if covered by E5.12 follow-up.
+
+**Why a candidate, not a blocker:** the measurement feature works (mode-switching, measuring, individual `X` per-row delete via `onDelete` at `MeasureSummary.tsx:68`). Only the bulk-clear shortcut is broken; users can still delete one-by-one. Annoying, not crippling.
+
+**Why surface NOW:** direct user-observed regression on a recently-stabilized surface (Epic 5 visual hardening just closed). Better to lock the observation in writing before context decays — the hypothesis list above is fresh while the codebase is in mind.
+
+**Recommended action:** Promote to quick-dev when Ezop has ~2h available. Single-commit fix once root cause is pinned. Likely candidate for bundling with E5.12 baseline expansion if a new "after-clear" snapshot becomes worthwhile.
+
+---
+
+### TB-014 — `crealitycloud` missing from `ModelSource` + `ExternalSource` enums
+
+**Status:** done
+**Commits:** `646324e feat(sot): add crealitycloud to ModelSource + ExternalSource enums (Story 18.3, TB-014)` + `5b5112c fix-up(test): update enum-values assertions for crealitycloud` + `f201bd0 fix-up(catalog,admin): sync FE source allowlists with crealitycloud enum` (2026-05-23)
+**Resolution:** Two-line StrEnum extensions in `apps/api/app/core/db/models/_enums.py`. Source columns stored as `sa.String()` (not native PG enum); no Alembic migration needed. Backend test assertions updated; FE side (`api-types.ts`, `routes/catalog/index.tsx`, `FilterRibbon.tsx`, `SourceBadge.tsx` with "Creality" label, `routes/admin/models/new.tsx`) updated in fix-up commit per Codex P2 catch. Runbook `docs/agents-add-model-runbook.md` source-detection table updated to drop the workaround caveat. All 3 Codex reviews CLEAN.
+**Surfaced:** 2026-05-13, agent-runbook full-pass review session
+**Flag count:** 1 surface so far (runbook source-detection table — `crealitycloud.com` listed as supported host but enum doesn't have a value for it)
+
+**Problem:** `docs/agents-add-model-runbook.md` § "Source Detection" lists `crealitycloud.com` as a supported source host (browser-only via `agent-browser`). But `ModelSource` (`apps/api/app/core/db/models/_enums.py:16`) and `ExternalSource` (`_enums.py:42`) do not contain a `crealitycloud` value. Closest fallback is `other`. Runbook now (commit `88a9c7f`) explicitly maps `crealitycloud.com → other / other` and documents the workaround, but a Creality Cloud import is indistinguishable from "Other" in the catalog (filters, badges, future per-source logic).
+
+**Surface affected:** any agent import from `crealitycloud.com` lands as `source: other` on both the model row and the external link. Today, zero such imports — but `docs/agents-add-model-runbook.md` advertises Creality Cloud as a first-class source.
+
+**Scope estimate (if promoted to quick-dev):** ~1 h. Add `crealitycloud = "crealitycloud"` to both `ModelSource` and `ExternalSource` StrEnums; new Alembic migration extending the two PG enum types (`ALTER TYPE modelsource ADD VALUE 'crealitycloud'` × 2, both non-transactional in PG ≤ 11 idiom — chain after `0011_index_ext_link_url`); update runbook host → enum mapping table to drop the "(workaround)" caveat; smoke-test by creating a model with the new enum value via the agent flow.
+
+**Why a candidate, not a blocker:**
+- Workaround (`other`) is functionally complete — model lands in catalog, external link attached, dedup works.
+- Zero current Creality Cloud imports in the catalog (no urgency).
+- PG enum extension requires `ALTER TYPE` outside a transaction in older PG versions — slightly fiddly migration; not worth bundling into an unrelated story.
+
+**Why surface NOW (not later):** The runbook now explicitly references this triage entry as the place where the enum-extension decision lives, so the entry is the discoverable trail when a Creality Cloud import surfaces or someone asks "why does my Creality model show as Other?".
+
+**Recommended action:** Defer until first real Creality Cloud import OR until any catalog feature gains per-source logic that would benefit from disambiguation (e.g. source-badge on detail page, source-filter on catalog list).
+
+---
+
+---
+
+## Promoted (quick-dev created)
+
+_(none yet)_
+
+---
+
+## Declined / done
+
+### TB-013 — `api-stubs.ts` gap for list-page background fetches (visual-test output pollution)
+
+**Status:** done — resolved by a broader fix than originally proposed.
+**Commit:** `d949d85 fix(web): default API stubs in visual test fixture` (2026-05-17, prior Claude session). Close-out bookkeeping: `spec-tb-013-closeout-orphan-baselines.md`.
+**Resolution:** Instead of adding three individual `page.route(...)` stubs in `apps/web/tests/visual/api-stubs.ts` as originally proposed, the prior Claude session introduced a Playwright fixture (`apps/web/tests/visual/_test.ts`) registering two default routes for every visual test:
+
+- `**/api/**` → 404 catch-all (`{"detail": "stub_not_configured"}`) — naturally subsumes `/api/categories`, `/api/tags?limit=50`, and any other unstubbed `/api/*` endpoint without per-route maintenance.
+- `**/api/auth/me` → 401 anonymous — keeps `AuthGate` happy for specs that don't need an admin.
+
+23 spec files were re-pointed to import `test` / `expect` from `./_test` instead of `@playwright/test`. Playwright matches handlers in reverse registration order, so per-test stubs (e.g. admin `auth/me` overrides) still win. Empirically: pre-fix visual run was 30 passed / 134 failed / 24 skipped in ~6 min (timeouts from vite-proxy hangs); post-fix is 164 passed / 0 failed / 24 skipped in ~35 s. The ECONNREFUSED spam that motivated TB-013 is gone end-to-end.
+
+**Why the broader fix was correct:** TB-013's three-route enumeration would have left every future "I forgot to stub /api/<new-endpoint>" leaking to the dead vite proxy. The catch-all + explicit-auth pattern is permanently watertight against that class of regression.
+
+**Bookkeeping commit (this close-out):** deleted 12 orphan PNG baselines on `files-tab-admin` (× 8) + `catalog-detail-admin` (× 4) describe.skip specs that the audit at `baseline-integrity-audit-2026-05-13.md` flagged but Story 5.11's regen (commit `017cd87`) didn't bundle. No source-tree changes; spec at `_bmad-output/implementation-artifacts/spec-tb-013-closeout-orphan-baselines.md`.
+
+### TB-007 — `verify-symbolication.sh` `/tmp/gt-*.json` hardcoded paths (race condition under concurrent runs)
+
+**Status:** done
+**Commit:** `c09dec5 fix(infra): per-run tmpdir in verify-symbolication.sh (TB-007)` (2026-05-12)
+**Resolution:** Created `tmp_dir="$(mktemp -d -t verify-gt-XXXXXX)"` alongside the existing `chrome_user_dir` + single combined EXIT trap. Migrated all 5 hardcoded paths (`issues.json`, `event.json`, `smoke-meta.json`, `envelope.json`, `envelope-response.json`) to `$tmp_dir/<name>`. Created BEFORE the smoke trigger preflight so any `fail_verify → emit_alarm` writes have `$tmp_dir` resolved. Adversarial review (`feature-dev:code-reviewer`) returned 0×P0 + 2×P1 (one recanted) + 2×P2 + 2×P3. Applied: P1#1 renamed `gt_get`'s second param to `out_file` + invariant guard `[[ "$out_file" == "$tmp_dir/"* ]] || exit 1` (regression-proofs the TB-007 invariant against future callers); P1#3 `fail_verify`'s `msg="${4:-}"` default (under-argumented future caller no longer hits `unbound variable` under `set -u`); P3#1 clarified `cleanup_smoke_issue` title-guard comment — TB-007 eliminates the shared-file race, the title-guard now serves as defence-in-depth against the GlitchTip query returning a wrong `.[0]`. Codex review on c09dec5: clean (no actionable findings). **Verified live:** four consecutive verify runs (pre/post review + post-deploy) all clean (smoke 90/91/92/+manual 91-DELETE retained-cleanup); zero leftover tmpdirs after each exit path (EXIT trap fires for both dirs). **Spec:** `_bmad-output/implementation-artifacts/spec-tb-007-verify-symbolication-tmpdir.md`.
+
+### TB-008 — `ModelExternalLink.url` lacks index → full-table-scan on `external_url` filter
+
+**Status:** done
+**Commits:** `7e1b026 feat(api): index model_external_link.url for dedup filter (TB-008)` + `e46d47b fix(api): shorten Alembic 0011 revision id to ≤32 chars (TB-008 Codex fix-up)` (both 2026-05-12)
+**Resolution:** Added non-unique `Index("ix_model_external_link_url", "url")` to `ModelExternalLink.__table_args__` + Alembic migration `0011_index_ext_link_url.py` chained on `0010_drop_model_legacy_id`. Adversarial review (`feature-dev:code-reviewer`) 0×P0 + 2×P1 (chain integrity verified) + 2×P2 (drop_index kwargs / non-unique-by-design — both documented) + 2×P3 (rows-count phrasing tightened to "low-thousands of rows"). Codex review on `7e1b026` surfaced 1×P2 (revision id 34 chars > Alembic default VARCHAR(32) on Postgres-ready DBs) — fix-up `e46d47b` renamed file + revision string to `0011_index_ext_link_url` (23 chars) and updated prod `alembic_version` in place via SQL UPDATE. **Verified live:** prod SQLite carries `ix_model_external_link_url` index (confirmed via SQLAlchemy + sqlite_master query); `alembic_version` stamped at `0011_index_ext_link_url` post-fix-up. Deploy verify-symbolication had one transient timeout (GlitchTip ingest lag — TB-001's retention-of-FAILED contract preserved the marker, retry recovered to OK at e46d47b). **Spec:** `_bmad-output/implementation-artifacts/spec-tb-008-model-external-link-url-index.md`.
+
+### TB-006 — Frontend hint surface for agent onboarding (admin dialog)
+
+**Status:** done
+**Commits:** `aa2a1f2 feat(web): admin agents-onboarding dialog in UserMenu (TB-006)` + `2163984 test(web): stub catalog APIs in TB-006 visual spec (Codex fix-up)` (both 2026-05-11)
+**Resolution:** Admin-only `DropdownMenuItem` "For agents / Dla agentów" in `UserMenu` opens a Dialog with three labeled copy-blocks (curl runbook, curl OpenAPI, credentials file path) + two outbound links (full runbook, OpenAPI Swagger). Modal over `/admin/agents` route per minimum-scope (no other admin routes exist). Ezop's design decisions: (1a) admin user-menu entry, (2β) copy buttons via `navigator.clipboard.writeText` with sonner toast, (3β) fingerprint live-check deferred (duplicates `infra/.last-verify-runbook` post-deploy guard), (4β) full PL i18n on surrounding prose with EN command-text. Adversarial review (`feature-dev:code-reviewer`) surfaced 3×P1 + 1×P2 + 1×P3 — all applied: per-block aria-labels (was 3× identical "Copy"), screenshots scoped to dropdown/dialog locators (was fullPage with non-deterministic background), fetch-level mock instead of `vi.mock("@/lib/api")` (project-context.md ban), hardcoded-URLs WHY comment, redundant per-file `afterEach(cleanup)` dropped. Codex review on aa2a1f2 surfaced 1×P2 fixed in 2163984: spec navigates to `/` → catalog route, fired live API calls; added `stubSotList` via new `stubVisualEnvironment` helper. **Verified:** 81 files / 318 tests pass; lint + typecheck clean; Playwright agents-info-dialog 8/8 (4 projects × 2 specs) baselines deterministic across consecutive runs; deploy chain + symbolication clean on `aa2a1f2` and `2163984`. **Out-of-band host change (Ezop-authorized):** Node 18.19.1 → Node 22.22.2 via NodeSource repo + `apps/web/node_modules/` clean reinstall under new ABI. Resolves the root cause of TB-002 in addition to unblocking Playwright `npm run dev` server. TB-002 vi.mock stubs in `vite-config.test.ts` remain as defense-in-depth (fresh-Docker / contributor-box scenarios). **Spec:** `_bmad-output/implementation-artifacts/spec-tb-006-agents-onboarding-dialog.md`.
+
+### TB-004 — `GET /api/models` lacks `external_url=<url>` filter for dedup
+
+**Status:** done
+**Commits:** `afaa847 feat(sot): external_url filter on GET /api/models (TB-004)` + `3dc5987 docs(sot): runbook dedup example uses include_deleted=true (TB-004 Codex fix-up)` (both 2026-05-11)
+**Resolution:** Added `external_url=<url>` query parameter to `GET /api/models`; filter via subquery on `ModelExternalLink.url` mirroring the existing `tag_ids` AND-pattern (outer SELECT shape unchanged). 4 new pytest cases (exact match / no-match-with-control-row / soft-delete inclusion + include_deleted=true surfacing / AND-combines with status). Runbook pre-flight #4 + Principles "Idempotence" rewritten to use the new primitive with a copy-paste curl example. Intro paragraph (Story 4.1 fingerprint baseline `49280ada…`) preserved across both commits. Adversarial review (`feature-dev:code-reviewer`) returned 0×P0 + 2×P1 + 2×P2 + 1×P3 — applied: P1#1 (tests use `params=` dict instead of f-string interpolation; URL-encoding correctness), P1#2 (`source=ExternalSource.other` enum member instead of raw string), P2#4 (no-match test gains control row to catch silent-ignore). Deferred: P2#3 → **TB-008** (no index on `ModelExternalLink.url`, full-table scan, OK at homelab scale). Codex review on afaa847 surfaced 1×P2 fixed in 3dc5987: runbook dedup example must pass `include_deleted=true` so soft-deleted matches surface (otherwise agent risks duplicate-import or unique-slug conflict). **Verified live on `.190`:** `external_url` parameter visible in `/api/openapi.json`, dedup query against non-existent URL returns `total: 0`. **Spec:** `_bmad-output/implementation-artifacts/spec-tb-004-models-external-url-filter.md`.
+
+### TB-005 — `verify-symbolication.sh` false-negative on partial-image deploys
+
+**Status:** done
+**Commit:** `305512d fix(infra): staleness gate for verify-symbolication (TB-005)` (2026-05-11)
+**Resolution:** Implemented option (a) — `docker inspect --format '{{.Created}}' portal-web:$PORTAL_VERSION` compared to `DEPLOY_START_TS`. Gate is opt-in (`deploy.sh` exports both env vars before `docker compose build`; standalone invocations always run full verify). Cache-hit → exit 5 (SKIPPED) + `.last-verify` marker `SKIPPED\tweb-image-cached`. Adversarial review (`feature-dev:code-reviewer`) returned 3×P1 + 2×P2 + 3×OK; all P1/P2 applied: (P1-A) refuse to overwrite a prior FAILED marker — falls through to full verify so the failure signal isn't erased by cache-hit follow-ups; (P1-B) snapshot inbound env BEFORE `set -a; source infra/.env` to honor cmdline `PORTAL_VERSION` overrides; (P1-C) `docs/operations.md` three-signal model extended to OK/FAILED/SKIPPED + FAILED-preservation documented; (P2-A) `unset DEPLOY_START_TS PORTAL_VERSION` at end of deploy.sh; (P2-B) docker inspect arg order normalized. Codex cross-LLM review on 305512d: clean (no actionable findings). **Empirical finding:** under the current deploy.sh + Dockerfile chain, `VITE_BUILD_TIME` always invalidates the web image build cache → gate never fires under regular deploys; it activates as defense-in-depth if reproducible-build changes or manual stack-edits emerge. Two consecutive integration-test deploys of commit 305512d both rebuilt the web image (cache miss → full verify ran successfully). Code is correct and graceful — non-firing today, ready for the day cache-hits become real. **Spec:** `_bmad-output/implementation-artifacts/spec-tb-005-verify-staleness-gate.md`.
+
+### TB-001 — `verify-symbolication.sh` auto-cleanup of smoke issues post-verify
+
+**Status:** done
+**Commits:** `0e37fa0 fix(infra): auto-delete smoke issues post-verify (TB-001)` + `9883b35 fix(infra): smoke-cleanup contract + defensive jq guard (TB-001 Codex fix-up)` (both 2026-05-11)
+**Resolution:** Added `cleanup_smoke_issue()` helper to `infra/scripts/verify-symbolication.sh` that issues `DELETE /api/0/issues/<id>/` on the success exit path only (`fail_verify` paths retain the issue as evidence). Added `--keep-smoke` flag for operator debugging. Title-guard via one extra GET (`title == "Error: smoke <smoke_run_id>"`) before the destructive DELETE eliminates wrong-issue blast risk. DELETE failures are stderr warnings, never propagate — non-fatal per FR15. **Live e2e verified:** smoke id=70 deleted (GET → 404 post-DELETE); `--keep-smoke` → smoke id=71 retained; deploy-pipeline integration test smoke id=72 + 74 cleanly deleted via `deploy.sh` → `verify-symbolication.sh` chain. Two adversarial review passes: (1) `feature-dev:code-reviewer` surfaced 2× P1 + 1× P2 + 2× P3; title-guard (P1#2), exit-4 doc note (P2#4), event:write scope note (P3#6) applied in 0e37fa0; (2) Codex on 0e37fa0 surfaced 1× P2 + 1× P3 (cleanup contract vs 30s deadline scope, defensive `jq` parse under `set -e`) — both applied in 9883b35 fix-up. P1 #3 (`/tmp/gt-*.json` race) promoted to **TB-007** (pre-existing pattern; title-guard subsumes the destructive consequence). **Spec:** `_bmad-output/implementation-artifacts/spec-tb-001-verify-symbolication-smoke-cleanup.md`. **Pre-existing pollution snapshot:** 16 smoke issues remaining at TB-001 land — operator's call whether to sweep historical (TB-001 only prevents future accumulation; today's deploy cycle already reduced by 4 via auto-cleanup).
+
+### TB-002 — `src/vite-config.test.ts` file-level loading error (unplugin path arg)
+
+**Status:** done
+**Commit:** `1ca2793 fix(web): stub unplugin transitives in vite-config.test.ts (TB-002)` (2026-05-11)
+**Resolution:** Root cause was host Node 18.19.1 — `unplugin/dist/index.mjs:873` evaluates `path.resolve(import.meta.dirname, "rspack/loaders/transform.mjs")` at module-load, and `import.meta.dirname` is only defined in Node ≥ 20.11. `apps/web/package.json#engines.node` pins `>=20.11` but that's a soft npm constraint (warn-only). Under Node 18 → undefined → resolve throws → any vite plugin that transitively imports unplugin propagates the failure. Fix: `vi.mock` stubs for `@tanstack/router-vite-plugin` (→ `@tanstack/router-plugin` → `unplugin`) and `@sentry/vite-plugin` (→ `@sentry/bundler-plugin-core` → `unplugin`) BEFORE `import config from "../vite.config"`. Sentry stub returns `[{ name: ... }]` to mirror real `Plugin[]` return shape. Production `vite.config.ts` unchanged. Adversarial review (`feature-dev:code-reviewer` subagent) returned 3 PATCH findings (return-type alignment, breadcrumb comment, wording precision) — all applied before commit. Codex cross-LLM review: clean ("no introduced correctness issues that warrant an actionable finding"). **Verified:** `npm run test` 80 files / 315 tests pass; `npm run lint` clean; `npx tsc --noEmit` clean. Auto-deploy skipped (test-only). **Follow-up surfaced (operator's call):** consider `nvm use 22` on the dev box or hard-pin Node version via `.nvmrc` — the stub is defensive-in-depth but the host Node version is the real root cause.
+
+### TB-003 — `infra/nginx-180/3d-portal.conf` stale vs prod (RESOLVED 2026-05-11)
+
+**Status:** done — Option A (archive) executed in commit `6e680be` 2026-05-11.
+**Resolution:** Moved to `infra/nginx-180/.archived/3d-portal.conf.pre-IP-allowlist`; added `infra/nginx-180/README.md` pointing at `~/repos/configs/nginx/3d.ezop.ddns.net.conf` as the deployed source-of-truth + enumerating the auth-model / SSL / HSTS / IP-allowlist differences. Future operator/agent grepping for nginx config in this repo finds the disambiguation before touching the archived snapshot.
+
+### QD-1 — `infra/.env` line 17 unquoted multi-token value
+
+**Status:** done
+**Commit:** `c295a5f fix(infra): drop infra/.env source workarounds (QD-1)` (2026-05-10)
+**Resolution:** Single-quoted `OTEL_EXPORTER_OTLP_HEADERS='authorization=Bearer <token>'` in dev box's `infra/.env` and synced to `.190` via scp. Removed the defensive `set +e ... source ... 2>/dev/null ... set -e` guard from `infra/scripts/glitchtip-triage.sh` (Story 2.5) and `infra/scripts/verify-symbolication.sh` (Story 3.1). Both scripts now use the clean `set -a; source infra/.env; set +a` pattern under `set -euo pipefail`. Verified: `glitchtip-triage.sh <real-issue-id>` renders the markdown stub cleanly + exits 0; bash `source` no longer chokes.
+
+### QD-3 — `apps/web/src/ui/custom/CardCarousel.test.tsx` × 3 jsdom flake
+
+**Status:** done
+**Commit:** `2f3f2aa fix(web): graceful HTMLImageElement.decode fallback + test scope (QD-3)` (2026-05-10)
+**Resolution:** Two distinct bugs, both fixed:
+1. **Component**: `img.decode()` called unconditionally → jsdom doesn't implement it → throws TypeError synchronously, breaking the whole useEffect. Fix: optional chaining `img.decode?.() ?? Promise.resolve()` — graceful fallback covers jsdom AND older browsers / image MIME types where decode() is unavailable.
+2. **Tests**: `getAllByRole("button")` matched 5 buttons (3 dots + prev/next nav arrows added later); `dots[2]` was a nav arrow not the third dot. Plus assertions checked src synchronously but the component's `setDisplayed(active)` only fires after async `Promise.all([decoded, held]).then(...)`. Fix: filter dots by aria-label pattern `^go to image /, wrap async assertions in `await waitFor(...)`.
+**Verified:** 5/5 CardCarousel tests pass. Full suite: 297 tests passed, 0 red. Flag count when promoted: 9 (5 in Epic 1 stories 1.2-1.6 + 4 in Epic 2 stories 2.2-2.5).
+
+### QD-2 — `apps/web/package.json` engines.node + docs/operations.md nvm note
+
+**Status:** done (already shipped before Epic 2 retro formalized the QD list)
+**Commit:** `9c881ba build(web): pin Node 20.11+ for vite/unplugin compatibility`
+**Resolution:** `apps/web/package.json` carries `"engines": { "node": ">=20.11" }`; `docs/operations.md` line 140 documents the nvm-on-host requirement (`v22+ for the docker stage, v24+ on host`). Verified during Epic 1 retro session 2026-05-10. No further action required.
+
+---
+
+## Future Initiative Candidates (non-TB; promote to TB ID when trigger fires)
+
+### Phase B — Anonymous share-view CONTENT parity (Init 18 follow-up candidate)
+
+**Status:** future-initiative candidate. Filed 2026-05-25 as part of Init 18 SCP §3.3 + §4.5.
+
+**Scope:** description placement parity with `/catalog/$id`, multi-STL listing parity, fullscreen 3D viewer for anonymous recipients.
+
+**Why not in Init 18:** would require full **reversal** (not carve-out) of [[feedback_share_view_scope_boundary]] terminus policy + its own brainstorm pass for security/NFR10 implications (anonymous viewer load, throughput cap reach, share-link propagation risk via richer surface).
+
+**Trigger to promote:** operator observes B1/B2 recipients hitting content-parity gaps in the wild (HAR-evidence or direct user feedback). Until then, no story addresses Phase B.
+
+**Predecessor:** Init 18 (membership-path completion Phase A — `sprint-change-proposal-2026-05-25-init18.md`).
+
+**Promotion path when triggered:** new brainstorm session → new UX rec from Sally → new `bmad-correct-course` SCP with explicit policy-reversal language in memory + dedicated security threat-vector enumeration per [[feedback_security_vector_enumeration]] (anonymous attack surface expansion).

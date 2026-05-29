@@ -149,7 +149,7 @@ Direct-to-main is allowed in three narrow cases — everything else goes through
 
 | Case | Commit prefix | Rule |
 |---|---|---|
-| Doc-only | `docs:` | Only `*.md`, `AGENTS.md`, `CLAUDE.md`, `_bmad-output/` docs. No code, no config, no infra. |
+| Doc-only | `docs:` | Only `*.md`, `AGENTS.md`, `CLAUDE.md`, and tracked `_bmad-output/` docs (markdown plus `implementation-artifacts/sprint-status.yaml`). Untracked `_bmad-output/` paths (logs, audit-raw, code-reviews, story-automator scratch) cannot land via `docs:` because they cannot land at all — see § BMAD artifact tracking. No code, no config, no infra. |
 | Config-only without runtime effect | `chore:` | E.g. `_bmad/_config/`, `.gitignore`, formatter config. If it changes how the app runs, it's not a chore — it's a fix or feat and goes on a branch. |
 | Hotfix | `fix:` + `# hotfix-rationale: <reason>` in body | Production-level urgency only. Run Codex review inline (`codex review --commit <SHA>`) immediately after pushing. |
 
@@ -188,6 +188,34 @@ Typical routing for Claude Code:
 - Small change or bugfix → `bmad-quick-dev`.
 - Tests on existing code → BMAD `tea` module (`bmad-testarch-test-design`, `bmad-testarch-framework`, etc.).
 - **Mid-session scope pivot → re-invoke `bmad-help`.** If the work shifts (was planning, now implementing; was bug-fix, now feature; surprised by an unfamiliar artifact state), the session-start call no longer covers the new task — re-run `bmad-help` to confirm the new canonical entry.
+
+### BMAD artifact tracking
+
+`_bmad-output/` is the working directory for every BMAD skill in this repo. A curated subset of it is tracked in git so that cross-agent context survives between sessions and tools that have no BMAD harness (Codex, Gemini, reviewers landing on a fresh clone) can still read the planning + execution surface AGENTS.md points them at (`_bmad-output/project-context.md`, `_bmad-output/triage-backlog.md`, story specs, retros, sprint-status). The rest stays local — raw transcripts and tool scratch reference internal hosts/paths, balloon repo size, and have no readers outside the session that produced them.
+
+`.gitignore` is the source of truth for the split. The default rule is `_bmad-output/**` ignored; the explicit `!` unignore lines below it enumerate the tracked surface. The current curated set:
+
+| Path | Tracked? | Notes |
+|---|---|---|
+| `_bmad-output/project-context.md` | yes | Execution rules for non-BMAD agents; regenerated via `bmad-generate-project-context`. |
+| `_bmad-output/triage-backlog.md` | yes | Cross-initiative triage queue consumed by `bmad-correct-course`. |
+| `_bmad-output/planning-artifacts/**/*.md`, `**/*.yaml` | yes | PRD, architecture, epics, product briefs, sprint-change proposals, readiness reports, `_runtime/`, `archive/`. |
+| `_bmad-output/implementation-artifacts/*.md` | yes | Story specs, retros, security audits, spec-tb-*, cutover smoke reports. Top-level only; `codex-review-*.md` is explicitly excluded as transcript noise. |
+| `_bmad-output/implementation-artifacts/sprint-status.yaml` | yes | Sprint state consumed by `bmad-sprint-status` and the story-automator orchestrator. |
+| `_bmad-output/ux/**/*.md` | yes | UX flow specs produced by `bmad-create-ux-design`. |
+| `_bmad-output/brainstorming/*.md` | yes | Brainstorming session transcripts. |
+| `_bmad-output/implementation-artifacts/codex-review-*.md`, `*.log` | local | Codex review transcripts/logs — large, raw, reference internal SHAs and paths. |
+| `_bmad-output/implementation-artifacts/audit-raw/` | local | Raw audit dumps. |
+| `_bmad-output/implementation-artifacts/code-reviews/` | local | Pre-cutover code-review transcripts (large markdown logs, not story specs). |
+| `_bmad-output/story-automator/` | local | Orchestrator scratch: monitor logs, complexity probes, agent state files. |
+| `_bmad-output/test-artifacts/` | local | TEA scratch. |
+
+**Workflow rules:**
+
+- Use `git status` after BMAD skills finish — newly produced artifacts that match a tracked pattern will show up unstaged. Commit them with `docs:` (see § Trivial commits direct to main) when they are skill output without code changes; bundle them with the story-branch commit when they belong to a story.
+- Before staging anything from `_bmad-output/`, sanity-check for embedded secrets or sensitive identities. The curated tracking pattern is permissive (e.g. `implementation-artifacts/*.md` matches everything at that level), so a one-off sensitive artifact dropped there will be picked up. If a tracked-by-default artifact must stay local, add an explicit ignore line above the unignore block and note why.
+- To add a new tracked artifact type, extend `.gitignore` with an explicit `!_bmad-output/<path>` line and update the table above in the same commit. Do not flip the default rule (`_bmad-output/**`) — keeping default-deny is what makes the curated subset auditable.
+- Never widen the tracked set by deleting an ignore line silently. The split is operator-approved; changes to it land as `chore: ` commits with a one-line rationale in the body.
 
 ### BMAD vanilla-first
 
