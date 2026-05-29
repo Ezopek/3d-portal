@@ -1,6 +1,6 @@
 # Story 31.1: Backend Spoolman client + Redis cache + arq poll job + env config
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -151,18 +151,24 @@ Plus **ONE env-gated live integration test**:
 
 ### AC-11 — Pre-merge precondition: configs-side Spoolman bind-address verification (OD8 close-out, NOT a 3d-portal commit)
 
-Before this story merges to `main`, the configs-side operator verifies that `~/repos/configs/docker-compose-recipes/spoolman.yml` binds Spoolman on a **non-routable** host interface — i.e. it does NOT expose `0.0.0.0:7912` through the `.180` edge or the home router. Verification recipe (executed on `.190` by the operator; documented in the Story 31.5 ops-doc addendum, NOT in this story):
+Before this story merges to `main`, the configs-side operator verifies that `~/repos/configs/docker-compose-recipes/spoolman.yml` binds Spoolman to the **LAN interface only** (`192.168.2.190:7912:8000`) rather than the Docker default all-interfaces exposure. Operator decision (recorded 2026-05-29): Spoolman MUST remain reachable from the LAN because the printer pushes filament-usage updates live and the operator + phone consume Spoolman directly on the LAN — a strict `127.0.0.1`-only bind is therefore NOT the target posture. The acceptable posture is an explicit LAN-interface-only bind (`HostIp: "192.168.2.190"`); the rejected posture is the Docker default all-interfaces exposure (`HostIp: "0.0.0.0"` and/or `HostIp: "::"`), which leaves Spoolman reachable on every host interface including any non-LAN paths the host may grow.
+
+Verification recipe (executed on `.190` by the operator; documented in the Story 31.5 ops-doc addendum, NOT in this story):
 
 ```bash
-# On .190 host:
+# On .190 host, AFTER the configs-side compose edit + redeploy:
 docker inspect spoolman --format '{{json .NetworkSettings.Ports}}' | jq
-# Expect: "7912/tcp": [ { "HostIp": "127.0.0.1", "HostPort": "7912" } ]  OR  null
-# REJECT:  HostIp: "0.0.0.0" exposed via routable interface.
+# Expect: "8000/tcp": [ { "HostIp": "192.168.2.190", "HostPort": "7912" } ]
+# REJECT:  HostIp: "0.0.0.0" or HostIp: "::" (Docker default all-interface exposure).
 ```
 
-This precondition is **not enforced by a 3d-portal pytest gate** (it lives in the configs repo's compose file), but the Story 31.1 dev-story commit message **must** include the line `OD8 close-out: Spoolman bind verified non-routable on .190 (configs-side)` once the verification has been confirmed by the operator. The OD8 audit trail lives in the SCP frontmatter + this story's commit message.
+This precondition is **not enforced by a 3d-portal pytest gate** (it lives in the configs repo's compose file), but the Story 31.1 dev-story commit message **must** include the line `OD8 close-out: Spoolman bind verified LAN-only on .190 (configs-side)` once the verification has been confirmed by the operator. The OD8 audit trail lives in the SCP frontmatter + this story's commit message.
 
-If the verification fails (Spoolman is currently exposed externally), STOP — escalate to operator before merging Story 31.1. Possible resolutions: (a) configs-side PR tightening the bind; (b) accept the exposure as deliberate (operator decision) and document the rationale in `docs/operations.md`.
+The configs-side change (compose port-mapping edit + redeploy of the Spoolman container) is a **separate** workstream owned operator-/configs-side; it is NOT a 3d-portal commit. Until that compose edit lands, is redeployed on `.190`, and `docker inspect` shows `HostIp: "192.168.2.190"` (not `0.0.0.0` / `::`), this precondition stays open and Story 31.1 stays in `review`.
+
+If the verification fails (Spoolman remains on the Docker default all-interfaces bind after the redeploy), STOP — escalate to operator before merging Story 31.1. Possible resolutions: (a) configs-side fix-up tightening the bind to `192.168.2.190:7912:8000`; (b) accept the all-interfaces exposure as a deliberate operator decision and document the rationale in `docs/operations.md`. Option (a) is the operator's stated preference per the 2026-05-29 decision.
+
+**Verification status (2026-05-29):** Configs-repo + runtime-compose recipe edited to bind Spoolman to `192.168.2.190:7912:8000`; runtime container redeployed on `.190`. Operator-side `docker inspect spoolman --format '{{json .NetworkSettings.Ports}}'` now returns `{"8000/tcp":[{"HostIp":"192.168.2.190","HostPort":"7912"}]}` (explicit LAN-interface-only bind — AC-11 acceptable posture). API smoke from `.190` to `http://192.168.2.190:7912/api/v1/spool` returned HTTP 200 with 9 spools; `http://127.0.0.1:7912/` correctly refused (confirms no loopback exposure). Remote `kattegat` live smoke `SPOOLMAN_LIVE_TEST=1 SPOOLMAN_URL=http://192.168.2.190:7912 apps/api/.venv/bin/pytest tests/test_spools.py::test_spoolman_live_smoke_contract -q` → **1 passed**. AC-11 OD8 close-out precondition is **satisfied** (LAN-only, not all-interfaces). The merging commit (T11.3) still owes the verbatim `OD8 close-out: Spoolman bind verified LAN-only on .190 (configs-side)` trailer per T8.2; status stays `review` until that commit lands.
 
 The configs-side compose change attaching Spoolman to `portal-network` for Decision AE P4b is a separate precondition: if it has not yet shipped when Story 31.1 enters dev, the story falls back to Decision AE P4a (operator sets `SPOOLMAN_URL=http://localhost:7912` in `.env`; portal-api on docker host network). Both branches use the same env slot — no code change needed to switch.
 
@@ -180,14 +186,14 @@ After this story lands, three consecutive `pytest apps/api/tests/ -v` runs retur
 
 ## Tasks / Subtasks
 
-- [ ] **T1** (AC-1) — Create the `apps/api/app/modules/spools/` package skeleton
-  - [ ] T1.1 `mkdir apps/api/app/modules/spools/`; add empty `__init__.py`.
-  - [ ] T1.2 Stub `client.py`, `service.py`, `models.py` with module docstrings citing Decision AD + AE + AF and the Story 31.1 spec path.
+- [x] **T1** (AC-1) — Create the `apps/api/app/modules/spools/` package skeleton
+  - [x] T1.1 `mkdir apps/api/app/modules/spools/`; add empty `__init__.py`.
+  - [x] T1.2 Stub `client.py`, `service.py`, `models.py` with module docstrings citing Decision AD + AE + AF and the Story 31.1 spec path.
 
-- [ ] **T2** (AC-2) — Add `spoolman_url` + `spoolman_auth_token` to `Settings`
-  - [ ] T2.1 In `apps/api/app/core/config.py`, append two fields under a new `# Initiative 19 Story 31.1 (Decision AE) — Spoolman integration` comment block, after the `password_reset_ttl_seconds` field at line ~93. Defaults per AC-2 table.
-  - [ ] T2.2 In `apps/api/tests/test_config.py` (existing file), append two cases: `test_spoolman_url_defaults_to_internal_docker_hostname` (asserts default `"http://spoolman:8000"`) + `test_spoolman_auth_token_defaults_to_empty_string` (asserts default `""`).
-  - [ ] T2.3 In `infra/env.example`, append a block:
+- [x] **T2** (AC-2) — Add `spoolman_url` + `spoolman_auth_token` to `Settings`
+  - [x] T2.1 In `apps/api/app/core/config.py`, append two fields under a new `# Initiative 19 Story 31.1 (Decision AE) — Spoolman integration` comment block, after the `password_reset_ttl_seconds` field at line ~93. Defaults per AC-2 table.
+  - [x] T2.2 In `apps/api/tests/test_config.py` (existing file), append two cases: `test_spoolman_url_defaults_to_internal_docker_hostname` (asserts default `"http://spoolman:8000"`) + `test_spoolman_auth_token_defaults_to_empty_string` (asserts default `""`).
+  - [x] T2.3 In `infra/env.example`, append a block:
     ```
     # Initiative 19 Story 31.1 (Decision AE) — Spoolman read-only inventory mirror.
     # Primary topology P4b: portal-api joins the same docker network as Spoolman
@@ -200,24 +206,24 @@ After this story lands, three consecutive `pytest apps/api/tests/ -v` runs retur
     # SPOOLMAN_AUTH_TOKEN=
     ```
 
-- [ ] **T3** (AC-5) — Define internal Pydantic models in `models.py`
-  - [ ] T3.1 Implement `SpoolmanFilament`, `SpoolmanSpool`, `SpoolmanVendor`, `SpoolmanSnapshot` per the AC-5 field list. All four classes set `model_config = ConfigDict(extra="ignore")`.
-  - [ ] T3.2 Add module docstring: `"""Initiative 19 Story 31.1 (Decision AF) — internal Pydantic mirror of Spoolman's response shape. Carries ALL cost-relevant fields end-to-end so Story 31.2's public DTOs + future Phase D cost-calc UX land without a portal-side schema backfill."""`
-  - [ ] T3.3 Verify `model_dump_json()` + `model_validate_json()` roundtrip is lossless via a quick unit test in T6 (TEST-5 covers this implicitly via the cache write/read path).
+- [x] **T3** (AC-5) — Define internal Pydantic models in `models.py`
+  - [x] T3.1 Implement `SpoolmanFilament`, `SpoolmanSpool`, `SpoolmanVendor`, `SpoolmanSnapshot` per the AC-5 field list. All four classes set `model_config = ConfigDict(extra="ignore")`.
+  - [x] T3.2 Add module docstring: `"""Initiative 19 Story 31.1 (Decision AF) — internal Pydantic mirror of Spoolman's response shape. Carries ALL cost-relevant fields end-to-end so Story 31.2's public DTOs + future Phase D cost-calc UX land without a portal-side schema backfill."""`
+  - [x] T3.3 Verify `model_dump_json()` + `model_validate_json()` roundtrip is lossless via a quick unit test in T6 (TEST-5 covers this implicitly via the cache write/read path).
 
-- [ ] **T4** (AC-3, AC-6, AC-7) — Implement `SpoolmanClient` with timeout + auth + observability
-  - [ ] T4.1 `class SpoolmanClient` constructor: `SpoolmanClient(*, base_url: str, auth_token: str)`. Construct `httpx.AsyncClient(timeout=httpx.Timeout(5.0))` — single shared async client lifecycle managed by the caller (`async with SpoolmanClient(...) as client:` semantics via `__aenter__` / `__aexit__` delegating to the underlying httpx client). Inline contract comment on the `5.0` per AC-7.
-  - [ ] T4.2 Three async methods (`list_spools`, `list_filaments`, `list_vendors`) sharing a private `_get(endpoint: str, response_model: type) -> list[T]` helper. The helper:
+- [x] **T4** (AC-3, AC-6, AC-7) — Implement `SpoolmanClient` with timeout + auth + observability
+  - [x] T4.1 `class SpoolmanClient` constructor: `SpoolmanClient(*, base_url: str, auth_token: str)`. Construct `httpx.AsyncClient(timeout=httpx.Timeout(5.0))` — single shared async client lifecycle managed by the caller (`async with SpoolmanClient(...) as client:` semantics via `__aenter__` / `__aexit__` delegating to the underlying httpx client). Inline contract comment on the `5.0` per AC-7.
+  - [x] T4.2 Three async methods (`list_spools`, `list_filaments`, `list_vendors`) sharing a private `_get(endpoint: str, response_model: type) -> list[T]` helper. The helper:
     - Builds headers `{"Authorization": f"Bearer {self._auth_token}"}` ONLY when `self._auth_token != ""` (AC-3).
     - Wraps the call in `tracer.start_as_current_span(f"spoolman.client.{method}_{endpoint}")` (AC-6).
     - Records `start = time.monotonic()`; calls `await self._client.get(f"{self._base_url}{endpoint}", headers=headers)`; computes `duration_ms = int((time.monotonic() - start) * 1000)`.
     - On success: parses `response.json()` as `list[response_model]` via `TypeAdapter(list[response_model]).validate_python(...)`; logs `spools.client.call` with `extra={...}` per AC-6; emits Sentry breadcrumb level `info`; updates circuit-breaker state to `consecutive_failures = 0`; returns the parsed list.
     - On `httpx.RequestError` / `httpx.HTTPStatusError` (or any exception): logs `spools.client.error` at `WARNING` with `extra["labels.error_class"]`; sets span status to ERROR; emits Sentry breadcrumb level `warning`; increments `consecutive_failures`; if `consecutive_failures >= 3` sets `circuit_open_until = time.monotonic() + 30.0` (inline contract comment per AC-7); re-raises.
     - Before any HTTP attempt, checks `if time.monotonic() < self._circuit_open_until: raise SpoolmanCircuitOpenError()`. New exception class lives in `client.py`.
-  - [ ] T4.3 Add `SpoolmanCircuitOpenError(Exception)` class — caught by `SpoolsService.refresh_summary()` and treated as a normal client failure (returns `None`, leaves cache untouched).
+  - [x] T4.3 Add `SpoolmanCircuitOpenError(Exception)` class — caught by `SpoolsService.refresh_summary()` and treated as a normal client failure (returns `None`, leaves cache untouched).
 
-- [ ] **T5** (AC-4, AC-9) — Implement `SpoolsService` cache topology
-  - [ ] T5.1 `class SpoolsService` constructor: `SpoolsService(*, redis_factory: RedisFactory, client: SpoolmanClient)`. Constants module-level:
+- [x] **T5** (AC-4, AC-9) — Implement `SpoolsService` cache topology
+  - [x] T5.1 `class SpoolsService` constructor: `SpoolsService(*, redis_factory: RedisFactory, client: SpoolmanClient)`. Constants module-level:
     ```python
     # Initiative 19 Story 31.1 (Decision AD) — contract surface; change requires SCP per AC-4.
     _CACHE_KEY = "spools:summary:v1"
@@ -228,21 +234,21 @@ After this story lands, three consecutive `pytest apps/api/tests/ -v` runs retur
     # because "90s lock expiry covers worst-case ~5s × 3 entity types + serialization headroom; AC-7"
     _LOCK_EXPIRY_SECONDS = 90
     ```
-  - [ ] T5.2 `async def get_summary(self) -> SpoolmanSnapshot | None`:
+  - [x] T5.2 `async def get_summary(self) -> SpoolmanSnapshot | None`:
     - Read `_CACHE_KEY` from Redis. If present, `return SpoolmanSnapshot.model_validate_json(value)`.
     - On miss, call `return await self.refresh_summary()` once (the refresh handles lock contention internally).
     - If `refresh_summary()` returns `None` (lock-already-held OR client failed with empty cache), re-read `_CACHE_KEY` one more time (another worker may have just populated it during the lock wait); return parsed snapshot or `None`.
-  - [ ] T5.3 `async def get_last_success_ts(self) -> datetime | None`:
+  - [x] T5.3 `async def get_last_success_ts(self) -> datetime | None`:
     - Read `_LAST_SUCCESS_KEY` from Redis; if present, `return datetime.fromisoformat(value.decode())`; else `None`.
-  - [ ] T5.4 `async def refresh_summary(self) -> SpoolmanSnapshot | None`:
+  - [x] T5.4 `async def refresh_summary(self) -> SpoolmanSnapshot | None`:
     - `lock_acquired = await redis.set(_LOCK_KEY, b"1", nx=True, ex=_LOCK_EXPIRY_SECONDS)`. If not `lock_acquired`, return `None` (AC-9 leader-election).
     - `try:` call `await client.list_spools()` + `list_filaments()` + `list_vendors()` concurrently via `asyncio.gather(...)`. Assemble `SpoolmanSnapshot(spools=..., filaments=..., vendors=..., fetched_at=datetime.now(UTC))`. Encode via `snapshot.model_dump_json()`. Pipeline: `SET _CACHE_KEY snapshot_json EX _CACHE_TTL_SECONDS` + `SET _LAST_SUCCESS_KEY iso_now` (no TTL). Log `spools.poll.refresh` with `extra["labels.lock_acquired"] = True` + `extra["labels.entity_count"] = total_count`. Return `snapshot`.
     - `except (httpx.RequestError, httpx.HTTPStatusError, SpoolmanCircuitOpenError) as exc:` log `spools.poll.error` at WARNING; return `None`. Cache + sibling stay untouched (Decision AD failure semantics).
     - `finally:` delete the lock (best-effort — TTL covers crash). `await redis.delete(_LOCK_KEY)`.
-  - [ ] T5.5 Inline contract comments on every magic literal per AC-7 table.
+  - [x] T5.5 Inline contract comments on every magic literal per AC-7 table.
 
-- [ ] **T6** (AC-8) — Register the arq cron `poll_spoolman_summary` in the api-arq queue
-  - [ ] T6.1 New file `apps/api/app/workers/spoolman_poll.py`:
+- [x] **T6** (AC-8) — Register the arq cron `poll_spoolman_summary` in the api-arq queue
+  - [x] T6.1 New file `apps/api/app/workers/spoolman_poll.py`:
     ```python
     """Initiative 19 Story 31.1 (Decision AD) — arq cron task that refreshes
     the Spoolman snapshot every 60s. Single-poller leader-election via the
@@ -271,49 +277,49 @@ After this story lands, three consecutive `pytest apps/api/tests/ -v` runs retur
         finally:
             await redis_factory.aclose()
     ```
-  - [ ] T6.2 Amend `apps/api/app/workers/__init__.py`:
+  - [x] T6.2 Amend `apps/api/app/workers/__init__.py`:
     - Import: `from app.workers.spoolman_poll import poll_spoolman_summary`.
     - `functions` list: append `poll_spoolman_summary`.
     - `cron_jobs` list: append `cron(poll_spoolman_summary, second={0})  # because "FR19-CACHE-1 60s freshness budget; AC-7"`.
 
-- [ ] **T7** (AC-10) — Pytest coverage in `apps/api/tests/test_spools.py`
-  - [ ] T7.1 Create the file; import `pytest`, `pytest_asyncio`, `httpx`, `fakeredis.aioredis`, the in-tree module classes, plus the existing `freezegun` / `monkeypatch` helpers if needed.
-  - [ ] T7.2 Add fixture `spoolman_settings_overrides` that monkeypatches the cached `Settings` via `get_settings.cache_clear()` + env vars `SPOOLMAN_URL` / `SPOOLMAN_AUTH_TOKEN`.
-  - [ ] T7.3 Add fixture `mock_spoolman_client` that returns a `SpoolmanClient` with `httpx.MockTransport` injected via `httpx.AsyncClient(transport=httpx.MockTransport(handler))`. Two helper variants: `make_happy_handler(spools=..., filaments=..., vendors=...)` and `make_error_handler(exc=httpx.ConnectError)`.
-  - [ ] T7.4 Implement TEST-1 through TEST-11 verbatim per AC-10.
-  - [ ] T7.5 Implement TEST-LIVE-1 with `@pytest.mark.skipif(os.environ.get("SPOOLMAN_LIVE_TEST") != "1", reason="live Spoolman not reachable; opt in via SPOOLMAN_LIVE_TEST=1")`.
-  - [ ] T7.6 Determinism gate (AC-13): after `pytest apps/api/tests/test_spools.py -v` returns green once, the dev-story execution runs the full suite three times back-to-back via `for i in 1 2 3; do uv run --project apps/api pytest apps/api/tests/ -q; done`; assert identical pass counts. Documented in the Dev Agent Record.
+- [x] **T7** (AC-10) — Pytest coverage in `apps/api/tests/test_spools.py`
+  - [x] T7.1 Create the file; import `pytest`, `pytest_asyncio`, `httpx`, `fakeredis.aioredis`, the in-tree module classes, plus the existing `freezegun` / `monkeypatch` helpers if needed.
+  - [x] T7.2 Add fixture `spoolman_settings_overrides` that monkeypatches the cached `Settings` via `get_settings.cache_clear()` + env vars `SPOOLMAN_URL` / `SPOOLMAN_AUTH_TOKEN`.
+  - [x] T7.3 Add fixture `mock_spoolman_client` that returns a `SpoolmanClient` with `httpx.MockTransport` injected via `httpx.AsyncClient(transport=httpx.MockTransport(handler))`. Two helper variants: `make_happy_handler(spools=..., filaments=..., vendors=...)` and `make_error_handler(exc=httpx.ConnectError)`.
+  - [x] T7.4 Implement TEST-1 through TEST-11 verbatim per AC-10.
+  - [x] T7.5 Implement TEST-LIVE-1 with `@pytest.mark.skipif(os.environ.get("SPOOLMAN_LIVE_TEST") != "1", reason="live Spoolman not reachable; opt in via SPOOLMAN_LIVE_TEST=1")`.
+  - [x] T7.6 Determinism gate (AC-13): after `pytest apps/api/tests/test_spools.py -v` returns green once, the dev-story execution runs the full suite three times back-to-back via `for i in 1 2 3; do uv run --project apps/api pytest apps/api/tests/ -q; done`; assert identical pass counts. Documented in the Dev Agent Record.
 
-- [ ] **T8** (AC-11) — OD8 close-out gating
-  - [ ] T8.1 Before opening the dev branch's PR / fast-forward merge, operator runs the configs-side `docker inspect spoolman …` recipe on `.190` and confirms the bind is non-routable.
+- [ ] **T8** (AC-11) — OD8 close-out gating *(pre-merge operator gate; not a code blocker)*
+  - [x] T8.1 Before opening the dev branch's PR / fast-forward merge, the configs-side compose change (`HostIp: "192.168.2.190"` on `8000/tcp` mapped to `HostPort: "7912"`) lands, the Spoolman container is redeployed on `.190`, and the operator runs `docker inspect spoolman --format '{{json .NetworkSettings.Ports}}' | jq` to confirm the bind shows `HostIp: "192.168.2.190"` (NOT `0.0.0.0` / `::`). The configs-side edit + redeploy is a separate workstream owned operator-/configs-side; this story does NOT carry that commit. **Verified 2026-05-29:** configs-repo + runtime compose recipe edited to `192.168.2.190:7912:8000`; runtime redeployed on `.190`; `docker inspect spoolman --format '{{json .NetworkSettings.Ports}}'` returned `{"8000/tcp":[{"HostIp":"192.168.2.190","HostPort":"7912"}]}` (explicit LAN-only bind — AC-11 acceptable posture). Smoke from `.190` to `http://192.168.2.190:7912/api/v1/spool` HTTP 200 with 9 spools; `http://127.0.0.1:7912/` correctly refused (no loopback exposure). Remote `kattegat` live smoke `SPOOLMAN_LIVE_TEST=1 SPOOLMAN_URL=http://192.168.2.190:7912 apps/api/.venv/bin/pytest tests/test_spools.py::test_spoolman_live_smoke_contract -q` → **1 passed**.
   - [ ] T8.2 Commit message of the merging commit MUST contain the exact line:
     ```
-    OD8 close-out: Spoolman bind verified non-routable on .190 (configs-side)
+    OD8 close-out: Spoolman bind verified LAN-only on .190 (configs-side)
     ```
-    (no quotes; one line; verbatim — grep invariant for the close-out audit trail).
-  - [ ] T8.3 If T8.1 fails: STOP. Do not merge. Surface to operator with the `docker inspect` output and possible resolutions per AC-11.
+    (no quotes; one line; verbatim — grep invariant for the close-out audit trail). *(pending merging commit — T11.3)*
+  - [ ] T8.3 If T8.1 fails (`docker inspect` still shows `HostIp: "0.0.0.0"` or `HostIp: "::"` after the redeploy): STOP. Do not merge. Surface to operator with the `docker inspect` output and possible resolutions per AC-11 (preferred: configs-side fix-up tightening the bind to `192.168.2.190:7912:8000`). *(condition did not fire — T8.1 passed; left unchecked since the STOP branch was not taken.)*
 
-- [ ] **T9** (AC-12) — Pre-merge grep invariants
-  - [ ] T9.1 `git diff main -- apps/api/app/main.py` returns zero lines touching `_PUBLIC_ROUTES` (allowlist preservation).
-  - [ ] T9.2 `git diff main -- apps/api/app/modules/share/router.py` returns zero lines (NFR10 credentialless contract untouched).
-  - [ ] T9.3 `grep -rnE "current_(user|admin|member_or_admin|admin_or_agent)" apps/api/app/modules/spools/` returns ZERO matches (Story 31.1 mounts no routes; no auth deps).
-  - [ ] T9.4 `grep -rn "external_service" apps/api/app/modules/spools/client.py` returns ≥ 2 hits (info + warning code paths per AC-6).
-  - [ ] T9.5 `grep -rn "logger.info" apps/api/app/modules/spools/` — for every hit, the call MUST NOT pass a raw `response.json()` / `response.text` / Pydantic `model_dump()` content; only `entity_count` + label fields per AC-6. (Manually inspect — short module, ≤5 hits expected.)
-  - [ ] T9.6 `grep -rnE "spools:(summary:v1|summary:last-success-ts|poll-lock)" apps/api/app/modules/spools/service.py` returns exactly 3 hits (one per byte-pinned key per AC-4).
-  - [ ] T9.7 `grep -nE "second=\{0\}" apps/api/app/workers/__init__.py` returns ≥ 1 hit (the new cron entry per AC-8).
+- [x] **T9** (AC-12) — Pre-merge grep invariants
+  - [x] T9.1 `git diff main -- apps/api/app/main.py` returns zero lines touching `_PUBLIC_ROUTES` (allowlist preservation).
+  - [x] T9.2 `git diff main -- apps/api/app/modules/share/router.py` returns zero lines (NFR10 credentialless contract untouched).
+  - [x] T9.3 `grep -rnE "current_(user|admin|member_or_admin|admin_or_agent)" apps/api/app/modules/spools/` returns ZERO matches (Story 31.1 mounts no routes; no auth deps).
+  - [x] T9.4 `grep -rn "external_service" apps/api/app/modules/spools/client.py` returns ≥ 2 hits (info + warning code paths per AC-6).
+  - [x] T9.5 `grep -rn "logger.info" apps/api/app/modules/spools/` — for every hit, the call MUST NOT pass a raw `response.json()` / `response.text` / Pydantic `model_dump()` content; only `entity_count` + label fields per AC-6. (Manually inspect — short module, ≤5 hits expected.)
+  - [x] T9.6 `grep -rnE "spools:(summary:v1|summary:last-success-ts|poll-lock)" apps/api/app/modules/spools/service.py` returns exactly 3 hits (one per byte-pinned key per AC-4).
+  - [x] T9.7 `grep -nE "second=\{0\}" apps/api/app/workers/__init__.py` returns ≥ 1 hit (the new cron entry per AC-8).
 
-- [ ] **T10** (full quality gate) — Pre-merge checks
-  - [ ] T10.1 `cd /home/ezop/repos/3d-portal && timeout 600 uv run --project apps/api pytest apps/api/tests/ -v` returns green; new pytest count = baseline + 11 (TEST-1..TEST-11) + 2 (T2.2 config tests). Skipped count gains 1 (TEST-LIVE-1).
-  - [ ] T10.2 `cd /home/ezop/repos/3d-portal/apps/api && uv run ruff format` (auto-fix) + `uv run ruff check` (assert clean).
-  - [ ] T10.3 `cd /home/ezop/repos/3d-portal && timeout 600 uv run --project workers/render python -c "import sys; sys.path.insert(0, 'apps/api'); from app.workers import WorkerSettings; print(WorkerSettings.functions, WorkerSettings.cron_jobs)"` — sanity: arq worker import path resolves cleanly (catches packaging regressions early). [Optional smoke; not gating.]
-  - [ ] T10.4 No vitest / Playwright / typecheck runs needed (pure backend story). Web checks intentionally skipped per backend-only scope.
-  - [ ] T10.5 Determinism gate (AC-13) — `for i in 1 2 3; do uv run --project apps/api pytest apps/api/tests/test_spools.py apps/api/tests/test_config.py -q; done` returns three identical pass counts.
+- [x] **T10** (full quality gate) — Pre-merge checks
+  - [x] T10.1 `cd /home/ezop/repos/3d-portal && timeout 600 uv run --project apps/api pytest apps/api/tests/ -v` returns green; new pytest count = baseline + 11 (TEST-1..TEST-11) + 2 (T2.2 config tests). Skipped count gains 1 (TEST-LIVE-1).
+  - [x] T10.2 `cd /home/ezop/repos/3d-portal/apps/api && uv run ruff format` (auto-fix) + `uv run ruff check` (assert clean).
+  - [x] T10.3 `cd /home/ezop/repos/3d-portal && timeout 600 uv run --project workers/render python -c "import sys; sys.path.insert(0, 'apps/api'); from app.workers import WorkerSettings; print(WorkerSettings.functions, WorkerSettings.cron_jobs)"` — sanity: arq worker import path resolves cleanly (catches packaging regressions early). [Optional smoke; passed 2026-05-29: WorkerSettings imports `poll_spoolman_summary`, cron has `second={0}`.]
+  - [x] T10.4 No vitest / Playwright / typecheck runs needed (pure backend story). Web checks intentionally skipped per backend-only scope.
+  - [x] T10.5 Determinism gate (AC-13) — full backend suite passed three consecutive times after the logging-capture fix: `apps/api/.venv/bin/pytest -q` returned `931 passed, 1 skipped` on each completed run. One combined two-run wrapper hit the 600s command timeout during the second serial run; the third run was re-executed standalone and passed with the same count.
 
-- [ ] **T11** (handoff) — Sprint-status + close-out documentation
-  - [ ] T11.1 Sprint-status flip `31-1-backend-spoolman-client-cache-poll: ready-for-dev → in-progress → review → done`. (bmad-create-story owns `backlog → ready-for-dev`; bmad-dev-story owns `→ in-progress` + `→ review`; codex-review-pass owns `→ done`. Story 31.1 spec authoring step flips backlog → ready-for-dev in the same edit that ships this spec file.)
-  - [ ] T11.2 Story file Dev Agent Record gets the file list + completion notes per template.
-  - [ ] T11.3 Commit message scope: `feat(api): Spoolman client + Redis cache + arq poll job (Story 31.1, Init 19)`. Body MUST include the AC-11 OD8 close-out line verbatim per T8.2.
-  - [ ] T11.4 Note in close-out commit body: Story 31.2 depends-on lifts (cache + service + DTOs ready to back `/api/spools/*` routes).
+- [x] **T11** (handoff) — Sprint-status + close-out documentation
+  - [x] T11.1 Sprint-status flip `31-1-backend-spoolman-client-cache-poll: ready-for-dev → in-progress → review → done`. (bmad-create-story owns `backlog → ready-for-dev`; bmad-dev-story owns `→ in-progress` + `→ review`; codex-review-pass owns `→ done`. Story 31.1 spec authoring step flips backlog → ready-for-dev in the same edit that ships this spec file.)
+  - [x] T11.2 Story file Dev Agent Record gets the file list + completion notes per template.
+  - [ ] T11.3 Commit message scope: `feat(api): Spoolman client + Redis cache + arq poll job (Story 31.1, Init 19)`. Body MUST include the AC-11 OD8 close-out line verbatim per T8.2. *(pending commit)*
+  - [ ] T11.4 Note in close-out commit body: Story 31.2 depends-on lifts (cache + service + DTOs ready to back `/api/spools/*` routes). *(pending commit)*
 
 ## Dev Notes
 
@@ -638,23 +644,54 @@ claude-opus-4-7 (1M context) via bmad-dev-story skill — Story 31.1 execution.
 
 ### Debug Log References
 
-(populated by dev-story execution)
+Pre-merge verification runs on branch `feat/E31.1-backend-spoolman-client-cache-poll` against the post-live-smoke working tree (round-6 fix-up — nested vendor/filament shape):
+
+- `apps/api/.venv/bin/ruff format --check apps/api` → PASS (no reformatting needed).
+- `apps/api/.venv/bin/ruff check apps/api` → PASS (clean; AC-12 grep invariants re-validated after the nested-shape fix-up).
+- `apps/api/.venv/bin/pytest tests/test_spools.py -q` → **17 passed, 1 skipped** (TEST-LIVE-1 skipped via the `SPOOLMAN_LIVE_TEST=1` env gate as designed; one additional regression case pinned the nested vendor/filament response shape uncovered by the live smoke).
+- Env-gated live integration: `SPOOLMAN_LIVE_TEST=1 SPOOLMAN_URL=http://192.168.2.190:7912 apps/api/.venv/bin/pytest tests/test_spools.py::test_spoolman_live_smoke_contract -q` → **1 passed** (contract pinned against the real Spoolman 0.23.1 response shape on `.190`; nested `vendor`/`filament` object payloads parse losslessly through the internal Pydantic models after the fix-up).
+- Full backend suite `apps/api/.venv/bin/pytest -q` → **937 passed, 1 skipped, 1453 warnings in 303.09s**. The warning bucket remains the existing project-wide non-blocking noise (deprecation / Pydantic compat / SQLAlchemy decl-base) — Story 31.1 introduces none of its own.
+- Codex adversarial review — Rounds 1–5 verdict **APPROVE, no blocking findings**. The Codex live-shape follow-up review (post-live-smoke) confirmed **no new code-level blocking issue** introduced by the nested-shape fix-up; the review chain stays closed on the code side.
 
 ### Completion Notes List
 
-(populated by dev-story execution)
+- AC-1..AC-10 + AC-12 + AC-13 remain realized on this branch after the Round 1–5 review chain and the round-6 live-smoke fix-up. Cache topology contract (AC-4 byte-pinned keys), magic-constant contract comments (AC-7), observability labels (AC-6), SETNX leader-election (AC-9), and the 60s cron cadence (AC-8) are in place and exercised by `tests/test_spools.py`.
+- `SpoolmanClient._get` short-circuits via `SpoolmanCircuitOpenError` once `_CIRCUIT_FAILURE_THRESHOLD` (3) consecutive failures land within the `_CIRCUIT_OPEN_SECONDS` (30) window; `SpoolsService.refresh_summary` catches it alongside `httpx.RequestError` / `httpx.HTTPStatusError` and returns `None` without touching the cache or sibling timestamp (Decision AD failure semantics).
+- Review-round follow-ups extended `tests/test_spools.py` with five Codex-driven cases beyond the original TEST-1..TEST-11 set: schema-drift safety on cold-cache miss, cold-cache lock-contention leader-wait, lock-release-race retry of the live fetch, sibling-call draining before lock release, and the `labels.lock_acquired` label assertion on the refresh-path client log.
+- **Live-smoke round-6 fix-up (nested vendor/filament response shape).** The env-gated `test_spoolman_live_smoke_contract` against the real Spoolman 0.23.1 instance at `http://192.168.2.190:7912` surfaced that `/api/v1/spool` returns `filament` as a nested object (containing the filament fields **plus** a nested `vendor` object) rather than the flat `filament_id` / `vendor_id` projection assumed by the original mocks, and `/api/v1/filament` returns `vendor` as a nested object rather than flat `vendor_id` / `vendor_name`. `apps/api/app/modules/spools/models.py` was extended so `SpoolmanSpool` / `SpoolmanFilament` parse the nested objects losslessly while still exposing the flat id/name accessors downstream consumers (Story 31.2 DTOs) depend on — `extra="ignore"` left intact for forward-compat with 0.24.x drift. One additional regression case was added to `tests/test_spools.py` to pin the nested-shape contract under mocked transport so the suite catches schema drift without requiring the live smoke. Total spool-suite count is now 17 passing + 1 skipped (TEST-LIVE-1 env-gated).
+- **Codex live-shape follow-up review verdict: no new code-level blocking issue.** The adversarial review of the nested-shape fix-up confirmed the response-shape change is correctly absorbed inside the internal Pydantic mirror without leaking schema concerns to the cache or service layer; magic-constant contract comments and AC-4 byte-pinned keys remain untouched; AC-12 grep invariants re-validated clean. The code-side review chain is closed.
+- **AC-11 / OD8 pre-merge precondition — verification PASSES (LAN-only bind confirmed 2026-05-29).** Operator-side configs-repo + runtime-compose recipe edited to bind Spoolman to `192.168.2.190:7912:8000`; runtime container redeployed on `.190`. `docker inspect spoolman --format '{{json .NetworkSettings.Ports}}'` now returns `{"8000/tcp":[{"HostIp":"192.168.2.190","HostPort":"7912"}]}` — explicit LAN-interface-only bind, matching AC-11's acceptable posture (NOT the rejected `0.0.0.0` / `::` all-interfaces exposure). Operator decision (2026-05-29): Spoolman MUST remain reachable from the LAN because the printer pushes filament-usage updates live and the operator + phone consume Spoolman on the LAN; the target posture is therefore `HostIp: "192.168.2.190"` (explicit LAN-only bind), NOT `127.0.0.1`-only. Smoke evidence: API call from `.190` to `http://192.168.2.190:7912/api/v1/spool` returned HTTP 200 with 9 spools; `http://127.0.0.1:7912/` correctly refused (no loopback exposure); remote `kattegat` env-gated live smoke `SPOOLMAN_LIVE_TEST=1 SPOOLMAN_URL=http://192.168.2.190:7912 apps/api/.venv/bin/pytest tests/test_spools.py::test_spoolman_live_smoke_contract -q` → **1 passed**. T8.1 is therefore checked; T8.3 STOP condition did not fire. **T8.2 + T11.3 + T11.4 remain pending** — the merging commit MUST still carry the verbatim trailer `OD8 close-out: Spoolman bind verified LAN-only on .190 (configs-side)` per AC-11. The configs-side compose edit + redeploy is owned operator-/configs-side and is NOT a 3d-portal commit. Status stays **review** until the 3d-portal merging commit lands with the OD8 trailer.
+- T10.3 (cross-project arq worker import smoke) is marked optional in the spec and was not re-executed for the live-shape fix-up; T9.1/T9.2 grep invariants stay confirmed (zero diff on `apps/api/app/main.py:_PUBLIC_ROUTES` and `apps/api/app/modules/share/router.py`).
+- `RedisFactory(client=fake)` constructor path is exercised by the `fake_redis_factory` pytest fixture; no source change required in `app/core/redis.py`.
+- Status stays **review** — code-side gates and the adversarial-review chain (incl. live-shape follow-up) are complete, and the AC-11 OD8 configs-side bind precondition is now verified LAN-only. Merge gate remaining: the 3d-portal commit landing the existing code changes with the verbatim `OD8 close-out: Spoolman bind verified LAN-only on .190 (configs-side)` trailer (T8.2 / T11.3 / T11.4).
 
 ### File List
 
-(populated by dev-story execution — expected: 6 new + 4 modified = 10 files)
+New (6):
 
-- apps/api/app/modules/spools/__init__.py (NEW: empty package marker)
-- apps/api/app/modules/spools/client.py (NEW: SpoolmanClient + SpoolmanCircuitOpenError)
-- apps/api/app/modules/spools/service.py (NEW: SpoolsService + cache topology)
-- apps/api/app/modules/spools/models.py (NEW: SpoolmanSpool/Filament/Vendor/Snapshot)
-- apps/api/app/workers/spoolman_poll.py (NEW: arq task entry point)
-- apps/api/tests/test_spools.py (NEW: 11 unit tests + 1 env-gated live integration)
-- apps/api/app/core/config.py (MODIFY: append spoolman_url + spoolman_auth_token)
-- apps/api/app/workers/__init__.py (MODIFY: register poll_spoolman_summary + cron)
-- apps/api/tests/test_config.py (EXTEND: 2 new default-value tests)
-- infra/env.example (EXTEND: Initiative 19 env-slot doc block)
+- `apps/api/app/modules/spools/__init__.py` — package marker + module docstring (no exports yet; routes land in Story 31.2).
+- `apps/api/app/modules/spools/client.py` — `SpoolmanClient` (httpx wrapper + circuit breaker + structured-log/OTel/Sentry observability) and `SpoolmanCircuitOpenError`.
+- `apps/api/app/modules/spools/service.py` — `SpoolsService` with `get_summary` / `get_last_success_ts` / `refresh_summary`; module-level cache-topology constants for the byte-pinned Redis keys + TTL + lock expiry.
+- `apps/api/app/modules/spools/models.py` — `SpoolmanVendor`, `SpoolmanFilament`, `SpoolmanSpool`, `SpoolmanSnapshot` (all `extra="ignore"`); round-6 live-smoke fix-up extended `SpoolmanSpool` / `SpoolmanFilament` to parse the nested `filament` / `vendor` objects returned by Spoolman 0.23.1 while preserving the flat id/name accessors Story 31.2 DTOs depend on.
+- `apps/api/app/workers/spoolman_poll.py` — `poll_spoolman_summary(_ctx)` arq task constructing a fresh `RedisFactory` + `SpoolmanClient` per tick.
+- `apps/api/tests/test_spools.py` — TEST-1..TEST-11 unit suite + 5 review-round follow-up cases (schema-drift, cold-cache lock-contention, lock-release race, sibling-call drain, refresh-path lock label) + 1 live-shape regression case pinning the nested vendor/filament response shape under mocked transport (round-6 follow-up) + TEST-LIVE-1 env-gated integration. A local `_CaptureHandler` helper is attached to the module logger so AC-6 log assertions survive `configure_logging()` resets.
+
+Modified (4):
+
+- `apps/api/app/core/config.py` — appended `spoolman_url` and `spoolman_auth_token` fields under an Initiative 19 / Decision AE comment block (after `password_reset_ttl_seconds`).
+- `apps/api/app/workers/__init__.py` — imported `poll_spoolman_summary`; appended it to `WorkerSettings.functions`; appended `cron(poll_spoolman_summary, second={0})` to `WorkerSettings.cron_jobs` with the AC-7 contract comment.
+- `apps/api/tests/test_config.py` — two new cases covering the default values of `spoolman_url` and `spoolman_auth_token`.
+- `infra/env.example` — appended the Initiative 19 / Decision AE env-slot documentation block (`SPOOLMAN_URL`, `SPOOLMAN_AUTH_TOKEN`, P4a fallback note, OD8 bind precondition reference).
+
+## Change Log
+
+| Date | Author | Note |
+|---|---|---|
+| 2026-05-29 | claude-opus-4-7 (1M context) via bmad-dev-story | Initial implementation landed on `feat/E31.1-backend-spoolman-client-cache-poll`. Backend Spoolman client + Redis cache + arq 60s poll + env config per AC-1..AC-10 + AC-12 + AC-13. Ruff format/check clean; `tests/test_spools.py` 11/1 (passed/skipped); full backend suite 931/1 stable across three runs (AC-13 determinism gate). AC-11 OD8 configs-side bind verification remains a pre-merge operator gate. Status flipped `ready-for-dev → review`. |
+| 2026-05-29 | claude-opus-4-7 (1M context) via bmad-dev-story | Codex adversarial review Rounds 1–4 fix-ups absorbed on the same branch: extended `tests/test_spools.py` with five additional invariants (schema-drift safety on cold-cache miss, cold-cache lock-contention leader-wait, lock-release-race retry, sibling-call drain before lock release, refresh-path `labels.lock_acquired` assertion). Magic-constant contract comments and observability label coverage tightened to match. Status stays `review`. |
+| 2026-05-29 | claude-opus-4-7 (1M context) via bmad-dev-story | Codex adversarial review Round 5 verdict **APPROVE — no blocking findings**. Verified gates post-Round-5: `ruff format --check apps/api` PASS, `ruff check apps/api` PASS, `apps/api/.venv/bin/pytest tests/test_spools.py -q` 16 passed / 1 skipped, full backend suite `apps/api/.venv/bin/pytest -q` 936 passed / 1 skipped / 1453 warnings in 300.19s (project-wide non-blocking warning baseline; Story 31.1 introduces none). Review chain closed. Status stays `review` until operator OD8 close-out (T8) and the merging commit (T11.3/T11.4) land. |
+| 2026-05-29 | claude-opus-4-7 (1M context) via bmad-dev-story | Round-6 fix-up — live Spoolman smoke against `http://192.168.2.190:7912` discovered Spoolman 0.23.1 returns nested `filament` / `vendor` objects on `/api/v1/spool` and `/api/v1/filament` (not the flat `filament_id` / `vendor_id` / `vendor_name` projection the original mocks assumed). `apps/api/app/modules/spools/models.py` extended to parse the nested shape losslessly while preserving the flat id/name accessors Story 31.2 DTOs depend on; one regression test added to `tests/test_spools.py` pinning the shape under mocked transport. Verified gates: `ruff format --check apps/api` PASS, `ruff check apps/api` PASS, `apps/api/.venv/bin/pytest tests/test_spools.py -q` **17 passed / 1 skipped**, env-gated `SPOOLMAN_LIVE_TEST=1 SPOOLMAN_URL=http://192.168.2.190:7912 pytest tests/test_spools.py::test_spoolman_live_smoke_contract -q` **1 passed**, full backend suite `apps/api/.venv/bin/pytest -q` **937 passed / 1 skipped / 1453 warnings in 303.09s**. Codex live-shape follow-up review verdict: **no new code-level blocking issue**. Status stays `review`. |
+| 2026-05-29 | claude-opus-4-7 (1M context) via bmad-dev-story | **AC-11 / OD8 pre-merge BLOCKER recorded.** Configs-side verification on `.190` currently FAILS: `docker inspect spoolman --format '{{json .NetworkSettings.Ports}}'` reports `HostIp: "0.0.0.0"` and `HostIp: "::"` bound to `HostPort: "7912"` (Spoolman exposed on all host interfaces, not the non-routable bind required by AC-11). Per AC-11 this is the explicit STOP condition — do NOT mark Story 31.1 done, do NOT claim OD8 close-out, do NOT treat this branch as merge-ready. Resolution owned operator-/configs-side (tighten the bind to `127.0.0.1:7912`, OR record deliberate-exposure rationale in `docs/operations.md` per AC-11 (b)). Code-side gates and the adversarial-review chain (incl. live-shape follow-up) remain green; the blocker is purely the configs-side bind. Status stays `review`; T8.1/T8.2/T8.3 + T11.3/T11.4 stay unchecked until the bind is verified non-routable. |
+| 2026-05-29 | claude-opus-4-7 (1M context) via bmad-dev-story | **AC-11 / T8 / Completion Notes wording clarified per operator decision (record-keeping only — no code change).** Operator confirmed Spoolman MUST remain reachable from the LAN because the printer pushes filament-usage updates live and the operator + phone consume Spoolman on the LAN; a strict `127.0.0.1`-only bind is therefore NOT the target. AC-11 + T8.1/T8.2/T8.3 + the AC-11 Completion-Notes blocker entry rewritten to reflect the actual gate: reject the Docker default all-interfaces exposure (`HostIp: "0.0.0.0"` / `HostIp: "::"`), accept the explicit LAN-interface-only bind (`HostIp: "192.168.2.190"` on `8000/tcp` mapped to `HostPort: "7912"`). T8.2 commit-trailer string updated to `OD8 close-out: Spoolman bind verified LAN-only on .190 (configs-side)`. The configs-side compose edit + redeploy is explicitly flagged as a separate operator-/configs-side workstream (NOT a 3d-portal commit) that requires `docker inspect` to show `HostIp: "192.168.2.190"` (not `0.0.0.0` / `::`) before this story can leave `review`. No code changed in this update; status stays `review`. |
+| 2026-05-29 | claude-opus-4-7 (1M context) via bmad-dev-story | **AC-11 / OD8 close-out — configs-side LAN-only bind verified (record-keeping only — no code change).** Operator-side configs-repo + runtime-compose recipe edited to `192.168.2.190:7912:8000`; runtime container redeployed on `.190`. `docker inspect spoolman --format '{{json .NetworkSettings.Ports}}'` returned `{"8000/tcp":[{"HostIp":"192.168.2.190","HostPort":"7912"}]}` (explicit LAN-only bind — AC-11 acceptable posture, NOT the rejected all-interfaces exposure). API smoke from `.190` to `http://192.168.2.190:7912/api/v1/spool` HTTP 200 with 9 spools; `http://127.0.0.1:7912/` correctly refused (no loopback exposure). Remote `kattegat` env-gated live smoke `SPOOLMAN_LIVE_TEST=1 SPOOLMAN_URL=http://192.168.2.190:7912 apps/api/.venv/bin/pytest tests/test_spools.py::test_spoolman_live_smoke_contract -q` → **1 passed** (contract pinning against real Spoolman 0.23.1 at the LAN bind). AC-11 narrative gains a "Verification status" paragraph; T8.1 checked with the verification evidence inline; T8.3 STOP condition did not fire (left unchecked since the failure branch was not taken); the AC-11 Completion-Notes blocker entry rewritten as a precondition-PASSES note. T8.2 (commit trailer `OD8 close-out: Spoolman bind verified LAN-only on .190 (configs-side)`) and T11.3 / T11.4 (the merging commit body) remain pending — status stays **review** until the 3d-portal commit lands with the verbatim trailer. No code changed in this update. |
+| 2026-05-29 | claude-opus-4-7 (1M context) via bmad-dev-story | **Dev-story close-out pass (record-keeping only — no code change).** Re-verified branch state: working tree carries only the Story 31.1 surface (6 new files in `apps/api/app/modules/spools/` + `apps/api/app/workers/spoolman_poll.py` + `apps/api/tests/test_spools.py`; 4 modified files `apps/api/app/core/config.py`, `apps/api/app/workers/__init__.py`, `apps/api/tests/test_config.py`, `infra/env.example`). AC-12 invariants confirmed: `git diff main -- apps/api/app/main.py` returns ZERO diff (`_PUBLIC_ROUTES` allowlist preserved); `git diff main -- apps/api/app/modules/share/router.py` returns ZERO diff (NFR10 credentialless surface untouched); `grep -rnE "current_(user\|admin\|member_or_admin\|admin_or_agent)" apps/api/app/modules/spools/` returns ZERO matches (no auth deps — Story 31.1 mounts no routes). AC-7 magic-constant contract comments confirmed in code: `client.py` carries `because "..."` annotations on `5.0` (httpx timeout), `3` (`_CIRCUIT_FAILURE_THRESHOLD`), `30.0` (`_CIRCUIT_OPEN_SECONDS`); `service.py` carries them on `_CACHE_TTL_SECONDS=30`, `_LOCK_EXPIRY_SECONDS=90`, plus the 3 byte-pinned key constants per AC-4; `workers/__init__.py` carries the `60`s cadence rationale on `cron(poll_spoolman_summary, second={0})`. Test evidence pinned in the Debug Log References section above: targeted `apps/api/.venv/bin/pytest tests/test_spools.py -q` → **17 passed / 1 skipped**; full backend suite `apps/api/.venv/bin/pytest -q` → **937 passed / 1 skipped** (Story 31.1 introduces zero new warnings; 1453 warnings is the pre-existing project baseline); env-gated `SPOOLMAN_LIVE_TEST=1` live smoke → **1 passed** after the round-6 nested vendor/filament Pydantic fix-up; OD8 LAN-only bind on `.190` confirmed by `docker inspect`. No open code-side blockers. Sprint-status row `31-1-backend-spoolman-client-cache-poll` flipped `ready-for-dev → review` in `_bmad-output/implementation-artifacts/sprint-status.yaml`. Remaining merge gate: T8.2 / T11.3 / T11.4 — the 3d-portal merging commit MUST carry the verbatim trailer `OD8 close-out: Spoolman bind verified LAN-only on .190 (configs-side)`; recommended next workflow step is `bmad-code-review` (Codex routing `gpt-5.4-mini`) followed by ff-merge to `main`. Status stays **review**. |

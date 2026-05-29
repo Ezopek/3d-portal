@@ -92,6 +92,18 @@ class Settings(BaseSettings):
     # Story 8.5: admin-issued password-reset link TTL bounds.
     password_reset_ttl_seconds: int = Field(default=3600, ge=60, le=86400)
 
+    # Initiative 19 Story 31.1 (Decision AE) — Spoolman integration.
+    # Primary topology P4b: portal-api joins the same docker network as
+    # Spoolman and resolves ``http://spoolman:8000``. Operator fallback P4a:
+    # set ``SPOOLMAN_URL=http://localhost:7912`` if the configs-side compose
+    # PR attaching Spoolman to ``portal-network`` has not yet shipped.
+    spoolman_url: str = "http://spoolman:8000"
+    # Reserved for future P3d Spoolman auth (Phase C trigger; per operator
+    # decision 4, NOT triggered by MVP-A). Carried in MVP-A so the
+    # ``Authorization: Bearer …`` wiring lands once and the env-driven swap
+    # stays a one-file change. Empty value disables the header.
+    spoolman_auth_token: str = ""
+
     # Observability
     otel_exporter_otlp_endpoint: str | None = None
     otel_exporter_otlp_headers: str | None = None  # e.g. "authorization=Bearer <token>"

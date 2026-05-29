@@ -14,6 +14,7 @@ from arq.connections import RedisSettings
 from app.core.config import get_settings
 from app.workers.cleanup_refresh_tokens import cleanup_refresh_tokens
 from app.workers.generate_thumbnail import generate_thumbnail
+from app.workers.spoolman_poll import poll_spoolman_summary
 
 #: Dedicated queue name for api-arq-worker tasks (cleanup_refresh_tokens cron
 #: + generate_thumbnail). Separate from the render-worker's default ``arq:queue``
@@ -31,9 +32,16 @@ class WorkerSettings:
     """arq worker configuration."""
 
     queue_name: ClassVar[str] = API_QUEUE_NAME
-    functions: ClassVar[list] = [cleanup_refresh_tokens, generate_thumbnail]
+    functions: ClassVar[list] = [
+        cleanup_refresh_tokens,
+        generate_thumbnail,
+        poll_spoolman_summary,
+    ]
     cron_jobs: ClassVar[list] = [
         cron(cleanup_refresh_tokens, hour={3}, minute={15}),  # 03:15 UTC daily
+        # because "FR19-CACHE-1 60s low-stock freshness budget; sub-minute polling
+        # would burn LAN-only egress with no UX gain — Decision AD, AC-7"
+        cron(poll_spoolman_summary, second={0}),
     ]
     # arq's create_pool reads `redis_settings` as a class attribute and accesses
     # `.host` on it directly. Wrapping it in @classmethod (the prior shape) made

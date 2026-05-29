@@ -55,3 +55,18 @@ def test_csv_parser_rejects_unknown_role(monkeypatch):
     monkeypatch.setenv("ENFORCE_2FA_FOR_ROLES", "member,banker")
     with pytest.raises(ValidationError, match="contains unknown role 'banker'"):
         Settings()
+
+
+def test_spoolman_url_defaults_to_internal_docker_hostname(monkeypatch):
+    # Story 31.1 (Decision AE) — P4b primary topology default.
+    monkeypatch.delenv("SPOOLMAN_URL", raising=False)
+    s = Settings()
+    assert s.spoolman_url == "http://spoolman:8000"
+
+
+def test_spoolman_auth_token_defaults_to_empty_string(monkeypatch):
+    # Story 31.1 (Decision AE) — empty default disables ``Authorization``
+    # header on the client (MVP-A posture; Phase C trigger sets a real token).
+    monkeypatch.delenv("SPOOLMAN_AUTH_TOKEN", raising=False)
+    s = Settings()
+    assert s.spoolman_auth_token == ""
