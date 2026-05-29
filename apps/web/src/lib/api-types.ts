@@ -368,3 +368,44 @@ export interface AuditLogEntry {
 export interface AuditLogResponse {
   items: AuditLogEntry[];
 }
+
+// --- Initiative 19 Story 31.2 (Decision AF) — Spoolman read-only DTOs ---
+
+export interface VendorView {
+  id: number;
+  name: string;
+}
+
+export interface FilamentView {
+  id: number;
+  name: string;
+  vendor_id: number | null;
+  vendor_name: string | null;
+  material: string | null;
+  color_hex: string | null;
+  price: number | null;
+  weight: number | null;
+  spool_weight: number | null;
+}
+
+export interface SpoolView {
+  id: number;
+  filament_id: number;
+  price: number | null;
+  remaining_weight: number | null;
+  initial_weight: number | null;
+  used_weight: number | null;
+  spool_weight: number | null;
+  first_used: string | null;
+  last_used: string | null;
+  archived: boolean;
+  lot_nr: string | null;
+}
+
+export interface SpoolsSummaryResponse {
+  spools: SpoolView[];
+  filaments: FilamentView[];
+  vendors: VendorView[];
+  fetched_at: string | null;
+  last_success_ts: string | null;
+}
