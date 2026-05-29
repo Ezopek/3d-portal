@@ -1,6 +1,6 @@
 # Story 31.2: Backend `/api/spools/*` routes + DTOs with cost-data carry-through
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -288,23 +288,40 @@ Story 31.2 introduces ZERO new numeric/time/size literals. All previously-pinned
 
 ### Code-side gates (filled by dev-story execution)
 
-- ruff format + check: _pending_
-- pytest test_spools_routes.py: _pending_
-- pytest route_enforcement_gate: _pending_
-- pytest full backend: _pending_
-- 3× determinism: _pending_
-- npm run typecheck (web): _pending_
+- ruff format + check on apps/api: PASS
+- pytest tests/test_spools_routes.py: 15 passed, 32 warnings
+- pytest tests/test_route_enforcement_gate.py: 3 passed
+- pytest full backend: 953 passed / 1 skipped (TEST-LIVE-1 env-gated from Story 31.1; zero new warnings introduced)
+- 3× determinism on test_spools_routes.py: identical `15 passed, 32 warnings`
+- npm run typecheck (apps/web): PASS
 
 ### Grep invariants (filled by dev-story execution)
 
-- `_PUBLIC_ROUTES` byte-diff: _pending_
-- `share/router.py` byte-diff: _pending_
-- `share/member_router.py` byte-diff: _pending_
-- `share/admin_router.py` byte-diff: _pending_
+- `_PUBLIC_ROUTES` byte-diff: zero diff on `apps/api/app/main.py` against `origin/main` (Story 31.2 does NOT touch `main.py`).
+- `share/router.py` byte-diff: zero diff against `origin/main`.
+- `share/member_router.py` byte-diff: zero diff against `origin/main`.
+- `share/admin_router.py` byte-diff: zero diff against `origin/main`.
 
 ### Review Findings (filled by code-review execution)
 
-_pending_
+**Reviewer routing deviation:** native Codex CLI (`/home/ezop/.local/bin/codex review --commit 0e2fec6`) hung on MCP transport after a 180s bounded timeout — same failure mode as Story 31.1 round-7. Per AGENTS.md § Autonomous development mode, Story 31.2 disclaims NFR-SECURITY adjacency (Story line 14 + Pre-enumeration save #5 + #6: auth-bearing read-only routes against a LAN-only homelab service; no public-bypass family adjacency; `_PUBLIC_ROUTES` untouched; no auth boundary change). Labeled fallback used: Claude Sonnet 4.6 delegate (via `feature-dev:code-reviewer` sub-agent, labeled honestly in the agent's verdict — no native-Codex impersonation).
+
+**Verdict (single round):** APPROVED — no Critical, no Important, no Minor findings.
+
+Reviewer scrutiny areas walked (all pass):
+
+1. Cache-coherence across the three handlers — within a single request the snapshot is read once and projected locally; the inter-request 30s/60s window is the explicitly accepted trade-off, documented in the spec.
+2. Warm-cache path correctly avoids touching the httpx layer (only cheap `__aenter__`/`__aexit__` on `httpx.AsyncClient`).
+3. Cold-cache soft-fail propagation: `refresh_summary()` → broad `except` → `None`, then `_project_summary(None, last_success)` returns 200 + empty arrays per FR19-FAILURE-1.
+4. `async with SpoolmanClient(...)` resource lifetime is leak-free under handler exceptions.
+5. `model_dump()` → `model_validate()` roundtrip preserves every Decision AF field; internal `extra="ignore"` + public `extra="forbid"` are correctly composed.
+6. Auth gate: every handler carries `_user_id: uuid.UUID = current_user`; route-enforcement gate recognizes the dependency; no sub-app/middleware bypass.
+7. `asgi_app` fixture isolation: per-test fakeredis + per-test tmp SQLite + `cache_clear` on entry+exit.
+8. Story 31.1 byte-pinned cache keys (`spools:summary:v1`, `spools:summary:last-success-ts`, `spools:poll-lock`) untouched.
+9. TypeScript interfaces field-for-field match the Python DTOs (name + nullability + type).
+10. Sprint-status YAML structurally intact.
+
+Triage: 0 decision-needed, 0 patch, 0 deferred, 0 dismissed. Status flipped review → done.
 
 ## Out of scope
 
