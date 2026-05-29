@@ -580,11 +580,12 @@ IP allowlist; portal-self-auth is the sole boundary.
 Initiative 19 MVP-A ships a read-only mirror of the homelab Spoolman
 instance at `192.168.2.190:7912`. The portal API caches the inventory in
 Redis on a 60s arq poll cadence and surfaces it through three auth-
-bearing routes (`/api/spools/summary` / `/spools` / `/filaments`), the
-`/spools` index page, and the landing-page `LowStockCard`. Direct
-Spoolman UI usage on the LAN is preserved by design — the portal does
-not own the Spoolman database, and write surfaces are out of MVP-A
-scope (Phase C trigger).
+bearing API routes — `GET /api/spools/summary`, `GET /api/spools/spools`,
+`GET /api/spools/filaments` (Story 31.2, all mounted under the
+`/api/spools` prefix) — plus the `/spools` frontend index page and the
+landing-page `LowStockCard`. Direct Spoolman UI usage on the LAN is
+preserved by design — the portal does not own the Spoolman database,
+and write surfaces are out of MVP-A scope (Phase C trigger).
 
 ### Environment variables
 
@@ -592,7 +593,7 @@ scope (Phase C trigger).
 |---|---|---|---|
 | `SPOOLMAN_URL` | `http://spoolman:8000` (Decision AE P4b — portal-api on the shared docker network resolves the `spoolman` hostname). Fallback `http://192.168.2.190:7912` (P4a — operator override when the configs-side network attachment slips). | Base URL the portal API uses for Spoolman's `/api/v1/*` endpoints. Empty value is invalid; the client raises at startup. | `apps/api/app/core/config.py` (Story 31.1). |
 | `SPOOLMAN_AUTH_TOKEN` | empty | Reserved future Spoolman auth (Phase C trigger; not exercised in MVP-A). Empty value disables the `Authorization` header. | Same. |
-| `SPOOLMAN_LOW_STOCK_THRESHOLD_G` | **NOT IMPLEMENTED in MVP-A** — the current threshold is the hardcoded `LOW_STOCK_THRESHOLD_G = 200` constant at `apps/web/src/modules/spools/components/LowStockCard.lib.ts`. | The "low stock" cutoff (grams; strict `<` comparator) below which a spool surfaces on the landing `LowStockCard`. | FE component-level constant. Promote to a runtime env slot (similar shape to `SPOOLMAN_URL`) when operator wants to tune without redeploy. The upgrade path is single-file: replace the constant with an `import.meta.env.VITE_SPOOLMAN_LOW_STOCK_THRESHOLD_G ?? 200` read at the same call site. |
+| `SPOOLMAN_LOW_STOCK_THRESHOLD_G` *(reserved slot name, NOT a real env var in MVP-A)* | **NOT IMPLEMENTED in MVP-A** — the current threshold is the hardcoded `LOW_STOCK_THRESHOLD_G = 200` constant at `apps/web/src/modules/spools/components/LowStockCard.lib.ts`. | The "low stock" cutoff (grams; strict `<` comparator) below which a spool surfaces on the landing `LowStockCard`. | FE component-level constant. The `SPOOLMAN_*` prefix above is reserved for the day this is promoted — but the consumer is the **frontend bundle**, not the api container, so promotion is a Vite-build-time read, not a runtime env read. The single-file upgrade path: replace the constant with `Number(import.meta.env.VITE_SPOOLMAN_LOW_STOCK_THRESHOLD_G ?? 200)` and add `VITE_SPOOLMAN_LOW_STOCK_THRESHOLD_G` to the same `.env` file consumed by `apps/web/Dockerfile`'s build stage (`.190:/mnt/raid/docker-compose/3d-portal/.env` + `~/repos/3d-portal/infra/.env`). Re-deploy required — no in-place runtime tuning, that would require a separate `/api/spools/config` runtime-injection path which is **out of scope** for MVP-A. |
 
 ### Soft-fail behavior
 
@@ -673,11 +674,50 @@ structured-log records carry the same `event.action`
 / `spools.poll.error`) + `labels.external_service=spoolman` for grep
 filtering on the JSON log stream.
 
-If GlitchTip shows ZERO `spoolman.client` breadcrumbs during an
-outage triage, the issue is upstream (network / DNS / docker
-network split), not the portal client — the breadcrumbs emit
-unconditionally on every call attempt (including the circuit-open
-short-circuit path, which logs `error_class=SpoolmanCircuitOpenError`).
+If GlitchTip shows ZERO `spoolman.client` breadcrumbs in an event's
+timeline during an outage triage, that ALONE does not prove the portal
+client is fine — the portal client emits breadcrumbs unconditionally on
+every call attempt (success, failure, AND circuit-open short-circuit
+which logs `error_class=SpoolmanCircuitOpenError`), so absence of
+breadcrumbs has several possible causes that the operator should walk
+through in order:
+
+1. **No call attempted on the request path** — the FE rendered a
+   cache-only response (`spools:summary:v1` warm + `staleTime: 60_000`
+   not yet expired in TanStack Query), the request never hit the
+   `SpoolsService.refresh_summary()` cold-cache fallback, so no
+   `spoolman.client` breadcrumb was created. The arq poll job runs in a
+   separate worker process — its breadcrumbs land on **its own**
+   GlitchTip events, not on the FE-triggered event you are looking at.
+2. **Sentry SDK disabled / DSN missing in the failing service** — if
+   `SENTRY_DSN` / `VITE_SENTRY_DSN` is empty or `Sentry.init` did not
+   run (build mis-config, env not propagated to the container), the SDK
+   silently drops breadcrumbs. Confirm `apps/api/app/observability.py`
+   initialisation in the api container logs and `release.ts` in the FE
+   bundle.
+3. **Auth-gated 401 short-circuit before the route handler runs** —
+   anonymous traffic to `/api/spools/*` is denied at `current_user`
+   Depends BEFORE the service-layer client call. No client call, no
+   breadcrumb. Check the GlitchTip event's `route.pathname` and the
+   companion api log line for `http.status_code=401`.
+4. **Request routed to a different service entirely** — the page is
+   surfacing an unrelated upstream (catalog, share, auth), the
+   `spoolman.client` category is correctly absent because Spoolman was
+   never called. Cross-check `service=web|api|render` tag.
+5. **Upstream network / DNS / docker network split** — only after (1)-(4)
+   are ruled out does ZERO breadcrumbs point upstream of the portal
+   client (Spoolman container down, docker network unreachable, DNS
+   resolving `spoolman` hostname empty). Confirm with the OD8 LAN-only
+   bind verification recipe above + `docker logs spoolman`.
+
+Conversely, presence of a `category:spoolman.client` breadcrumb with
+`level=warning` and a populated `status_code` / `error_class` IS a
+strong portal-client signal: the breadcrumb's `endpoint` field
+identifies which Spoolman path failed (`/api/v1/spool` / `/filament` /
+`/vendor`), `duration_ms` distinguishes timeout from immediate failure,
+and the structured-log record with matching `event.action` carries the
+full traceback (filter the JSON log stream by
+`labels.external_service=spoolman`).
 
 ### Cross-references
 

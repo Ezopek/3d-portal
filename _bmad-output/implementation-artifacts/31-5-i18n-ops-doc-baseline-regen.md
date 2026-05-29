@@ -1,6 +1,6 @@
 # Story 31.5: i18n parity sweep + ops doc addendum + baseline regen
 
-Status: review
+Status: review (Codex fix-up 2026-05-29 applied — pending re-review)
 
 ## Story
 
@@ -20,7 +20,7 @@ Realizes **NFR19-I18N-PARITY-1** (final sweep) + **NFR19-VISUAL-VERIFICATION-1**
    - `apps/api/app/core/config.py` — referenced (`spoolman_url` + `spoolman_auth_token` already shipped in Story 31.1; no new env slot).
    - `apps/web/src/modules/spools/components/LowStockCard.lib.ts` — `LOW_STOCK_THRESHOLD_G` constant referenced in the operations doc as the upgrade-to-env trigger point.
    - `infra/env.example` — already documents `SPOOLMAN_URL` + `SPOOLMAN_AUTH_TOKEN` (Story 31.1).
-2. **New files:** none — Story 31.5 is purely additive to existing docs + verification.
+2. **New files:** this story spec — `_bmad-output/implementation-artifacts/31-5-i18n-ops-doc-baseline-regen.md` (the artifact you are reading). All other Story 31.5 work is additive to existing docs + verification, no code or test files added.
 3. **Modified files:**
    - `docs/operations.md` — append `## Spoolman read-only inventory (Initiative 19)` H2.
 4. **Test fixtures reused:** none — no new tests.
@@ -34,14 +34,36 @@ Realizes **NFR19-I18N-PARITY-1** (final sweep) + **NFR19-VISUAL-VERIFICATION-1**
 
 ### AC-1 — i18n parity audit on every Init 19 namespace
 
-Run from `apps/web/src/locales/`:
+Equal-count `grep -c` is the cheap first signal but is NOT load-bearing on its own — equal counts can mask a divergent key-set (one locale has key A, the other has differently-named key B; both contribute one match). The load-bearing audit is a **key-set + interpolation-surface comparison** run against the two locale JSON files (each is a flat dictionary, no nesting):
 
 ```bash
+# Equal-count first pass (fast):
+cd apps/web/src/locales/
 grep -c '"modules.spools' en.json pl.json
 grep -c '"landing\.' en.json pl.json
+# Equal-count is necessary but not sufficient.
+
+# Load-bearing pass — compare the actual key sets and interpolation
+# variable sets in each value (run from repo root):
+python3 - <<'EOF'
+import json, re
+INTERP_RX = re.compile(r"\{\{\s*(\w+)\s*\}\}")
+PREFIXES = ("modules.spools.", "landing.")
+en = json.load(open("apps/web/src/locales/en.json"))
+pl = json.load(open("apps/web/src/locales/pl.json"))
+def slice_(d): return {k: v for k, v in d.items() if any(k.startswith(p) for p in PREFIXES)}
+en_ns, pl_ns = slice_(en), slice_(pl)
+assert set(en_ns) == set(pl_ns), \
+    f"key drift en-only={set(en_ns)-set(pl_ns)} pl-only={set(pl_ns)-set(en_ns)}"
+for k in sorted(set(en_ns) & set(pl_ns)):
+    en_v = sorted(set(INTERP_RX.findall(en_ns[k])))
+    pl_v = sorted(set(INTERP_RX.findall(pl_ns[k])))
+    assert en_v == pl_v, f"interpolation drift on {k}: en={en_v} pl={pl_v}"
+print(f"PASS: {len(en_ns)} keys, identical sets, zero interpolation drift.")
+EOF
 ```
 
-Both pairs MUST return equal counts. The Init 19 namespace surface (post-Stories 31.3 + 31.4):
+Both audits MUST pass. The Init 19 namespace surface (post-Stories 31.3 + 31.4):
 
 - `modules.spools.index.title`
 - `modules.spools.index.loading`
@@ -76,9 +98,9 @@ Append a new H2 section `## Spoolman read-only inventory (Initiative 19)` after 
 
 | Slot | Default | Purpose | Owner |
 |---|---|---|---|
-| `SPOOLMAN_URL` | `http://spoolman:8000` (Decision AE P4b) — fallback `http://localhost:7912` (P4a) | Base URL the portal API uses for Spoolman's `/api/v1/*` endpoints. | `apps/api/app/core/config.py` (Story 31.1). |
+| `SPOOLMAN_URL` | `http://spoolman:8000` (Decision AE P4b — portal-api on the shared docker network resolves the `spoolman` hostname) — fallback `http://192.168.2.190:7912` (P4a — operator override hitting the LAN-bind direct IP when the configs-side network attachment slips) | Base URL the portal API uses for Spoolman's `/api/v1/*` endpoints. | `apps/api/app/core/config.py` (Story 31.1). |
 | `SPOOLMAN_AUTH_TOKEN` | empty | Reserved future Spoolman auth (Phase C trigger). Empty value disables the `Authorization` header. | Same. |
-| `SPOOLMAN_LOW_STOCK_THRESHOLD_G` | NOT IMPLEMENTED — current threshold is the hardcoded `LOW_STOCK_THRESHOLD_G = 200` constant at `apps/web/src/modules/spools/components/LowStockCard.lib.ts`. | The "low stock" cutoff (grams) below which a spool surfaces on the landing `LowStockCard`. | FE component-level constant; promote to runtime env when operator wants to tune without redeploy. |
+| `SPOOLMAN_LOW_STOCK_THRESHOLD_G` *(reserved slot name, NOT a real env var in MVP-A)* | NOT IMPLEMENTED — current threshold is the hardcoded `LOW_STOCK_THRESHOLD_G = 200` constant at `apps/web/src/modules/spools/components/LowStockCard.lib.ts`. | The "low stock" cutoff (grams) below which a spool surfaces on the landing `LowStockCard`. | FE component-level constant; the consumer is the **frontend bundle**, so promotion is a Vite-build-time read (`VITE_SPOOLMAN_LOW_STOCK_THRESHOLD_G`), NOT a runtime api-container env. Single-file upgrade path: replace the constant with `Number(import.meta.env.VITE_SPOOLMAN_LOW_STOCK_THRESHOLD_G ?? 200)` + add to the `.env` consumed by `apps/web/Dockerfile`'s build stage. Re-deploy required. |
 
 #### `### Soft-fail behavior`
 
@@ -164,23 +186,23 @@ After Story 31.5 lands:
 
 ## Tasks / Subtasks
 
-- [ ] **T1** (AC-1) — Run the i18n parity grep; confirm equal counts on both `modules.spools.*` and `landing.*` namespaces.
-- [ ] **T2** (AC-2) — Append the `## Spoolman read-only inventory (Initiative 19)` H2 to `docs/operations.md`.
-- [ ] **T3** (AC-3) — Run `npm run test:visual`; confirm 364 passed / 24 skipped state.
-- [ ] **T4** (AC-4) — Read `_bmad-output/triage-backlog.md`; confirm zero Init 19 entries.
-- [ ] **T5** (AC-5) — Confirm grep invariants.
-- [ ] **T6** (AC-6) — Flip `epic-31` to done in `sprint-status.yaml`.
-- [ ] **T7** (close-out) — Commit subject `docs(ops): Spoolman operations addendum + Init 19 i18n parity close-out (Story 31.5, Init 19)`; ff-merge; push.
+- [x] **T1** (AC-1) — Run the i18n parity grep AND the load-bearing Python key-set + interpolation comparison; confirm equal counts AND identical key sets AND zero interpolation-surface drift on both `modules.spools.*` and `landing.*` namespaces.
+- [x] **T2** (AC-2) — Append the `## Spoolman read-only inventory (Initiative 19)` H2 to `docs/operations.md`.
+- [x] **T3** (AC-3) — Run `npm run test:visual`; confirm 364 passed / 24 skipped state.
+- [x] **T4** (AC-4) — Read `_bmad-output/triage-backlog.md`; confirm zero Init 19 entries.
+- [x] **T5** (AC-5) — Confirm grep invariants.
+- [x] **T6** (AC-6) — Flip `epic-31` to done in `sprint-status.yaml`.
+- [x] **T7** (close-out) — Commit subject `docs(ops): Spoolman operations addendum + Init 19 i18n parity close-out (Story 31.5, Init 19)`; ff-merge deferred (epic retrospective gate); push deferred until retrospective runs.
 
 ## Dev Agent Record
 
 ### Code-side gates (filled by dev-story execution)
 
-- i18n parity audit: PASS.
-  - `modules.spools.*`: en.json 14 / pl.json 14 (equal).
-  - `landing.*`: en.json 6 / pl.json 6 (equal).
-  - Top-level `modules.spools`: en.json 1 / pl.json 1 (equal; pre-existing side-nav label).
-  - Reserved-interpolation grep (`{{count}}` inside the Init 19 namespace): 0 / 0 hits — Story 31.3 review round-1 lesson (renaming `count` → `ago`) confirmed clean across the whole sweep.
+- i18n parity audit: PASS — both equal-count signal AND load-bearing key-set + interpolation-surface comparison.
+  - Equal-count signal: `modules.spools.*` en.json 14 / pl.json 14; `landing.*` en.json 6 / pl.json 6; top-level `modules.spools` en.json 1 / pl.json 1 (pre-existing side-nav label, unchanged).
+  - Load-bearing key-set comparison (Python/JSON, run 2026-05-29 against this branch): en Init 19 key count = 20, pl Init 19 key count = 20, `set(en) == set(pl)` = True, en-only keys = [], pl-only keys = [].
+  - Load-bearing interpolation-surface comparison: zero mismatches across the 20 shared keys. Per-key surface for the record — `landing.*` keys: no interpolation; `modules.spools.index.last_updated`: `{time}`; `modules.spools.index.last_updated_with_ago`: `{ago, time}`; `modules.spools.lowstock.more_count`: `{n}`; all remaining 16 keys: no interpolation.
+  - Reserved-name guard (`{{count}}` inside the Init 19 namespace): 0 hits in either locale — Story 31.3 review round-1 lesson (renaming `count` → `ago` for `last_updated_with_ago` and using `n` for `more_count`) confirmed clean across the whole sweep. (The pre-existing `auth.2fa.status.enabled.codes_remaining` and other reserved-`count` uses outside the Init 19 namespace are intentional plural-suffix consumers and are NOT in scope.)
 - `npm run test:visual` full: 364 passed / 24 skipped — exactly matches the post-31.4 state. Zero baseline drift. AC-3 zero-regen expectation confirmed.
 - Grep invariants:
   - `git diff main -- apps/api/` zero diff.
@@ -192,7 +214,57 @@ After Story 31.5 lands:
 
 ### Review Findings (filled by code-review execution)
 
-_pending_
+#### Codex review (2026-05-29, native) — verdict NOT merge-ready, fix-up applied on this branch
+
+Codex reviewed the Story 31.5 diff at commit `3a5707b` and returned **NOT merge-ready** with five Important findings + one Minor consistency issue. All findings were docs/artifact-only — no code or frontend changes were requested or made. Fix-up commit applied on the same branch (`feat/E31.5-i18n-ops-doc-baseline-regen`); listed verbatim below with the resolution against this branch.
+
+**Important findings**
+
+1. **`docs/operations.md` mis-attributes the auth-bearing routes** as `/api/spools/summary` / `/spools` / `/filaments`. The actual Story 31.2 prefix is `/api/spools`, so the second and third routes are `/api/spools/spools` and `/api/spools/filaments` (the bare `/spools` and `/filaments` form is misleading — it looks like a top-level FE route or a bare path, not the prefixed API path). **Resolution:** rewrote the intro paragraph of `## Spoolman read-only inventory (Initiative 19)` in `docs/operations.md` to spell out the three routes in full (`GET /api/spools/summary`, `GET /api/spools/spools`, `GET /api/spools/filaments`) and explicitly cite the `/api/spools` prefix from Story 31.2. Verified against `apps/api/app/modules/spools/router.py`: `APIRouter(prefix="/api/spools")` + three `@router.get` decorators at `"/summary"`, `"/spools"`, `"/filaments"`.
+
+2. **`SPOOLMAN_LOW_STOCK_THRESHOLD_G` upgrade guidance is operationally imprecise** — the slot name uses the backend-style `SPOOLMAN_*` prefix (implying a runtime env consumed by the api container) but the upgrade path reads `import.meta.env.VITE_*` which is Vite **build-time** unless a runtime-injection layer is added. The NOT IMPLEMENTED status is correct; the upgrade-path narrative was misleading about where the env lives and what redeploy is required. **Resolution:** annotated the slot as *"reserved slot name, NOT a real env var in MVP-A"* and rewrote the Owner-column upgrade-path text in BOTH the ops doc and the story spec to call out: (a) the consumer is the frontend bundle, (b) promotion is a Vite-build-time read using the `VITE_SPOOLMAN_LOW_STOCK_THRESHOLD_G` form, (c) the env must be added to the `.env` consumed by `apps/web/Dockerfile`'s build stage (both `.190:/mnt/raid/docker-compose/3d-portal/.env` and `~/repos/3d-portal/infra/.env`), (d) re-deploy is required because Vite bakes the constant into the bundle, (e) runtime tuning would require a separate `/api/spools/config` runtime-injection endpoint which is explicitly out of scope for MVP-A.
+
+3. **GlitchTip "ZERO `spoolman.client` breadcrumbs ⇒ upstream issue" paragraph overclaims** — absence of breadcrumbs has multiple equally-likely causes (cache-only response, no actual client call, Sentry SDK disabled / DSN missing, auth-gated 401 short-circuit before the service-layer call, request routed to a different service entirely) before "upstream" is even a candidate. **Resolution:** rewrote the GlitchTip subsection in `docs/operations.md` to walk through the five likely causes in order (no-call / SDK-disabled / 401-short-circuit / different-service / upstream) and frame "ZERO breadcrumbs ⇒ upstream" as the LAST candidate after the others are ruled out. Also added the inverse signal (presence of `level=warning` `spoolman.client` breadcrumb with `endpoint` + `status_code` + `error_class` IS a strong portal-client signal) for symmetric triage value.
+
+4. **`grep -c` parity is necessary but not sufficient for AC-1** — equal counts on two namespaces can co-exist with divergent key sets (locale A has key X, locale B has differently-named key Y; both contribute one match). The close-out invariant should compare actual key SETS and interpolation-variable SETS, not just counts. **Resolution:** rewrote AC-1 in the story spec to add a load-bearing Python/JSON comparison pass (key-set equality assert + per-key interpolation-variable set equality assert) on top of the cheap equal-count signal; embedded the runnable Python snippet so it can be re-executed on demand. Ran the comparison against this branch's `en.json` and `pl.json`: en Init 19 key count = 20, pl Init 19 key count = 20, `set(en) == set(pl)` = True, en-only keys = [], pl-only keys = [], zero interpolation-surface mismatches across the 20 shared keys. Per-key interpolation surface (for the record): `landing.*` keys: no interpolation; `modules.spools.index.last_updated`: `{time}`; `modules.spools.index.last_updated_with_ago`: `{ago, time}`; `modules.spools.lowstock.more_count`: `{n}`; remaining 16 keys: no interpolation. Reserved-`count` hits in the Init 19 namespace: 0.
+
+5. **Story artifact inconsistency** — the "New files" pre-enumeration save said "none" while the story spec file itself is added on this branch; T1-T7 task checkboxes remained unchecked despite the Dev Agent Record claiming the work done. **Resolution:** updated the "New files" entry to list this story spec file as the one added artifact (all other work is additive to existing docs); flipped T1-T7 from `[ ]` to `[x]` to reflect the executed-and-recorded state; T7 footnote clarifies ff-merge + push are deferred until the epic-31 retrospective runs (per operator constraint at fix-up time).
+
+**Minor findings**
+
+6. **Story AC-2 `SPOOLMAN_URL` fallback value (`http://localhost:7912`) disagrees with the ops doc value (`http://192.168.2.190:7912`)** — these are two different URLs and should be a single source of truth. **Resolution:** rewrote AC-2's table cell to use `http://192.168.2.190:7912` (matching the ops doc) and added the rationale parenthetical — the LAN-bind direct IP is the correct operator override because Spoolman is bound to `192.168.2.190:7912` (not `127.0.0.1`/`0.0.0.0`) per the OD8 LAN-only invariant; `localhost:7912` would not resolve to the bound Spoolman service. (The stale `localhost:7912` reference in the `apps/api/app/core/config.py` docstring is code-side and out of scope for this docs-only fix-up; flagged here for a follow-up sweep if Codex re-review surfaces it.)
+
+**Items NOT changed**
+
+- **LAN-bind guidance** — Codex confirmed the OD8 LAN-only verification recipe is good as-is. No edit.
+- **No code or frontend changes** — fix-up is restricted to `docs/operations.md` and this story spec, per operator constraint.
+
+**Verification commands re-run for the fix-up**
+
+```bash
+# AC-1 load-bearing parity check (also re-recorded above):
+python3 - <<'EOF'
+import json, re
+INTERP_RX = re.compile(r"\{\{\s*(\w+)\s*\}\}")
+PREFIXES = ("modules.spools.", "landing.")
+en = json.load(open("apps/web/src/locales/en.json"))
+pl = json.load(open("apps/web/src/locales/pl.json"))
+def slice_(d): return {k: v for k, v in d.items() if any(k.startswith(p) for p in PREFIXES)}
+en_ns, pl_ns = slice_(en), slice_(pl)
+print(f"en={len(en_ns)} pl={len(pl_ns)} equal-set={set(en_ns)==set(pl_ns)}")
+for k in sorted(set(en_ns) & set(pl_ns)):
+    en_v = sorted(set(INTERP_RX.findall(en_ns[k])))
+    pl_v = sorted(set(INTERP_RX.findall(pl_ns[k])))
+    if en_v != pl_v: print(f"DRIFT {k}: en={en_v} pl={pl_v}")
+EOF
+# → en=20 pl=20 equal-set=True; no DRIFT lines printed.
+
+# Route-prefix verification (also re-recorded above):
+grep -nE '@router\.(get|post)|prefix=' apps/api/app/modules/spools/router.py
+# → prefix="/api/spools" + three @router.get decorators at "/summary", "/spools", "/filaments".
+```
+
+Fix-up commit subject: `docs(bmad): apply Codex Story 31.5 review fix-up (routes, threshold guidance, breadcrumb triage, parity invariant) (Story 31.5, Init 19)`.
 
 ## Out of scope
 
