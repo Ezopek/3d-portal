@@ -704,11 +704,41 @@ through in order:
    surfacing an unrelated upstream (catalog, share, auth), the
    `spoolman.client` category is correctly absent because Spoolman was
    never called. Cross-check `service=web|api|render` tag.
-5. **Upstream network / DNS / docker network split** — only after (1)-(4)
-   are ruled out does ZERO breadcrumbs point upstream of the portal
-   client (Spoolman container down, docker network unreachable, DNS
-   resolving `spoolman` hostname empty). Confirm with the OD8 LAN-only
-   bind verification recipe above + `docker logs spoolman`.
+5. **Diagnostic exhausted — switch to active probes for upstream
+   state.** Once (1)-(4) are ruled out, absence of breadcrumbs has
+   reached the end of its diagnostic value: it does NOT prove an
+   upstream / DNS / docker-network failure. The portal client emits a
+   `level=warning` breadcrumb on **every** non-success outcome
+   including upstream failures — `httpx.RequestError` (network /
+   DNS / connection refused), `httpx.HTTPStatusError` (Spoolman
+   returned 5xx / 4xx), and `SpoolmanCircuitOpenError` (breaker open
+   from prior failures). If the portal had actually hit an upstream
+   problem on the event you are inspecting, the breadcrumb would be
+   PRESENT with `error_class` populated, not absent. Absence only
+   means no `spoolman.client` call was attached to this particular
+   event — it is silent on whether Spoolman itself is healthy. To
+   determine upstream state, use **active probes** on `.190`, not
+   breadcrumb-absence inference:
+
+   ```bash
+   # From .190 (or any LAN host that resolves the bind):
+   curl -fsS -o /dev/null -w '%{http_code}\n' http://192.168.2.190:7912/api/v1/info
+   #   → 200 = Spoolman responding; non-200 / connect-refused = upstream is the problem.
+
+   docker logs --tail 200 spoolman          # container live + recent activity
+   docker inspect spoolman --format '{{json .NetworkSettings.Ports}}' | jq
+   #   → re-runs the OD8 LAN-only bind check above.
+
+   docker exec -it 3d-portal-api-1 getent hosts spoolman
+   #   → DNS resolution inside the api container's docker network; empty result
+   #     = docker-network attachment slipped (Decision AE P4a fallback territory).
+   ```
+
+   These probes give a positive determination of upstream state. The
+   GlitchTip breadcrumb stream is for confirming whether the **portal
+   client** noticed (present = portal saw the failure; absent = no
+   client call on that event); the upstream determination itself runs
+   on the active probes.
 
 Conversely, presence of a `category:spoolman.client` breadcrumb with
 `level=warning` and a populated `status_code` / `error_class` IS a
@@ -717,7 +747,9 @@ identifies which Spoolman path failed (`/api/v1/spool` / `/filament` /
 `/vendor`), `duration_ms` distinguishes timeout from immediate failure,
 and the structured-log record with matching `event.action` carries the
 full traceback (filter the JSON log stream by
-`labels.external_service=spoolman`).
+`labels.external_service=spoolman`). This presence-pattern — not
+absence — is the correct breadcrumb-side proof that an upstream
+attempt failed.
 
 ### Cross-references
 

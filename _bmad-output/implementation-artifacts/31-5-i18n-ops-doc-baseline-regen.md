@@ -1,6 +1,6 @@
 # Story 31.5: i18n parity sweep + ops doc addendum + baseline regen
 
-Status: review (Codex fix-up 2026-05-29 applied — pending re-review)
+Status: review (Codex round-2 fix-up 2026-05-29 applied — pending re-review; epic-31 sprint-status flip deferred to actual close-out per AC-6)
 
 ## Story
 
@@ -23,6 +23,7 @@ Realizes **NFR19-I18N-PARITY-1** (final sweep) + **NFR19-VISUAL-VERIFICATION-1**
 2. **New files:** this story spec — `_bmad-output/implementation-artifacts/31-5-i18n-ops-doc-baseline-regen.md` (the artifact you are reading). All other Story 31.5 work is additive to existing docs + verification, no code or test files added.
 3. **Modified files:**
    - `docs/operations.md` — append `## Spoolman read-only inventory (Initiative 19)` H2.
+   - `_bmad-output/implementation-artifacts/sprint-status.yaml` — flip the `31-5-i18n-ops-doc-baseline-regen` row from `backlog` to `review` on dev-story close-out (and to `done` on later code-review close-out). The `epic-31` row itself is NOT flipped on this branch — that close-out fires once Story 31.5 actually ff-merges to `main` (see AC-6 + T6).
 4. **Test fixtures reused:** none — no new tests.
 5. **Contracts already enforced (mechanisms named):**
    - **i18n parity** — verified by counting `modules.spools.` + `landing.` key occurrences in `en.json` vs `pl.json`. Mechanism: bash grep.
@@ -146,7 +147,7 @@ category:spoolman.client
 
 Breadcrumbs surface: endpoint (`GET /api/v1/spool` / `/filament` / `/vendor`), `duration_ms`, `status_code`, and the failure level (`info` on success, `warning` on `httpx.RequestError` / `httpx.HTTPStatusError` / circuit-breaker open). Structured-log records carry the matching `event.action` (`spools.client.call` / `spools.client.error` / `spools.poll.refresh` / `spools.poll.error`) + `labels.external_service=spoolman` for grep filtering in the JSON log stream.
 
-If GlitchTip shows ZERO `spoolman.client` breadcrumbs during an outage triage, the issue is upstream (network / DNS / Docker network split), not the portal client — the breadcrumbs emit unconditionally on every call attempt (including the circuit-open short-circuit, which logs `error_class=SpoolmanCircuitOpenError`).
+**Breadcrumb-absence doctrine.** ZERO `spoolman.client` breadcrumbs on a GlitchTip event does NOT prove upstream / DNS / docker-network failure. The portal client emits a `level=warning` breadcrumb on every non-success outcome — `httpx.RequestError` (network / DNS / connection refused), `httpx.HTTPStatusError` (5xx / 4xx from Spoolman), and `SpoolmanCircuitOpenError` (breaker open) — so a real upstream attempt would emit a PRESENT breadcrumb with `error_class` populated, not an absent one. Absence only means no `spoolman.client` call was attached to that specific event (likely causes in order: cache-only response, Sentry SDK disabled, auth-gated 401 short-circuit, request routed to a different service). Once those are ruled out, breadcrumb-absence is diagnostically exhausted — to determine upstream state, switch to active probes on `.190` (`curl http://192.168.2.190:7912/api/v1/info`, `docker logs spoolman`, `docker exec api getent hosts spoolman`, OD8 LAN-only bind verification). The ops-doc addendum walks the operator through all five steps in full; this spec keeps only the doctrine summary. Conversely, **presence** of a `level=warning` `spoolman.client` breadcrumb with `endpoint` + `status_code` + `error_class` IS the correct positive signal that an upstream attempt failed — that is the breadcrumb-side proof, not absence.
 
 #### `### Cross-references`
 
@@ -191,7 +192,7 @@ After Story 31.5 lands:
 - [x] **T3** (AC-3) — Run `npm run test:visual`; confirm 364 passed / 24 skipped state.
 - [x] **T4** (AC-4) — Read `_bmad-output/triage-backlog.md`; confirm zero Init 19 entries.
 - [x] **T5** (AC-5) — Confirm grep invariants.
-- [x] **T6** (AC-6) — Flip `epic-31` to done in `sprint-status.yaml`.
+- [ ] **T6** (AC-6) — **Close-out pending.** Flip `epic-31` to done in `sprint-status.yaml`. Deferred until Story 31.5 actually ff-merges to `main`; the branch presently remains in review and only the `31-5-i18n-ops-doc-baseline-regen` row has been flipped `backlog → review`. The `epic-31: backlog` row is unchanged and stays unchanged on this branch — flipping it before merge would create the artifact inconsistency Codex round-2 flagged.
 - [x] **T7** (close-out) — Commit subject `docs(ops): Spoolman operations addendum + Init 19 i18n parity close-out (Story 31.5, Init 19)`; ff-merge deferred (epic retrospective gate); push deferred until retrospective runs.
 
 ## Dev Agent Record
@@ -265,6 +266,54 @@ grep -nE '@router\.(get|post)|prefix=' apps/api/app/modules/spools/router.py
 ```
 
 Fix-up commit subject: `docs(bmad): apply Codex Story 31.5 review fix-up (routes, threshold guidance, breadcrumb triage, parity invariant) (Story 31.5, Init 19)`.
+
+#### Codex re-review round-2 (2026-05-29, native against `7825305`) — verdict NOT merge-ready, round-2 fix-up applied on this branch
+
+Codex re-reviewed the round-1 fix-up commit `7825305` and returned **NOT merge-ready** with two Important findings + one Minor consistency issue. All findings are docs/artifact-only and the round-2 fix-up commit is again restricted to `docs/operations.md` and this story spec — no app code, no test code, no FE bundle change.
+
+**Important findings — round-2**
+
+R2-1. **Story spec still carries the round-1 GlitchTip overclaim around line ~149**, even though `docs/operations.md` was correctly rewritten in `7825305`. The story sentence "If GlitchTip shows ZERO `spoolman.client` breadcrumbs during an outage triage, the issue is upstream (network / DNS / Docker network split), not the portal client" reverses the correct doctrine and contradicts the rewritten ops doc. **Correct doctrine** (now applied to both surfaces): absence of breadcrumbs never proves upstream / DNS / docker-network failure — a real upstream attempt would emit a `level=warning` breadcrumb with `error_class` populated (`httpx.RequestError` / `httpx.HTTPStatusError` / `SpoolmanCircuitOpenError`), not an absent one; absence only means no `spoolman.client` call was attached to that specific event; upstream determination uses active probes (`curl http://192.168.2.190:7912/api/v1/info`, `docker logs spoolman`, `docker exec api getent hosts spoolman`, OD8 LAN-only bind recipe), not absence inference. **Resolution:** (a) rewrote the GlitchTip paragraph in the story spec under § AC-2 to apply the corrected doctrine + cross-reference the ops-doc walkthrough; (b) rewrote `docs/operations.md` step 5 to drop the "ZERO breadcrumbs ⇒ upstream" residue ("only after (1)-(4) are ruled out does ZERO breadcrumbs point upstream") and replace it with an explicit "diagnostic exhausted — switch to active probes" stanza that lists the three `curl` / `docker logs` / `docker exec getent` probes verbatim and explains why presence (not absence) is the correct breadcrumb-side proof. Both surfaces now agree.
+
+R2-2. **T6 artifact inconsistency** — the story spec's task table marked T6 (`Flip epic-31 to done in sprint-status.yaml`) as `[x]` complete, but the sprint-status diff against `main` shows `epic-31: backlog` unchanged and only the `31-5-i18n-ops-doc-baseline-regen` row flipped `backlog → review`. AC-6 explicitly conditions the epic flip on Story 31.5 landing, and operator constraint at fix-up time is: do NOT merge, do NOT run retrospective, keep branch in review. **Resolution:** flipped T6 from `[x]` → `[ ]` and annotated it explicitly as `**Close-out pending.**` with the explanation that the epic flip happens only after Story 31.5 actually ff-merges to `main`; the artifact is now internally consistent (T6 unchecked AND `epic-31: backlog` unchanged on this branch). Also updated the file's top `Status:` line to note the deferred epic flip so it is impossible to miss when scanning.
+
+**Minor findings — round-2**
+
+R2-3. **Pre-enumeration "Modified files" list omits `sprint-status.yaml`** — round-1 listed only `docs/operations.md` even though the dev-story commit (`3a5707b`) also flipped the `31-5-i18n-ops-doc-baseline-regen` row in `_bmad-output/implementation-artifacts/sprint-status.yaml` from `backlog → review`. **Resolution:** extended the Pre-enumeration "Modified files" bullet under § Pre-enumeration save (point 3) to list `_bmad-output/implementation-artifacts/sprint-status.yaml` alongside `docs/operations.md`, with an inline note that the `epic-31` row itself is intentionally NOT flipped on this branch (T6 close-out gate).
+
+**Items NOT changed in round-2**
+
+- **No app code, no FE bundle code, no test code, no env / config changes.** Both rounds of fix-up are docs + story-spec only — restricted to `docs/operations.md` and `_bmad-output/implementation-artifacts/31-5-i18n-ops-doc-baseline-regen.md`.
+- **`SPOOLMAN_LOW_STOCK_THRESHOLD_G` upgrade guidance** — round-1's rewrite stands. Codex round-2 did not re-open this finding.
+- **AC-1 load-bearing parity invariant + the runnable Python snippet** — round-1's rewrite stands. Codex round-2 did not re-open this finding.
+- **`docs/operations.md` route-prefix attributions** (`GET /api/spools/summary` / `/api/spools/spools` / `/api/spools/filaments`) — round-1's rewrite stands. Codex round-2 did not re-open this finding.
+- **OD8 LAN-only bind verification recipe** — unchanged across both rounds; Codex confirmed it is good as-is in round-1 and did not re-open it in round-2.
+
+**Verification commands re-run for round-2 fix-up**
+
+```bash
+# Doctrine re-statement is text-only — no runnable test. Cross-surface
+# consistency check (story spec ↔ ops doc) is by visual diff inspection:
+git diff HEAD -- docs/operations.md \
+                 _bmad-output/implementation-artifacts/31-5-i18n-ops-doc-baseline-regen.md
+# → both surfaces now apply the absence-never-proves-upstream doctrine
+#   + active-probe escalation list; no residual "ZERO breadcrumbs ⇒ upstream"
+#   phrasing on either side.
+
+# Sprint-status invariant re-check (no flip on this branch):
+grep -nE '^  (epic-31|epic-31-retrospective|31-5-i18n-ops-doc-baseline-regen):' \
+     _bmad-output/implementation-artifacts/sprint-status.yaml
+# → epic-31: backlog (unchanged); epic-31-retrospective: pending (unchanged);
+#   31-5-i18n-ops-doc-baseline-regen: review (only row flipped on this branch).
+
+# Pre-enumeration ↔ diff consistency re-check:
+git diff main --stat
+# → docs/operations.md, _bmad-output/implementation-artifacts/sprint-status.yaml,
+#   _bmad-output/implementation-artifacts/31-5-i18n-ops-doc-baseline-regen.md
+#   match the Pre-enumeration "Modified files" + "New files" listing.
+```
+
+Round-2 fix-up commit subject: `docs(bmad): apply Codex Story 31.5 round-2 review fix-up (breadcrumb-absence doctrine, T6 close-out gate, sprint-status pre-enum) (Story 31.5, Init 19)`.
 
 ## Out of scope
 
