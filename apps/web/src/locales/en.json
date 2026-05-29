@@ -559,7 +559,7 @@
   "modules.spools.index.title": "Spools",
   "modules.spools.index.loading": "Loading spools…",
   "modules.spools.index.last_updated": "Last updated {{time}}",
-  "modules.spools.index.last_updated_with_ago": "Last updated {{time}} ({{count}}m ago)",
+  "modules.spools.index.last_updated_with_ago": "Last updated {{time}} ({{ago}}m ago)",
   "modules.spools.index.archived_badge": "Archived",
   "modules.spools.states.empty": "No spools in Spoolman.",
   "modules.spools.states.unavailable": "Spoolman is unreachable. Try again in a moment.",

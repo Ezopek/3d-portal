@@ -135,7 +135,8 @@ export function SpoolsIndexPage() {
     );
   }
 
-  const data = query.data!;
+  if (query.data === undefined) return null;
+  const data = query.data;
   const hasSpools = data.spools.length > 0;
   const hasEverSucceeded = data.last_success_ts !== null;
 
@@ -166,7 +167,7 @@ export function SpoolsIndexPage() {
               }
               return t("modules.spools.index.last_updated_with_ago", {
                 time,
-                count: minutes,
+                ago: minutes,
               });
             })()}
           </p>
@@ -194,7 +195,7 @@ export function SpoolsIndexPage() {
               }
               return t("modules.spools.index.last_updated_with_ago", {
                 time,
-                count: minutes,
+                ago: minutes,
               });
             })()}
           </p>

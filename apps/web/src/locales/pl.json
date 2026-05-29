@@ -559,7 +559,7 @@
   "modules.spools.index.title": "Szpule",
   "modules.spools.index.loading": "Ładowanie szpul…",
   "modules.spools.index.last_updated": "Ostatnia aktualizacja {{time}}",
-  "modules.spools.index.last_updated_with_ago": "Ostatnia aktualizacja {{time}} ({{count}} min temu)",
+  "modules.spools.index.last_updated_with_ago": "Ostatnia aktualizacja {{time}} ({{ago}} min temu)",
   "modules.spools.index.archived_badge": "Zarchiwizowana",
   "modules.spools.states.empty": "Brak szpul w Spoolman.",
   "modules.spools.states.unavailable": "Spoolman jest nieosiągalny. Spróbuj za chwilę.",

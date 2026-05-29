@@ -2,6 +2,8 @@
 
 Status: done
 
+Spec status: review → done after Round-1 review applied 2 [Important] patches (query.data narrowing guard + `count` → `ago` interpolation rename to avoid i18next plural-resolver activation).
+
 ## Story
 
 As an **authenticated portal user (member or admin)** navigating to `/spools`,
@@ -264,7 +266,19 @@ New file `apps/web/src/modules/spools/lib/format.test.ts`:
 
 ### Review Findings (filled by code-review execution)
 
-_pending_
+**Reviewer routing deviation:** native Codex CLI (`/home/ezop/.local/bin/codex review --commit 6031314`) hung on MCP transport after a 120s bounded timeout — same failure mode as Story 31.1 round-7 and Story 31.2. Per AGENTS.md § Autonomous development mode, Story 31.3 disclaims NFR-SECURITY adjacency (pure FE; no auth boundary change; no public-bypass family touched). Labeled fallback: Claude Sonnet 4.6 delegate via `feature-dev:code-reviewer` sub-agent (labeled honestly — no native-Codex impersonation).
+
+**Round-1 verdict:** APPROVED-WITH-NITS — 0 Critical, 2 Important, 0 Minor findings. Both Important findings patched in the same review cycle (fix-up commit on this branch before ff-merge).
+
+Findings applied:
+
+1. **[Important]** `SpoolsIndexPage.tsx:138` — `const data = query.data!` non-null assertion is technically safe today but fragile against future cache-config changes (e.g. `staleTime: 0` override, `initialData: undefined`). Reviewer flagged the class of risk, not a live crash. **Patched:** replaced with explicit guard `if (query.data === undefined) return null; const data = query.data;`. No visual change (the guard fires in a state TanStack Query does not produce given the current hook contract).
+
+2. **[Important]** `last_updated_with_ago` i18n key used `{{count}}` interpolation variable — react-i18next/i18next reserves `count` for plural-suffix resolution (looks up `_one` / `_other` variants first). Functionally correct today only because no such variants exist; future contributor could silently shadow the key at `count=1`. **Patched:** renamed interpolation variable to `{{ago}}` in both en.json + pl.json + the two call sites in SpoolsIndexPage.tsx. Visual baselines re-validated (unchanged — the rendered string is byte-identical, only the interpolation key name changed).
+
+Gates re-run post-fix-up: `npm run typecheck` PASS; `npm run test:visual spools-index` 8 passed (4 happy + 4 soft-fail baselines unchanged).
+
+Triage: 0 decision-needed, 2 patched (both in fix-up commit on this branch), 0 deferred, 0 dismissed. Status flipped review → done. The Minor / informational items (5 items) were below the action threshold and noted only for completeness — no action needed.
 
 ## Out of scope
 
