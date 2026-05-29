@@ -99,6 +99,17 @@ describe("selectLowStockRows", () => {
     expect(rows[1]?.filament?.id).toBe(10);
   });
 
+  it("excludes a spool sitting exactly on the threshold (boundary is strict <)", () => {
+    const rows = selectLowStockRows(
+      [
+        spool({ id: 1, remaining_weight: 200 }),
+        spool({ id: 2, remaining_weight: 199.9 }),
+      ],
+      [baseFilament],
+    );
+    expect(rows.map((r) => r.spool.id)).toEqual([2]);
+  });
+
   it("returns an empty list when every spool is above the threshold", () => {
     const rows = selectLowStockRows(
       [

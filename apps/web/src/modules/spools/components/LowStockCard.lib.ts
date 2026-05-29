@@ -20,6 +20,11 @@ export function selectLowStockRows(
   filaments: FilamentView[],
 ): LowStockRow[] {
   const filamentById = new Map(filaments.map((f) => [f.id, f]));
+  // The threshold is intentionally strict (`<`, not `<=`) — a spool at
+  // exactly 200g is on the boundary, not yet "below"; operator UX
+  // preference per Story 31.4 review round 1. If the operator later
+  // changes the boundary semantic, flip the comparator AND update the
+  // boundary test case in LowStockCard.test.tsx.
   const filtered = spools.filter(
     (s) =>
       !s.archived && s.remaining_weight !== null && s.remaining_weight < LOW_STOCK_THRESHOLD_G,
