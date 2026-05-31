@@ -88,7 +88,7 @@ Single-developer repo with GitHub remote at `git@github.com:Ezopek/3d-portal.git
 
 ### Story branches (the unit of work)
 
-Every BMAD story is implemented on its own short-lived branch — *not* in a series of commits directly on `main`. This prevents partial features from reaching `.190` via auto-deploy and lets `codex review --commit <SHA>` see complete context.
+Every BMAD story is implemented on its own short-lived branch — *not* in a series of commits directly on `main`. This prevents partial features from reaching `.190` via auto-deploy and gives external reviewers a complete focused branch/diff context.
 
 **Branch naming:** `feat/E{epic}.{story}-<kebab-slug>` (e.g. `feat/E5.14-catalog-filters`, `feat/E6.2-worker-snapshot-render`). For bug fixes and triage-backlog items the same shape with a different prefix: `fix/E5.11-deploy-hook` or `fix/TB-013-api-stubs`.
 
@@ -104,7 +104,7 @@ Every BMAD story is implemented on its own short-lived branch — *not* in a ser
    - `ruff format --check` + `ruff check` clean on `apps/api/` and `workers/render/`
    - `pytest` full suite green on `apps/api/`
    - `npm run lint --max-warnings=0`, `npm run typecheck`, `npm run test`, and `npm run test:visual` green on `apps/web/`
-   - Codex review pass: `codex review --commit <HEAD-of-branch>` (per the review-fix-commit close-out pattern)
+   - External review pass: Gemini via `laura-gemini-review` for routine focused review; Codex via `codex review --commit <HEAD-of-branch>` only for fallback, high-stakes, or repo-mandated countersignature (per the review-fix-commit close-out pattern)
    - Pre-commit hook itself working (it has broken before — verify before relying on it)
 
    One-shot wrapper: `infra/scripts/check-all.sh` runs every gate above (skip
@@ -116,7 +116,7 @@ Every BMAD story is implemented on its own short-lived branch — *not* in a ser
    git branch -d feat/E5.14-catalog-filters
    git push origin main
    ```
-   ff-only is mandatory because per-commit history is what `codex review --commit <SHA>` consumes; squashing destroys that context.
+   ff-only is mandatory because per-commit history gives reviewers and deployment audits a precise context; squashing destroys that context.
 5. If `main` advanced and ff is no longer possible, rebase the branch onto `main` first, then ff-merge.
 
 ### Deploy gate (active)
@@ -151,7 +151,7 @@ Direct-to-main is allowed in three narrow cases — everything else goes through
 |---|---|---|
 | Doc-only | `docs:` | Only `*.md`, `AGENTS.md`, `CLAUDE.md`, and tracked `_bmad-output/` docs (markdown plus `implementation-artifacts/sprint-status.yaml`). Untracked `_bmad-output/` paths (logs, audit-raw, code-reviews, story-automator scratch) cannot land via `docs:` because they cannot land at all — see § BMAD artifact tracking. No code, no config, no infra. |
 | Config-only without runtime effect | `chore:` | E.g. `_bmad/_config/`, `.gitignore`, formatter config. If it changes how the app runs, it's not a chore — it's a fix or feat and goes on a branch. |
-| Hotfix | `fix:` + `# hotfix-rationale: <reason>` in body | Production-level urgency only. Run Codex review inline (`codex review --commit <SHA>`) immediately after pushing. |
+| Hotfix | `fix:` + `# hotfix-rationale: <reason>` in body | Production-level urgency only. Run external review inline immediately after pushing: Gemini by default, Codex when high-stakes/repo-mandated. |
 
 Threshold check before committing direct: *would I want this in its own grouping in `git log` looking back?* If yes — story branch. If no — direct commit OK.
 
@@ -169,7 +169,7 @@ Until then: one story `in-progress` at a time, serial merges.
 
 - Don't force-push `main`.
 - Don't create merge commits on `main` (always ff). If you can't ff, rebase the branch first.
-- Don't squash-merge story branches — per-commit history is what Codex reviews.
+- Don't squash-merge story branches — per-commit history is what external reviewers and deployment audits consume.
 - Don't keep stale story branches after merge — delete them with `git branch -d`.
 - Don't bypass the story-branch flow for code/infra changes just because "this one is small". The threshold is in the table above — code changes outside `docs:` / `chore:` always go on a branch.
 - Don't commit secrets just because the remote is private. Hostnames and IPs already in committed docs (`docs/operations.md`, `infra/`) are acceptable; never add API tokens, passwords, or fresh keys.
@@ -234,9 +234,9 @@ Background: the 2026-05-18 retro on the (since-reverted) user-accounts initiativ
 
 ### Autonomous development mode (effective 2026-05-19)
 
-Once the business surface of an initiative is closed — brief, PRD, architecture, epics aligned and the readiness check has passed (or a bug report carries enough context to start root-causing) — the BMAD-aware agent takes full operational ownership of the dev-and-fix pipeline. The operator's role at that point is intake, not steering: receive results, sign off at initiative close, intervene on a real product blocker. Procedural confirmation traffic ("which skill next", "should I commit", "ready for next session", "spawn subagent or run inline") is off the table — the agent owns those calls.
+When Laura/operator explicitly delegates autonomous execution for an initiative, and the business surface is closed — brief, PRD, architecture, epics aligned and the readiness check has passed (or a bug report carries enough context to start root-causing) — the BMAD-aware agent may take operational ownership of the dev-and-fix pipeline. By default for this repo, Laura is ITCM/controller and story execution is explicitly routed; do not self-trigger broad autonomous runs merely because a ready story exists. Procedural confirmation traffic inside an already-delegated run ("which skill next", "should I commit", "spawn subagent or run inline") is still owned by the agent.
 
-**Self-triggering.** The agent also owns the decision *when* to fire an autonomous run, not only *how* to execute one. On session start, a state check (business alignment closed + active initiative present + ready stories + tooling available) is sufficient signal to initiate the run on the agent's own initiative — no explicit "go" prompt from the operator is required. Same for bug-fix sessions: an operator-reported incident with adequate context is the trigger; the agent does not wait for "OK, start fixing" confirmation. The only inputs that still gate operator decision are the blockers listed below (greenfield biznesowy scope, security trade-off, irreversible deploy decision, etc.).
+**Self-triggering is opt-in for this repo.** Unlike actively-managed live repos such as `crypto-manager`, `3d-portal` should not start large autonomous story work just from a session-start state check unless Laura/operator has explicitly delegated that run. Bug-fix sessions with adequate context may proceed inside the scoped request. The only inputs that still gate operator decision are the blockers listed below (greenfield biznesowy scope, security trade-off, irreversible deploy decision, etc.).
 
 **Same shape for bug-fix work.** The agent owns the investigation → reproduce → root-cause → fix → verify chain. A single focused question is fair if external context is genuinely missing (production log only the operator can pull, hardware screenshot, network state). A guided walkthrough is not.
 
@@ -244,11 +244,11 @@ Once the business surface of an initiative is closed — brief, PRD, architectur
 
 - **Subagents** via the `Agent` tool — `Explore` for codebase recon, `Plan` for multi-file design, `general-purpose` for parallel research, BMAD-domain subagents (dev / architect / TEA) per the skill catalog. Default to spawning when the work is parallelizable or context-isolating; default to inline when the task is small and serial.
 - **Story-automator** (`bmad-story-automator` + `bmad-story-automator-review`) — the canonical multi-story / multi-epic build orchestrator. Run it for "build all stories in initiative N" rather than hand-walking the create-story → dev-story → code-review → retrospective chain. Handles tmux session isolation, programmatic complexity scoring, escalation on non-autonomous decisions, YOLO retrospectives, full resumability via state file.
-- **Codex** as a peer reviewer (`codex review --commit <SHA>` / `codex exec --output-schema ... -` per `~/.claude/codex-invocation-guide.md`). For NFR-prefixed security gates with countersignature requirements (e.g. Init 5's NFR5-SEC-2 max-3-Mediums-with-codex-review), Codex review is contractually mandatory, not optional.
-- **Gemini CLI** as an *auxiliary* read-only reviewer / researcher when explicitly routed. Available on the kattegat dev host in non-interactive shells at `/home/ezop/.local/bin/gemini` (v0.44.1, symlinked to `/home/ezop/.nvm/versions/node/v24.15.0/bin/gemini`). Prefer `--approval-mode plan` (or otherwise read-only review modes). MUST NOT silently replace a repo-mandated Claude / Codex / BMAD role — story specs, dev-story execution, code-review countersignature, and retro authorship stay with the canonical chain. If used as a fallback (e.g. Claude + Codex both budget-exhausted), label the deviation explicitly in the commit body or artifact (`# gemini-fallback: <reason>`) so the substitution is auditable. Do NOT reuse Gemini Code Assist OAuth tokens in third-party tools — only official Gemini CLI auth (Google account flow) or a dedicated `GEMINI_API_KEY` env var.
+- **Gemini CLI** as the default read-only external reviewer / researcher for routine focused diffs (`laura-gemini-review`, plan/read-only mode). It is available in non-interactive shells at `/home/ezop/.local/bin/gemini` (v0.44.1 via the standardized nvm Node v24.16.0 toolchain). Do NOT reuse Gemini Code Assist OAuth tokens in third-party tools — only official Gemini CLI auth (Google account flow) or a dedicated `GEMINI_API_KEY` env var.
+- **Codex** as fallback/high-stakes peer reviewer (`codex review --commit <SHA>` / `codex exec --output-schema ... -` / `laura-codex-review-diff`) or when a repo artifact explicitly mandates Codex countersignature. For NFR-prefixed security gates with countersignature requirements (e.g. Init 5's NFR5-SEC-2 max-3-Mediums-with-codex-review), Codex review remains contractually mandatory, not optional. If Gemini is used where a prior artifact expected Codex, label the deviation explicitly in the commit body or artifact (`# gemini-review: <reason>`).
 - **1M context window** when the work benefits from holding the whole repo + planning artifact set in a single session rather than spawning sub-sessions just for budget.
 
-**Budget discipline stays in force.** Check `~/.claude/bin/check-usage.sh` before heavyweight autonomous work. At 5h ≥ 80%, sleep through the reset rather than burning `extra_usage` without an explicit operator opt-in. Story-automator's resume mode is the natural pause point — stop, sleep, resume from state file. Codex budget is separate: `~/.codex/bin/check-usage.sh` before any Codex call.
+**Budget discipline stays in force.** Check `laura-agent-usage` / Claude usage before heavyweight autonomous work. At Claude 5h ≥ 80%, sleep through the reset rather than burning `extra_usage` without an explicit operator opt-in. Story-automator's resume mode is the natural pause point — stop, sleep, resume from state file. Check `laura-agent-usage gemini-daily` / `codex-daily` when routing external review; preserve Codex/OpenAI budget for fallback/high-stakes or repo-mandated review.
 
 **What counts as a "real product blocker" — acceptable to surface mid-flight:**
 
@@ -259,11 +259,11 @@ Once the business surface of an initiative is closed — brief, PRD, architectur
 - A HARD-GATE failure that contractually blocks downstream work (e.g. Init 5's NFR5-SEC-1 audit gate condition).
 - Initiative completion — full retrospective ready for operator review and sign-off.
 
-**What does NOT count as a blocker** — own it: which skill next (answer via `bmad-help` + `bmad-help.csv` `phase` / `after` columns), commit / merge / deploy timing (AGENTS.md § Branching + § Deploy + the `feedback_auto_deploy_dev.md` memory entry), `bmad-correct-course` now-vs-later (default deferred unless next-story path-collision risk), subagent-vs-inline, Codex-review-now-vs-after-batch (per `feedback_batch_close_out_rule.md`), general BMAD methodology routing.
+**What does NOT count as a blocker** — own it: which skill next (answer via `bmad-help` + `bmad-help.csv` `phase` / `after` columns), commit / merge / deploy timing (AGENTS.md § Branching + § Deploy + the `feedback_auto_deploy_dev.md` memory entry), `bmad-correct-course` now-vs-later (default deferred unless next-story path-collision risk), subagent-vs-inline, external-review-now-vs-after-batch (Gemini default; Codex fallback/high-stakes or repo-mandated), general BMAD methodology routing.
 
 **BMAD vanilla-first stays in force, no exceptions.** The autonomy is *operational ownership of when and how to invoke the skills*, not *license to bypass them*. Every action routes through the canonical chain; skill protests still trigger STOP, not route-around; `bmad-correct-course` is still the canonical entry for any post-ship scope change. The mandatory session-start `bmad-help` handshake is the one operator-visible procedural check that survives autonomous mode; everything between session start and initiative close runs autonomously.
 
-Source: 2026-05-19 operator decision after Sesja G of Initiative 5. The pattern being closed: agent dragging operator into procedural micro-decisions (session boundaries, accept/proceed prompts, methodology routing) when business alignment was already settled. Rule applies to every BMAD-aware agent (Claude Code primary; Codex / future LLMs inherit via this AGENTS.md entry). Cross-referenced in agent-local memory as `feedback_itcm_autonomous_mode.md` for fast recall.
+Source: 2026-05-19 operator decision after Sesja G of Initiative 5. The pattern being closed: agent dragging operator into procedural micro-decisions (session boundaries, accept/proceed prompts, methodology routing) when business alignment was already settled. Rule applies to every BMAD-aware agent (Claude Code primary; Gemini/Codex/future LLMs inherit via this AGENTS.md entry according to their reviewer/executor role). Cross-referenced in agent-local memory as `feedback_itcm_autonomous_mode.md` for fast recall.
 
 ### Execution discipline
 
