@@ -65,21 +65,36 @@ class NullCliValidator:
         return ValidationResult(ok=True)
 
 
-def build_orca_smoke_command(
-    machine: Path, process: Path, filament: Path, probe_stl: Path
-) -> list[str]:
-    """Build the concrete Orca ``--info`` smoke argv (used by the bench-gated test).
+def build_orca_load_flags(machine: Path, process: Path, filament: Path) -> list[str]:
+    """The shared ``--load-*`` flag shape — single source of truth for the triple argv.
 
-    Mirrors :data:`ORCA_SMOKE_COMMAND_TEMPLATE`. This story does not execute it in
-    CI; Story 32.2 wires the real container run.
+    Both the Story 32.1 ``--info`` smoke command and the Story 32.2 real slice argv
+    (``cli.build_slice_command``) build on this so the profile-loading shape is
+    authored once and never diverges (AC-1/AC-3): ``--load-settings "<machine>;
+    <process>"`` carries the machine + process JSONs, ``--load-filaments`` the
+    filament JSON.
     """
     return [
-        "orca",
-        "--info",
         "--load-settings",
         f"{machine};{process}",
         "--load-filaments",
         str(filament),
+    ]
+
+
+def build_orca_smoke_command(
+    machine: Path, process: Path, filament: Path, probe_stl: Path, orca_bin: str = "orca"
+) -> list[str]:
+    """Build the concrete Orca ``--info`` smoke argv (used by the bench-gated test).
+
+    Mirrors :data:`ORCA_SMOKE_COMMAND_TEMPLATE`. ``orca_bin`` defaults to the literal
+    ``"orca"`` so the Story 32.1 smoke test argv is byte-identical; Story 32.2's real
+    invocation passes the settings-sourced entrypoint (never a hard-coded literal).
+    """
+    return [
+        orca_bin,
+        "--info",
+        *build_orca_load_flags(machine, process, filament),
         str(probe_stl),
     ]
 

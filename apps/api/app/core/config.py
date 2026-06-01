@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app.core.db.models._enums import UserRole
@@ -122,6 +122,41 @@ class Settings(BaseSettings):
     # children itself, so the default is ``/data/content/slicer`` (NOT
     # ``…/slicer/bundles``, which would nest to ``…/slicer/bundles/bundles/…``).
     slicer_bundle_store_dir: Path = Path("/data/content/slicer")
+
+    # Slicer worker (Initiative 20, Story 32.2, Decision AI) — headless Orca CLI
+    # invoke + classify slots. Production runtime home for these is the configs-side
+    # slicer-worker container (AC-12), which shares the api image and therefore loads
+    # the same Settings; the api/arq-worker containers carry the same defaults so the
+    # settings-env-compose drift gate stays aligned (the value there is inert — only
+    # the slicer-worker actually spawns Orca).
+    #
+    # slicer_orca_bin: the Orca entrypoint, read from a settings slot, NEVER a literal
+    # — because "the --appimage-extract entrypoint inside the configs-side slicer-worker
+    # container — NFR20-CONTAINER-1; MUST NOT be a bench/external-host/binary literal"
+    # (AC-10). The configs recipe sets ORCA_BIN (AC-12); SLICER_ORCA_BIN is the
+    # name-aligned var the drift gate expects — AliasChoices accepts either, ORCA_BIN
+    # winning so the container's value applies.
+    slicer_orca_bin: str = Field(
+        default="/opt/orca/orca",
+        validation_alias=AliasChoices("ORCA_BIN", "SLICER_ORCA_BIN"),
+    )
+    # slicer_stl_cache_dir: content-hash STL cache root (AC-4); fan-out layout
+    # <root>/stl/<hash[:2]>/<hash>.stl. Populated API-side at enqueue from the
+    # .190-mirrored catalog copy; the worker only ever reads this cache (OD-8).
+    slicer_stl_cache_dir: Path = Path("/data/content/slicer/stl-cache")
+    # slicer_max_concurrency: arq max_jobs cap default 1 — because "small bounded cap
+    # so a minutes-long slice can't starve API/render workers on .190 — NFR20-RESOURCE-1
+    # / OD-6" (AC-10). Configurable up to 2 if .190 headroom allows.
+    slicer_max_concurrency: int = Field(default=1, ge=1, le=4)
+    # slicer_slice_timeout_seconds: wall-time ceiling on the slice subprocess — because
+    # "ARBITRARY conservative safety ceiling on slice WALL-TIME (not print time) —
+    # replace once the configs-side R3 container spike benchmarks real slice wall-time;
+    # NOT a contractual value (avoids the TB-016 anti-pattern)" (AC-10).
+    slicer_slice_timeout_seconds: int = Field(default=900, ge=1)
+    # slicer_info_timeout_seconds: short ceiling on the cheap --info pre-check — because
+    # "ARBITRARY short ceiling on the cheap --info pre-check — replace at benchmark; the
+    # pre-check is sub-slice fast by design" (AC-10).
+    slicer_info_timeout_seconds: int = Field(default=60, ge=1)
 
     # Observability
     otel_exporter_otlp_endpoint: str | None = None

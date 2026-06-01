@@ -1,6 +1,10 @@
+---
+baseline_commit: 9d28e5393ee0bd136233f158fd323cf171746dbd
+---
+
 # Story 32.2: Containerized headless OrcaSlicer worker — job shape + real CLI invoke + failure classification
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -162,41 +166,41 @@ This story owns **app-layer worker code only**. The container topology that actu
 
 > **TDD discipline (AGENTS.md § Execution discipline):** each logic-bearing task writes the failing test FIRST (red), then implements to green, then refactors. The classification + cache-addressing + dedupe logic is the red-green core; the Orca subprocess is an injected mock runner in CI (real run is bench/container-gated, AC-3/AC-12).
 
-- [ ] **T1** (AC-1) — Extend the `slicer` module skeleton
-  - [ ] T1.1 Add `cli.py`, `stl_cache.py`, `worker_job.py`, `worker.py`, `enqueue.py` with docstrings citing Decision AI + this spec path. No `router.py`.
-  - [ ] T1.2 Extend `models.py` with `SliceStatus`, `SliceFailureReason`, `SliceWarning`, `SliceOutcome` (NO `EstimateRecord` — that is 32.3). Tests for the enum/result shapes.
-- [ ] **T2** (AC-2) — Idempotent enqueue + dedicated queue *(red→green)*
-  - [ ] T2.1 Failing tests: `_job_id` dedupe shape, dedicated slicer queue, payload carries only the 2 hashes.
-  - [ ] T2.2 Implement `enqueue.py` (compute/ensure `stl_hash`, populate cache from mirrored catalog copy, enqueue `(stl_hash, bundle_hash)` with `_job_id` + `_queue_name`).
-- [ ] **T3** (AC-3) — Real Orca invocation in `cli.py` *(red→green; mocked runner)*
-  - [ ] T3.1 Failing tests: `--info` runs before slice, non-manifold fast-fail (slice runner never called), slice argv reuses the `build_orca_smoke_command` shape, entrypoint from settings.
-  - [ ] T3.2 Implement the `--info` parse + the timeout-bounded subprocess runner seam + the slice argv; env-gated real-Orca smoke test (`ORCA_SMOKE_TEST=1`).
-- [ ] **T4** (AC-4) — Bundle-store + STL content-hash cache reads *(red→green)*
-  - [ ] T4.1 Failing tests: load triple from bundle store by hash, `missing_bundle`, hash-fanout cache path, `missing_stl`, enqueue populates cache from the mirrored catalog copy, worker never reads Windows/Fenrir.
-  - [ ] T4.2 Implement `stl_cache.py` (addressing + read + populate-from-mirrored-source) + bundle-store read in `worker_job.py`.
-- [ ] **T5** (AC-5) — Temp g-code emit + parse-and-discard + 32.3 sink seam *(red→green)*
-  - [ ] T5.1 Failing tests: g-code to temp path, discarded on success + on failure, no durable retention / no full g-code in log, injected parser-sink default no-op.
-  - [ ] T5.2 Implement the context-managed scratch dir + the `GcodeSink` injection point (default discard).
-- [ ] **T6** (AC-6) — Failure + warning classification *(red→green; one test per branch)*
-  - [ ] T6.1 Failing tests for `warning`, `non_zero_exit`, `cli_rejected_profile`, `timeout`, never-silent-zero (`non_manifold`/`missing_*` from T3/T4).
-  - [ ] T6.2 Implement the `SliceOutcome` classification in `worker_job.py`; note the `parse_failure` reason is reserved for Story 32.3.
-- [ ] **T7** (AC-7) — Bounded concurrency + slice/info timeout *(red→green)*
-  - [ ] T7.1 Failing tests: bounded `max_jobs` default from settings, timeout terminates + classifies `timeout`, timeout value from settings.
-  - [ ] T7.2 Implement `SlicerWorkerSettings.max_jobs` + the wall-time timeout (process-group terminate) + the contract comments (AC-10).
-- [ ] **T8** (AC-8) — Observability *(red→green)*
-  - [ ] T8.1 Failing tests: structured tags on completion, failure-reason tag, full g-code never in logs.
-  - [ ] T8.2 Implement the structured-log tags + OTel span + GlitchTip breadcrumb (reuse `workers/render/render/observability.py` pattern).
-- [ ] **T9** (AC-9, AC-10) — Settings slots + env/compose alignment + magic-constant contracts
-  - [ ] T9.1 Append `slicer_orca_bin`, `slicer_stl_cache_dir`, `slicer_max_concurrency`, `slicer_slice_timeout_seconds`, `slicer_info_timeout_seconds` to `config.py` (with `because` comments); config default tests.
-  - [ ] T9.2 Document in `infra/env.example` + wire into `infra/docker-compose.yml` env blocks; run `infra/scripts/check-settings-env-compose.py` → OK (allowlist `ORCA_BIN`/slicer vars as slicer-worker-runtime if needed).
-  - [ ] T9.3 Grep invariant test: no `/mnt/c` / Fenrir / `.exe` / Windows-path literal in the slicer module + `config.py`.
-- [ ] **T10** (AC-12) — Configs-side coordination gate (DOC ONLY, no configs edit)
-  - [ ] T10.1 Record the `slicer-worker.yml` recipe contract (OrcaSlicer 2.3.2 AppImage `--appimage-extract` + verified dep set + `arq …SlicerWorkerSettings` + volume/network + `ORCA_BIN`) + the R3 spike + the out-of-band Orca-in-container smoke as the external pre-merge gate in Dev Notes. Assert `git diff main -- '~/repos/configs/*'` empty.
-- [ ] **T11** (AC-13) — Scope fence *(grep/diff)*
-  - [ ] T11.1 `git diff main -- apps/api/app/main.py apps/api/app/router.py apps/web/` → 0 lines; no new `apps/api/migrations/versions/` file; `pyproject.toml` deps unchanged.
-- [ ] **T-DET** (AC-11) — Determinism gate: 3× consecutive identical pytest pass counts on the slicer suite; document in Dev Agent Record.
-- [ ] **T12** (full quality gate) — `ruff format --check` + `ruff check` clean on `apps/api/`; `pytest apps/api/tests/ -v` green = baseline + new slicer-worker cases (env-gated real-Orca smoke skipped). No vitest/Playwright (backend/worker only).
-- [ ] **T13** (handoff) — dev-story flips `ready-for-dev → review`; code-review owns `→ done`. **Commit / ff-merge / deploy NOT performed by dev-story — controller-owned, AND gated on the AC-12 configs recipe + out-of-band Orca smoke + operator go (SCP § 5).** Story branch: `feat/E32.2-slicer-worker-container-cli-invoke-classify` (created by dev-story at start, NOT now). Suggested commit scope when the controller commits: `feat(api): containerized headless Orca slicer worker — CLI invoke + classify (Story 32.2, Init 20)`.
+- [x] **T1** (AC-1) — Extend the `slicer` module skeleton
+  - [x] T1.1 Add `cli.py`, `stl_cache.py`, `worker_job.py`, `worker.py`, `enqueue.py` with docstrings citing Decision AI + this spec path. No `router.py`.
+  - [x] T1.2 Extend `models.py` with `SliceStatus`, `SliceFailureReason`, `SliceWarning`, `SliceOutcome` (NO `EstimateRecord` — that is 32.3). Tests for the enum/result shapes.
+- [x] **T2** (AC-2) — Idempotent enqueue + dedicated queue *(red→green)*
+  - [x] T2.1 Failing tests: `_job_id` dedupe shape, dedicated slicer queue, payload carries only the 2 hashes.
+  - [x] T2.2 Implement `enqueue.py` (compute/ensure `stl_hash`, populate cache from mirrored catalog copy, enqueue `(stl_hash, bundle_hash)` with `_job_id` + `_queue_name`).
+- [x] **T3** (AC-3) — Real Orca invocation in `cli.py` *(red→green; mocked runner)*
+  - [x] T3.1 Failing tests: `--info` runs before slice, non-manifold fast-fail (slice runner never called), slice argv reuses the `build_orca_smoke_command` shape, entrypoint from settings.
+  - [x] T3.2 Implement the `--info` parse + the timeout-bounded subprocess runner seam + the slice argv; env-gated real-Orca smoke test (`ORCA_SMOKE_TEST=1`).
+- [x] **T4** (AC-4) — Bundle-store + STL content-hash cache reads *(red→green)*
+  - [x] T4.1 Failing tests: load triple from bundle store by hash, `missing_bundle`, hash-fanout cache path, `missing_stl`, enqueue populates cache from the mirrored catalog copy, worker never reads Windows/Fenrir.
+  - [x] T4.2 Implement `stl_cache.py` (addressing + read + populate-from-mirrored-source) + bundle-store read in `worker_job.py`.
+- [x] **T5** (AC-5) — Temp g-code emit + parse-and-discard + 32.3 sink seam *(red→green)*
+  - [x] T5.1 Failing tests: g-code to temp path, discarded on success + on failure, no durable retention / no full g-code in log, injected parser-sink default no-op.
+  - [x] T5.2 Implement the context-managed scratch dir + the `GcodeSink` injection point (default discard).
+- [x] **T6** (AC-6) — Failure + warning classification *(red→green; one test per branch)*
+  - [x] T6.1 Failing tests for `warning`, `non_zero_exit`, `cli_rejected_profile`, `timeout`, never-silent-zero (`non_manifold`/`missing_*` from T3/T4).
+  - [x] T6.2 Implement the `SliceOutcome` classification in `worker_job.py`; note the `parse_failure` reason is reserved for Story 32.3.
+- [x] **T7** (AC-7) — Bounded concurrency + slice/info timeout *(red→green)*
+  - [x] T7.1 Failing tests: bounded `max_jobs` default from settings, timeout terminates + classifies `timeout`, timeout value from settings.
+  - [x] T7.2 Implement `SlicerWorkerSettings.max_jobs` + the wall-time timeout (process-group terminate) + the contract comments (AC-10).
+- [x] **T8** (AC-8) — Observability *(red→green)*
+  - [x] T8.1 Failing tests: structured tags on completion, failure-reason tag, full g-code never in logs.
+  - [x] T8.2 Implement the structured-log tags + OTel span + GlitchTip breadcrumb (reuse `workers/render/render/observability.py` pattern).
+- [x] **T9** (AC-9, AC-10) — Settings slots + env/compose alignment + magic-constant contracts
+  - [x] T9.1 Append `slicer_orca_bin`, `slicer_stl_cache_dir`, `slicer_max_concurrency`, `slicer_slice_timeout_seconds`, `slicer_info_timeout_seconds` to `config.py` (with `because` comments); config default tests.
+  - [x] T9.2 Document in `infra/env.example` + wire into `infra/docker-compose.yml` env blocks; run `infra/scripts/check-settings-env-compose.py` → OK (allowlist `ORCA_BIN`/slicer vars as slicer-worker-runtime if needed).
+  - [x] T9.3 Grep invariant test: no `/mnt/c` / Fenrir / `.exe` / Windows-path literal in the slicer module + `config.py`.
+- [x] **T10** (AC-12) — Configs-side coordination gate (DOC ONLY, no configs edit)
+  - [x] T10.1 Record the `slicer-worker.yml` recipe contract (OrcaSlicer 2.3.2 AppImage `--appimage-extract` + verified dep set + `arq …SlicerWorkerSettings` + volume/network + `ORCA_BIN`) + the R3 spike + the out-of-band Orca-in-container smoke as the external pre-merge gate in Dev Notes. Assert `git diff main -- '~/repos/configs/*'` empty.
+- [x] **T11** (AC-13) — Scope fence *(grep/diff)*
+  - [x] T11.1 `git diff main -- apps/api/app/main.py apps/api/app/router.py apps/web/` → 0 lines; no new `apps/api/migrations/versions/` file; `pyproject.toml` deps unchanged.
+- [x] **T-DET** (AC-11) — Determinism gate: 3× consecutive identical pytest pass counts on the slicer suite; document in Dev Agent Record.
+- [x] **T12** (full quality gate) — `ruff format --check` + `ruff check` clean on `apps/api/`; `pytest apps/api/tests/ -v` green = baseline + new slicer-worker cases (env-gated real-Orca smoke skipped). No vitest/Playwright (backend/worker only).
+- [x] **T13** (handoff) — dev-story flips `ready-for-dev → review`; code-review owns `→ done`. **Commit / ff-merge / deploy NOT performed by dev-story — controller-owned, AND gated on the AC-12 configs recipe + out-of-band Orca smoke + operator go (SCP § 5).** Story branch: `feat/E32.2-slicer-worker-container-cli-invoke-classify` (created by dev-story at start, NOT now). Suggested commit scope when the controller commits: `feat(api): containerized headless Orca slicer worker — CLI invoke + classify (Story 32.2, Init 20)`.
 
 ## Dev Notes
 
@@ -292,20 +296,90 @@ Story 32.2 routes to the higher review tier for **runtime-boundary / resource-sa
 
 ## Dev Agent Record
 
-> To be completed by `bmad-dev-story` when implementation is authorized (operator go per SCP § 5 + the AC-12 configs-side coordination gate). Spec authoring only at this point — no code written.
-
 ### Agent Model Used
 
-_(dev-story fills in)_
+claude-opus-4-8 (1M context) — `bmad-dev-story` execution, 2026-06-01. Routed via Laura/Hermes (operator go per SCP § 5). App-side worker code only; no commit/push/merge/deploy performed (controller-owned).
 
 ### Debug Log References
 
-_(dev-story fills in — RED→GREEN evidence per task)_
+RED→GREEN per task (run via `uv run pytest` in `apps/api/`):
+
+- **T9.1 (config slots):** wrote 5 config default tests → RED (`AttributeError: 'Settings' object has no attribute 'slicer_slice_timeout_seconds'`, 5 failed) → added the slots → GREEN (`13 passed`).
+- **T4 (stl_cache):** wrote `test_slicer_cache.py` (6 tests) → RED (import error, module absent) → implemented `stl_cache.py` → GREEN (`6 passed`).
+- **T3 (cli):** wrote `test_slicer_cli.py` (15 tests incl. env-gated smoke) → RED → extended `validation.build_orca_load_flags` + `build_orca_smoke_command(orca_bin=…)` (32.1 smoke argv byte-identical) + implemented `cli.py` → GREEN (`test_slicer_cli.py` + `test_slicer_resolver.py` = `49 passed, 2 skipped` — no 32.1 regression).
+- **T2/T5/T6/T7/T8 (worker):** wrote `test_slicer_worker.py` (33 cases) → RED → implemented `worker_job.py` + `worker.py` + `enqueue.py` → GREEN (`33 passed`).
+- **T9.2 (drift gate):** `infra/scripts/check-settings-env-compose.py` → `OK — 49 Settings fields / 47 env.example vars / 37 compose env refs aligned`; `docker compose -f infra/docker-compose.yml config --quiet` → OK.
+- **Observability test-pollution fix-up (honest record):** an earlier full-backend run was NOT clean — it surfaced **2 failures in `tests/test_slicer_worker.py`** (the two AC-8 tag tests). They passed in isolation but failed under full-suite ordering because the `caplog` root-handler was wiped by `app.core.logging.configure_logging` during another test's FastAPI lifespan — the documented repo-wide caplog hazard. Root-caused to test-order/logging pollution (not a worker-logic defect) and fixed by re-authoring both tests to capture via a dedicated `_ListHandler` bound to the `app.modules.slicer.worker_job` logger (the `test_ratelimit_share_cap.py`/`test_spools.py` pattern) → robust under any test ordering.
+- **Controller close-out gate (2026-06-01, post a final mechanical ruff doc fix):**
+  - Targeted gate `uv run pytest tests/test_slicer_cache.py tests/test_slicer_cli.py tests/test_slicer_worker.py tests/test_slicer_resolver.py tests/test_config.py -q` → `101 passed, 2 skipped in 0.83s`.
+  - `ruff format --check app tests` → `190 files already formatted`; `ruff check app tests` → `All checks passed!`.
+  - `infra/scripts/check-settings-env-compose.py` → `OK — 49 Settings fields / 47 env.example vars / 37 compose env refs aligned`; `git diff --check` clean; sprint-status YAML parse OK.
+  - **Final authoritative full-backend rerun after the observability test-order fix:** `1058 passed, 3 skipped, 1485 warnings in 309.02s (0:05:09)` — green (the earlier 2 caplog-pollution failures resolved; 3 skipped = the env-gated real-Orca smokes + the pre-existing skip).
+
+- **Independent code-review fix-up (2026-06-01, status stays `review`)** — four findings (1 BLOCKER + 3 IMPORTANT + 1 MINOR note) fixed under TDD; no scope broadening (only `worker_job.py` / `cli.py` / `stl_cache.py` / `enqueue.py` / `models.py` + their tests touched; no config/env/compose change):
+  - **#1 (BLOCKER) — exit 0 + no `*.gcode` was a silent success.** `_classify` previously returned `ok`/`warning` with `gcode_temp_ref=None` when Orca exited 0 but produced no g-code (no parser input → a plausible-but-wrong zero downstream, FR20-FAILURE-1). Now returns a typed `failed` + new `SliceFailureReason.missing_gcode`; the `GcodeSink` is NEVER handed a non-existent path, and the scratch dir is still discarded at block exit (AC-5). Tests: `test_zero_exit_but_no_gcode_classifies_missing_gcode`, `test_missing_gcode_sink_not_called_and_scratch_discarded` (+ `write_gcode=False` row in `test_failure_never_returns_silent_zero`).
+  - **#2 (IMPORTANT) — hash validation / path-traversal gate.** New centralized `validate_content_hash` / `is_content_hash` in `stl_cache.py` (single `^[0-9a-f]{64}$` sha256-hexdigest-width contract, AC-10 `because` comment). `StlCache.stl_path` validates BEFORE building a path (raises); `read_path`/`has` treat a malformed hash as a miss WITHOUT building a path; `worker_job` guards `bundle_hash` before the bundle-store path lookup (malformed ⇒ `missing_bundle`); `enqueue` validates the caller-supplied `bundle_hash` before it reaches the `_job_id`/queue (raises `ValueError`, nothing enqueued). Tests: `test_is_content_hash_*`, `test_validate_content_hash_raises_on_malformed`, `test_stl_path_refuses_to_build_path_from_malformed_hash`, `test_read_path_and_has_treat_malformed_hash_as_miss`, `test_malformed_bundle_hash_classifies_missing_bundle`, `test_malformed_stl_hash_classifies_missing_stl`, `test_uppercase_hash_is_rejected_as_malformed`, `test_enqueue_rejects_malformed_bundle_hash`.
+  - **#3 (IMPORTANT) — Orca launch errors classified.** `cli.info_precheck` / `cli.run_slice` can raise `FileNotFoundError`/`PermissionError`/`OSError` from `Popen` (bad entrypoint/perms); `_classify` now catches `OSError` on BOTH passes → typed `failed` + new `SliceFailureReason.launch_error` (was an uncaught arq exception). Info-pass launch error short-circuits before any slice. Tests: `test_info_launch_error_classifies_launch_error_without_slicing`, `test_slice_launch_error_classifies_launch_error`, `test_generic_oserror_on_launch_classifies_launch_error`.
+  - **#4 (IMPORTANT) — non-zero `--info` return code no longer ignored.** `_classify` now checks `info.returncode != 0` (before the manifold verdict, which is unreliable on a failed precheck) → typed `failed` + new `SliceFailureReason.info_precheck_failed`; the full slice is NOT run. Tests: `test_info_nonzero_returncode_classifies_info_precheck_failed`, `test_info_nonzero_returncode_does_not_run_the_full_slice` (+ `info_returncode=2` row in `test_failure_never_returns_silent_zero`).
+  - **#5 (MINOR) — `is_profile_rejection` breadth.** Left as-is with a deferral NOTE in `cli.py`: safely narrowing the broad `"invalid"`/`"reject"` markers needs the REAL Orca load-rejection stderr (CI has no AppImage); deferred to the AC-12 Orca-in-container smoke. Blast radius is bounded — both branches yield a typed `failed` (`cli_rejected_profile` vs `non_zero_exit`), never a silent zero.
+  - **`SliceFailureReason` extended (not reshaped)** with `info_precheck_failed` / `launch_error` / `missing_gcode` — consistent with the AC-6 "taxonomy extends" design; `test_slice_enums_and_outcome_shape` updated.
+  - **Gates (post-fix):** targeted `tests/test_slicer_cache.py tests/test_slicer_cli.py tests/test_slicer_worker.py tests/test_slicer_resolver.py tests/test_config.py -q` → `130 passed, 2 skipped in 0.93s` (was `101 passed, 2 skipped` — +29 new review-fix cases); `ruff format --check app tests` → `190 files already formatted`; `ruff check app tests` → `All checks passed!`; `check-settings-env-compose.py` → `OK — 49/47/37` (config/env/compose untouched); `git diff --check` + `git diff --cached --check` clean. **Status remains `review`; residual AC-12 external deploy/image/Orca-in-container-smoke gate still OPEN.**
+
+- **Controller final full-backend rerun AFTER the review-fix (2026-06-01, status stays `review`):** the prior `1058 passed, 3 skipped` full-backend figure predated the +29 review-fix cases landing in the suite; the authoritative full-backend rerun after the fix is **`uv run pytest -q` (from `apps/api/`) → `1087 passed, 3 skipped, 1485 warnings in 308.90s (0:05:08)`** (`1058 + 29` review-fix cases; 3 skipped = the env-gated real-Orca smokes + the pre-existing skip). Re-confirmed alongside it: targeted gate `tests/{test_slicer_cache,test_slicer_cli,test_slicer_worker,test_slicer_resolver,test_config}.py -q` remains `130 passed, 2 skipped`; `ruff format --check app tests` `190 files already formatted` + `ruff check app tests` `All checks passed!`; `check-settings-env-compose.py` `OK — 49 Settings fields / 47 env.example vars / 37 compose env refs aligned`; the NFR20-CONTAINER-1 static grep invariant scan → `0` matches; `git diff --check` + `git diff --cached --check` clean.
+  - **Follow-up independent review after the fixes:** found **no blocker / no important** findings. Only remaining **minor**: the broad `is_profile_rejection()` markers (#5 above) are deferred to the real AC-12 Orca-in-container smoke — low blast radius because both branches yield a **typed `failed`** (`cli_rejected_profile` vs `non_zero_exit`), never a silent success/zero (FR20-FAILURE-1 preserved).
+  - **Status remains `review`** (NOT `done`); the residual **AC-12 external gate remains OPEN**: the configs-side `slicer-worker.yml` recipe is MERGED to configs `origin/main` (PR #1, `9484180`) but NOT yet synced/deployed/restarted on `.190`, there is still no real slicer-capable portal image, and no Orca-in-container slice smoke has run. No commit/merge/deploy (controller-owned).
 
 ### Completion Notes List
 
-_(dev-story fills in — AC-by-AC evidence + exact test counts)_
+AC-by-AC (all app-side ACs satisfied; AC-12 deploy/image/smoke is a residual EXTERNAL gate — see blocker below):
+
+- **AC-1** — `slicer/` extended with `cli.py`, `stl_cache.py`, `worker_job.py`, `worker.py`, `enqueue.py`; `models.py` appended with `SliceStatus`/`SliceFailureReason`/`SliceWarning`/`SliceOutcome` (NO `EstimateRecord` — that is 32.3). No `router.py`, no route mount (`test_slicer_module_mounts_no_router`).
+- **AC-2** — payload is the `(stl_hash, bundle_hash)` 2-tuple ONLY; `_job_id = slice:<stl_hash>:<bundle_hash>` dedupe; dedicated `arq:slicer` queue. (`test_enqueue_uses_stl_bundle_tuple_job_id_for_dedupe`, `test_enqueue_targets_dedicated_slicer_queue`, `test_job_payload_carries_only_the_two_hashes`.)
+- **AC-3** — `--info` manifold pre-check runs STRICTLY before the slice (`test_info_precheck_runs_before_slice`); `manifold: no` fast-fails `non_manifold` WITHOUT slicing (`test_non_manifold_info_fast_fails_without_slicing`, asserts slice never called); slice argv reuses `build_orca_load_flags` single source (`test_slice_argv_reuses_validation_command_shape`); entrypoint from settings (`test_orca_entrypoint_read_from_settings_not_hardcoded`); env-gated real smoke (`test_real_orca_slice_smoke`, skipped without `ORCA_SMOKE_TEST=1`).
+- **AC-4** — triple loaded from the 32.1 bundle store by hash (`missing_bundle` on miss); STL read from `<root>/stl/<hash[:2]>/<hash>.stl` (`missing_stl` on miss); cache populated API-side from the mirrored catalog copy at enqueue; the worker read seam takes ONLY the hash (no external-host path param — `test_read_path_takes_only_hash_no_external_source_path`).
+- **AC-5** — g-code emitted to a context-managed scratch dir, handed to the injected `GcodeSink` (default no-op `discard_sink`), and DELETED at job end on success AND failure (`test_temp_gcode_discarded_on_success`/`…_on_failure`); zero durable retention (`test_no_gcode_retained_in_durable_store_or_log`); 32.3 sink seam proven DI-clean (`test_parser_sink_is_injected_default_noop`).
+- **AC-6** — typed `SliceOutcome`, never a silent zero: `warning` (non-blocking), `non_zero_exit`, `cli_rejected_profile`, `timeout`, `non_manifold`, `missing_stl`, `missing_bundle` each classified; `test_failure_never_returns_silent_zero` (parametrized over every failure branch) asserts `status==failed` + a non-None reason. `parse_failure` is reserved for Story 32.3 (noted in `models.py`).
+- **AC-7** — `SlicerWorkerSettings.max_jobs` = `slicer_max_concurrency` (default 1, bounded ≤2); slice/info wall-time from settings; `SubprocessRunner` starts the child in its own session and SIGKILLs the whole process group on timeout (`test_subprocess_runner_raises_timeout_and_terminates_process_group` with a real `sleep`); worker classifies `timeout`.
+- **AC-8** — one structured start + completion line per job carrying `stl_hash`/`bundle_hash`/`status`/`failure_reason`/`orca_version`/`slice_wall_ms`/`manifold`/`warning_count` (as `labels.*` pass-through keys); OTel span `slicer.slice`; GlitchTip breadcrumb on failure; full g-code NEVER logged (`test_full_gcode_never_appears_in_logs`).
+- **AC-9/AC-10** — 5 settings slots appended to `config.py` each with a `because` contract comment; `slicer_orca_bin` reads `ORCA_BIN` (AC-12 container var) OR `SLICER_ORCA_BIN` (gate-aligned name) via `AliasChoices`; drift gate GREEN; grep invariant test two-tier per the AC clarification (full pattern over the authored module → 0; path/exe literals over `config.py` → 0, leaving 32.1's legitimate boundary prose intact).
+- **AC-11** — determinism: 3× consecutive `pytest tests/test_slicer*.py` → identical pass count, no flakes. Current authoritative count (after the AC-8 observability test re-author): `98 passed, 2 skipped` (the earlier `111` figure predates the test-pollution fix-up that consolidated the two AC-8 tag tests).
+- **AC-12** — DOC ONLY; `git diff <baseline> -- '*configs*'` empty (zero configs-repo edits). **Residual external gate OPEN** (see blocker).
+- **AC-13** — scope fence: `git diff <baseline> -- apps/api/app/main.py apps/api/app/router.py apps/web/` = 0 lines; no new `apps/api/migrations/versions/`; `apps/api/pyproject.toml` deps unchanged; no new heavy dependency (stdlib `subprocess`/`tempfile`/`hashlib`/`shutil` + already-present arq).
+
+**Test counts (authoritative, controller final rerun AFTER review-fix 2026-06-01):** new/extended — `test_slicer_cli.py`, `test_slicer_cache.py`, `test_slicer_worker.py`, `test_config.py` (+5 config default tests). Post-review-fix targeted gate `tests/{test_slicer_cache,test_slicer_cli,test_slicer_worker,test_slicer_resolver,test_config}.py -q` = `130 passed, 2 skipped` (+29 review-fix cases over the pre-fix `101 passed`); **final full backend suite = `uv run pytest -q` → `1087 passed, 3 skipped, 1485 warnings in 308.90s (0:05:08)`** (supersedes the pre-review-fix `1058 passed`; `1058 + 29` review-fix cases). `ruff format --check app tests` = `190 files already formatted`; `ruff check app tests` = `All checks passed!`; settings/env/compose drift gate `OK 49/47/37`; NFR20-CONTAINER-1 static grep invariant `0`; `git diff --check` + `--cached --check` clean. Follow-up independent review after the fixes = no blocker / no important; only remaining minor = the broad `is_profile_rejection()` markers deferred to the AC-12 Orca-in-container smoke (typed `failed` either branch, never a silent zero). 3 skipped in the full suite (2 in the slicer/targeted runs) = env-gated real-Orca smokes (32.1 + 32.2) + the pre-existing skip; the smokes require `ORCA_SMOKE_TEST=1` + the real AppImage.
+
+**RESIDUAL BLOCKER (pre-merge, controller-owned) — AC-12 deploy/image/Orca-in-container smoke:** the configs-side `slicer-worker.yml` recipe is MERGED to configs `origin/main` (PR #1, merge commit `9484180`) but NOT yet synced/deployed/restarted on `.190`, and there is still NO real slicer-capable portal image and NO Orca-in-container smoke. The app-side worker is green and review-ready, but the worker is NOT "done"/deployed until (a) the recipe is synced/deployed on `.190` and the `--appimage-extract` R3 spike resolves against a real slicer-capable image, and (b) the out-of-band Orca-in-container slice smoke (PLA + TPU fixtures → exit 0 + expected g-code metadata) passes. The portal-side `ORCA_SMOKE_TEST=1` bench bridge (`test_real_orca_slice_smoke`) is the verification hook. No portal-side commit touches `~/repos/configs/*` (HC2).
 
 ### File List
 
-_(dev-story fills in)_
+**New (app):**
+- `apps/api/app/modules/slicer/cli.py`
+- `apps/api/app/modules/slicer/stl_cache.py`
+- `apps/api/app/modules/slicer/worker_job.py`
+- `apps/api/app/modules/slicer/worker.py`
+- `apps/api/app/modules/slicer/enqueue.py`
+
+**New (tests):**
+- `apps/api/tests/test_slicer_cli.py`
+- `apps/api/tests/test_slicer_cache.py`
+- `apps/api/tests/test_slicer_worker.py`
+
+**Modified:**
+- `apps/api/app/modules/slicer/models.py` (append slice-outcome types)
+- `apps/api/app/modules/slicer/validation.py` (extract `build_orca_load_flags`; add `orca_bin` param to `build_orca_smoke_command`)
+- `apps/api/app/modules/slicer/README.md` (Story 32.2 worker subsystem section)
+- `apps/api/app/core/config.py` (5 slicer-worker settings slots)
+- `apps/api/tests/test_config.py` (+5 config default tests)
+- `infra/env.example` (Story 32.2 env block)
+- `infra/docker-compose.yml` (slicer-worker env refs in api + arq-worker blocks)
+- `_bmad-output/implementation-artifacts/32-2-slicer-worker-container-cli-invoke-classify.md` (frontmatter, tasks, this record, status)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (status `ready-for-dev` → `in-progress` → `review`)
+
+### Change Log
+
+| Date | Change |
+|---|---|
+| 2026-06-01 | Story 32.2 implemented under TDD (bmad-dev-story). 5 new app modules + 3 new test files + models/validation/config/README/env/compose edits. Status `ready-for-dev` → `review`. Residual AC-12 external deploy/image/Orca-in-container-smoke gate remains OPEN. No commit/merge/deploy (controller-owned). |
+| 2026-06-01 | Controller close-out bookkeeping. Recorded the final authoritative gate evidence after a mechanical ruff doc fix: targeted gate `101 passed, 2 skipped`; slicer glob `98 passed, 2 skipped`; **final full backend suite `1058 passed, 3 skipped` (309.02s)** — green after fixing 2 earlier `test_slicer_worker.py` AC-8 caplog test-order failures (test-pollution, not worker-logic); `ruff format --check` `190 files already formatted` + `ruff check` `All checks passed!`; drift gate `49/47/37`; `git diff --check` clean; YAML parse OK. Corrected stale doc figures (`111`→`98` slicer count, `215`→`190` ruff file count). Status stays `review` (NOT `done`) — residual AC-12 deploy/image/Orca-in-container-smoke external gate remains OPEN. |
+| 2026-06-01 | Independent code-review fix-up (status stays `review`). Fixed 1 BLOCKER + 3 IMPORTANT + 1 MINOR-note findings under TDD, no scope broadening: (#1) exit-0-but-no-g-code → typed `missing_gcode` (was silent `ok`/`warning`); (#2) centralized `validate_content_hash`/`is_content_hash` 64-lowercase-hex path-traversal gate across `StlCache`/`worker_job`/`enqueue`; (#3) Orca `OSError`-family launch errors → typed `launch_error` on both `--info` and slice; (#4) non-zero `--info` returncode → typed `info_precheck_failed`, full slice not run; (#5) `is_profile_rejection` left with a deferral note to the AC-12 Orca-in-container smoke. `SliceFailureReason` extended (`info_precheck_failed`/`launch_error`/`missing_gcode`), not reshaped. Touched `worker_job.py`/`cli.py`/`stl_cache.py`/`enqueue.py`/`models.py` + their tests only (no config/env/compose). Gates: targeted `130 passed, 2 skipped` (+29 cases); `ruff format --check` `190 files already formatted` + `ruff check` `All checks passed!`; drift gate `49/47/37`; `git diff --check` + `--cached --check` clean. No commit/merge/deploy. Residual AC-12 external gate remains OPEN. |
+| 2026-06-01 | Controller final full-backend rerun AFTER the review-fix (status stays `review`). Authoritative full backend `uv run pytest -q` (from `apps/api/`) → **`1087 passed, 3 skipped, 1485 warnings in 308.90s (0:05:08)`** (supersedes the pre-review-fix `1058 passed`; `1058 + 29` review-fix cases). Targeted gate stays `130 passed, 2 skipped`; `ruff format --check` `190 files already formatted` + `ruff check` `All checks passed!`; settings/env/compose drift gate `OK 49/47/37`; NFR20-CONTAINER-1 static grep invariant scan `0`; `git diff --check` + `--cached --check` clean. Follow-up independent review after the fixes found **no blocker / no important**; only remaining **minor** = the broad `is_profile_rejection()` markers deferred to the real AC-12 Orca-in-container smoke — low blast radius (both branches yield a typed `failed`, never a silent success/zero). No commit/merge/deploy. Status stays `review`; residual AC-12 external gate (configs recipe merged but NOT synced/deployed on `.190`, no slicer-capable image, no Orca-in-container smoke) remains OPEN. |

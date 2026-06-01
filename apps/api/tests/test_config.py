@@ -92,3 +92,53 @@ def test_slicer_artifact_dirs_default_under_portal_content(monkeypatch):
     s = Settings()
     assert str(s.slicer_vendored_profiles_dir) == "/data/content/slicer/vendored"
     assert str(s.slicer_bundle_store_dir) == "/data/content/slicer"
+
+
+# --- Story 32.2 (AC-9/AC-10) — slicer-worker settings slots --------------------
+
+
+def test_slicer_orca_bin_defaults_to_container_internal_entrypoint(monkeypatch):
+    # Story 32.2 (AC-9/AC-10) — the Orca entrypoint is read from a settings slot,
+    # NEVER a hard-coded literal. Default is a container-internal path (the
+    # --appimage-extract entrypoint inside the configs-side slicer-worker
+    # container); the live value is set by the configs recipe (AC-12).
+    monkeypatch.delenv("ORCA_BIN", raising=False)
+    monkeypatch.delenv("SLICER_ORCA_BIN", raising=False)
+    assert Settings().slicer_orca_bin == "/opt/orca/orca"
+
+
+def test_slicer_orca_bin_reads_orca_bin_env(monkeypatch):
+    # AC-12 contract: the configs-side slicer-worker container sets ORCA_BIN; the
+    # portal Settings field MUST read it (the name-aligned SLICER_ORCA_BIN var that
+    # the settings-env-compose drift gate expects is accepted too — AliasChoices).
+    monkeypatch.delenv("SLICER_ORCA_BIN", raising=False)
+    monkeypatch.setenv("ORCA_BIN", "/opt/orca/squashfs-root/AppRun")
+    assert Settings().slicer_orca_bin == "/opt/orca/squashfs-root/AppRun"
+
+
+def test_slicer_stl_cache_dir_defaults_under_portal_content(monkeypatch):
+    # AC-4/AC-9 — content-hash STL cache root defaults under the portal-content
+    # volume (mirrored catalog copy lands here at enqueue); never an external path.
+    monkeypatch.delenv("SLICER_STL_CACHE_DIR", raising=False)
+    assert str(Settings().slicer_stl_cache_dir) == "/data/content/slicer/stl-cache"
+
+
+def test_slicer_max_concurrency_defaults_to_bounded_one(monkeypatch):
+    # AC-7/AC-10 (NFR20-RESOURCE-1) — small bounded cap so a minutes-long slice
+    # cannot starve API/render workers on .190. Default 1; configurable up if
+    # headroom allows, but the default must stay small.
+    monkeypatch.delenv("SLICER_MAX_CONCURRENCY", raising=False)
+    s = Settings()
+    assert s.slicer_max_concurrency == 1
+    assert s.slicer_max_concurrency <= 2
+
+
+def test_slicer_timeouts_default_to_conservative_pending_benchmark(monkeypatch):
+    # AC-7/AC-10 — ARBITRARY conservative defaults pending the configs-side R3
+    # slice-wall-time benchmark (TB-016 lesson: not a contractual constant). The
+    # --info pre-check carries its own short ceiling (sub-slice fast by design).
+    monkeypatch.delenv("SLICER_SLICE_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("SLICER_INFO_TIMEOUT_SECONDS", raising=False)
+    s = Settings()
+    assert s.slicer_slice_timeout_seconds == 900
+    assert s.slicer_info_timeout_seconds == 60

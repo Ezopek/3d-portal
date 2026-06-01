@@ -9,16 +9,25 @@ reproducible slice inputs (Decision AH, architecture.md § Initiative 20):
 
 Module map:
 
-* ``models``       — Pydantic shapes + typed resolve result/failure.
+* ``models``       — Pydantic shapes + typed resolve/slice result/failure.
 * ``merge``        — pure recursive inheritance merge + CLI normalize.
 * ``resolver``     — hash + precedence orchestration + the settings entry point.
 * ``overrides``    — Spoolman override-layer seam (no-op default until Story 32.5).
-* ``validation``   — CLI-acceptance validator seam + Orca smoke-command spec.
+* ``validation``   — CLI-acceptance validator seam + shared Orca load-flag/argv spec.
 * ``bundle_store`` — append-only hash-fanout bundle + snapshot store.
 
-This story mounts NO HTTP route, adds NO Alembic migration, and runs NO real Orca
-binary (the slicer-worker container is Story 32.2 per OD-2). The hash path is pure
-and deterministic (NFR20-DETERMINISM-1).
+Story 32.2 (Decision AI) adds the headless-Orca slicer worker on top of the resolver:
+
+* ``cli``          — Orca ``--info`` + slice argv builders, timeout-bounded runner, output parse.
+* ``stl_cache``    — content-hash STL cache (populate API-side, read-only at the worker).
+* ``worker_job``   — the ``slice_estimate`` arq task: load → pre-check → slice → classify → discard.
+* ``worker``       — ``SlicerWorkerSettings`` arq entrypoint (dedicated queue + bounded jobs).
+* ``enqueue``      — API-side idempotent ``(stl_hash, bundle_hash)`` enqueue.
+
+The package mounts NO HTTP route and adds NO Alembic migration. Real Orca is never
+run in CI (the subprocess runner is an injected seam; the real run is configs-side
+container + env-gated bench). The resolve/classify paths are pure and deterministic
+(NFR20-DETERMINISM-1).
 """
 
 from __future__ import annotations

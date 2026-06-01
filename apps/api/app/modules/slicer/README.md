@@ -83,9 +83,45 @@ var (documented in `infra/env.example`) is a **bench-only** one-time-export path
 NOT read by production runtime — the resolver only ever reads
 `SLICER_VENDORED_PROFILES_DIR`.
 
-## Boundaries (this story)
+## Slicer worker (Story 32.2 — headless Orca CLI invoke + classify, Decision AI)
 
-No HTTP routes, no DB/Alembic schema, and no real Orca execution — the slicer-
-worker container (Story 32.2, OD-2) implements the real `CliValidator`; the real
-Spoolman-backed `OverrideProvider` is Story 32.5. A real-Orca acceptance smoke
-test exists but is env-gated (`ORCA_SMOKE_TEST=1`), default-skipped.
+Story 32.2 adds the worker subsystem that consumes a resolved bundle and turns an
+STL into a typed slice outcome. New files in this package:
+
+| file | role |
+|---|---|
+| `cli.py` | Orca command builders (`--info` pre-check + slice argv, reusing `validation.build_orca_load_flags`) + the timeout-bounded `SubprocessRunner` seam + output parsing (`manifold`, warnings, profile-rejection). Entrypoint from `slicer_orca_bin`. |
+| `stl_cache.py` | content-hash STL cache `<root>/stl/<hash[:2]>/<hash>.stl`; populated API-side from the mirrored catalog copy, read-only at the worker. |
+| `worker_job.py` | the `slice_estimate` arq task: load bundle → locate STL → `--info` manifold pre-check → slice → classify → hand temp g-code to the (32.3) parser sink → discard. Returns a typed `SliceOutcome`. |
+| `worker.py` | `SlicerWorkerSettings` arq entrypoint (dedicated `arq:slicer` queue, bounded `max_jobs`, redis) — what the configs-side `slicer-worker` container runs. |
+| `enqueue.py` | API-side idempotent enqueue: populate cache + enqueue the `(stl_hash, bundle_hash)` 2-tuple deduped on `_job_id`. |
+
+Job contract: the payload is the **2-tuple `(stl_hash, bundle_hash)` only** —
+no profile JSON, STL bytes, or file paths cross the queue. The job is idempotent on
+`_job_id = slice:<stl_hash>:<bundle_hash>` and lands on the dedicated `arq:slicer`
+queue (never the render `arq:queue` / api `arq:api`).
+
+Classification (`SliceOutcome` / `SliceFailureReason`) is never a silent zero:
+`non_manifold` (fast-fail before the slice), `non_zero_exit`, `cli_rejected_profile`,
+`missing_stl`, `missing_bundle`, `timeout`; plus a non-blocking `warning` status.
+g-code is **parse-and-discard** (OD-5): written to a context-managed scratch dir and
+deleted at job end — zero durable retention. The Story 32.3 parser slots into the
+`GcodeSink` seam (default no-op discard) without reshaping `worker_job.py`.
+
+| setting | env | default | role |
+|---|---|---|---|
+| `slicer_orca_bin` | `ORCA_BIN` / `SLICER_ORCA_BIN` | `/opt/orca/orca` | Orca entrypoint (container-internal; never a literal) |
+| `slicer_stl_cache_dir` | `SLICER_STL_CACHE_DIR` | `/data/content/slicer/stl-cache` | content-hash STL cache root |
+| `slicer_max_concurrency` | `SLICER_MAX_CONCURRENCY` | `1` | arq `max_jobs` cap (NFR20-RESOURCE-1) |
+| `slicer_slice_timeout_seconds` | `SLICER_SLICE_TIMEOUT_SECONDS` | `900` | ARBITRARY slice wall-time ceiling (pending R3 benchmark) |
+| `slicer_info_timeout_seconds` | `SLICER_INFO_TIMEOUT_SECONDS` | `60` | ARBITRARY `--info` ceiling (pending R3 benchmark) |
+
+## Boundaries
+
+No HTTP routes, no DB/Alembic schema. Real Orca is NOT run in CI — `cli.py` injects a
+subprocess-shaped runner seam (fake in the unit suite); the real run is verified
+out-of-band on the configs-side `slicer-worker` container (Story 32.2 AC-12) plus the
+env-gated `ORCA_SMOKE_TEST=1` bench bridge. The real Spoolman-backed
+`OverrideProvider` is Story 32.5; g-code metadata parsing into an estimate is Story
+32.3. The container topology that runs Orca is configs-side (HC2 boundary), never a
+commit in this repo.

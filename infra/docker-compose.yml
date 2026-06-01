@@ -58,6 +58,16 @@ services:
       ORCA_VERSION: ${ORCA_VERSION:-2.3.2}
       SLICER_VENDORED_PROFILES_DIR: ${SLICER_VENDORED_PROFILES_DIR:-/data/content/slicer/vendored}
       SLICER_BUNDLE_STORE_DIR: ${SLICER_BUNDLE_STORE_DIR:-/data/content/slicer}
+      # Slicer worker (Story 32.2). Runtime home is the configs-side slicer-worker
+      # container (AC-12); carried here so the settings-env-compose gate stays aligned
+      # (inert for api — only the slicer-worker spawns Orca). SLICER_ORCA_BIN is the
+      # name-aligned var; the slicer-worker recipe also sets ORCA_BIN, which Settings
+      # accepts via AliasChoices.
+      SLICER_ORCA_BIN: ${SLICER_ORCA_BIN:-/opt/orca/orca}
+      SLICER_STL_CACHE_DIR: ${SLICER_STL_CACHE_DIR:-/data/content/slicer/stl-cache}
+      SLICER_MAX_CONCURRENCY: ${SLICER_MAX_CONCURRENCY:-1}
+      SLICER_SLICE_TIMEOUT_SECONDS: ${SLICER_SLICE_TIMEOUT_SECONDS:-900}
+      SLICER_INFO_TIMEOUT_SECONDS: ${SLICER_INFO_TIMEOUT_SECONDS:-60}
     volumes:
       - ${CATALOG_HOST_DIR}:/data/catalog:ro
       - ${RENDERS_HOST_DIR}:/data/renders:ro
@@ -122,6 +132,15 @@ services:
       ORCA_VERSION: ${ORCA_VERSION:-2.3.2}
       SLICER_VENDORED_PROFILES_DIR: ${SLICER_VENDORED_PROFILES_DIR:-/data/content/slicer/vendored}
       SLICER_BUNDLE_STORE_DIR: ${SLICER_BUNDLE_STORE_DIR:-/data/content/slicer}
+      # Slicer worker (Story 32.2). Same rationale as the api block — carried for the
+      # settings-env-compose gate; inert here (this arq-worker runs app.workers.
+      # WorkerSettings, NOT the slicer pool). The real slicer pool is the configs-side
+      # slicer-worker container (AC-12).
+      SLICER_ORCA_BIN: ${SLICER_ORCA_BIN:-/opt/orca/orca}
+      SLICER_STL_CACHE_DIR: ${SLICER_STL_CACHE_DIR:-/data/content/slicer/stl-cache}
+      SLICER_MAX_CONCURRENCY: ${SLICER_MAX_CONCURRENCY:-1}
+      SLICER_SLICE_TIMEOUT_SECONDS: ${SLICER_SLICE_TIMEOUT_SECONDS:-900}
+      SLICER_INFO_TIMEOUT_SECONDS: ${SLICER_INFO_TIMEOUT_SECONDS:-60}
     volumes:
       - ${CATALOG_HOST_DIR}:/data/catalog:ro
       - ${RENDERS_HOST_DIR}:/data/renders:ro

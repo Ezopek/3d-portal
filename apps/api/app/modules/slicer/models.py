@@ -148,3 +148,84 @@ class ResolveSuccess(BaseModel):
 
 # A resolve outcome is exactly one of success or classified failure.
 ResolveOutcome = ResolveSuccess | ResolveFailure
+
+
+# --- Story 32.2 (Decision AI) — slice invocation result/failure model ----------
+#
+# The worker classifies EVERY outcome into a typed ``SliceOutcome`` — never a bare
+# ``None``/0 a caller could misread as a valid estimate (FR20-FAILURE-1, AC-6). The
+# taxonomy is designed to EXTEND, not reshape: Story 32.3 adds a ``parse_failure``
+# reason for g-code-metadata parse errors without changing ``SliceOutcome``'s shape.
+
+
+class SliceStatus(StrEnum):
+    """Top-level slice outcome (AC-6).
+
+    ``ok`` and ``warning`` both mean the slice produced valid g-code; ``warning``
+    additionally carries non-blocking Orca warnings (surfaced non-blocking by Story
+    32.6). ``failed`` always carries a machine-readable ``SliceFailureReason``.
+    """
+
+    ok = "ok"
+    warning = "warning"
+    failed = "failed"
+
+
+class SliceFailureReason(StrEnum):
+    """Machine-readable slice-INVOCATION failure reasons (AC-6).
+
+    Scope: invocation outcomes only. g-code metadata-parse failure is classified by
+    the Story 32.3 parser (a future ``parse_failure`` reason), NOT here.
+
+    The taxonomy EXTENDS without reshaping ``SliceOutcome``: ``info_precheck_failed``,
+    ``launch_error`` and ``missing_gcode`` were added as Story 32.2 review fixes to
+    keep the no-silent-zero contract total — a non-zero ``--info`` precheck, an Orca
+    process that fails to launch, and an exit-0 slice that emits no g-code were each
+    previously able to leak past classification.
+    """
+
+    non_manifold = "non_manifold"
+    # --info precheck exited non-zero — its manifold verdict is unreliable, so the
+    # full slice MUST NOT run on its say-so (review fix #4).
+    info_precheck_failed = "info_precheck_failed"
+    non_zero_exit = "non_zero_exit"
+    cli_rejected_profile = "cli_rejected_profile"
+    # Orca could not be launched at all (FileNotFoundError/PermissionError/OSError
+    # from the runner) — a bad entrypoint/perms, never an uncaught arq exception
+    # (review fix #3).
+    launch_error = "launch_error"
+    # Orca exited 0 but produced no g-code — there is NO parser input, so an ``ok``
+    # here would be a plausible-but-wrong silent zero downstream (review fix #1).
+    missing_gcode = "missing_gcode"
+    missing_stl = "missing_stl"
+    missing_bundle = "missing_bundle"
+    timeout = "timeout"
+
+
+class SliceWarning(BaseModel):
+    """A single non-blocking Orca slice warning (e.g. floating cantilever)."""
+
+    message: str
+
+
+class SliceOutcome(BaseModel):
+    """Typed classified result of one slice job — the no-silent-zero contract (AC-6).
+
+    A failed/timed-out slice NEVER returns success-with-zero: ``status`` is
+    ``failed`` with a ``reason`` so Story 32.6 can render "couldn't estimate, here's
+    why". ``gcode_temp_ref`` is a TRANSIENT reference to the in-job temp g-code (the
+    Story 32.3 parser-sink hand-off); the file itself is discarded at job end (OD-5
+    parse-and-discard, AC-5), so the ref points at an already-deleted path once the
+    job returns. Timing/identity fields are observability metadata (AC-8) and are
+    excluded from determinism assertions (AC-11).
+    """
+
+    status: SliceStatus
+    reason: SliceFailureReason | None = None
+    warnings: list[SliceWarning] = Field(default_factory=list)
+    gcode_temp_ref: str | None = None
+    manifold: bool | None = None
+    slice_wall_ms: int | None = None
+    stl_hash: str | None = None
+    bundle_hash: str | None = None
+    orca_version: str | None = None
