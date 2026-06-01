@@ -4,7 +4,7 @@ baseline_commit: da2f593580c4bebf46ed995c9d3383fbf9a12127
 
 # Story 32.3: G-code metadata parse → typed `EstimateRecord` + `(stl_hash, bundle_hash)` append-only cache schema + cost-carry fields
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -165,34 +165,34 @@ After this story lands, three consecutive `pytest apps/api/tests/test_slicer*.py
 
 > **TDD discipline (AGENTS.md § Execution discipline):** every logic-bearing task writes the failing test FIRST (red), then implements to green, then refactors. The parser + time-normalization + store + dedup + classification logic is the red→green core; there is **no subprocess and no real Orca in this story** (pure parse + local file store), so the entire suite runs deterministically in CI with no env gate.
 
-- [ ] **T1** (AC-1) — Extend `models.py` with the estimate surfaces *(red→green)*
-  - [ ] T1.1 Failing tests: `EstimateStatus`/`EstimateFailureReason` values; `EstimateRecord` failed-record `None`-not-`0`; reuses `SliceWarning`; `SliceOutcome` field set unchanged.
-  - [ ] T1.2 Append `EstimateStatus`, `EstimateFailureReason`, `EstimateRecord` to `models.py` (NO `SliceOutcome` change).
-- [ ] **T2** (AC-2, AC-3, AC-4) — Pure g-code parser + time normalization *(red→green)*
-  - [ ] T2.1 Failing tests: parse all fields (PLA + TPU fixtures), settings-id dequote, order-independence, purity; duration grammar edge cases; missing/garbled → classified failure, never silent zero; cost/settings_ids non-fatal.
-  - [ ] T2.2 Implement `gcode_parse.py` (`parse_gcode_metadata` + `parse_duration_to_seconds` + the required/optional split) with the AC-11 contract comments.
-  - [ ] T2.3 Author `apps/api/tests/fixtures/slicer/gcode/{pla_standard,tpu_standard,missing_time,garbled}.gcode` from the documented bench metadata (NO real retained g-code — synthetic footers matching the proven Orca 2.3.2 line shapes).
-- [ ] **T3** (AC-5, AC-6) — Append-only estimate store + dedup *(red→green)*
-  - [ ] T3.1 Failing tests: write/read roundtrip, `<stl_hash>/<bundle_hash>` layout, malformed-hash rejection (both hashes), read-miss `None`, atomic write; fresh-rewrite no-op, non-fresh replace, `computed_at`-only-change-is-not-a-change.
-  - [ ] T3.2 Implement `estimate_store.py` reusing `validate_content_hash` + the `bundle_store` atomic-write/first-write-wins pattern + the AC-6 dedup rule.
-- [ ] **T4** (AC-7) — Cost-carry + attribution invariants *(red→green)*
-  - [ ] T4.1 Failing tests: record carries `filament_g` + `filament_cost` (the 32.4 arithmetic seam); `settings_ids` attribution present on success; attribution invariant.
-  - [ ] T4.2 Confirm the `EstimateRecord` assembly populates these (covered by T1/T2 implementation; add the explicit invariant tests).
-- [ ] **T5** (AC-8) — Parser-sink + persist integration via the 32.2 seam *(red→green)*
-  - [ ] T5.1 Failing tests: `ParsingGcodeSink` stashes the parse result + retains no g-code post-job; `slice_estimate` persists `fresh` on ok/warning, `failed` on parse failure, **nothing** on invocation failure; `_classify`/`run_slice_job` orchestration unreshaped.
-  - [ ] T5.2 Implement `ParsingGcodeSink`; edit ONLY the `slice_estimate` arq entry in `worker_job.py` (construct sink → pass `gcode_sink=` → assemble+persist after `run_slice_job`); wire `ctx["estimate_store"]` in `worker.py` `on_startup`. Leave `_classify`/`run_slice_job` byte-identical.
-- [ ] **T6** (AC-9) — Settings slot + env/compose alignment + grep invariant
-  - [ ] T6.1 Append `slicer_estimate_store_dir` to `config.py` (with `because` comment); `test_config.py` default test.
-  - [ ] T6.2 Document in `infra/env.example` + wire into `infra/docker-compose.yml` env blocks; run `infra/scripts/check-settings-env-compose.py` → OK.
-  - [ ] T6.3 Extend the grep-invariant test to the new slicer files (no `/mnt/c`/Fenrir/`.exe`/Windows path literal).
-- [ ] **T7** (AC-10) — Observability *(red→green)*
-  - [ ] T7.1 Failing tests: estimate-persist structured tags, parse-failure reason tag + breadcrumb, full g-code never in logs.
-  - [ ] T7.2 Implement the structured-log line + OTel attributes + GlitchTip breadcrumb in the `slice_estimate` persist path (reuse the 32.2 `_emit_completion` shape).
-- [ ] **T-DET** (AC-12) — Determinism gate: 3× consecutive identical pytest pass counts on the slicer suite; document in Dev Agent Record (`computed_at` excluded).
-- [ ] **T8** (AC-13) — Scope fence *(grep/diff)*
-  - [ ] T8.1 `git diff main -- apps/api/app/main.py apps/api/app/router.py apps/web/` → 0 lines; no new `apps/api/migrations/versions/` file; `pyproject.toml` deps unchanged; `SliceOutcome` field set unchanged.
-- [ ] **T9** (full quality gate) — `ruff format --check` + `ruff check` clean on `apps/api/`; `pytest apps/api/tests/ -v` green = baseline + new slicer estimate cases (no env-gated/real-Orca test in this story — fully deterministic). No vitest/Playwright (backend only).
-- [ ] **T10** (handoff) — dev-story flips `ready-for-dev → review`; code-review owns `→ done`. **Commit / ff-merge / deploy NOT performed by dev-story — controller-owned (ITCM).** Story branch: `feat/E32.3-gcode-parse-estimate-cache-schema` (created by dev-story at start, NOT now). Suggested commit scope when the controller commits: `feat(api): g-code metadata parser + EstimateRecord append-only cache (Story 32.3, Init 20)`.
+- [x] **T1** (AC-1) — Extend `models.py` with the estimate surfaces *(red→green)*
+  - [x] T1.1 Failing tests: `EstimateStatus`/`EstimateFailureReason` values; `EstimateRecord` failed-record `None`-not-`0`; reuses `SliceWarning`; `SliceOutcome` field set unchanged.
+  - [x] T1.2 Append `EstimateStatus`, `EstimateFailureReason`, `EstimateRecord` to `models.py` (NO `SliceOutcome` change).
+- [x] **T2** (AC-2, AC-3, AC-4) — Pure g-code parser + time normalization *(red→green)*
+  - [x] T2.1 Failing tests: parse all fields (PLA + TPU fixtures), settings-id dequote, order-independence, purity; duration grammar edge cases; missing/garbled → classified failure, never silent zero; cost/settings_ids non-fatal.
+  - [x] T2.2 Implement `gcode_parse.py` (`parse_gcode_metadata` + `parse_duration_to_seconds` + the required/optional split) with the AC-11 contract comments.
+  - [x] T2.3 Author `apps/api/tests/fixtures/slicer/gcode/{pla_standard,tpu_standard,missing_time,garbled}.gcode` from the documented bench metadata (NO real retained g-code — synthetic footers matching the proven Orca 2.3.2 line shapes).
+- [x] **T3** (AC-5, AC-6) — Append-only estimate store + dedup *(red→green)*
+  - [x] T3.1 Failing tests: write/read roundtrip, `<stl_hash>/<bundle_hash>` layout, malformed-hash rejection (both hashes), read-miss `None`, atomic write; fresh-rewrite no-op, non-fresh replace, `computed_at`-only-change-is-not-a-change.
+  - [x] T3.2 Implement `estimate_store.py` reusing `validate_content_hash` + the `bundle_store` atomic-write pattern + the AC-6 dedup rule. **Deviation (encoded in-store docstring):** the publish uses atomic `os.replace` (overwrite) NOT `bundle_store`'s first-write-wins `os.link`, because AC-6 requires a clean retry to REPLACE a `failed` placeholder — `os.link` cannot overwrite. The atomicity / no-partial-read contract is preserved; the immutability is scoped to `fresh` records (fresh re-write = no-op).
+- [x] **T4** (AC-7) — Cost-carry + attribution invariants *(red→green)*
+  - [x] T4.1 Failing tests: record carries `filament_g` + `filament_cost` (the 32.4 arithmetic seam); `settings_ids` attribution present on success; attribution invariant.
+  - [x] T4.2 Confirm the `EstimateRecord` assembly populates these (covered by T1/T2 implementation; add the explicit invariant tests).
+- [x] **T5** (AC-8) — Parser-sink + persist integration via the 32.2 seam *(red→green)*
+  - [x] T5.1 Failing tests: `ParsingGcodeSink` stashes the parse result + retains no g-code post-job; `slice_estimate` persists `fresh` on ok/warning, `failed` on parse failure, **nothing** on invocation failure; `_classify`/`run_slice_job` orchestration unreshaped.
+  - [x] T5.2 Implement `ParsingGcodeSink` (in `gcode_parse.py`); edit ONLY the `slice_estimate` arq entry in `worker_job.py` (construct sink → pass `gcode_sink=` → assemble+persist after `run_slice_job` via additive `_assemble_estimate_record`/`_now_iso`/`_emit_estimate_persist` helpers); wire `ctx["estimate_store"]` in `worker.py` `on_startup`. `_classify`/`run_slice_job` left byte-identical (asserted by `test_classify_and_run_slice_job_orchestration_unreshaped`).
+- [x] **T6** (AC-9) — Settings slot + env/compose alignment + grep invariant
+  - [x] T6.1 Append `slicer_estimate_store_dir` to `config.py` (with `because` comment, store-ROOT default `/data/content/slicer` to avoid the 32.1 review-fix-5 double-nest); `test_config.py` default covered by `test_slicer_estimate_store_dir_default` in `test_slicer_estimate.py`.
+  - [x] T6.2 Document in `infra/env.example` + wire into both `infra/docker-compose.yml` (api + arq-worker) env blocks; `infra/scripts/check-settings-env-compose.py` → OK (50/48/38).
+  - [x] T6.3 Grep-invariant: the existing `test_no_bench_or_windows_path_literal_in_slicer_module` (in `test_slicer_worker.py`) globs the whole module dir so it already covers the new files; added a dedicated `test_no_bench_or_windows_path_literal_in_new_slicer_files`.
+- [x] **T7** (AC-10) — Observability *(red→green)*
+  - [x] T7.1 Failing tests: estimate-persist structured tags, parse-failure reason tag + breadcrumb, full g-code never in logs.
+  - [x] T7.2 Implement the structured-log line + GlitchTip breadcrumb in the `slice_estimate` persist path (`_emit_estimate_persist`, reusing the 32.2 `_emit_completion` `labels.*` shape).
+- [x] **T-DET** (AC-12) — Determinism gate: 3× consecutive identical pytest pass counts on the slicer suite (`173 passed, 2 skipped` ×3); `computed_at` is the only non-deterministic field and is excluded from every assertion.
+- [x] **T8** (AC-13) — Scope fence *(grep/diff)*
+  - [x] T8.1 `git diff main -- apps/api/app/main.py apps/api/app/router.py apps/web/` → 0 lines; no new `apps/api/migrations/versions/` file; `pyproject.toml` deps unchanged; `SliceOutcome` field set unchanged.
+- [x] **T9** (full quality gate) — `ruff format --check` + `ruff check` clean on `apps/api/`; full backend `pytest -q` green = `1133 passed, 3 skipped` (baseline 1087 + 46 new estimate cases; fully deterministic, no env-gated/real-Orca test). No vitest/Playwright (backend only).
+- [x] **T10** (handoff) — dev-story flips `ready-for-dev → review`; code-review owns `→ done`. **Commit / ff-merge / deploy NOT performed by dev-story — controller-owned (ITCM).** Story branch: `feat/E32.3-gcode-parse-estimate-cache-schema` (already current). Suggested commit scope when the controller commits: `feat(api): g-code metadata parser + EstimateRecord append-only cache (Story 32.3, Init 20)`.
 
 ## Dev Notes
 
@@ -293,16 +293,172 @@ Story 32.3 routes to the higher review tier for **data-integrity** adjacency onl
 
 ### Agent Model Used
 
-_To be filled by `bmad-dev-story` at implementation time._
+Claude Opus 4.8 (1M context) — `claude-opus-4-8[1m]` (`bmad-dev-story`, 2026-06-01).
 
 ### Debug Log References
 
+- One self-inflicted RED→GREEN fix: `test_parser_is_pure_no_io` read the fixture file
+  AFTER monkeypatching `Path.read_text` to raise — reordered to load the text first,
+  then forbid I/O (a test bug, not a parser-purity breach).
+- ruff: removed an ambiguous `×` (RUF003) from a comment (→ `x`) and aligned the
+  `computed_at` clock on `datetime.UTC` (UP017, repo convention in `core/auth/ratelimit.py`).
+
 ### Completion Notes List
 
+- **TDD RED→GREEN:** authored `tests/test_slicer_estimate.py` (46 cases) + four synthetic
+  g-code fixtures first; confirmed collection RED (`ModuleNotFoundError`), then implemented
+  to green. No production code landed without a failing test first.
+- **AC-1 (models, no reshape):** appended `EstimateStatus` / `EstimateFailureReason` /
+  `EstimateRecord` to `slicer/models.py`. `SliceStatus`/`SliceFailureReason`/`SliceOutcome`
+  field sets are byte-unreshaped (asserted). Failed record ⇒ numerics `None`, never `0`.
+- **AC-2/AC-3/AC-4 (pure parser):** `gcode_parse.py` — `parse_gcode_metadata` (key-anchored,
+  separator/order-tolerant), `parse_duration_to_seconds` (d/h/m/s grammar; bare number /
+  garbled / empty ⇒ `None`). Required (time, mm, cm3, g) FATAL; cost + settings_ids
+  NON-FATAL. Purity proven by an I/O-forbidding monkeypatch test.
+- **AC-5/AC-6 (store + dedup):** `estimate_store.py` mirrors `bundle_store` fan-out + atomic
+  publish, layout `<root>/estimates/<stl[:2]>/<stl>/<bundle>.json`; both hashes
+  `validate_content_hash`-gated before any path is built. `fresh` re-write = idempotent
+  no-op; `failed` record is replaced by a clean retry. **Deliberate divergence:** publish
+  uses atomic `os.replace` (overwrite) instead of `bundle_store`'s first-write-wins
+  `os.link`, because AC-6 requires the failed⇒fresh replacement that `os.link` cannot do;
+  atomicity / no-partial-read is preserved, immutability scoped to `fresh`.
+- **AC-7 (cost-carry + attribution):** `filament_g` + `filament_cost` carried for the 32.4
+  arithmetic recompute; `settings_ids` (filament/print/printer) for NFR20-ATTRIBUTION-1.
+- **AC-8 (sink + persist, no orchestration reshape):** `ParsingGcodeSink` parses in-job;
+  ONLY `slice_estimate` edited (+ additive helpers) — `_classify`/`run_slice_job` byte-
+  identical (asserted via `inspect.signature` + `sink(gcode)` call-site check). `ok`/
+  `warning` ⇒ `fresh`; parse failure ⇒ `failed`; slice-INVOCATION failure ⇒ NO record.
+- **AC-9 (settings + drift gate):** `slicer_estimate_store_dir` (store-ROOT default, no
+  double-nest) wired into `env.example` + both compose env blocks; drift gate 50/48/38 OK.
+- **AC-10 (obs):** `slicer.estimate persist` structured `labels.*` line + GlitchTip
+  breadcrumb on `failed`; g-code body never logged (only hashes/status/reason).
+- **AC-12 (determinism):** 3× `pytest tests/test_slicer*.py` = `173 passed, 2 skipped`
+  identical. `computed_at` excluded from all assertions.
+- **AC-13 (scope fence):** `main.py`/`router.py`/`apps/web/` diff = 0 lines; no Alembic
+  version file; `pyproject.toml` deps unchanged; no subprocess/real-Orca/routes.
+- **Gates:** `ruff format --check` + `ruff check` clean; full backend `pytest -q` =
+  `1133 passed, 3 skipped` (baseline 1087 + 46); `git diff --check` clean; NFR20-CONTAINER-1
+  grep invariant ZERO. **No commit / merge / deploy** — controller-owned (ITCM).
+- **Next:** `bmad-code-review` (prefer a different LLM; Codex `gpt-5.5`, single-adjacency
+  data-integrity per the story Codex tag) owns `review → done`.
+
+### Review Fixes (2026-06-01 — independent reviewer REQUEST_CHANGES, TDD regression pass)
+
+Independent reviewer verdict was **REQUEST_CHANGES** with three blocking findings + one
+non-blocking clarification. All fixed under TDD (failing regression test first, then the
+fix); `_classify`/`run_slice_job` remain byte-identical (AC-8 unchanged).
+
+- **Blocker #1 — parser accepted non-finite numeric metadata (`nan`/`inf`/`-inf`).**
+  `float("nan")`/`float("inf")` parse without `ValueError`, so a required numeric of
+  `nan`/`inf` slipped through as a `ParsedEstimate` (and persisted as a plausible-but-wrong
+  `fresh` estimate). Fix in `gcode_parse.py`: every **required** numeric (`filament used
+  [mm]/[cm3]/[g]`) is now `math.isfinite`-gated → a non-finite value classifies
+  `EstimateFailureReason.unparseable_numeric` (same no-silent-zero contract as a non-numeric
+  value). The **optional** `total filament cost` degrades a non-finite value to `None` with
+  a `logger.warning` (consistent with the missing-cost non-fatal rule — the load-bearing
+  numerics stay valid). (Time is already safe: the d/h/m/s regex only admits digit tokens,
+  so `nan`/`inf` → `unparseable_time`.) Tests: `test_non_finite_required_numeric_classifies_unparseable_numeric`
+  (parametrized mm/cm3/g × `nan`/`inf`/`-inf`/`Infinity`/`NaN`), `test_non_finite_cost_degrades_to_none_non_fatal`.
+
+- **Blocker #2 — `EstimateRecord` did not enforce failed/fresh invariants.** Added
+  model-level validation to `models.py`: a `field_validator` rejects non-finite floats on any
+  numeric field (defense-in-depth), and a `model_validator(mode="after")` enforces
+  `status == failed ⇒ reason is not None AND every numeric is None`, and
+  `status == fresh ⇒ reason is None AND every required numeric (time/g/mm/cm3) present`
+  (`filament_cost` stays optional even on fresh; `stale`/`queued` left to Story 32.4 beyond
+  the non-finite gate). Tests: `test_failed_record_with_numerics_is_rejected`,
+  `test_failed_record_without_reason_is_rejected`, `test_fresh_record_missing_required_numeric_is_rejected`,
+  `test_fresh_record_with_failure_reason_is_rejected`, `test_fresh_record_rejects_non_finite_float`,
+  `test_valid_fresh_and_failed_records_still_accepted`. (Two pre-existing tests that built
+  failed records carrying numerics via the `_record()` helper were migrated to a dedicated
+  `_failed_record()` builder; two fresh-record constructions lacking numerics gained them.)
+
+- **Blocker #3 — fresh-record no-op was not race-safe (TOCTOU).** The old
+  `read()`→check-`fresh`→`os.replace` window let two concurrent writers for the same key both
+  observe "no fresh record" and race to publish, so a second writer could clobber a freshly
+  published record (losing the original `computed_at`). Fix in `estimate_store.py`: the
+  check-then-publish section now runs under an exclusive `fcntl.flock` on a per-record
+  `.<name>.lock` sidecar (`_record_lock`), held across the read + publish — serializing
+  concurrent writers across both processes (shared `portal-content` volume) and threads. The
+  atomic `os.replace` publish is untouched (the lock is a sibling sidecar, never the record
+  file); `failed`→`fresh` replacement remains allowed; an existing `fresh` record is an atomic
+  no-op with `computed_at` preserved. Test: `test_concurrent_fresh_write_does_not_overwrite_existing_fresh`
+  (two threads race an empty key with a slowed publish forcing lock contention; asserts the
+  first writer's `computed_at`/`filament_g` survive). This test was confirmed RED against the
+  pre-fix code (it persisted the second writer's record) and GREEN after.
+
+- **Non-blocking — observability OTel attributes.** The estimate persist runs *after*
+  `run_slice_job`'s `slicer.slice` span closes, so it previously emitted only the structured
+  log line + GlitchTip breadcrumb. Added a dedicated `slicer.estimate` OTel span (in
+  `slice_estimate`) carrying `slicer.{stl_hash,bundle_hash,orca_version,estimate_status}` +
+  (on failure) `slicer.estimate_failure_reason` — completing AC-10's "structured-log + OTel
+  span + breadcrumb" triad, mirroring `run_slice_job`'s span pattern. g-code body never
+  crosses into a span attribute (parse-and-discard).
+
+**Review-fix gates re-run:** `pytest tests/test_slicer_estimate.py` = **73 passed** (46 +
+27 new regression cases), deterministic 3×; `pytest tests/test_slicer_worker.py
+tests/test_config.py` green; `ruff format --check` + `ruff check` clean on the changed files;
+`infra/scripts/check-settings-env-compose.py` = 50/48/38 OK (config/compose untouched in this
+pass); `git diff --check` + `git diff --cached --check` clean. No commit/merge/deploy
+(controller-owned, ITCM).
+
+### Review Closeout (2026-06-01 — independent re-review APPROVE → `review → done`)
+
+The full review cycle for Story 32.3, with controller-verified evidence:
+
+1. **First independent review → REQUEST_CHANGES** (3 blockers): (#1) parser accepted
+   non-finite required numeric metadata (`nan`/`inf`/`-inf`) — persisted as a
+   plausible-but-wrong `fresh` estimate; (#2) `EstimateRecord` had no `failed`/`fresh`
+   invariants and no non-finite defense; (#3) the `fresh` no-op was TOCTOU-racy — two
+   concurrent writers for the same key could both observe "no fresh record" and a second
+   writer could clobber the first's freshly published record (losing `computed_at`).
+2. **Focused review-fix pass (TDD)** resolved all three — see the *Review Fixes* section
+   above + Change Log v1.1 (`math.isfinite` gate on required numerics + non-fatal cost
+   degrade; field/model validators enforcing the `failed`/`fresh` invariants; per-record
+   `fcntl.flock` over the check-then-publish window). `_classify`/`run_slice_job` remain
+   byte-identical (AC-8). The corrected repro snippet was controller-verified:
+   `REVIEW_REPRO_FIXES_OK`.
+3. **Follow-up independent review on the dirty working tree (via SSH) → `VERDICT: APPROVE`**
+   — the three prior blockers verified resolved, no new blockers raised.
+
+**Final authoritative gate numbers (controller-verified, post review-fix):**
+- `uv run pytest tests/test_slicer_estimate.py -q` → **73 passed**.
+- `uv run pytest tests/test_slicer_estimate.py tests/test_slicer_worker.py tests/test_config.py -q` → **135 passed**.
+- `uv run ruff format --check app/core/config.py app/modules/slicer tests/test_slicer_estimate.py` → **clean**.
+- `uv run ruff check app tests/test_slicer_estimate.py` → **clean**.
+- `python3 infra/scripts/check-settings-env-compose.py` → **OK — 50 Settings fields / 48 env.example vars / 38 compose env refs aligned**.
+- `git diff --check && git diff --cached --check` → **clean**.
+- full backend `uv run pytest -q` → **1160 passed, 3 skipped, 1485 warnings in 312.23s** (= prior 1133 + 27 review-fix regression cases).
+- workspace hygiene: `.hermes` removed; `apps/api/uv.lock` is tracked and was restored after a false cleanup attempt.
+
+Status flips `review → done` per the BMAD convention (code-review owns `→ done`; an
+independent APPROVE closes the gate, as for Stories 32.1/32.2). **Commit / ff-merge / deploy
+remain controller-owned (ITCM) and are NOT performed by this closeout.**
+
 ### File List
+
+**New (Story 32.3 owns):**
+- `apps/api/app/modules/slicer/gcode_parse.py` — pure parser + duration normalizer + `ParsingGcodeSink`
+- `apps/api/app/modules/slicer/estimate_store.py` — append-only `(stl_hash, bundle_hash)` cache + dedup
+- `apps/api/tests/test_slicer_estimate.py` — 73 parser/store/sink/persist/obs/determinism cases (46 + 27 review-fix regression cases)
+- `apps/api/tests/fixtures/slicer/gcode/{pla_standard,tpu_standard,missing_time,garbled}.gcode` — synthetic Orca-2.3.2 footers
+
+**Modified (append-only / thin):**
+- `apps/api/app/modules/slicer/gcode_parse.py` — review-fix #1: non-finite required numeric ⇒ `unparseable_numeric`, non-finite cost ⇒ `None`+warning
+- `apps/api/app/modules/slicer/estimate_store.py` — review-fix #3: per-record `fcntl.flock` over the check-then-publish window (race-safe `fresh` no-op)
+- `apps/api/app/modules/slicer/models.py` — `EstimateStatus`/`EstimateFailureReason`/`EstimateRecord` (no `SliceOutcome` change) + review-fix #2: failed/fresh + non-finite invariants (field/model validators)
+- `apps/api/app/modules/slicer/worker_job.py` — `slice_estimate` persist edit + additive helpers (`_classify`/`run_slice_job` byte-identical) + review-fix non-blocking: `slicer.estimate` OTel span
+- `apps/api/app/modules/slicer/worker.py` — `ctx["estimate_store"]` wired in `on_startup`
+- `apps/api/app/core/config.py` — `slicer_estimate_store_dir` slot
+- `infra/env.example` — `SLICER_ESTIMATE_STORE_DIR`
+- `infra/docker-compose.yml` — `SLICER_ESTIMATE_STORE_DIR` in api + arq-worker env blocks
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — 32-3 `ready-for-dev → in-progress → review`
 
 ### Change Log
 
 | Date | Version | Description | Author |
 |---|---|---|---|
 | 2026-06-01 | 0.1 | Story 32.3 spec authored (`bmad-create-story`); status `backlog → ready-for-dev`. App-side g-code parser + `EstimateRecord` schema + append-only `(stl_hash, bundle_hash)` cache + cost-carry; no routes / no Alembic / no `SliceOutcome` reshape / no configs gate. | Claude (`bmad-create-story`) |
+| 2026-06-01 | 1.0 | `bmad-dev-story` implementation complete (`ready-for-dev → review`). 2 new modules (`gcode_parse.py`, `estimate_store.py`) + 4 fixtures + 46 TDD cases; append-only edits to `models.py`/`worker_job.py`/`worker.py`/`config.py` + env/compose. All 13 ACs green; `_classify`/`run_slice_job` byte-identical; full suite 1133 passed/3 skipped; ruff clean; drift gate 50/48/38; determinism 3×. No commit/merge/deploy (controller-owned). | Claude Opus 4.8 (`bmad-dev-story`) |
+| 2026-06-01 | 1.1 | Review-fix pass (independent reviewer REQUEST_CHANGES). Fixed 3 blockers under TDD: (#1) parser non-finite required numeric ⇒ `unparseable_numeric`, non-finite cost ⇒ `None`+warning (`gcode_parse.py`); (#2) `EstimateRecord` failed/fresh + non-finite invariants enforced via field/model validators (`models.py`); (#3) race-safe `fresh` no-op via per-record `fcntl.flock` over the check-then-publish window (`estimate_store.py`). Non-blocking: added `slicer.estimate` OTel span attributes (`worker_job.py`). +27 regression cases (73 in `test_slicer_estimate.py`); `_classify`/`run_slice_job` still byte-identical; ruff/drift/diff gates green; determinism 3×. Status stays `review` (code-review owns `→ done`). No commit/merge/deploy. | Claude Opus 4.8 (review-fix) |
+| 2026-06-01 | 1.2 | Review closeout (`review → done`). Follow-up independent review on the dirty working tree (via SSH) returned `VERDICT: APPROVE` — the 3 prior REQUEST_CHANGES blockers verified resolved, no new blockers; corrected repro controller-verified (`REVIEW_REPRO_FIXES_OK`). Final authoritative gates: `test_slicer_estimate.py` 73 passed; `test_slicer_estimate+test_slicer_worker+test_config` 135 passed; ruff format --check + ruff check clean; settings-env-compose 50/48/38 OK; `git diff --check` + `--cached --check` clean; full backend `pytest -q` 1160 passed/3 skipped/1485 warnings in 312.23s (1133 + 27 regression). `.hermes` removed; `uv.lock` tracked/restored. Status `review → done`. Commit/ff-merge/deploy remain controller-owned (ITCM) — NOT performed by this closeout. | Claude Opus 4.8 (review closeout) |

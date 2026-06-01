@@ -22,6 +22,7 @@ import subprocess
 import tempfile
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +31,11 @@ from opentelemetry import trace
 
 from app.modules.slicer.bundle_store import BundleStore
 from app.modules.slicer.cli import OrcaCli, is_profile_rejection, parse_slice_warnings
+from app.modules.slicer.estimate_store import EstimateStore
+from app.modules.slicer.gcode_parse import EstimateParseFailure, ParsedEstimate, ParsingGcodeSink
 from app.modules.slicer.models import (
+    EstimateRecord,
+    EstimateStatus,
     SliceFailureReason,
     SliceOutcome,
     SliceStatus,
@@ -280,13 +285,96 @@ def _emit_completion(outcome: SliceOutcome) -> None:
     logger.info("slicer.slice complete", extra=extra)
 
 
+def _assemble_estimate_record(
+    outcome: SliceOutcome,
+    parse_result: ParsedEstimate | EstimateParseFailure | None,
+) -> EstimateRecord | None:
+    """Map a (SliceOutcome, parse result) pair to the EstimateRecord to persist (AC-8).
+
+    - slice-INVOCATION failure (``status == failed``) ⇒ ``None``: the failure is fully
+      described by ``SliceOutcome``; persisting an invocation-failure estimate is Story
+      32.4's recompute-state concern, NOT 32.3's parse half (the explicit boundary);
+    - a clean parse (``ParsedEstimate``) ⇒ a ``fresh`` record carrying the numerics +
+      cost-carry + attribution + the warnings verbatim from the outcome;
+    - a classified parse failure (``EstimateParseFailure``) ⇒ a ``failed`` record with
+      ``reason`` and numeric fields left ``None`` (never a silent zero, AC-4).
+    """
+    if outcome.status == SliceStatus.failed:
+        return None
+    key = dict(
+        stl_hash=outcome.stl_hash,
+        bundle_hash=outcome.bundle_hash,
+        orca_version=outcome.orca_version,
+        warnings=outcome.warnings,
+        computed_at=_now_iso(),
+    )
+    if isinstance(parse_result, ParsedEstimate):
+        return EstimateRecord(
+            status=EstimateStatus.fresh,
+            time_seconds=parse_result.time_seconds,
+            filament_mm=parse_result.filament_mm,
+            filament_cm3=parse_result.filament_cm3,
+            filament_g=parse_result.filament_g,
+            filament_cost=parse_result.filament_cost,
+            settings_ids=parse_result.settings_ids,
+            **key,
+        )
+    if isinstance(parse_result, EstimateParseFailure):
+        return EstimateRecord(status=EstimateStatus.failed, reason=parse_result.reason, **key)
+    return None
+
+
+def _now_iso() -> str:
+    """ISO-8601 UTC provenance stamp for ``computed_at`` — the ONLY non-deterministic field.
+
+    Excluded from content-identity / dedup (AC-6) and from determinism assertions (AC-12).
+    """
+    return datetime.now(UTC).isoformat()
+
+
+def _emit_estimate_persist(record: EstimateRecord) -> None:
+    """One structured line per estimate persist (NFR20-OBS-1, AC-10).
+
+    g-code is parse-and-discard and is NEVER logged in full — only the hashes, status,
+    orca_version and (on failure) the reason cross into logs. A parse ``failed`` also drops
+    a GlitchTip breadcrumb (no g-code body).
+    """
+    extra: dict[str, Any] = {
+        "labels.stl_hash": record.stl_hash,
+        "labels.bundle_hash": record.bundle_hash,
+        "labels.estimate_status": record.status.value,
+        "labels.orca_version": record.orca_version,
+    }
+    if record.reason is not None:
+        extra["labels.estimate_failure_reason"] = record.reason.value
+    logger.info("slicer.estimate persist", extra=extra)
+    if record.status == EstimateStatus.failed:
+        sentry_sdk.add_breadcrumb(
+            category="slicer",
+            level="error",
+            message="estimate parse failed",
+            data={
+                "stl_hash": record.stl_hash,
+                "bundle_hash": record.bundle_hash,
+                "reason": record.reason.value if record.reason else None,
+            },
+        )
+
+
 async def slice_estimate(ctx: dict[str, Any], stl_hash: str, bundle_hash: str) -> dict[str, Any]:
-    """arq task entry point (AC-1). Pulls injected deps from ``ctx`` (startup-wired).
+    """arq task entry point (AC-1/AC-8). Pulls injected deps from ``ctx`` (startup-wired).
 
     The 2-tuple ``(stl_hash, bundle_hash)`` is the ENTIRE payload (AC-2): the worker
     pulls the STL from the cache and the resolved triple from the bundle store; no
     profile JSON, STL bytes, or file paths travel in the payload.
+
+    Story 32.3 slots the parser sink into the Story 32.2 seam WITHOUT reshaping the slice
+    orchestration: a fresh per-job :class:`ParsingGcodeSink` parses the temp g-code in-job,
+    then — AFTER ``run_slice_job`` returns — the parsed result is assembled into a typed
+    ``EstimateRecord`` and persisted (subject to the AC-6 dedup). ``_classify`` and
+    ``run_slice_job`` are untouched.
     """
+    sink = ParsingGcodeSink()
     outcome = run_slice_job(
         stl_hash=stl_hash,
         bundle_hash=bundle_hash,
@@ -294,6 +382,23 @@ async def slice_estimate(ctx: dict[str, Any], stl_hash: str, bundle_hash: str) -
         bundle_store=ctx["bundle_store"],
         cli=ctx["cli"],
         orca_version=ctx["orca_version"],
-        gcode_sink=ctx.get("gcode_sink"),
+        gcode_sink=sink,
     )
+    estimate_store: EstimateStore | None = ctx.get("estimate_store")
+    if estimate_store is not None:
+        record = _assemble_estimate_record(outcome, sink.result)
+        if record is not None:
+            # The persist runs AFTER run_slice_job's slice span has closed, so it carries
+            # its own span — completing the AC-10 "structured-log + OTel span + breadcrumb"
+            # triad (mirroring run_slice_job's slicer.slice span). g-code body never crosses
+            # into a span attribute (parse-and-discard) — only hashes/status/reason.
+            with _tracer.start_as_current_span("slicer.estimate") as span:
+                span.set_attribute("slicer.stl_hash", record.stl_hash)
+                span.set_attribute("slicer.bundle_hash", record.bundle_hash)
+                span.set_attribute("slicer.orca_version", record.orca_version)
+                span.set_attribute("slicer.estimate_status", record.status.value)
+                if record.reason is not None:
+                    span.set_attribute("slicer.estimate_failure_reason", record.reason.value)
+                estimate_store.write(record)
+                _emit_estimate_persist(record)
     return outcome.model_dump(mode="json")

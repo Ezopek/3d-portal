@@ -58,6 +58,9 @@ services:
       ORCA_VERSION: ${ORCA_VERSION:-2.3.2}
       SLICER_VENDORED_PROFILES_DIR: ${SLICER_VENDORED_PROFILES_DIR:-/data/content/slicer/vendored}
       SLICER_BUNDLE_STORE_DIR: ${SLICER_BUNDLE_STORE_DIR:-/data/content/slicer}
+      # Append-only estimate cache ROOT (Story 32.3). Like the bundle store this is the
+      # ROOT — EstimateStore adds the internal estimates/ child; never an external path.
+      SLICER_ESTIMATE_STORE_DIR: ${SLICER_ESTIMATE_STORE_DIR:-/data/content/slicer}
       # Slicer worker (Story 32.2). Runtime home is the configs-side slicer-worker
       # container (AC-12); carried here so the settings-env-compose gate stays aligned
       # (inert for api — only the slicer-worker spawns Orca). SLICER_ORCA_BIN is the
@@ -132,6 +135,9 @@ services:
       ORCA_VERSION: ${ORCA_VERSION:-2.3.2}
       SLICER_VENDORED_PROFILES_DIR: ${SLICER_VENDORED_PROFILES_DIR:-/data/content/slicer/vendored}
       SLICER_BUNDLE_STORE_DIR: ${SLICER_BUNDLE_STORE_DIR:-/data/content/slicer}
+      # Append-only estimate cache ROOT (Story 32.3). Like the bundle store this is the
+      # ROOT — EstimateStore adds the internal estimates/ child; never an external path.
+      SLICER_ESTIMATE_STORE_DIR: ${SLICER_ESTIMATE_STORE_DIR:-/data/content/slicer}
       # Slicer worker (Story 32.2). Same rationale as the api block — carried for the
       # settings-env-compose gate; inert here (this arq-worker runs app.workers.
       # WorkerSettings, NOT the slicer pool). The real slicer pool is the configs-side

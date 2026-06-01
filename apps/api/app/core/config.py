@@ -122,6 +122,14 @@ class Settings(BaseSettings):
     # children itself, so the default is ``/data/content/slicer`` (NOT
     # ``…/slicer/bundles``, which would nest to ``…/slicer/bundles/bundles/…``).
     slicer_bundle_store_dir: Path = Path("/data/content/slicer")
+    # Append-only estimate cache ROOT (Story 32.3, AC-9; Decision AJ) — hash-fanout JSON
+    # store on the portal-content volume, NOT an Alembic table (SCP: "No DB schema;
+    # append-only estimate records"). This is the store ROOT: EstimateStore adds the
+    # internal ``estimates/`` child + the <stl_hash[:2]>/<stl_hash>/<bundle_hash>.json
+    # key layout itself, so the default is ``/data/content/slicer`` (NOT
+    # ``…/slicer/estimates``, which would nest to ``…/estimates/estimates/…`` — the Story
+    # 32.1 review-fix-5 double-nest trap). Container-internal path, never an external-host one.
+    slicer_estimate_store_dir: Path = Path("/data/content/slicer")
 
     # Slicer worker (Initiative 20, Story 32.2, Decision AI) — headless Orca CLI
     # invoke + classify slots. Production runtime home for these is the configs-side

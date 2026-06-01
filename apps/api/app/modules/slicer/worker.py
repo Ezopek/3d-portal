@@ -24,6 +24,7 @@ from app.core.observability import init_observability
 from app.core.sentry import init_sentry
 from app.modules.slicer.bundle_store import BundleStore
 from app.modules.slicer.cli import OrcaCli
+from app.modules.slicer.estimate_store import EstimateStore
 from app.modules.slicer.stl_cache import StlCache
 from app.modules.slicer.worker_job import slice_estimate
 
@@ -50,8 +51,10 @@ async def startup(ctx: dict[str, Any]) -> None:
     ctx["cli"] = OrcaCli.from_settings(settings)
     ctx["stl_cache"] = StlCache(settings.slicer_stl_cache_dir)
     ctx["bundle_store"] = BundleStore(settings.slicer_bundle_store_dir)
+    ctx["estimate_store"] = EstimateStore(settings.slicer_estimate_store_dir)
     ctx["orca_version"] = settings.orca_version
-    # gcode_sink defaults to the no-op discard (worker_job); Story 32.3 wires a parser.
+    # slice_estimate constructs a per-job ParsingGcodeSink itself (Story 32.3) and
+    # persists the assembled EstimateRecord into ctx["estimate_store"].
 
 
 class SlicerWorkerSettings:

@@ -10,10 +10,11 @@ are internal provenance/reproducibility records and are never sent to the client
 
 from __future__ import annotations
 
+import math
 from enum import StrEnum
-from typing import Literal
+from typing import ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # Material classes the resolver knows about (PRD § Initiative 20). An intent
 # outside this set has no material-class default and resolves to a classified
@@ -229,3 +230,128 @@ class SliceOutcome(BaseModel):
     stl_hash: str | None = None
     bundle_hash: str | None = None
     orca_version: str | None = None
+
+
+# --- Story 32.3 (Decision AJ) — typed estimate + parse-failure taxonomy ---------
+#
+# The g-code-metadata parse half of FR20-ESTIMATE-1: a typed ``EstimateRecord`` keyed
+# on the complete ``(stl_hash, bundle_hash)`` reproducibility tuple, plus the parse
+# failure taxonomy. The taxonomy is placed HERE on the estimate record — NOT bolted
+# onto ``SliceFailureReason`` — so the slice-INVOCATION axis (Story 32.2) stays
+# byte-unreshaped; parse failures and invocation failures are two orthogonal axes.
+
+
+class EstimateStatus(StrEnum):
+    """Lifecycle state of a persisted estimate (Decision AJ, AC-1).
+
+    Story 32.3 writes only ``fresh`` (a clean parse) and ``failed`` (a classified parse
+    failure). The ``stale``/``queued`` values exist now so Story 32.4 (invalidation /
+    recompute) EXTENDS behavior, not shape — 32.3 never SETS them.
+    """
+
+    fresh = "fresh"
+    stale = "stale"
+    queued = "queued"
+    failed = "failed"
+
+
+class EstimateFailureReason(StrEnum):
+    """Machine-readable g-code-metadata parse-failure reasons (AC-1, AC-4).
+
+    This realizes the ``parse_failure`` reason the Story 32.2 ``SliceFailureReason``
+    docstring reserved — on the ESTIMATE record, never on ``SliceOutcome``. The granular
+    reasons let Story 32.6 render "couldn't estimate, here's why" precisely.
+    """
+
+    parse_failure = "parse_failure"
+    missing_metadata_line = "missing_metadata_line"
+    unparseable_time = "unparseable_time"
+    unparseable_numeric = "unparseable_numeric"
+
+
+class EstimateRecord(BaseModel):
+    """Typed per-STL estimate keyed ``(stl_hash, bundle_hash)`` (Decision AJ, AC-1).
+
+    Identity IS the ``(stl_hash, bundle_hash)`` tuple — the complete reproducibility key
+    (``bundle_hash`` already folds ``orca_version`` + the Spoolman-override set per Story
+    32.1). ``computed_at`` is provenance metadata, EXCLUDED from any content-identity /
+    dedup comparison (AC-6) and from determinism assertions (AC-12), mirroring the Story
+    32.1 ``created_at``-excluded-from-hash discipline.
+
+    On a ``failed`` record the numeric fields are ``None`` — NEVER ``0``. A zero is a
+    plausible-but-wrong value a caller could spend/print against; ``None`` + ``reason`` is
+    the no-silent-zero contract (FR20-ESTIMATE-1 / FR20-FAILURE-1 parse half).
+    """
+
+    stl_hash: str
+    bundle_hash: str
+    orca_version: str
+    time_seconds: int | None = None
+    filament_g: float | None = None
+    filament_mm: float | None = None
+    filament_cm3: float | None = None
+    # filament_cost: INFORMATIONAL owner-side cost from the slice's own cost line; carried
+    # so Story 32.4 can recompute it arithmetically (cost = mass x price/gram) WITHOUT
+    # re-slicing (OD-7, NFR20-REPRODUCIBLE-1). Never a quote/checkout price.
+    filament_cost: float | None = None
+    # settings_ids: the {filament,print,printer}_settings_id g-code lines naming which
+    # resolved profile produced this estimate (NFR20-ATTRIBUTION-1). Absent ids degrade
+    # attribution but do not fail the record (AC-4).
+    settings_ids: dict[str, str] = Field(default_factory=dict)
+    warnings: list[SliceWarning] = Field(default_factory=list)
+    status: EstimateStatus
+    reason: EstimateFailureReason | None = None
+    computed_at: str
+
+    # The required numerics a successful (``fresh``) record must carry — the FR20-ESTIMATE-1
+    # load-bearing fields (``filament_cost`` stays optional even on a fresh record).
+    _FRESH_REQUIRED_NUMERICS: ClassVar[tuple[str, ...]] = (
+        "time_seconds",
+        "filament_g",
+        "filament_mm",
+        "filament_cm3",
+    )
+    # Every nullable numeric field — defense-in-depth non-finite gate (no nan/inf persisted).
+    _NUMERIC_FIELDS: ClassVar[tuple[str, ...]] = (
+        "time_seconds",
+        "filament_g",
+        "filament_mm",
+        "filament_cm3",
+        "filament_cost",
+    )
+
+    @field_validator("filament_g", "filament_mm", "filament_cm3", "filament_cost")
+    @classmethod
+    def _reject_non_finite(cls, value: float | None) -> float | None:
+        # Defense-in-depth: a nan/inf that slipped past the parser must never be persisted
+        # as an estimate number — nan poisons arithmetic, inf is a plausible-but-wrong
+        # forever-print (mirrors the gcode_parse.py review-fix #1 gate at the model edge).
+        if value is not None and not math.isfinite(value):
+            raise ValueError("estimate numeric fields must be finite (never nan/inf)")
+        return value
+
+    @model_validator(mode="after")
+    def _enforce_status_invariants(self) -> EstimateRecord:
+        # A ``failed`` record is a no-silent-zero placeholder: it carries a classifying
+        # reason and NO numbers (a number behind a failure status is exactly the
+        # plausible-but-wrong value the contract forbids). A ``fresh`` record is the
+        # inverse: every load-bearing numeric present + finite, and no failure reason.
+        # ``stale``/``queued`` are Story 32.4-owned transitions — left unconstrained here
+        # beyond the non-finite gate above.
+        if self.status == EstimateStatus.failed:
+            if self.reason is None:
+                raise ValueError("a failed estimate record must carry a reason")
+            present = [n for n in self._NUMERIC_FIELDS if getattr(self, n) is not None]
+            if present:
+                raise ValueError(
+                    f"a failed estimate record must not carry numerics, got: {present}"
+                )
+        elif self.status == EstimateStatus.fresh:
+            if self.reason is not None:
+                raise ValueError("a fresh estimate record must not carry a failure reason")
+            missing = [n for n in self._FRESH_REQUIRED_NUMERICS if getattr(self, n) is None]
+            if missing:
+                raise ValueError(
+                    f"a fresh estimate record must carry every required numeric, missing: {missing}"
+                )
+        return self
