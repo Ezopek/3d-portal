@@ -103,6 +103,37 @@ Source: 3 BMAD subagent reviews of TB-015 fix (pointer-events-auto on MeasureSum
 
 ---
 
+## Deferred from: Story 32.3 deploy/runtime smoke (2026-06-01)
+
+Source: controller runtime smoke after Story 32.3 (`9a7aea5`) was committed/merged/deployed. `infra/scripts/deploy.sh` ran the normal path — built/shipped `portal-api`/`web`/`render` and restarted the base compose stack — but the new app-side slicer modules did not reach the running slicer worker until the controller intervened manually.
+
+### SW-DEPLOY-1 — deploy automation does not rebuild/restart the slicer-worker overlay on slicer/portal-api changes
+
+**Source:** Controller runtime verification (2026-06-01).
+
+**Where:** `infra/scripts/deploy.sh` (base deploy path) vs. the configs-side overlay service `3d-portal-slicer-worker-1`, defined in `/mnt/raid/configs/docker-compose-recipes/workers/slicer-worker.yml` and built from `/mnt/raid/configs/docker-compose-recipes/workers/slicer-worker.Dockerfile` (image `portal-slicer-worker:0.1.0`, layered on `portal-api:0.1.0`).
+
+**Problem:** `deploy.sh` rebuilds and restarts only the base stack. The slicer-worker overlay lives configs-side and is **not** touched by `deploy.sh`. After the 32.3 deploy, `3d-portal-slicer-worker-1` kept running the older `portal-slicer-worker:0.1.0` image, which predated the new modules `app.modules.slicer.gcode_parse` and `app.modules.slicer.estimate_store`. So the worker that actually executes slice/estimate jobs was running stale code while `portal-api` had already advanced — a silent version skew between the API image and the slicer-worker image.
+
+**Why it matters:** The slicer-worker image is built **on top of** the fresh `portal-api` image but only when something explicitly rebuilds it. Any story that lands slicer-adjacent app code (or otherwise bumps the `portal-api` base image) will deploy "green" via `deploy.sh` while the slicer worker silently runs old modules — `ModuleNotFoundError` / behavioral drift surfaces only when a slice/estimate job runs, well after the deploy is reported done. This is exactly the failure mode that hit 32.3; it was only caught because the controller ran a runtime import smoke from inside the container.
+
+**Manual repair performed (so 32.3 runtime is verified, not broken):** controller rebuilt `portal-slicer-worker:0.1.0` on `.190` from `slicer-worker.Dockerfile` after the fresh `portal-api:0.1.0` image landed, then restarted the overlay:
+
+```bash
+docker compose --env-file .env \
+  -f docker-compose.yml \
+  -f /mnt/raid/configs/docker-compose-recipes/workers/slicer-worker.yml \
+  --profile slicer-worker up -d slicer-worker
+```
+
+Post-repair runtime verification PASSED: slicer-worker image `sha256:217a827f95e130652998bc8a404fd85f3970704ca8d87f897744c39d2cc36a04`, modules `gcode_parse=True` and `estimate_store=True`, Orca 2.3.2 present, parser/cache smoke passed.
+
+**Fix sketch:** Teach the deploy automation to detect when slicer-adjacent app code (or the `portal-api` base image) changes and, on that condition, rebuild + restart the slicer-worker overlay as part of the deploy — either folded into `deploy.sh` (with the configs overlay paths/profile) or factored into a dedicated slicer-worker deploy script/gate invoked after the base stack is up. The gate should finish by verifying, from inside `3d-portal-slicer-worker-1`: (a) the slicer module imports resolve (`gcode_parse`, `estimate_store`), (b) the Orca binary path is present and runnable, (c) the parser/cache smoke passes. Crosses the repo↔configs boundary, so this is a coordinated change (see HC2 / configs-side ownership) — likely a small `deploy.sh` hook plus a configs-side recipe/script, not a one-file edit.
+
+**Trigger / priority:** Real should-fix-soon tech debt — **not blocking 32.3** (runtime was manually repaired and verified above). Promote before the next story that touches `app.modules.slicer.*` or otherwise rebases the `portal-api` image (e.g. 32.4 invalidation/recompute, 32.5 Spoolman override, 32.6 FE), since each such deploy currently re-opens the same silent-skew window. Until automated, every deploy that changes slicer code MUST be followed by the manual overlay rebuild + in-container import/Orca/parser smoke above.
+
+---
+
 ## Declined / done
 
 _(none yet)_
