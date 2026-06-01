@@ -1,0 +1,8 @@
+{
+  "name": "fdm_filament_common",
+  "from": "system",
+  "instantiation": "false",
+  "filament_flow_ratio": ["0.98"],
+  "nozzle_temperature": ["220"],
+  "hot_plate_temp": ["60"]
+}

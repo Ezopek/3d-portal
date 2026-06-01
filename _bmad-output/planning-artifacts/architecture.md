@@ -100,6 +100,7 @@ Source-of-truth for capability contracts: `prd.md`. Source-of-truth for technica
 | 9 | Test Isolation Cleanup | 🚧 planning | — | **No architectural decisions** — test-infrastructure-only work. Pointer-only section listed for index completeness. Single epic E14 (3 stories 14.1-14.3). See section "Initiative 9" below. |
 | 10 | Operator Polish Batch | 🚧 planning | — | 3 architectural decisions (L — ModelNote bilingual schema migration forward-only Alembic; M — anonymous share-link frontend route shell; N — admin manual-add model + file upload write surface). Three epics E15+E16+E17. Source SCP: `sprint-change-proposal-2026-05-22-init10.md`. See section "Initiative 10" below. |
 | 19 | Spoolman Read-Only Inventory (MVP-A) | 🚧 planning | — | 3 architectural decisions (AD — cache topology Redis 30s TTL + arq 60s poll + SETNX leader-election + observability with `external_service=spoolman` tag + 3-row cache-coherence table for `["spools", "summary"]` query-key; AE — network transport via internal docker network with configs-side coordination PR + P4a host-network fallback; AF — data-model carry-through surfacing ALL Spoolman cost-relevant fields end-to-end in DTOs + cache for future Phase D cost-calc UX). Single epic E31 (5 stories 31.1-31.5). All stories `gpt-5.4-mini` Codex routing (no NFR-SECURITY adjacency). Source SCP: `sprint-change-proposal-2026-05-29-spoolman.md`. See section "Initiative 19" below. |
+| 20 | STL Slicer Estimates (Per-Part MVP) | 🚧 planning | — | 3 architectural decisions (AH — resolver: recursive Orca system+user inheritance merge + `type` injection + instantiation drop + Spoolman override layer + real-slice validation + canonicalized `bundle_hash` over machine ∥ process ∥ filament ∥ `orca_version` + append-only bundles + `SourceProfileSnapshot` provenance; AI — dedicated containerized headless OrcaSlicer 2.3.2 slicer-worker + `(stl_ref, bundle_ref)` job contract + `<root>/stl/<hash[:2]>/<hash>.stl` cache + g-code parse-and-discard + configs-side compose ownership; AJ — `EstimateRecord` keyed `(stl_hash, bundle_hash)` + exhaustive recompute-trigger table + cost-only-arithmetic-recompute rule preventing re-slice storms). Resolver precedence: exact bundle > custom override > material default > unsupported. Single epic E32 (6 stories 32.1-32.6). Per-STL only; no whole-plate slicing; not e-commerce; Spoolman = inventory SoT; Fenrir = bench-only. Source SCP: `sprint-change-proposal-2026-05-31-stl-slicer-estimates.md`. See section "Initiative 20" below. |
 
 ## Initiative 0 — Product Foundation: Home 3D-Printing Catalog
 
@@ -2755,3 +2756,98 @@ The auth-loading state (`auth.isLoading === true`) continues to render the spinn
 - Source SCP: `sprint-change-proposal-2026-05-29-spoolman.md` § §3 + §4.2.
 - Brainstorm input: `_bmad-output/brainstorming/brainstorming-session-2026-05-29-0840.md` (15-parameter morphological grid + OD1-OD10 register).
 - Memory entries informing decisions: [[feedback_scp_pre_enumeration_phase]] (cache-coherence table format from § B + magic-constant contract pointing from § C applied to Decision AD), [[feedback_codex_model_routing]] (gpt-5.4-mini routing locked for all Init 19 stories — no NFR-SECURITY adjacency).
+
+## Initiative 20 — STL Slicer Estimates (Per-Part MVP)
+
+**Status:** 🚧 planning (started 2026-05-31). Source SCP: `sprint-change-proposal-2026-05-31-stl-slicer-estimates.md` (status `approved` 2026-05-31 — approval scoped to planning-artifact appends, NOT code implementation). Init 20 introduces three architectural decisions for trustworthy, reproducible **per-STL** slicer estimates produced by a real headless OrcaSlicer slice. The decisions are grounded in **proven** CLI feasibility (PLA + TPU slices on the Fenrir bench, g-code metadata confirmed, resolver script proved end-to-end), not blue-sky. This is the phase-3 (solutioning) graduation of the architecture content sketched in the brainstorm discovery artifact (§ 2 data model, § 3 resolver, § 4 slicer-worker, § 5 invalidation). All app-layer code is portal-owned; the container/network topology is configs-side (HC2 boundary).
+
+### Decision AH — Resolver architecture (system + user inheritance merge + override layer + hashing)
+
+**Decision:** A first-class **profile resolver** subsystem (NOT a convenience script) is mandatory, because raw Orca user-profile JSONs are **partial** — they `inherit` from system profiles and lack a top-level `type`, so the Orca CLI rejects them directly via `--load-settings` / `--load-filaments` and `--datadir` does not fix it (verified). The temporary `/home/ezop/tmp/orca_resolve_profiles.py` proved the resolve path end-to-end for both PLA and TPU.
+
+**Resolver responsibilities (production shape):**
+
+1. **Import boundary (read):** read the Orca system profile tree + the user partials as **vendored/exported artifacts** (one-way snapshot from the Fenrir bench), never a live read of Fenrir's `/mnt/c/...` in production.
+2. **Inheritance merge:** recursively resolve `inherit` chains (system → user partial), deep-merging keys; **user partial wins on conflict.**
+3. **Normalize:** inject the top-level `type` (machine/process/filament); drop the instantiation field that breaks the CLI.
+4. **Override layer:** apply the Spoolman-mapped custom overrides (Decision AJ § Spoolman linkage) onto the filament JSON.
+5. **Validate:** confirm the merged JSON is CLI-acceptable **before** it becomes a bundle — a dry `--info` / minimal-slice smoke check + a schema assertion that required keys (e.g. `filament_max_volumetric_speed` for TPU) are present and sane.
+6. **Hash & version:** compute `bundle_hash`, stamp `orca_version`, write `SlicerProfileBundle` + `SourceProfileSnapshot`.
+7. **Export boundary (write):** the resolved triple is the portable artifact; bundle import/export across environments is by these full JSONs + their hash, never by re-reading live Orca/Windows state.
+
+**Resolver precedence (load-bearing contract):** `exact bundle > custom override > material-class default > unsupported`. A request that resolves to "unsupported" is an explicit classified failure surfaced to the owner — never a silent fallback to a wrong default. **The Orca resolver is first-class precisely because raw user profiles are partial** — the merge IS the load-bearing complexity that the naive `--load-settings` path fails on.
+
+**Hashing / versioning:**
+
+- `bundle_hash = H(machine_json ∥ process_json ∥ filament_json ∥ orca_version)`, canonicalized (sorted keys, normalized floats) so cosmetic JSON churn does not churn the hash.
+- **`orca_version` is folded into the hash on purpose:** a different Orca build can produce different estimates from identical settings (slicing-engine changes), so an Orca upgrade becomes a clean bulk-invalidation event (Decision AJ) rather than a silent estimate drift.
+- Bundles are **append-only / versioned** — a re-tune creates a new bundle + hash; old estimates stay attributable to the old hash until recomputed.
+
+**Data-model surfaces (sketch — PRD/story phase confirms field names):**
+
+- **`PrintIntentPreset`** (portal-owned, user-facing): `name`, `material_class` ∈ {PLA, PETG, PCTG, TPU}, `quality_tier` (OD-1), `printer_ref`, `notes`, `is_default`. MUST NOT leak Orca internals (no raw layer-height floats, no `filament_max_volumetric_speed` in the UI).
+- **`SlicerProfileBundle`** (internal): `intent_preset_ref`, `machine_json_ref` / `process_json_ref` / `filament_json_ref`, `orca_version`, `bundle_hash`, `source_snapshot_ref`, `spoolman_overrides_ref?`, `created_at` / `superseded_at`.
+- **`SourceProfileSnapshot`** (provenance): the raw user partials + system-profile refs + resolver-script version used, so a bundle can be re-resolved and diffed if Orca's system tree changes upstream. Append-only.
+
+**Ownership topology:** Spoolman owns inventory + `filament.extra.url` (Init 19 SoT); the Orca system+user profile tree owns the *resolution recipe*; the portal owns the *resolved* bundle + the source snapshot + the estimate. The portal snapshots inputs so a resolve is reproducible even if upstream profiles change.
+
+### Decision AI — Slicer-worker container (runtime boundary, job IO, STL cache)
+
+**Decision:** Production runs OrcaSlicer **headless in a dedicated containerized `slicer-worker` service** bundling the Linux OrcaSlicer **2.3.2** AppImage + the verified dep set (`libopengl0`, `libglu1-mesa`, `libgtk-3-0`, `libwebkit2gtk-4.1-0`, `libsecret-1-0`, `libgstreamer-plugins-base1.0-0`, `libmspack0`). **No Fenrir, no Windows exe, no Orca GUI in production.**
+
+**OD-2 (dedicated vs extend `workers/render/`) — leaning dedicated:** Orca's GUI/GL deps bloat the render image and have a different failure profile (a slice takes minutes; a render is sub-second), so co-tenancy would couple two very different resource + timeout regimes. The repo already runs an arq worker for renders, so the queue/runtime shape is proven; the slicer worker reuses that pattern in its own service. **AppImage-in-container:** `--appimage-extract` (run the squashfs contents directly, avoids FUSE in the container) is the assumed container-friendly path — flag for a spike (risk R3).
+
+**Job contract:**
+
+- **Input (job payload):** the `(stl_ref/stl_hash, bundle_ref/bundle_hash)` 2-tuple — nothing else. The worker pulls the STL from the cache and the resolved triple JSONs from the bundle store.
+- **Process:** Orca `--info` cheap manifold/facet/volume pre-check (fail fast on bad meshes) → headless CLI slice with the three resolved JSONs + STL → g-code to a temp path.
+- **Output:** parsed `EstimateRecord` fields from the confirmed-present g-code metadata lines (`; estimated printing time (normal mode)`, `; filament used [g]` / `; total filament used [g]`, `; filament used [mm]`, `; filament used [cm3]`, `; total filament cost`, `; {filament,print,printer}_settings_id`) + classified warnings. **G-code is parse-and-discard** (OD-5 leaning) — large, derivable, not retained beyond the parse.
+
+**STL cache:** content-hashed; layout `<cache_root>/stl/<hash[:2]>/<hash>.stl` (fan-out by hash prefix, same shape the render worker uses for thumbnails). The API/catalog populates the cache; the worker reads the `.190`-mirrored catalog copy (OD-8), never Windows directly.
+
+**Failure & warning classification:**
+
+- **Warnings** (slice succeeded, estimate valid): e.g. *floating cantilever* — captured in `EstimateRecord.warnings`, surfaced to the owner, **non-blocking**.
+- **Failures** (no usable estimate): non-manifold mesh, Orca non-zero exit, CLI-rejected profile (should be caught at resolve-time validation, Decision AH § 5), parse failure, timeout → `status: failed` + reason; the record exists so the UI shows "couldn't estimate, here's why" rather than vanishing.
+
+**Concurrency & queue:** arq job per non-`fresh` `(stl_hash, bundle_hash)`, deduped on the key; **small bounded concurrency** (likely 1-2 on `.190`, OD-6) to avoid starving the API/render workers; recompute is idempotent.
+
+**Configs/app boundary (HC2):** any docker-network / compose change to add the `slicer-worker` service or reach Spoolman is a `~/repos/configs/docker-compose-recipes/workers/slicer-worker.yml` PR — **NOT a 3d-portal commit**. The portal initiative owns app-layer worker code; the container topology is configs-side. `infra/.env.example` gains `ORCA_VERSION` + `FENRIR_EXPORT_PATH` slots (bench-only export path documented as NOT a production runtime path).
+
+**OD-9 (module placement):** new `apps/api/app/modules/slicer/` (resolver, worker client, cache logic, estimate models) + `apps/web/src/modules/estimates/` (display, `PrintIntentPreset` selector, soft-fail UI) — vs folding into a `requests` v2 slot. Architecture-phase leaning is a dedicated module; story specs confirm.
+
+### Decision AJ — Cache / invalidation / cost arithmetic
+
+**Decision:** `EstimateRecord` is keyed `(stl_hash, bundle_hash)`; because `bundle_hash` folds in `orca_version` and the Spoolman-override set, that 2-tuple is the **complete** reproducibility key. An estimate goes **stale** (→ `queued` → recompute) when any input to its key changes.
+
+**Recompute-trigger table** (exhaustive-by-design — closes risk R9 "cache key incomplete → stale served as fresh"):
+
+| Trigger | Mechanism | Effect |
+|---|---|---|
+| STL content changes | `stl_hash` changes | new key ⇒ new estimate; old key orphaned (GC later) |
+| Resolved bundle re-tuned | new `SlicerProfileBundle` + new `bundle_hash` | estimates on the old hash marked `stale`, requeued against the new bundle |
+| Orca version upgrade | `orca_version` ∈ `bundle_hash` ⇒ hash changes | all estimates effectively stale; bulk recompute |
+| Spoolman mapped-override change (volumetric speed, temp, density) | folded into `bundle_hash` via `spoolman_overrides_ref` | affected bundles re-hash ⇒ dependent estimates stale |
+| Spoolman cost-only change (`spool.price`; density unchanged) | **OD-7 — cost is derived, not a slice input** | recompute the cost field **arithmetically without re-slicing** (cheap path) |
+
+**Cost-only-arithmetic rule (OD-7, load-bearing efficiency decision):** anything that changes *slicer output* invalidates via the hash; anything that is pure post-slice arithmetic (`cost = mass × price/gram`, or `spool.price` override if set) is recomputed **without re-slicing**. Re-slicing for a price change wastes minutes of CPU — the Pre-Mortem flagged "re-slicing on every Spoolman price tick" as the top self-inflicted-DoS risk (R1). Target: a cost-only Spoolman change recomputes in <1s, not minutes.
+
+**Spoolman linkage & custom overrides:** a `PrintIntentPreset` (or per-request line) MAY pin a specific Spoolman filament record, linked by **profile-style reference** (Init 19 B2 insight — link by profile, not by churning entity id, to isolate from Spoolman entity churn). Custom filament/process overrides — especially `filament_max_volumetric_speed`, nozzle/bed temps, density for TPU and unusual filaments — are mapped from the Spoolman `filament.extra` fields onto the resolved filament JSON, captured in `spoolman_overrides_ref`, and folded into `bundle_hash` so a Spoolman-side change to a mapped field correctly invalidates downstream estimates.
+
+**Staleness is explicit, never silent:** a stale estimate is **served with a `stale` flag** (UI: "estimate may be out of date, recomputing") rather than hidden — matching the Init 19 soft-fail / `stale since HH:MM` pattern. Soft-fail when the worker is down serves the last cached estimate with a "Last estimated HH:MM (Xm ago)" indicator.
+
+**Observability:** every slicer-worker job + any outbound Spoolman read is instrumented per `~/repos/configs/docs/observability-logging-contract.md` (structured-log tags + OTel span + GlitchTip breadcrumb); g-code bodies are NOT logged in full.
+
+### Gated capability (explicitly OUT of scope, architecture-relevant)
+
+**Adaptive / variable layer height — GATED** on a proven negative (`adaptive_layer_height=1` did NOT change the layer-Z schedule or estimates vs fixed 0.20 mm for Qstool). The data model must **not** bake in "estimates assume uniform layer height" in a way that blocks a later variable-height bundle, but no MVP work goes here. **Spike exit criterion:** demonstrate a CLI-only path produces a *different, correct* layer schedule + estimate for a known part.
+
+### Cross-references
+
+- PRD: `prd.md` § Initiative 20 (FR20-* + NFR20-* link back to Decisions AH + AI + AJ).
+- Epics: `epics.md` § Initiative 20 (Story 32.1 implements Decision AH; Story 32.2 implements Decision AI; Stories 32.3 + 32.4 implement Decision AJ; Story 32.5 implements the Spoolman override mapping; Story 32.6 is the frontend preset + estimate display).
+- Source SCP: `sprint-change-proposal-2026-05-31-stl-slicer-estimates.md` § 4.2.
+- Brainstorm input: `_bmad-output/brainstorming/brainstorming-session-2026-05-31-1926.md` (§ 2 data model + ownership topology, § 3 resolver, § 4 slicer-worker, § 5 invalidation rules, § 7 security/ops, § 8 risk register, § 9 OD register).
+- Configs-side coordination: `~/repos/configs/docker-compose-recipes/workers/slicer-worker.yml` PR per Decision AI — **NOT a 3d-portal commit**; HC2 trip-wire honored.
+- Inventory SoT: Initiative 19 (Spoolman) — the slicer initiative consumes Spoolman filament records + `filament.extra.url`, does not own or duplicate inventory.
+- Memory entries informing decisions: [[feedback_scp_pre_enumeration_phase]] (cache-topology enumeration § B + magic-constant contract pointing § C apply to the resolver hash constants, the `(stl_hash, bundle_hash)` cache key, the slice-concurrency cap, and the Orca/timeout literals in every Init 20 story spec).

@@ -104,6 +104,25 @@ class Settings(BaseSettings):
     # stays a one-file change. Empty value disables the header.
     spoolman_auth_token: str = ""
 
+    # Slicer (Initiative 20, Story 32.1) — Orca profile-resolver slots.
+    # orca_version is sourced from ORCA_VERSION and folded into bundle_hash
+    # because "an Orca upgrade is a clean bulk-invalidation event — Decision AJ /
+    # NFR20-REPRODUCIBLE-1" (AC-10). Pinned to the verified Linux AppImage build
+    # (Decision AI) so it is never silently empty in the hash input.
+    orca_version: str = "2.3.2"
+    # Vendored Orca system-profile tree + user partials — exported artifacts (a
+    # one-time bench snapshot), read at resolve time. NEVER a live read of an
+    # external bench/Windows host (Decision AH § 1; AC-2/AC-12). Container-internal
+    # path under the portal-content volume by default; the bench export step
+    # (FENRIR_EXPORT_PATH, see infra/env.example) is NOT a production runtime path.
+    slicer_vendored_profiles_dir: Path = Path("/data/content/slicer/vendored")
+    # Append-only on-disk bundle + snapshot store ROOT (AC-6); hash-fanout layout on
+    # the portal-content volume — NOT an Alembic table (SCP: "No DB schema"). This is
+    # the store ROOT: BundleStore adds the internal ``bundles/`` and ``snapshots/``
+    # children itself, so the default is ``/data/content/slicer`` (NOT
+    # ``…/slicer/bundles``, which would nest to ``…/slicer/bundles/bundles/…``).
+    slicer_bundle_store_dir: Path = Path("/data/content/slicer")
+
     # Observability
     otel_exporter_otlp_endpoint: str | None = None
     otel_exporter_otlp_headers: str | None = None  # e.g. "authorization=Bearer <token>"

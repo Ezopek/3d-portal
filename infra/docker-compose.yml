@@ -53,6 +53,11 @@ services:
       OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS}
       SENTRY_DSN: ${SENTRY_DSN}
       PORTAL_VERSION: ${PORTAL_VERSION}
+      # Slicer profile resolver (Story 32.1). Defaults match config/env.example;
+      # container-internal paths under the portal-content volume.
+      ORCA_VERSION: ${ORCA_VERSION:-2.3.2}
+      SLICER_VENDORED_PROFILES_DIR: ${SLICER_VENDORED_PROFILES_DIR:-/data/content/slicer/vendored}
+      SLICER_BUNDLE_STORE_DIR: ${SLICER_BUNDLE_STORE_DIR:-/data/content/slicer}
     volumes:
       - ${CATALOG_HOST_DIR}:/data/catalog:ro
       - ${RENDERS_HOST_DIR}:/data/renders:ro
@@ -112,6 +117,11 @@ services:
       OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS}
       SENTRY_DSN: ${SENTRY_DSN}
       PORTAL_VERSION: ${PORTAL_VERSION}
+      # Slicer profile resolver (Story 32.1). Shares the api image, so it loads
+      # the same Settings; keep these in sync with the api block above.
+      ORCA_VERSION: ${ORCA_VERSION:-2.3.2}
+      SLICER_VENDORED_PROFILES_DIR: ${SLICER_VENDORED_PROFILES_DIR:-/data/content/slicer/vendored}
+      SLICER_BUNDLE_STORE_DIR: ${SLICER_BUNDLE_STORE_DIR:-/data/content/slicer}
     volumes:
       - ${CATALOG_HOST_DIR}:/data/catalog:ro
       - ${RENDERS_HOST_DIR}:/data/renders:ro

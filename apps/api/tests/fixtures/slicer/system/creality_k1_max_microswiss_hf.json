@@ -1,0 +1,9 @@
+{
+  "name": "Creality K1 Max MicroSwiss HF",
+  "inherit": "fdm_machine_common",
+  "from": "system",
+  "instantiation": "true",
+  "printer_model": "Creality K1 Max",
+  "nozzle_diameter": ["0.4"],
+  "printable_height": "300"
+}

@@ -121,6 +121,7 @@ BMAD does not currently ship a dedicated `bmad-edit-epics` skill. New initiative
 | 11 | Triage Quick Wins Bundle | ✅ shipped | 2026-05-23 | E18 | 5 stories (18.1-18.5) + 3 fix-ups; all Codex CLEAN; 846/846 pytest deterministic. |
 | 12 | Anonymous Share View Enrichment + DDoS Hardening | 🚧 planning | started 2026-05-23 | E19 | 7 stories (19.1-19.7); security-first sequencing (rate-limit + throughput BEFORE UX uplift); operator-calibrated thresholds (60 req/min per token+IP; 2 MB/s + 5 concurrent per IP); carousel = member-view-scoped-to-shared-item. Story 19.7 (3D viewer) depends on Init 13 TB-022. |
 | 19 | Spoolman Read-Only Inventory (MVP-A) | 🚧 planning | started 2026-05-29 | E31 | 5 stories (31.1-31.5): 31.1 backend httpx client + Redis 30s TTL + arq 60s poll + SETNX leader-election + env config; 31.2 backend `/api/spools/*` routes + DTOs with cost-data carry-through; 31.3 frontend `/spools` index page + states; 31.4 frontend landing low-stock card; 31.5 i18n + ops doc + visual baseline regen. All stories `gpt-5.4-mini` Codex routing (no NFR-SECURITY adjacency — read-only outbound HTTP to LAN-only Spoolman). Source SCP: `sprint-change-proposal-2026-05-29-spoolman.md`. |
+| 20 | STL Slicer Estimates (Per-Part MVP) | 🚧 planning | started 2026-05-31 | E32 | 6 stories (32.1-32.6): 32.1 profile resolver (Orca system+user inheritance merge + normalize + validate + hash + provenance snapshot); 32.2 containerized headless OrcaSlicer slicer-worker (AppImage + job shape + CLI invoke); 32.3 g-code metadata parse + `(stl_hash, bundle_hash)` cache schema + cost-carry fields; 32.4 invalidation rules + recompute queue + cost-only arithmetic recompute; 32.5 Spoolman-mapped custom filament overrides (volumetric speed / temps / density); 32.6 frontend `PrintIntentPreset` selector + estimate display + soft-fail/warning/failure states. Per-STL only; request totals are linear sums (no whole-plate slicing); not e-commerce; Spoolman = inventory SoT; Fenrir = research/export bench only. Three architecture Decisions (AH resolver, AI slicer-worker container, AJ cache/invalidation). Source SCP: `sprint-change-proposal-2026-05-31-stl-slicer-estimates.md`. |
 
 ## Initiative 0 — Product Foundation: Home 3D-Printing Catalog
 
@@ -3654,3 +3655,125 @@ Init 19 integrates the standalone Spoolman instance at `.190:7912` as a read-onl
 #### Standalone stories — none for Init 19
 
 (No standalone stories outside Epic E31 in Init 19 scope.)
+
+## Initiative 20 — STL Slicer Estimates (Per-Part MVP)
+
+**Status:** 🚧 planning (started 2026-05-31). Source SCP: `sprint-change-proposal-2026-05-31-stl-slicer-estimates.md` (status `approved` 2026-05-31 — approval scoped to planning-artifact appends, NOT code; implementation planning remains BLOCKED per SCP § 5). Predecessor: Init 19 (Spoolman) — Init 20 queues behind Init 19 close-out per ITCM convention and consumes the Spoolman inventory SoT. Single epic E32, 6 stories (32.1-32.6). Architecture: `architecture.md` § Initiative 20 (Decisions AH + AI + AJ).
+
+> **Story breakdown is epic-level sketch.** Full acceptance criteria, task lists, pre-enumeration saves, test-target counts, and Codex routing are produced per story by `bmad-create-story` at dev-entry time. The OD gate (OD-1/OD-2/OD-7/OD-8/OD-9, PRD § Open decisions) was **RESOLVED 2026-05-31** by operator delegation, which cleared authoring of the **Story 32.1** spec (`_bmad-output/implementation-artifacts/32-1-profile-resolver-merge-normalize-validate-hash.md`, status `ready-for-dev`). Stories 32.2–32.6 remain `backlog` with no spec files — they are authored individually at their own dev-entry time. **Resolving the OD gate did NOT authorize dev-story execution / code implementation of any story** — that remains gated on an explicit operator go per SCP § 5.
+
+### Overview
+
+Init 20 ships **per-STL** slicer estimates (print time, filament mass/length/volume, informational cost, classified warnings) via a real headless OrcaSlicer slice in a containerized worker, with results cached keyed `(stl_hash, bundle_hash)` so they only recompute when a meaningful input changes. A request/basket total is a **linear sum** of per-STL estimate × quantity — there is no whole-plate / whole-basket slicing. The user-facing `PrintIntentPreset` is separated from the internal resolved `SlicerProfileBundle`. Spoolman stays the inventory SoT; Fenrir is the research/export bench only (no production dependency). Feasibility was proved on the bench for PLA + TPU; adaptive layer height is gated on a proven negative.
+
+### Requirements Inventory
+
+**FR ↔ Epic / Story matrix:**
+
+| FR | Epic | Story | Notes |
+|---|---|---|---|
+| FR20-RESOLVER-1 | E32 | 32.1 | Orca system+user inheritance merge + normalize + validate + hash + snapshot. Resolver precedence: exact bundle > custom override > material default > unsupported. Anchors Decision AH. |
+| FR20-ESTIMATE-1 | E32 | 32.2 (slice) + 32.3 (parse) | Headless slice produces g-code; pure parser emits typed `EstimateRecord` with attribution. Anchors Decisions AI + AJ. |
+| FR20-CACHE-1 | E32 | 32.3 | `(stl_hash, bundle_hash)` cache schema + cost-carry fields + dedup. Anchors Decision AJ. |
+| FR20-FAILURE-1 | E32 | 32.2 (worker classify) + 32.6 (FE soft-fail) | Warnings non-blocking; failures explicit; soft-fail "Last estimated HH:MM (Xm ago)". |
+| FR20-SPOOLMAN-MAP-1 | E32 | 32.5 | Spoolman `filament.extra` → resolved filament JSON overrides (esp. TPU volumetric speed); folded into `bundle_hash`. |
+| FR20-PRESET-1 | E32 | 32.6 | `PrintIntentPreset` selector ↔ `SlicerProfileBundle` separation; preset never leaks Orca internals. |
+
+**NFR ↔ Epic / Story matrix:**
+
+| NFR | Epic | Story | Notes |
+|---|---|---|---|
+| NFR20-REPRODUCIBLE-1 | E32 | 32.4 | Hash-driven invalidation; **cost-only changes recompute arithmetically (no re-slice)** — the load-bearing efficiency rule (Decision AJ / OD-7). |
+| NFR20-CONTAINER-1 | E32 | 32.2 | Orca headless in a dedicated container; no Fenrir production dependency; configs-side compose PR (NOT a 3d-portal commit). |
+| NFR20-ATTRIBUTION-1 | E32 | 32.3 | `settings_ids` from g-code on every record. |
+| NFR20-RESOURCE-1 | E32 | 32.2 (concurrency cap) + 32.4 (dedup) | Bounded slice concurrency + no recompute storms. |
+| NFR20-OBS-1 | E32 | 32.2 + 32.5 | Slicer-worker + Spoolman-read instrumentation per the observability-logging contract. |
+| NFR20-DETERMINISM-1 | E32 | All stories (pre-merge gate) | 3× consecutive identical pytest + vitest pass counts; arq slice job idempotent on the key. |
+| NFR20-I18N-PARITY-1 | E32 | 32.6 | `modules.estimates.*` / `modules.slicer.*` keys in BOTH en.json + pl.json. Material names untranslated. |
+| NFR20-VISUAL-VERIFICATION-1 | E32 | 32.6 | New baselines for estimate display + preset selector + soft-fail/warning/failure states × 4 projects. |
+
+### Epic List
+
+| Epic | Name | Status | Stories |
+|---|---|---|---|
+| E32 | STL Slicer Estimates (Per-Part MVP) | 🚧 backlog | 32.1 + 32.2 + 32.3 + 32.4 + 32.5 + 32.6 |
+
+#### Epic E32 — STL Slicer Estimates (Per-Part MVP)
+
+**Goal:** ship the per-STL estimate MVP — profile resolver, containerized headless slicer worker, g-code parse + cache, hash-driven invalidation with cost-only arithmetic recompute, Spoolman-mapped overrides, and the frontend preset selector + estimate display. Backend + worker + frontend, plus a configs-side slicer-worker compose PR (coordinated, NOT a 3d-portal commit). **Sequencing:** 32.1 → 32.2 → 32.3 → 32.4 → 32.5 → (32.6 follows once 32.3 serves estimates; 32.5 and 32.6 can overlap). Each story carries the NFR20-DETERMINISM-1 pre-merge gate; the frontend story carries NFR20-I18N-PARITY-1 + NFR20-VISUAL-VERIFICATION-1.
+
+##### Story 32.1 — Profile resolver: inheritance merge + normalize + validate + hash + snapshot (FR20-RESOLVER-1; Decision AH)
+
+**Realizes:** FR20-RESOLVER-1. Anchors Decision AH.
+
+**Sketch:** new `apps/api/app/modules/slicer/` package with the resolver: recursively merge the vendored Orca system profile tree with the user partials (user wins), inject top-level `type`, drop the instantiation field, apply the Spoolman override layer (consumed from Story 32.5; stub-tolerant until then), validate via a dry `--info` / minimal-slice smoke + a required-key schema assertion (`filament_max_volumetric_speed` for TPU), compute canonicalized `bundle_hash = H(machine ∥ process ∥ filament ∥ orca_version)`, and persist `SlicerProfileBundle` + `SourceProfileSnapshot` (append-only). Resolver precedence: exact bundle > custom override > material-class default > unsupported (unsupported ⇒ classified failure, never silent fallback). Productionizes the proven `orca_resolve_profiles.py` path. One-time Fenrir-bench export of resolved profiles into vendored artifacts (bench step, not a prod dependency).
+
+**Depends on:** none (first story; foundational). **Coordinates with:** 32.5 for the override-layer interface.
+
+**Test targets (sketched; finalized by bmad-create-story):** pytest on the merge/normalize path with PLA + TPU fixtures; hash-stability assertion (cosmetic JSON churn ⇒ stable hash); CLI-acceptance smoke (resolved triple accepted by Orca `--info`); precedence-resolution cases incl. the unsupported→failure branch.
+
+**Out of scope:** the slice itself (32.2); cache/estimate records (32.3); live Spoolman read (32.5); adaptive layer height (gated).
+
+##### Story 32.2 — Containerized headless OrcaSlicer worker: job shape + CLI invoke + failure classification (FR20-ESTIMATE-1 slice half, FR20-FAILURE-1 worker half, NFR20-CONTAINER-1, NFR20-RESOURCE-1, NFR20-OBS-1; Decision AI)
+
+**Realizes:** FR20-ESTIMATE-1 (slice half) + FR20-FAILURE-1 (worker classification) + NFR20-CONTAINER-1 + NFR20-RESOURCE-1 (concurrency cap) + NFR20-OBS-1. Anchors Decision AI.
+
+**Sketch:** app-side worker client in `apps/api/app/modules/slicer/` that takes the `(stl_ref, bundle_ref)` 2-tuple, runs Orca `--info` as a cheap manifold pre-check, invokes the headless CLI slice with the resolved triple + STL, and emits g-code to a temp path (parse-and-discard handled in 32.3). Failure classification: warnings (non-blocking) vs failures (non-manifold, non-zero exit, CLI-rejected profile, parse failure, timeout → `status: failed` + reason). Bounded slice concurrency (small cap, OD-6). STL cache layout `<cache_root>/stl/<hash[:2]>/<hash>.stl`. **Configs-side coordination (NOT a 3d-portal commit):** `~/repos/configs/docker-compose-recipes/workers/slicer-worker.yml` PR adds the dedicated container (OrcaSlicer 2.3.2 AppImage + verified deps; `--appimage-extract` path — spike per risk R3) + network topology; `infra/.env.example` gains `ORCA_VERSION` + `FENRIR_EXPORT_PATH` slots (`FENRIR_EXPORT_PATH` is a **bench-only** export path, NOT a production runtime path — per Decision AI / NFR20-CONTAINER-1, no `/mnt/c` path appears in production config).
+
+**Depends on:** 32.1 (needs resolved bundles to feed the slice).
+
+**Test targets (sketched):** pytest on the worker client with a mocked Orca invocation (happy slice, warning slice, each failure branch); concurrency-cap assertion; `--info` pre-check fast-fail on a non-manifold fixture. AppImage-in-container is verified out-of-band (configs-side smoke) since CI cannot run the AppImage.
+
+**Out of scope:** g-code parsing + cache write (32.3); invalidation (32.4); the resolver (32.1); g-code retention (parse-and-discard).
+
+##### Story 32.3 — G-code metadata parse + `(stl_hash, bundle_hash)` cache schema + cost-carry fields (FR20-ESTIMATE-1 parse half, FR20-CACHE-1, NFR20-ATTRIBUTION-1; Decision AJ)
+
+**Realizes:** FR20-ESTIMATE-1 (parse half) + FR20-CACHE-1 + NFR20-ATTRIBUTION-1. Anchors Decision AJ.
+
+**Sketch:** a small **pure, unit-testable** parser (g-code text in → typed `EstimateRecord` struct out) over the confirmed-present metadata lines; time strings (`3h35m47s`) normalize to seconds; missing/garbled lines ⇒ classified failure, never a silent zero. `EstimateRecord` keyed `(stl_hash, bundle_hash)` with `time_seconds`, `filament_g`, `filament_mm`, `filament_cm3`, `filament_cost`, `settings_ids` (attribution), `warnings`, `status`, `computed_at`. Cache read/write + dedup on the key (a `fresh` recompute is a no-op). Cost field is carried so cost-only recompute (32.4) can update it arithmetically.
+
+**Depends on:** 32.2 (needs g-code output). **Unblocks:** 32.4 + 32.6.
+
+**Test targets (sketched):** parser fixtures captured from the proven PLA (76.76 g / 3h35m47s) + TPU (77.25 g / 8h06m05s) slices; time-string normalization edge cases; missing-line → failure; cache hit/miss/dedup; `settings_ids` attribution invariant.
+
+**Out of scope:** invalidation triggers (32.4); the slice (32.2); FE display (32.6).
+
+##### Story 32.4 — Invalidation rules + recompute queue + cost-only arithmetic recompute (FR20-CACHE-1 invalidation, NFR20-REPRODUCIBLE-1, NFR20-RESOURCE-1 dedup; Decision AJ)
+
+**Realizes:** FR20-CACHE-1 (invalidation) + NFR20-REPRODUCIBLE-1 + NFR20-RESOURCE-1 (recompute dedup). Anchors Decision AJ (recompute-trigger table).
+
+**Sketch:** implement the exhaustive recompute-trigger table — STL content change (`stl_hash`), bundle re-tune (new `bundle_hash`), Orca upgrade (`orca_version` ∈ hash), Spoolman mapped-override change (`spoolman_overrides_ref` folded into hash). **Critical:** a Spoolman **cost-only** change (`spool.price`, density unchanged) recomputes the cost field **arithmetically without re-slicing** (`cost = mass × price/gram`, or `spool.price` override) — never enqueues a slice (prevents the R1 recompute-storm DoS). Stale records served with an explicit `stale` flag + queued; recompute idempotent + deduped on the key.
+
+**Depends on:** 32.3 (needs `EstimateRecord` + cache). **Coordinates with:** 32.5 (the mapped-override-change trigger).
+
+**Test targets (sketched):** each trigger-table row → correct stale/recompute behavior; **the load-bearing test** — a cost-only Spoolman change updates the cost field WITHOUT invoking the slicer worker, in <1s; staleness flag served, not hidden; idempotent recompute on a `fresh` record.
+
+**Out of scope:** the slice (32.2); FE staleness UI (32.6); g-code retention.
+
+##### Story 32.5 — Spoolman-mapped custom filament overrides (FR20-SPOOLMAN-MAP-1, NFR20-OBS-1; Decisions AH override layer + AJ linkage)
+
+**Realizes:** FR20-SPOOLMAN-MAP-1 + NFR20-OBS-1 (Spoolman-read instrumentation). Anchors Decision AH § override layer + Decision AJ § Spoolman linkage.
+
+**Sketch:** map Spoolman `filament.extra` fields (and the inherited `filament.extra.url` purchase link) onto the resolved filament JSON — **especially `filament_max_volumetric_speed`, nozzle/bed temps, density for TPU and unusual filaments** where the generic class default is wrong. Link by profile-style reference (Init 19 B2 insight — isolate from Spoolman entity churn), reusing the Init 19 Spoolman client/cache. Override set captured in `spoolman_overrides_ref` + folded into `bundle_hash` so a mapped-field change invalidates dependent estimates (the trigger consumed by 32.4). Spoolman stays inventory SoT — read-only consumption, no duplication.
+
+**Depends on:** 32.1 (resolver override layer) + Init 19 Spoolman client. **Feeds:** 32.4 (mapped-override-change trigger).
+
+**Test targets (sketched):** TPU volumetric-speed override correctly clamps the resolved filament JSON; a mapped-field change re-hashes the bundle + marks dependent estimates stale; Spoolman read tagged `external_service=spoolman`; cost-only field change does NOT re-hash (routes to 32.4 arithmetic path).
+
+**Out of scope:** cost arithmetic itself (32.4); inventory mutation (Spoolman owns it); non-mapped filament fields.
+
+##### Story 32.6 — Frontend `PrintIntentPreset` selector + estimate display + soft-fail/warning/failure states (FR20-PRESET-1, FR20-FAILURE-1 FE half, NFR20-I18N-PARITY-1, NFR20-VISUAL-VERIFICATION-1)
+
+**Realizes:** FR20-PRESET-1 + FR20-FAILURE-1 (FE soft-fail/warning/failure UI) + NFR20-I18N-PARITY-1 + NFR20-VISUAL-VERIFICATION-1.
+
+**Sketch:** new `apps/web/src/modules/estimates/` — a `PrintIntentPreset` selector (material class ∈ {PLA, PETG, PCTG, TPU}, quality tier, optional pinned spool/overrides) and an estimate display on the catalog detail + request/queue surfaces showing time / mass / length / volume / informational cost + classified warnings. States: loading, populated, `stale` (explicit "estimate may be out of date, recomputing"), soft-fail ("Last estimated HH:MM (Xm ago)"), failure ("couldn't estimate, here's why"). The preset MUST NOT leak Orca internals (no raw layer-height floats, no `filament_max_volumetric_speed` in the UI). i18n parity for all new keys; new visual baselines × 4 projects with `baseline-reviewed:` sign-off per FR13.
+
+**Depends on:** 32.3 (needs the estimate API) + 32.4 (staleness states).
+
+**Test targets (sketched):** vitest on the selector + each display state; an invariant test asserting no Orca-internal field names render in the preset surface; Playwright baselines for populated + stale + soft-fail + warning + failure states.
+
+**Out of scope:** whole-basket totals UI beyond a linear sum; cost quoting / checkout (not e-commerce); per-layer visualization (g-code not retained); adaptive layer height (gated).
+
+#### Standalone stories — none for Init 20
+
+(No standalone stories outside Epic E32 in Init 20 scope.)

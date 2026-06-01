@@ -1,0 +1,5 @@
+{
+  "machine": { "inherit": "Creality K1 Max MicroSwiss HF" },
+  "process": { "inherit": "0.20mm Standard" },
+  "filament": { "inherit": "Rosa3D Flex 96A" }
+}

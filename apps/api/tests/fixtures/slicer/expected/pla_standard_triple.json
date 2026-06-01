@@ -1,0 +1,32 @@
+{
+  "machine": {
+    "name": "Creality K1 Max MicroSwiss HF",
+    "from": "system",
+    "type": "machine",
+    "printer_model": "Creality K1 Max",
+    "nozzle_diameter": ["0.4"],
+    "printable_height": "300",
+    "gcode_flavor": "marlin"
+  },
+  "process": {
+    "name": "0.20mm Standard",
+    "from": "system",
+    "type": "process",
+    "layer_height": "0.2",
+    "wall_loops": "3",
+    "sparse_infill_density": "15%",
+    "sparse_infill_pattern": "grid",
+    "adaptive_layer_height": "0"
+  },
+  "filament": {
+    "name": "Rosa3D PLA Starter",
+    "from": "system",
+    "type": "filament",
+    "filament_type": ["PLA"],
+    "filament_flow_ratio": ["0.98"],
+    "nozzle_temperature": ["210"],
+    "hot_plate_temp": ["60"],
+    "filament_max_volumetric_speed": ["12"],
+    "filament_density": ["1.24"]
+  }
+}

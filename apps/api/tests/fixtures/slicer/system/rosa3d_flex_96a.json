@@ -1,0 +1,11 @@
+{
+  "name": "Rosa3D Flex 96A",
+  "inherit": "fdm_filament_common",
+  "from": "system",
+  "instantiation": "true",
+  "filament_type": ["TPU"],
+  "nozzle_temperature": ["225"],
+  "hot_plate_temp": ["50"],
+  "filament_max_volumetric_speed": ["3.5"],
+  "filament_density": ["1.21"]
+}

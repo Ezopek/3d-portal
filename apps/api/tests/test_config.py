@@ -70,3 +70,25 @@ def test_spoolman_auth_token_defaults_to_empty_string(monkeypatch):
     monkeypatch.delenv("SPOOLMAN_AUTH_TOKEN", raising=False)
     s = Settings()
     assert s.spoolman_auth_token == ""
+
+
+def test_orca_version_defaults_to_verified_appimage_build(monkeypatch):
+    # Story 32.1 (Decision AH/AJ, AC-10) — orca_version is folded into bundle_hash;
+    # default pins the verified Linux AppImage build so it is never empty in the
+    # hash input. ORCA_VERSION env var overrides it.
+    monkeypatch.delenv("ORCA_VERSION", raising=False)
+    assert Settings().orca_version == "2.3.2"
+    monkeypatch.setenv("ORCA_VERSION", "2.3.3")
+    assert Settings().orca_version == "2.3.3"
+
+
+def test_slicer_artifact_dirs_default_under_portal_content(monkeypatch):
+    # Story 32.1 (AC-2/AC-6/AC-12) — vendored-artifact + bundle-store roots default
+    # to container-internal paths on the portal-content volume, never a bench path.
+    # The bundle-store default is the store ROOT; BundleStore adds the internal
+    # ``bundles/`` + ``snapshots/`` children (review fix #5 — no double-nesting).
+    monkeypatch.delenv("SLICER_VENDORED_PROFILES_DIR", raising=False)
+    monkeypatch.delenv("SLICER_BUNDLE_STORE_DIR", raising=False)
+    s = Settings()
+    assert str(s.slicer_vendored_profiles_dir) == "/data/content/slicer/vendored"
+    assert str(s.slicer_bundle_store_dir) == "/data/content/slicer"

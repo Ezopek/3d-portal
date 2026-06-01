@@ -1,0 +1,5 @@
+{
+  "machine": { "inherit": "Creality K1 Max MicroSwiss HF" },
+  "process": { "inherit": "0.20mm Standard", "wall_loops": "3" },
+  "filament": { "inherit": "Rosa3D PLA Starter" }
+}

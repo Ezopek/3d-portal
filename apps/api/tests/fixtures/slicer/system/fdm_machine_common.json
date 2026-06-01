@@ -1,0 +1,9 @@
+{
+  "name": "fdm_machine_common",
+  "from": "system",
+  "instantiation": "false",
+  "printer_model": "common",
+  "nozzle_diameter": ["0.4"],
+  "printable_height": "250",
+  "gcode_flavor": "marlin"
+}

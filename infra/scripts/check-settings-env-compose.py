@@ -39,6 +39,10 @@ KNOWN_INFRA_ONLY: frozenset[str] = frozenset(
         "GLITCHTIP_AUTH_TOKEN",
         "GLITCHTIP_ORG_SLUG",
         "GLITCHTIP_PROJECT_SLUG",
+        # Bench-only one-time export path (Story 32.1) — snapshots the Orca
+        # system+user profile tree into the vendored artifact set. NEVER read by
+        # production runtime (NFR20-CONTAINER-1); not a Pydantic Settings field.
+        "FENRIR_EXPORT_PATH",
     }
 )
 

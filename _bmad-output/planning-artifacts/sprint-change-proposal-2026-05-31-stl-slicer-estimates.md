@@ -2,9 +2,12 @@
 title: "Sprint Change Proposal — Initiative 20 (STL Slicer Estimates, Per-Part MVP)"
 type: sprint-change-proposal
 initiative_scope: [20]
-status: proposed
+status: approved
 proposed_by: Claude (BMAD autonomous brainstorm discovery, 2026-05-31)
 proposed_at: 2026-05-31
+approved_by: operator (Michał / Ezop) — 2026-05-31 delegation to continue / delegate downstream BMAD planning work after the STL slicer estimate discovery + SCP were committed
+approved_at: 2026-05-31
+approved_via: operator chat (Polish; ITCM autonomous mode). SCOPE OF APPROVAL — downstream BMAD planning-artifact updates only (PRD + architecture + epics + sprint-status backlog rows). NOT approval to implement code or start dev-story execution; implementation planning remains BLOCKED pending operator go per § 5 Handoff.
 brainstorm_source: _bmad-output/brainstorming/brainstorming-session-2026-05-31-1926.md
 execution_directive: |
   Phase-1 (analysis/discovery) complete. Brainstorm artifact finalized: per-STL estimates
@@ -39,7 +42,7 @@ trigger:
     are partial JSON; resolver script (orca_resolve_profiles.py) proves merge + normalization
     path end-to-end. Brainstorm sketch addresses ownership (Spoolman = inventory SoT; Orca
     tree = resolution recipe; portal = resolved bundles + cache).
-business_decisions_aligned_pre_scp: null  # operator approval gate deferred to bmad-correct-course PRD session
+business_decisions_aligned_pre_scp: deferred-to-prd  # operator approval (2026-05-31) authorized downstream planning-artifact appends. OD-GATE UPDATE (2026-05-31): load-bearing OD-1/OD-2/OD-7/OD-8/OD-9 are now RESOLVED by operator delegation — see PRD § Initiative 20 § Open decisions for the resolved values. Gate clearance authorized recording the resolutions + authoring the Story 32.1 spec to ready-for-dev ONLY; dev-story execution / code implementation of any Init 20 story stays BLOCKED pending explicit operator go per § 5 Handoff.
 ---
 
 # Sprint Change Proposal — Initiative 20 (STL Slicer Estimates, Per-Part MVP)
