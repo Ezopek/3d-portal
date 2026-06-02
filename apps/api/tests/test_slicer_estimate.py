@@ -605,7 +605,7 @@ def test_slicer_estimate_store_dir_default(monkeypatch):
 def test_no_bench_or_windows_path_literal_in_new_slicer_files():
     # AC-9 / NFR20-CONTAINER-1 — the new parser/store files carry no path/exe literal.
     full = re.compile(r"/mnt/c|fenrir|\.exe|[Ww]indows", re.IGNORECASE)
-    for name in ("gcode_parse.py", "estimate_store.py"):
+    for name in ("gcode_parse.py", "estimate_store.py", "recompute.py"):
         path = REPO_ROOT / "apps/api/app/modules/slicer" / name
         assert not full.search(path.read_text(encoding="utf-8")), f"path/exe literal in {name}"
 

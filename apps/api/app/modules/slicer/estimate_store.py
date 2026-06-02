@@ -21,10 +21,12 @@ a failed estimate is a placeholder a clean retry is allowed to supersede.
 from __future__ import annotations
 
 import fcntl
+import math
 import os
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.modules.slicer.models import EstimateRecord, EstimateStatus
@@ -96,6 +98,135 @@ class EstimateStore:
                 return path
             return self._atomic_publish(path, record.model_dump_json(indent=2))
 
+    # --- Story 32.4 (Decision AJ second half) — status/cost transitions ----------
+    #
+    # mark_stale / mark_queued / update_cost are deliberate STATUS/COST changes, so they
+    # bypass the write() fresh-no-op (which exists only to make an identical fresh re-slice
+    # idempotent). Each runs the whole read-modify-publish under the SAME per-record
+    # _record_lock the slice persist uses, so a transition and a concurrent slice persist
+    # for the same key are serialized — no torn write, no lost transition (AC-1, AC-12).
+
+    def _force_transition(
+        self,
+        stl_hash: str,
+        bundle_hash: str,
+        transform: Callable[[EstimateRecord], EstimateRecord | None],
+    ) -> EstimateRecord | None:
+        """Read-modify-force-publish a transition under the per-record lock.
+
+        ``transform`` receives the existing record and returns the record to publish, or
+        ``None`` for an idempotent no-op (the existing record is returned unchanged, with
+        no ``computed_at`` churn). A cache miss returns ``None`` WITHOUT building a record
+        (never fabricate one to transition). The publish deliberately bypasses the
+        ``write()`` fresh-no-op — this IS a deliberate content change.
+        """
+        if not (is_content_hash(stl_hash) and is_content_hash(bundle_hash)):
+            return None
+        path = self._record_path(stl_hash, bundle_hash)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with self._record_lock(path):
+            existing = self._load(path)
+            if existing is None:
+                return None
+            updated = transform(existing)
+            if updated is None:
+                return existing  # idempotent / no-op transition — left untouched
+            self._atomic_publish(path, updated.model_dump_json(indent=2))
+            return updated
+
+    def mark_stale(self, stl_hash: str, bundle_hash: str) -> EstimateRecord | None:
+        """Supersede a ``fresh`` record to ``stale`` WITHOUT discarding its numbers (AC-1).
+
+        A ``stale`` record is still SERVABLE (FR20-FAILURE-1 "Last estimated HH:MM"): every
+        numeric/provenance field and the ORIGINAL ``computed_at`` are preserved. Idempotent
+        on an already ``stale``/``queued`` record (no-op, no churn). A ``failed`` record has
+        no valid estimate to go stale ⇒ no-op (stays ``failed``); a miss ⇒ ``None``.
+        """
+
+        def _to_stale(rec: EstimateRecord) -> EstimateRecord | None:
+            if rec.status in (EstimateStatus.stale, EstimateStatus.queued, EstimateStatus.failed):
+                return None
+            return rec.model_copy(update={"status": EstimateStatus.stale})
+
+        return self._force_transition(stl_hash, bundle_hash, _to_stale)
+
+    def mark_queued(self, stl_hash: str, bundle_hash: str) -> EstimateRecord | None:
+        """Mark a ``fresh``/``stale`` record ``queued`` (recompute in flight) — AC-2.
+
+        Still servable (UI shows the last estimate while the recompute runs): numerics +
+        original ``computed_at`` preserved. Idempotent on already ``queued``. A ``failed``
+        record ⇒ no-op (re-sliced via the normal enqueue, not "queued over a good number");
+        a miss ⇒ ``None``.
+        """
+
+        def _to_queued(rec: EstimateRecord) -> EstimateRecord | None:
+            if rec.status in (EstimateStatus.queued, EstimateStatus.failed):
+                return None
+            return rec.model_copy(update={"status": EstimateStatus.queued})
+
+        return self._force_transition(stl_hash, bundle_hash, _to_queued)
+
+    def update_cost(
+        self, stl_hash: str, bundle_hash: str, *, price_per_gram: float
+    ) -> EstimateRecord | None:
+        """Cost-only force-publish: ``filament_cost = filament_g x price_per_gram`` (AC-3).
+
+        Changes ONLY ``filament_cost`` + ``computed_at``; every slice-derived field
+        (``status``, ``time_seconds``, ``filament_g``/``mm``/``cm3``, ``settings_ids``,
+        ``warnings``, ``orca_version``) is preserved — the slice OUTPUT is not invalidated by
+        a price change (OD-7). The cost is computed from the UNDER-LOCK ``filament_g`` so it
+        is always consistent with the persisted mass. A ``failed`` record or one whose
+        ``filament_g`` is ``None`` ⇒ no-op (a failure has no mass to cost — never fabricate a
+        cost onto it); a miss ⇒ ``None``. ``price_per_gram`` finiteness/sign is the caller's
+        guard (``recompute.recompute_cost_only``); the resulting cost is finite-checked here
+        as the no-silent-nan/inf backstop.
+        """
+
+        def _set_cost(rec: EstimateRecord) -> EstimateRecord | None:
+            if rec.status == EstimateStatus.failed or rec.filament_g is None:
+                return None
+            new_cost = rec.filament_g * price_per_gram
+            if not math.isfinite(new_cost):
+                raise ValueError("recomputed cost must be finite (never nan/inf)")
+            return rec.model_copy(update={"filament_cost": new_cost, "computed_at": _now_iso()})
+
+        return self._force_transition(stl_hash, bundle_hash, _set_cost)
+
+    def iter_stl_estimates(self, stl_hash: str) -> Iterator[EstimateRecord]:
+        """Yield every persisted bundle-variant estimate under one ``<stl_hash>/`` dir (AC-6).
+
+        The sibling set a bundle re-tune touches — enumerable WITHOUT a full scan thanks to
+        the Story 32.3 ``<stl_hash[:2]>/<stl_hash>/<bundle_hash>.json`` layout. Path-safe (the
+        ``stl_hash`` is gated before any path is built); a malformed hash / missing dir yields
+        nothing (never raises). Skips the ``.lock``/``.tmp`` hidden sidecars (only ``*.json``).
+        """
+        if not is_content_hash(stl_hash):
+            return
+        stl_dir = self._root / _ESTIMATES_SUBDIR / stl_hash[:_FANOUT_PREFIX_LEN] / stl_hash
+        if not stl_dir.is_dir():
+            return
+        for path in sorted(stl_dir.iterdir()):
+            if path.is_file() and path.name.endswith(".json") and not path.name.startswith("."):
+                record = self._load(path)
+                if record is not None:
+                    yield record
+
+    def iter_all_estimates(self) -> Iterator[EstimateRecord]:
+        """Walk the whole ``estimates/`` subtree (the Orca-upgrade bulk set) — AC-6.
+
+        Only ``*.json`` records; skips the hidden lock/``.tmp`` sidecars. Deterministic order
+        (sorted) so a bulk iteration is reproducible (AC-12). An empty/absent store yields
+        nothing. The CALLER decides which subset to act on + ``log()``s the count (NFR20-OBS-1).
+        """
+        base = self._root / _ESTIMATES_SUBDIR
+        if not base.is_dir():
+            return
+        for path in sorted(base.rglob("*.json")):
+            if path.is_file() and not path.name.startswith("."):
+                record = self._load(path)
+                if record is not None:
+                    yield record
+
     @staticmethod
     @contextmanager
     def _record_lock(path: Path) -> Iterator[None]:
@@ -144,3 +275,12 @@ class EstimateStore:
             tmp_path.unlink(missing_ok=True)
             raise
         return path
+
+
+def _now_iso() -> str:
+    """ISO-8601 UTC stamp for a transition's ``computed_at`` re-stamp (Story 32.4 cost path).
+
+    The ONLY non-deterministic field a transition writes — excluded from determinism
+    assertions (AC-12), mirroring the worker_job ``_now_iso`` provenance discipline.
+    """
+    return datetime.now(UTC).isoformat()

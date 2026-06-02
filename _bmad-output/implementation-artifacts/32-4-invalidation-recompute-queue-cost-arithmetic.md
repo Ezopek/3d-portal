@@ -4,7 +4,7 @@ baseline_commit: 179c08de4588bb19facbe9e341644b456b7309d2
 
 # Story 32.4: Estimate invalidation / recompute engine — stale transitions + idempotent recompute enqueue + cost-only arithmetic recompute (no re-slice)
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -156,33 +156,33 @@ After this story lands, three consecutive `pytest apps/api/tests/test_slicer*.py
 
 > **TDD discipline (AGENTS.md § Execution discipline):** every logic-bearing task writes the failing test FIRST (red), then implements to green, then refactors. There is **no subprocess and no real Orca in this story** — the cost-only path is pure arithmetic + a file write, and the re-slice path is asserted via a fake `arq_pool` (the real worker is Story 32.2, already done). The whole suite runs deterministically in CI with no env gate.
 
-- [ ] **T1** (AC-1, AC-2) — `EstimateStore` stale/queued transitions *(red→green)*
-  - [ ] T1.1 Failing tests: `mark_stale` fresh⇒stale preserves numerics + original `computed_at`; idempotent on stale/queued; no-op on failed; `None` on miss; `read` still returns a stale record (not hidden). Same matrix for `mark_queued` (from fresh + from stale).
-  - [ ] T1.2 Implement `mark_stale` / `mark_queued` on `estimate_store.py` via a shared **force-publish-under-`_record_lock`** helper (reuse `_record_lock` + `_atomic_publish`; do NOT re-author them). A transition reads the existing record, constructs the status-changed copy preserving numerics/`computed_at`, and force-publishes (bypassing the `write()` fresh-no-op deliberately, with an in-code `because` comment).
-- [ ] **T2** (AC-3) — Cost-only arithmetic recompute *(red→green)*
-  - [ ] T2.1 Failing tests: cost updated from mass × price; **no enqueue / no subprocess**; slice numerics + status preserved; reject non-finite + negative price; no-op `None` on failed / miss; completes ≪1s.
-  - [ ] T2.2 Implement `recompute.py::recompute_cost_only` + the `EstimateStore.update_cost` force-publish path (reuses T1.2's helper). Guard `price_per_gram` finite + non-negative BEFORE any write (raise `ValueError`); `filament_g` absent / failed / miss ⇒ `None`. ONLY `filament_cost` + `computed_at` change. AC-11 `because` comment on the formula.
-- [ ] **T3** (AC-4) — Idempotent recompute enqueue *(red→green)*
-  - [ ] T3.1 Failing tests (fake `arq_pool` recording `enqueue_job` kwargs): `_job_id == "slice:<stl>:<bundle>"`; `_queue_name == SLICER_QUEUE_NAME`; dedupe (two calls → same `_job_id`); no `populate_from_source` (by-hash re-run).
-  - [ ] T3.2 Implement `enqueue_recompute` reusing `slice_job_id` / `SLICE_JOB_NAME` / `SLICER_QUEUE_NAME`; enqueue by hash directly (no `source_stl`). Document the `missing_stl`-if-uncached boundary.
-- [ ] **T4** (AC-5) — Recompute-trigger dispatch (the Decision AJ table) *(red→green)*
-  - [ ] T4.1 Failing tests: `RecomputeTrigger` covers every architecture-table row; `spoolman_cost_only` → arithmetic, no enqueue; missing `price_per_gram` on cost-only ⇒ raise; `bundle_retune`/`orca_upgrade`/`spoolman_mapped_override` → stale → enqueue → queued; `stl_content_change` documented (new key, no transition).
-  - [ ] T4.2 Implement `RecomputeTrigger` + `invalidate(...)` dispatch in `recompute.py` (the single cheap-vs-expensive chokepoint; the R1 guard lives here).
-- [ ] **T5** (AC-6) — Enumeration + bulk primitives *(red→green)*
-  - [ ] T5.1 Failing tests: `iter_stl_estimates` yields all bundle variants for one STL, ignores lock/`.tmp` sidecars, empty on miss; `iter_all_estimates` walks the subtree; bulk cost recompute applies per-key with no enqueue; bulk invalidate marks each stale + enqueues each (per-key dedupe).
-  - [ ] T5.2 Implement `iter_stl_estimates` / `iter_all_estimates` on `estimate_store.py` (reuse the `validate_content_hash` gate; skip `.lock`/`.tmp`) + the bulk helpers in `recompute.py`.
-- [ ] **T6** (AC-7) — Story 32.5 coordination boundary *(red→green)*
-  - [ ] T6.1 Failing tests: `recompute.py` does not import `app.modules.spools`; cost-only input is a scalar `price_per_gram`, not a Spoolman record.
-  - [ ] T6.2 Confirm the engine takes `price_per_gram` / new `bundle_hash` as inputs; module docstring names the "engine here, Spoolman wiring in 32.5" boundary.
-- [ ] **T7** (AC-8) — Observability *(red→green)*
-  - [ ] T7.1 Failing tests: cost-only emits an arithmetic-path tag; invalidate emits trigger + status tags; bulk emits a count; no full-record/g-code dump in logs.
-  - [ ] T7.2 Implement `_emit_*` structured lines + the `slicer.recompute` OTel span (reuse the 32.3 `_emit_estimate_persist` / `slicer.estimate` shape).
-- [ ] **T-DET** (AC-12) — Determinism gate: 3× consecutive identical pytest pass counts on the slicer suite; `computed_at` excluded from assertions; a concurrency test on the transition path (two threads racing a transition, lock serializes, no torn write).
-- [ ] **T8** (AC-9, AC-10) — Scope fence + grep/drift *(grep/diff)*
-  - [ ] T8.1 `git diff main -- apps/api/app/main.py apps/api/app/router.py apps/web/` → 0 lines; no Alembic version file; `pyproject.toml` deps unchanged; `config.py` Settings field set unchanged (no new slot); `SliceOutcome`/`_classify`/`run_slice_job`/`slice_estimate` byte-identical.
-  - [ ] T8.2 NFR20-CONTAINER-1 grep invariant ZERO over the slicer module (incl. `recompute.py`); `check-settings-env-compose.py` → OK at the unchanged 50/48/38.
-- [ ] **T9** (AC-13, full quality gate) — `ruff format --check` + `ruff check` clean on `apps/api/`; full backend `pytest -q` green (record the exact baseline + new-case counts). No vitest/Playwright (backend only).
-- [ ] **T10** (handoff) — dev-story flips `ready-for-dev → review`; code-review owns `→ done`. **Commit / ff-merge / deploy NOT performed by dev-story — controller-owned (ITCM).** Story branch: `feat/E32.4-invalidation-recompute-queue-cost-arithmetic`. Suggested commit scope when the controller commits: `feat(api): estimate invalidation/recompute engine + cost-only arithmetic recompute (Story 32.4, Init 20)`. **Deploy caveat (SW-DEPLOY-1):** see the Dev Note — any deploy of this story MUST rebuild/restart the `slicer-worker` overlay + run the in-container import/Orca/parser-cache smoke, because 32.4 lands code under `app.modules.slicer.*`.
+- [x] **T1** (AC-1, AC-2) — `EstimateStore` stale/queued transitions *(red→green)*
+  - [x] T1.1 Failing tests: `mark_stale` fresh⇒stale preserves numerics + original `computed_at`; idempotent on stale/queued; no-op on failed; `None` on miss; `read` still returns a stale record (not hidden). Same matrix for `mark_queued` (from fresh + from stale).
+  - [x] T1.2 Implement `mark_stale` / `mark_queued` on `estimate_store.py` via a shared **force-publish-under-`_record_lock`** helper (reuse `_record_lock` + `_atomic_publish`; do NOT re-author them). A transition reads the existing record, constructs the status-changed copy preserving numerics/`computed_at`, and force-publishes (bypassing the `write()` fresh-no-op deliberately, with an in-code `because` comment).
+- [x] **T2** (AC-3) — Cost-only arithmetic recompute *(red→green)*
+  - [x] T2.1 Failing tests: cost updated from mass × price; **no enqueue / no subprocess**; slice numerics + status preserved; reject non-finite + negative price; no-op `None` on failed / miss; completes ≪1s.
+  - [x] T2.2 Implement `recompute.py::recompute_cost_only` + the `EstimateStore.update_cost` force-publish path (reuses T1.2's helper). Guard `price_per_gram` finite + non-negative BEFORE any write (raise `ValueError`); `filament_g` absent / failed / miss ⇒ `None`. ONLY `filament_cost` + `computed_at` change. AC-11 `because` comment on the formula.
+- [x] **T3** (AC-4) — Idempotent recompute enqueue *(red→green)*
+  - [x] T3.1 Failing tests (fake `arq_pool` recording `enqueue_job` kwargs): `_job_id == "slice:<stl>:<bundle>"`; `_queue_name == SLICER_QUEUE_NAME`; dedupe (two calls → same `_job_id`); no `populate_from_source` (by-hash re-run).
+  - [x] T3.2 Implement `enqueue_recompute` reusing `slice_job_id` / `SLICE_JOB_NAME` / `SLICER_QUEUE_NAME`; enqueue by hash directly (no `source_stl`). Document the `missing_stl`-if-uncached boundary.
+- [x] **T4** (AC-5) — Recompute-trigger dispatch (the Decision AJ table) *(red→green)*
+  - [x] T4.1 Failing tests: `RecomputeTrigger` covers every architecture-table row; `spoolman_cost_only` → arithmetic, no enqueue; missing `price_per_gram` on cost-only ⇒ raise; `bundle_retune`/`orca_upgrade`/`spoolman_mapped_override` → stale → enqueue → queued; `stl_content_change` documented (new key, no transition).
+  - [x] T4.2 Implement `RecomputeTrigger` + `invalidate(...)` dispatch in `recompute.py` (the single cheap-vs-expensive chokepoint; the R1 guard lives here).
+- [x] **T5** (AC-6) — Enumeration + bulk primitives *(red→green)*
+  - [x] T5.1 Failing tests: `iter_stl_estimates` yields all bundle variants for one STL, ignores lock/`.tmp` sidecars, empty on miss; `iter_all_estimates` walks the subtree; bulk cost recompute applies per-key with no enqueue; bulk invalidate marks each stale + enqueues each (per-key dedupe).
+  - [x] T5.2 Implement `iter_stl_estimates` / `iter_all_estimates` on `estimate_store.py` (reuse the `validate_content_hash` gate; skip `.lock`/`.tmp`) + the bulk helpers in `recompute.py`.
+- [x] **T6** (AC-7) — Story 32.5 coordination boundary *(red→green)*
+  - [x] T6.1 Failing tests: `recompute.py` does not import `app.modules.spools`; cost-only input is a scalar `price_per_gram`, not a Spoolman record.
+  - [x] T6.2 Confirm the engine takes `price_per_gram` / new `bundle_hash` as inputs; module docstring names the "engine here, Spoolman wiring in 32.5" boundary.
+- [x] **T7** (AC-8) — Observability *(red→green)*
+  - [x] T7.1 Failing tests: cost-only emits an arithmetic-path tag; invalidate emits trigger + status tags; bulk emits a count; no full-record/g-code dump in logs.
+  - [x] T7.2 Implement `_emit_*` structured lines + the `slicer.recompute` OTel span (reuse the 32.3 `_emit_estimate_persist` / `slicer.estimate` shape).
+- [x] **T-DET** (AC-12) — Determinism gate: 3× consecutive identical pytest pass counts on the slicer suite; `computed_at` excluded from assertions; a concurrency test on the transition path (two threads racing a transition, lock serializes, no torn write).
+- [x] **T8** (AC-9, AC-10) — Scope fence + grep/drift *(grep/diff)*
+  - [x] T8.1 `git diff main -- apps/api/app/main.py apps/api/app/router.py apps/web/` → 0 lines; no Alembic version file; `pyproject.toml` deps unchanged; `config.py` Settings field set unchanged (no new slot); `SliceOutcome`/`_classify`/`run_slice_job`/`slice_estimate` byte-identical.
+  - [x] T8.2 NFR20-CONTAINER-1 grep invariant ZERO over the slicer module (incl. `recompute.py`); `check-settings-env-compose.py` → OK at the unchanged 50/48/38.
+- [x] **T9** (AC-13, full quality gate) — `ruff format --check` + `ruff check` clean on `apps/api/`; full backend `pytest -q` green (record the exact baseline + new-case counts). No vitest/Playwright (backend only).
+- [x] **T10** (handoff) — dev-story flips `ready-for-dev → review`; code-review owns `→ done`. **Commit / ff-merge / deploy NOT performed by dev-story — controller-owned (ITCM).** Story branch: `feat/E32.4-invalidation-recompute-queue-cost-arithmetic`. Suggested commit scope when the controller commits: `feat(api): estimate invalidation/recompute engine + cost-only arithmetic recompute (Story 32.4, Init 20)`. **Deploy caveat (SW-DEPLOY-1):** see the Dev Note — any deploy of this story MUST rebuild/restart the `slicer-worker` overlay + run the in-container import/Orca/parser-cache smoke, because 32.4 lands code under `app.modules.slicer.*`.
 
 ## Dev Notes
 
@@ -332,8 +332,108 @@ docker compose --env-file .env \
 
 **Handoff:** dev-story flips `ready-for-dev → review`; `bmad-code-review` (prefer a different LLM; Codex `gpt-5.5`, single-adjacency data-integrity) owns `review → done`. **Commit / ff-merge / deploy + the SW-DEPLOY-1 overlay rebuild remain controller-owned (ITCM)** — NOT performed by dev-story.
 
+## Dev Agent Record
+
+### Context Reference
+
+- bmad-dev-story execution 2026-06-01 (controller-routed, ITCM autonomous mode). Branch `feat/E32.4-invalidation-recompute-queue-cost-arithmetic`, baseline_commit `179c08d`. Predecessor Story 32.3 `done`.
+
+### Agent Model Used
+
+Claude Opus 4.8 (1M context) — `bmad-dev-story`.
+
+### Implementation Plan / Notes
+
+Strict red→green TDD. All Story-32.4 tests authored first in the NEW `tests/test_slicer_recompute.py` (confirmed RED — `ImportError: cannot import name 'recompute'`), then implemented to green.
+
+- **T1 (AC-1/AC-2) — store transitions.** `EstimateStore.mark_stale` / `mark_queued` route through a shared `_force_transition(stl_hash, bundle_hash, transform)` helper that REUSES `_record_lock` + `_atomic_publish` (no re-author). The helper reads → applies the `transform` (returns the status-changed copy, or `None` for an idempotent no-op) → force-publishes under the lock, deliberately bypassing the `write()` fresh-no-op (an in-code `because` comment marks this — a status change IS a deliberate content change). `model_copy(update={"status": ...})` preserves every numeric/provenance field and the ORIGINAL `computed_at`. `mark_stale` no-ops on stale/queued/failed; `mark_queued` no-ops on queued/failed; both `None` on a miss.
+- **T2 (AC-3) — cost-only arithmetic recompute.** `recompute.recompute_cost_only` guards `price_per_gram` finite + non-negative BEFORE any store touch (`_guard_price_per_gram` → `ValueError` on `None`/`nan`/`inf`/negative — never a silent `0`/`nan`/negative). `EstimateStore.update_cost` computes `cost = filament_g × price_per_gram` from the UNDER-LOCK mass (always consistent with the persisted record), finite-checks the result (no-silent-nan/inf backstop), and changes ONLY `filament_cost` + `computed_at` (status + slice numerics immutable). Failed / `filament_g`-None / miss ⇒ `None`. NO `arq_pool` parameter exists (the enqueue surface is structurally absent — the R1 self-DoS guard); the module never imports `subprocess`.
+- **T3 (AC-4) — idempotent recompute enqueue.** `recompute.enqueue_recompute` enqueues BY HASH (no `source_stl`, no `stl_cache`, no `populate_from_source`) reusing `slice_job_id` / `SLICE_JOB_NAME` / `SLICER_QUEUE_NAME` verbatim; both hashes `validate_content_hash`-gated before they reach the payload. Returns the Story 32.2 `EnqueueResult`.
+- **T4 (AC-5) — dispatch.** `RecomputeTrigger` StrEnum (5 values = the 5 architecture-table rows; exhaustiveness asserted). `invalidate(...)` is the single cheap-vs-expensive chokepoint: `spoolman_cost_only` → arithmetic (requires `price_per_gram`, else `ValueError`; NO enqueue); `bundle_retune`/`orca_upgrade`/`spoolman_mapped_override` → `mark_stale` → `enqueue_recompute` → `mark_queued`; `stl_content_change` → `None` (new key / natural miss, orphan GC deferred per AC-9).
+- **T5 (AC-6) — enumeration + bulk.** `EstimateStore.iter_stl_estimates` / `iter_all_estimates` reuse the 32.3 fan-out layout + `is_content_hash` gate, skip `.lock`/`.tmp` hidden sidecars (`*.json` non-dotfiles only), sorted for determinism, never raise on miss. `recompute_cost_only_bulk` / `invalidate_bulk` iterate the per-key primitives over a caller-supplied key set and `_emit_bulk` the count.
+- **T6/T7 (AC-7/AC-8) — boundary + obs.** `recompute.py` has no `app.modules.spools` import (asserted); cost input is the scalar `price_per_gram`. `_emit_*` structured `labels.*` lines (hashes + trigger + `estimate_status`; cost-only tags `labels.recompute_path="arithmetic"`; bulk tags `labels.count`) + a `slicer.recompute` OTel span mirroring the 32.3 `slicer.estimate` shape; no g-code, no full-record dump.
+- **T-DET (AC-12).** 3× consecutive identical slicer-suite runs (252 passed / 2 skipped each); `computed_at` excluded from every assertion; a transition concurrency test (two threads race `mark_stale`, the per-record lock serializes, no torn write, original `computed_at` preserved).
+
+### Completion Notes
+
+- All 13 ACs satisfied; all tasks/subtasks checked. Net diff is exactly the spec's scope: 1 new module (`recompute.py`), 1 new test file (`test_slicer_recompute.py`, 52 cases), 1 appended store file (`estimate_store.py`), 1 one-line test extension (`test_slicer_estimate.py` grep tuple += `recompute.py`). NO routes / NO Alembic / NO config slot / NO new dep / NO `SliceOutcome`/worker/`EstimateRecord` reshape / NO Spoolman read / NO `apps/web/` — all verified by diff.
+- **Gate evidence (commands run, output read):**
+  - New suite: `uv run pytest tests/test_slicer_recompute.py -q` → **52 passed**.
+  - Determinism (AC-12): 3× `pytest tests/test_slicer*.py` → **252 passed / 2 skipped** identical all three runs.
+  - Full backend: `uv run pytest -q` → **1212 passed / 3 skipped** in 310.20s (1160 baseline + 52 new).
+  - Lint (AC-13): `uv run ruff format --check .` → 220 files already formatted; `uv run ruff check .` → All checks passed!
+  - Scope fence (AC-9): `git diff main -- apps/api/app/main.py apps/api/app/router.py apps/web/` → **0 lines**; no `migrations/versions/` file; `pyproject.toml` deps + `config.py` Settings + `worker.py`/`worker_job.py`/`models.py` unchanged (0-line diff).
+  - NFR20-CONTAINER-1 (AC-10): `grep -rniE "/mnt/c|fenrir|\.exe|[Ww]indows" apps/api/app/modules/slicer/` → **0**.
+  - Drift gate (AC-10): `check-settings-env-compose.py` → OK, **50 / 48 / 38** unchanged.
+  - Diff hygiene: `git diff --check` clean.
+- **SW-DEPLOY-1 (note, not fixed here):** any controller deploy of this story MUST rebuild/restart the `slicer-worker` overlay + run the in-container import/Orca/parser smoke (32.4 lands code under `app.modules.slicer.*`). The cost-only path runs API-side so it is resilient to a stale worker; the re-slice enqueue path needs the rebuilt worker. Out of scope to fix (crosses HC2).
+- **Controller-owned (ITCM), NOT performed by dev-story:** commit, ff-merge, deploy, SW-DEPLOY-1 overlay rebuild. Status flipped `in-progress → review`; `bmad-code-review` (prefer a different LLM; Codex `gpt-5.5`, single-adjacency data-integrity) owns `review → done`.
+
+### Controller gate verification (independent re-run, 2026-06-01)
+
+Controller (ITCM) re-ran the gates independently of the dev-story self-report before flipping the bookkeeping to `review`. Commands run from `apps/api` unless noted; output read:
+
+- **Targeted suite:** `uv run pytest tests/test_slicer_recompute.py tests/test_slicer_estimate.py tests/test_config.py -q` → **138 passed in 0.56s** (recompute engine + store transitions + config-slot regression together).
+- **Ruff format:** `uv run ruff format --check app/modules/slicer tests/test_slicer_recompute.py tests/test_slicer_estimate.py` → **17 files already formatted**.
+- **Ruff check:** `uv run ruff check app/modules/slicer tests/test_slicer_recompute.py tests/test_slicer_estimate.py` → **All checks passed**.
+- **Drift gate (AC-10):** from repo root, `apps/api/.venv/bin/python infra/scripts/check-settings-env-compose.py` → **OK — 50 Settings fields / 48 env.example vars / 38 compose env refs aligned** (unchanged from Story 32.3).
+- **Diff hygiene:** `git diff --check` → clean.
+- **Full backend:** `uv run pytest -q` → **1212 passed, 3 skipped, 1485 warnings in 313.38s**.
+
+The controller-verified counts corroborate the dev-story self-report (full backend 1212 passed / 3 skipped; drift 50/48/38). Review (`review → done`) remains pending with `bmad-code-review`.
+
+### Review Fixes (2026-06-01 — independent reviewer REQUEST_CHANGES, 1 Critical)
+
+An independent review returned **REQUEST_CHANGES** with one **Critical** finding against **AC-5** (the recompute-trigger dispatch). Fixed under TDD (red → green); status stays `review` pending re-review (the reviewer, not the fix, owns `review → done`).
+
+**Critical — `invalidate` used a single `bundle_hash` for both the stale-key and the re-slice-key.**
+
+- *Finding:* AC-5 says for `bundle_retune` / `spoolman_mapped_override` the **new** `bundle_hash` is the re-slice target and the **old** record is marked stale. The shipped `invalidate(..., bundle_hash, ...)` carried only one hash and used it for **both** `mark_stale`/`mark_queued` **and** `enqueue_recompute`. So a bundle-changing trigger was wrong either way: pass the *new* hash → the recompute target is correct but the *old* cached estimate is left **`fresh`** (R9 violation: a superseded estimate served as fresh); pass the *old* hash → the old record is correctly stale/queued but the re-slice is enqueued for the **old** bundle, not the new one (the recompute never produces the new key). The contract never named *which* hash was which.
+- *Fix (`recompute.py`):* `invalidate` gains an explicit `new_bundle_hash: str | None = None`. `bundle_hash` is now documented as the **OLD/current** key; `new_bundle_hash` is the **NEW** re-slice target for bundle-changing triggers. The reslice path is now `mark_stale(stl_hash, old=bundle_hash)` → `enqueue_recompute(stl_hash, new=target)` → `mark_queued(stl_hash, new=target)`, where `target = new_bundle_hash or bundle_hash`. The OLD record stays **servable-`stale`** (never `fresh` — R9); the recompute is enqueued for the NEW key (a brand-new bundle is a natural miss the worker fills `fresh`; a previously-sliced bundle transitions to `queued`).
+  - `orca_upgrade` whose hash is genuinely unchanged ⇒ `new_bundle_hash` omitted = the **explicit same-key in-place** `stale → queued` lifecycle (the prior behaviour, now contractually named).
+  - `spoolman_cost_only` is in-place arithmetic and can NEVER change the key — a distinct `new_bundle_hash` now raises `ValueError` (a contract breach), guarding against a cost tick smuggling a key change.
+  - `stl_content_change` is unchanged (new-key / natural miss, no in-place transition).
+  - `invalidate_bulk` now accepts either `(stl_hash, bundle_hash)` 2-tuples (unchanged-hash / in-place) or `(stl_hash, old_bundle_hash, new_bundle_hash)` 3-tuples (bundle-changing), applying the per-record old→new contract across the set.
+  - `_emit_invalidate` now logs `labels.old_bundle_hash` + `labels.new_bundle_hash` (was a single `labels.bundle_hash`) so a dashboard sees the stale key and the re-slice target distinctly.
+- *Tests (red→green, +7 in `test_slicer_recompute.py` → 59 cases):* `test_dispatch_bundle_retune_old_stale_new_is_reslice_target` (old marked stale + numerics preserved; enqueue targets the NEW hash + `_job_id`); `test_dispatch_bundle_retune_old_key_is_not_left_fresh` (proves the exact bug is closed — old key ≠ `fresh`, new key is a miss); `test_dispatch_mapped_override_enqueues_new_bundle_not_old`; `test_dispatch_bundle_retune_marks_new_target_queued_when_already_cached` (pre-existing new key → `queued`, old independently `stale`); `test_dispatch_same_bundle_when_new_hash_omitted_is_in_place_lifecycle` (the explicit same-key contract); `test_dispatch_cost_only_rejects_bundle_hash_change`; `test_bulk_invalidate_supports_old_new_bundle_triples`. Existing same-key dispatch tests stay green unchanged.
+- *Gate evidence (commands run, output read):*
+  - Targeted: `uv run pytest tests/test_slicer_recompute.py tests/test_slicer_estimate.py tests/test_config.py -q` → **145 passed in 0.59s** (was 138; +7 new).
+  - Lint: `uv run ruff format --check app/modules/slicer/recompute.py tests/test_slicer_recompute.py` → 2 files already formatted; `uv run ruff check` same paths → All checks passed.
+  - Diff hygiene: `git diff --check` → clean.
+- *Scope:* the fix is confined to `recompute.py` (`invalidate` / `invalidate_bulk` / `_emit_invalidate` + the module-docstring AC-7 boundary paragraph) and `test_slicer_recompute.py`. NO `EstimateStore` change (the `mark_stale`/`mark_queued`/`enqueue_recompute` primitives were already correct — only the dispatch wiring was wrong). NO routes / NO Alembic / NO config slot / NO `EstimateRecord` or worker reshape. NO commit/merge/deploy (controller-owned ITCM).
+
+### Review Closeout (2026-06-01 — independent re-review APPROVE → review → done)
+
+After the v0.4 review-fix pass (the AC-5 Critical resolved under TDD), an **independent re-review** of the review-fixed tree returned **APPROVE** — verdict consumed per the `bmad-code-review`-owns-`review → done` convention (same posture as Stories 32.1 / 32.2 / 32.3).
+
+- **Re-review verdict: APPROVE** (no Critical, no Important outstanding). The reviewer confirmed the v0.4 AC-5 fix closes the R9/R1 surface end-to-end:
+  - `invalidate` now carries an explicit `new_bundle_hash`: the OLD record is marked **servable-`stale`** (never left `fresh` — R9), while `enqueue_recompute` + `mark_queued` target the NEW re-slice key (verified by `test_dispatch_bundle_retune_old_key_is_not_left_fresh` + `test_dispatch_mapped_override_enqueues_new_bundle_not_old`).
+  - `spoolman_cost_only` stays the in-place arithmetic path and **raises** on a smuggled `new_bundle_hash` (a cost tick can never change the key nor reach the enqueue path — the R1 self-DoS guard, `test_dispatch_cost_only_rejects_bundle_hash_change`).
+  - `orca_upgrade` unchanged-hash is the explicit same-key in-place `stale → queued` lifecycle; `stl_content_change` remains new-key/natural-miss; `invalidate_bulk` accepts `(stl, old, new)` triples; `_emit_invalidate` logs old + new hashes distinctly.
+  - The Story 32.3 failed/fresh + no-silent-zero invariants are preserved through every transition; the `EstimateStore` primitives (`mark_stale`/`mark_queued`/`update_cost`/`enqueue_recompute`) were already correct and untouched by the fix.
+
+- **Controller gate confirmation (post-review-fix tree, ITCM):** the v0.4 targeted gate is the authoritative post-fix evidence —
+  - Targeted: `uv run pytest tests/test_slicer_recompute.py tests/test_slicer_estimate.py tests/test_config.py -q` → **145 passed in 0.59s** (was 138; +7 review-fix cases, `test_slicer_recompute.py` 52→59).
+  - Lint: `ruff format --check` + `ruff check` on `recompute.py` + `test_slicer_recompute.py` → clean.
+  - Diff hygiene: `git diff --check` → clean.
+  - Drift gate (carried from v0.3, unchanged by the fix — no config slot touched): `check-settings-env-compose.py` → OK **50 / 48 / 38**.
+  - Full backend post-fix: `uv run pytest -q` → **1219 passed / 3 skipped / 1485 warnings in 309.75s** (controller re-run after the +7 review-fix cases).
+
+Status flipped **`review → done`**. **Commit / ff-merge / deploy + the SW-DEPLOY-1 slicer-worker overlay rebuild remain controller-owned (ITCM)** — NOT performed by this closeout. Unblocks Story 32.6; coordinates with Story 32.5 (both stay `backlog`).
+
+### File List
+
+- `apps/api/app/modules/slicer/recompute.py` — NEW — the engine: `RecomputeTrigger`, `recompute_cost_only`, `enqueue_recompute`, `invalidate` dispatch (with the review-fix `new_bundle_hash` old/new-key contract), `recompute_cost_only_bulk` / `invalidate_bulk` (2-tuple or `(stl,old,new)` triple), `_emit_*` (old+new hashes) + `slicer.recompute` span, `_guard_price_per_gram`.
+- `apps/api/app/modules/slicer/estimate_store.py` — MODIFIED (append-only) — `_force_transition` helper, `mark_stale`, `mark_queued`, `update_cost`, `iter_stl_estimates`, `iter_all_estimates`, module-level `_now_iso`; reuses `_record_lock`/`_atomic_publish` unchanged. (Untouched by the review-fix — the primitives were already correct.)
+- `apps/api/tests/test_slicer_recompute.py` — NEW — 59 TDD cases (AC-1..AC-12, incl. the +7 review-fix old/new-bundle-hash cases).
+- `apps/api/tests/test_slicer_estimate.py` — MODIFIED (1 line) — extend `test_no_bench_or_windows_path_literal_in_new_slicer_files` tuple to cover `recompute.py` (AC-10).
+
 ## Change Log
 
 | Date | Version | Description | Author |
 |---|---|---|---|
+| 2026-06-01 | 0.5 | Review closeout — independent re-review of the v0.4 review-fixed tree returned **APPROVE** (no Critical / no Important); the AC-5 fix verified end-to-end (OLD record servable-`stale` never `fresh` — R9; `enqueue_recompute`/`mark_queued` target the NEW key; `spoolman_cost_only` rejects a key change — R1; `invalidate_bulk` `(stl,old,new)` triples; old+new hashes logged). Controller (ITCM) confirmed the post-fix gates: targeted `pytest tests/test_slicer_recompute.py tests/test_slicer_estimate.py tests/test_config.py -q` → 145 passed in 0.59s; ruff format/check on `recompute.py` + the recompute test file → clean; `git diff --check` clean; drift gate carried OK 50/48/38 (no config slot touched); post-fix full backend `uv run pytest -q` → 1219 passed/3 skipped/1485 warnings in 309.75s. Status flipped **`review → done`** per the `bmad-code-review`-owns-`→done` convention. Story 32.5 + 32.6 stay `backlog`. NO app-code/test change in this closeout; commit/ff-merge/deploy + the SW-DEPLOY-1 overlay rebuild remain controller-owned (ITCM). | Controller (ITCM) |
+| 2026-06-01 | 0.4 | Review-fix pass — independent reviewer REQUEST_CHANGES, 1 Critical (AC-5), fixed under TDD. `invalidate` carried a single `bundle_hash` used for both `mark_stale`/`mark_queued` and `enqueue_recompute`, so a `bundle_retune`/`spoolman_mapped_override` either left the OLD estimate `fresh` (R9 violation) or re-sliced the OLD bundle instead of the new one. FIX (`recompute.py` only): `invalidate` gains `new_bundle_hash` — `bundle_hash`=OLD key (marked stale, kept servable, never fresh), `new_bundle_hash`=NEW re-slice target (`enqueue_recompute` + `mark_queued`); `orca_upgrade` unchanged-hash ⇒ omit `new_bundle_hash` = explicit same-key in-place lifecycle; `spoolman_cost_only` raises on a distinct `new_bundle_hash` (in-place arithmetic never changes the key); `stl_content_change` unchanged; `invalidate_bulk` accepts `(stl,old,new)` triples; `_emit_invalidate` logs old+new hashes. +7 RED→GREEN cases (`test_slicer_recompute.py` 52→59). Gates: targeted `pytest tests/test_slicer_recompute.py tests/test_slicer_estimate.py tests/test_config.py -q` → 145 passed in 0.59s; ruff format/check on `recompute.py` + the recompute test file → clean; `git diff --check` clean. NO `EstimateStore`/route/Alembic/config/worker/model change. Status STAYS `review` (re-review pending; reviewer owns `review → done`); NO commit/merge/deploy (controller-owned ITCM). | Claude Opus 4.8 (review-fix) |
+| 2026-06-01 | 0.3 | Controller (ITCM) BMAD bookkeeping: recorded independent gate-verification evidence (Completion Notes § Controller gate verification) before confirming `review`. Re-ran from `apps/api`: targeted `pytest tests/test_slicer_recompute.py tests/test_slicer_estimate.py tests/test_config.py -q` → 138 passed in 0.56s; `ruff format --check app/modules/slicer tests/test_slicer_recompute.py tests/test_slicer_estimate.py` → 17 files already formatted; `ruff check` same paths → All checks passed; from repo root `infra/scripts/check-settings-env-compose.py` → OK 50/48/38; `git diff --check` clean; full backend `pytest -q` → 1212 passed / 3 skipped / 1485 warnings in 313.38s. Corroborates the v0.2 dev-story self-report. Status stays `review` (independent `bmad-code-review` still owns `review → done`); 32-5 + 32-6 remain `backlog`. NO app-code/test change; NO commit/merge/deploy. | Controller (ITCM) |
+| 2026-06-01 | 0.2 | bmad-dev-story COMPLETE (`in-progress → review`). App-side estimate invalidation/recompute engine implemented under strict TDD: `mark_stale`/`mark_queued`/`update_cost`/`iter_stl_estimates`/`iter_all_estimates` appended to `estimate_store.py` (shared `_force_transition` reusing `_record_lock`/`_atomic_publish`, bypassing the fresh-no-op deliberately); NEW `recompute.py` (`RecomputeTrigger` 5-value exhaustive enum, `recompute_cost_only` = `filament_g × price_per_gram` in-place with NO enqueue/NO subprocess/<1s + finite/non-negative price guard, by-hash idempotent `enqueue_recompute` reusing the 32.2 `_job_id` dedupe, `invalidate` dispatch realizing the Decision AJ table, bulk primitives, `_emit_*`/`slicer.recompute` span); NEW `test_slicer_recompute.py` (52 cases). Preserves the 32.3 failed/fresh + no-silent-zero invariants through every transition; stale/queued served explicitly (R9), cost-only never re-slices (R1). Gates: new suite 52 passed; full backend 1212 passed/3 skipped (1160+52); ruff format/check clean (220 files); AC-9 diff invariants 0 (main.py/router.py/web, no Alembic/dep/config-slot, worker/model frozen); NFR20-CONTAINER-1 grep 0; drift 50/48/38 unchanged; determinism 3× identical (252/2); git diff --check clean. NO commit/merge/deploy (controller-owned ITCM); SW-DEPLOY-1 overlay-rebuild caveat carried as a deploy note. | Claude Opus 4.8 (`bmad-dev-story`) |
 | 2026-06-01 | 0.1 | Story 32.4 spec authored (`bmad-create-story`); status `backlog → ready-for-dev`. App-side estimate invalidation/recompute engine: `mark_stale`/`mark_queued` transitions (servable, never hidden), cost-only arithmetic recompute (`cost = mass × price/gram`, no re-slice, <1s), idempotent recompute enqueue (reused `_job_id` dedupe), the Decision AJ recompute-trigger dispatch, bulk/enumeration primitives. No routes / no Alembic / no config slot / no `SliceOutcome`/worker reshape / no Spoolman read / no FE. Realizes FR20-CACHE-1 (transitions) + NFR20-REPRODUCIBLE-1 + NFR20-RESOURCE-1; anchors Decision AJ recompute-trigger table; coordinates with 32.5 (engine here, Spoolman wiring there). SW-DEPLOY-1 deploy-overlay-rebuild caveat noted (not fixed). Codex tag `gpt-5.5` (single-adjacency data-integrity). Spec authoring only — NO code; dev-story execution controller-routed (ITCM). | Claude Opus 4.8 (`bmad-create-story`) |
