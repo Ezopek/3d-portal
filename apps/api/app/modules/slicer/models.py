@@ -45,6 +45,11 @@ class PrintIntentPreset(BaseModel):
     printer_ref: str
     notes: str | None = None
     is_default: bool = False
+    # Optional pin to a specific Spoolman filament record, linked by a stable PROFILE-STYLE
+    # reference (Story 32.5 AC-5 / Init 19 B2) — NOT the churning integer ``SpoolmanFilament.id``.
+    # ``None`` (the default) keeps every existing construction + ``frozen=True`` non-breaking
+    # and resolves exactly as today (the no-override path). Story 32.6's selector writes it.
+    spoolman_filament_ref: str | None = None
 
 
 class FilamentOverrides(BaseModel):

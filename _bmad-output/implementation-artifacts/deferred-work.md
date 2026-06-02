@@ -134,6 +134,28 @@ Post-repair runtime verification PASSED: slicer-worker image `sha256:217a827f95e
 
 ---
 
+## Deferred from: Story 32.5 dev-story (2026-06-02)
+
+Source: Story 32.5 (Spoolman-mapped filament overrides) AC-6 / AC-9 scope fence. The classification + dispatch primitive (`apply_spoolman_filament_change`) is implemented and proven correct under unit tests with injected fakes + a caller-supplied `affected_keys` set, mirroring how Story 32.4 left its event source to 32.5.
+
+### SPOOL-EVT-1 — live Spoolman-change event source + `filament_ref → estimate-keys` reverse index
+
+**Source:** Story 32.5 AC-6 (explicit deferral) + AC-9 scope fence.
+
+**Where:** `apps/api/app/modules/slicer/spoolman_invalidation.py` (`apply_spoolman_filament_change`, `affected_keys` parameter) ↔ the Init 19 Story 31.1 poll loop (`apps/api/app/modules/spools/service.py`).
+
+**Problem:** Story 32.5 ships the dispatch that, given a single filament's `old → new` state + a caller-supplied set of affected `(stl_hash, bundle_hash)` keys, classifies a mapped-vs-cost-only change and drives the Story 32.4 engine. It does **not** ship the live trigger source: there is no wiring that (a) detects a Spoolman `filament.extra` / `price` / `weight` change across Init 19 poll ticks (a poll-diff over successive `SpoolsService.get_summary()` snapshots), nor (b) enumerates *which* estimate keys depend on a given filament ref (a `bundle_hash → filament_ref` reverse index, or a full `EstimateStore.iter_all_estimates` re-resolve sweep). So in v1 nothing automatically calls `apply_spoolman_filament_change` when Spoolman inventory actually changes — a mapped-field edit or a price tick on `.190` does not yet invalidate/recompute dependent estimates on its own.
+
+**Why it matters:** Until this lands, the cost-only-no-re-slice guarantee + the mapped-override invalidation are *available primitives*, not an *end-to-end live behavior*. A real Spoolman price edit won't recompute cached estimate costs, and a real mapped-field edit won't mark dependent estimates stale, without an operator/ops trigger calling the dispatch with the affected key set. This is the same boundary Story 32.4 drew (it deferred its event source to 32.5); 32.5 deliberately keeps the same fence to avoid the broad work (a reverse index or full re-resolve sweep) that exceeds its scope.
+
+**Fix sketch:** A future ops/poll story adds either (1) a `bundle_hash → {filament_ref}` reverse index maintained at bundle-persist time (so a changed filament ref maps directly to its dependent bundles/estimate keys), or (2) a periodic/triggered `iter_all_estimates` re-resolve sweep that re-derives each estimate's current bundle and diffs it against the stored key. Either feeds the `affected_keys` set into `apply_spoolman_filament_change`. The poll-diff half hooks the Init 19 snapshot refresh: keep the previous snapshot, diff `filaments` by ref on each tick, and for each changed filament call the dispatch with that filament's affected keys. Pure app-side; no new Spoolman read (reuses the existing cache).
+
+**Trigger / priority:** Real follow-up, **not blocking 32.5** (the dispatch primitive is the load-bearing deliverable and is fully tested). Promote when the live "Spoolman change automatically updates estimates" behavior is needed end-to-end (likely alongside or after Story 32.6's FE estimate display, which is the first surface where a stale/recomputed estimate becomes user-visible).
+
+**SW-DEPLOY-1 reminder:** the mapped-override path enqueues a re-slice that runs on the slicer-worker overlay, so any deploy of 32.5 must follow the SW-DEPLOY-1 manual overlay rebuild + in-container import/Orca/resolve-override smoke above (the new `overrides`/`SpoolmanOverrideProvider`/`spoolman_invalidation` modules + the `SpoolmanFilament.extra` field must reach the worker image).
+
+---
+
 ## Declined / done
 
 _(none yet)_

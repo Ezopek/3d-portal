@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class SpoolmanVendor(BaseModel):
@@ -43,6 +43,13 @@ class SpoolmanFilament(BaseModel):
     price: float | None = None
     weight: float | None = None
     spool_weight: float | None = None
+    # Spoolman's user-defined ``filament.extra`` map (Story 32.5 AC-1). Values are
+    # JSON-encoded strings (e.g. ``{"filament_max_volumetric_speed": "8.0"}``); the
+    # Story 32.5 ``map_filament_extra`` mapper parses them onto FilamentOverrides. This
+    # is INTERNAL-only: it never flows to the public ``/api/spools/*`` DTOs (schemas.py
+    # stays ``extra="forbid"``), and ``filament.extra.url`` rides along untouched here
+    # (Story 32.6 displays it). Default ``{}`` keeps every existing Spoolman read working.
+    extra: dict[str, str] = Field(default_factory=dict)
 
 
 class SpoolmanSpool(BaseModel):

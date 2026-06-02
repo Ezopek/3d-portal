@@ -4,7 +4,7 @@ baseline_commit: 0d3489030583b88ef8d0b708f1a9cf636cd62b0c
 
 # Story 32.5: Spoolman-mapped custom filament overrides — `filament.extra` → resolved filament JSON, folded into `bundle_hash`; cost-only price ticks routed to the 32.4 arithmetic path (no re-slice)
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -150,30 +150,30 @@ After this story lands, three consecutive `pytest apps/api/tests/test_slicer*.py
 
 > **TDD discipline (AGENTS.md § Execution discipline):** every logic-bearing task writes the failing test FIRST (red), then implements to green, then refactors. There is **no subprocess and no real Orca in this story** — the cost-only path is pure arithmetic via the 32.4 engine; the mapped-override path is asserted via a fake `arq_pool` (the real worker is Story 32.2, done) + a real in-process `resolver.resolve` for the new-`bundle_hash` derivation. The Spoolman read is asserted via a fake `SpoolsService` (no real Redis/httpx). The whole suite runs deterministically in CI with no env gate.
 
-- [ ] **T1** (AC-1) — Capture `filament.extra` on `SpoolmanFilament` *(red→green)*
-  - [ ] T1.1 Failing tests: an `extra` map round-trips; absent ⇒ `{}` not `None`; `FilamentView` (public DTO) has no `extra`.
-  - [ ] T1.2 Add `extra: dict[str, str] = Field(default_factory=dict)` to `SpoolmanFilament` (keep `extra="ignore"`). Do NOT touch `schemas.py`.
-- [ ] **T2** (AC-2) — Pure `map_filament_extra` *(red→green)*
-  - [ ] T2.1 Failing tests: reads vol-speed/temps/density; parses JSON-encoded string values; malformed/non-finite/wrong-type/out-of-domain ⇒ dropped + warned, never garbage; absent key ⇒ `None`; no mapped keys ⇒ all-`None`; deterministic.
-  - [ ] T2.2 Implement `map_filament_extra` + the `_SPOOLMAN_EXTRA_TO_OVERRIDE` named map (AC-11 `because`). `json.loads` each value, coerce + guard, log a structured warning per dropped value.
-- [ ] **T3** (AC-3, AC-5) — `SpoolmanOverrideProvider` + the profile-style ref link *(red→green)*
-  - [ ] T3.1 Failing tests: provider maps a pinned filament's `extra`; no-pin/ref-absent/all-`None` ⇒ `None` (byte-identical to noop resolve); `spoolman_filament_ref` defaults `None` non-breaking + `frozen` intact; the ref function is not `.id`; build/lookup use the same ref fn; resolve with a pinned ref applies that filament's overrides; same values ⇒ same `bundle_hash`, changed value ⇒ different `bundle_hash`.
-  - [ ] T3.2 Add `spoolman_filament_ref: str | None = None` to `PrintIntentPreset`; implement `spoolman_filament_ref(filament)` (one ref fn), `SpoolmanOverrideProvider` (sync, from `dict[str, SpoolmanFilament]`), `overrides_for` via `map_filament_extra`.
-- [ ] **T4** (AC-4, AC-8) — Async builder + soft-fail + obs *(red→green)*
-  - [ ] T4.1 Failing tests (fake `SpoolsService`): builds from a snapshot; `get_summary()→None` ⇒ empty provider + degraded warning; routes through `SpoolsService` not a fresh `SpoolmanClient`; obs line carries `external_service=spoolman` + count, no bodies.
-  - [ ] T4.2 Implement `build_spoolman_override_provider(service)` reusing the Init 19 cache read; soft-fail to empty provider; emit the `override_layer_resolved` ok/degraded line.
-- [ ] **T5** (AC-6, AC-8) — `price_per_gram` + classify + dispatch into 32.4 *(red→green)*
-  - [ ] T5.1 Failing tests: `price_per_gram` divides price/weight, spool-price precedence, rejects zero/neg weight + non-finite/neg price ⇒ `None`; classify mapped vs cost-only vs none (density=mapped, lot_nr=none); dispatch mapped ⇒ `invalidate(old, new_bundle_hash)` old-stale+new-enqueued+queued; dispatch cost-only ⇒ arithmetic, **fake `arq_pool` NEVER called**; none ⇒ no-op; bulk fan-out per-key dedupe; classify emits trigger tag; no double-log of invalidate.
-  - [ ] T5.2 Implement `spoolman_invalidation.py` (`filament_price_per_gram`, `classify_spoolman_delta`, `apply_spoolman_filament_change`); the mapped path re-resolves via `resolver.resolve` for the new `bundle_hash` then calls `recompute.invalidate`/`invalidate_bulk`; the cost path derives `price_per_gram` (guarded) then calls `recompute.invalidate(spoolman_cost_only)`. Reuse the 32.4 `_emit_*` (no duplicate per-invalidation log).
-- [ ] **T6** (AC-7) — Spoolman read-only / no-write / no-duplication *(red→green)*
-  - [ ] T6.1 Failing tests: no Spoolman write method invoked (fake client whose writes raise); only `spoolman_overrides_ref` persisted, not raw fields; no new table/cache key.
-  - [ ] T6.2 Confirm the dispatch + builder touch only `list_*`/cached reads; module docstrings name the read-only / inventory-SoT contract.
-- [ ] **T-DET** (AC-12) — Determinism: 3× consecutive identical pass counts on `test_slicer*.py` + `test_spools.py`; `computed_at` excluded; builder/soft-fail via fake `SpoolsService`.
-- [ ] **T7** (AC-9, AC-10) — Scope fence + grep/drift *(grep/diff)*
-  - [ ] T7.1 `git diff main -- apps/api/app/main.py apps/api/app/router.py apps/web/ apps/api/app/modules/spools/schemas.py apps/api/app/modules/slicer/recompute.py` → 0 lines; no Alembic version file; `pyproject.toml` deps unchanged; `config.py` Settings field set unchanged; `resolver.resolve`/`resolve_intent` + `SliceOutcome`/`_classify`/`run_slice_job`/`slice_estimate` + `EstimateRecord` unchanged.
-  - [ ] T7.2 NFR20-CONTAINER-1 grep invariant ZERO over the slicer module (incl. the new files); `check-settings-env-compose.py` → OK at the unchanged 50/48/38.
-- [ ] **T8** (AC-13, full quality gate) — `ruff format --check` + `ruff check` clean on `apps/api/`; full backend `pytest -q` green (record the exact baseline + new-case counts). No vitest/Playwright (backend only).
-- [ ] **T9** (handoff) — dev-story flips `ready-for-dev → review`; code-review owns `→ done`. **Commit / ff-merge / deploy NOT performed by dev-story — controller-owned (ITCM).** Story branch: `feat/E32.5-spoolman-mapped-filament-overrides`. Suggested commit scope when the controller commits: `feat(api): Spoolman-mapped filament overrides + cost-only/mapped invalidation wiring (Story 32.5, Init 20)`. **Deploy caveat (SW-DEPLOY-1):** see the Dev Note — any deploy of this story MUST rebuild/restart the `slicer-worker` overlay + run the in-container import/Orca/parser-cache smoke, because 32.5 lands code under `app.modules.slicer.*`.
+- [x] **T1** (AC-1) — Capture `filament.extra` on `SpoolmanFilament` *(red→green)*
+  - [x] T1.1 Failing tests: an `extra` map round-trips; absent ⇒ `{}` not `None`; `FilamentView` (public DTO) has no `extra`.
+  - [x] T1.2 Add `extra: dict[str, str] = Field(default_factory=dict)` to `SpoolmanFilament` (keep `extra="ignore"`). Do NOT touch `schemas.py`.
+- [x] **T2** (AC-2) — Pure `map_filament_extra` *(red→green)*
+  - [x] T2.1 Failing tests: reads vol-speed/temps/density; parses JSON-encoded string values; malformed/non-finite/wrong-type/out-of-domain ⇒ dropped + warned, never garbage; absent key ⇒ `None`; no mapped keys ⇒ all-`None`; deterministic.
+  - [x] T2.2 Implement `map_filament_extra` + the `_SPOOLMAN_EXTRA_TO_OVERRIDE` named map (AC-11 `because`). `json.loads` each value, coerce + guard, log a structured warning per dropped value.
+- [x] **T3** (AC-3, AC-5) — `SpoolmanOverrideProvider` + the profile-style ref link *(red→green)*
+  - [x] T3.1 Failing tests: provider maps a pinned filament's `extra`; no-pin/ref-absent/all-`None` ⇒ `None` (byte-identical to noop resolve); `spoolman_filament_ref` defaults `None` non-breaking + `frozen` intact; the ref function is not `.id`; build/lookup use the same ref fn; resolve with a pinned ref applies that filament's overrides; same values ⇒ same `bundle_hash`, changed value ⇒ different `bundle_hash`.
+  - [x] T3.2 Add `spoolman_filament_ref: str | None = None` to `PrintIntentPreset`; implement `spoolman_filament_ref(filament)` (one ref fn), `SpoolmanOverrideProvider` (sync, from `dict[str, SpoolmanFilament]`), `overrides_for` via `map_filament_extra`.
+- [x] **T4** (AC-4, AC-8) — Async builder + soft-fail + obs *(red→green)*
+  - [x] T4.1 Failing tests (fake `SpoolsService`): builds from a snapshot; `get_summary()→None` ⇒ empty provider + degraded warning; routes through `SpoolsService` not a fresh `SpoolmanClient`; obs line carries `external_service=spoolman` + count, no bodies.
+  - [x] T4.2 Implement `build_spoolman_override_provider(service)` reusing the Init 19 cache read; soft-fail to empty provider; emit the `override_layer_resolved` ok/degraded line.
+- [x] **T5** (AC-6, AC-8) — `price_per_gram` + classify + dispatch into 32.4 *(red→green)*
+  - [x] T5.1 Failing tests: `price_per_gram` divides price/weight, spool-price precedence, rejects zero/neg weight + non-finite/neg price ⇒ `None`; classify mapped vs cost-only vs none (density=mapped, lot_nr=none); dispatch mapped ⇒ `invalidate(old, new_bundle_hash)` old-stale+new-enqueued+queued; dispatch cost-only ⇒ arithmetic, **fake `arq_pool` NEVER called**; none ⇒ no-op; bulk fan-out per-key dedupe; classify emits trigger tag; no double-log of invalidate.
+  - [x] T5.2 Implement `spoolman_invalidation.py` (`filament_price_per_gram`, `classify_spoolman_delta`, `apply_spoolman_filament_change`); the mapped path re-resolves via `resolver.resolve` for the new `bundle_hash` then calls `recompute.invalidate`/`invalidate_bulk`; the cost path derives `price_per_gram` (guarded) then calls `recompute.invalidate(spoolman_cost_only)`. Reuse the 32.4 `_emit_*` (no duplicate per-invalidation log).
+- [x] **T6** (AC-7) — Spoolman read-only / no-write / no-duplication *(red→green)*
+  - [x] T6.1 Failing tests: no Spoolman write method invoked (fake client whose writes raise); only `spoolman_overrides_ref` persisted, not raw fields; no new table/cache key.
+  - [x] T6.2 Confirm the dispatch + builder touch only `list_*`/cached reads; module docstrings name the read-only / inventory-SoT contract.
+- [x] **T-DET** (AC-12) — Determinism: 3× consecutive identical pass counts on `test_slicer*.py` + `test_spools.py`; `computed_at` excluded; builder/soft-fail via fake `SpoolsService`.
+- [x] **T7** (AC-9, AC-10) — Scope fence + grep/drift *(grep/diff)*
+  - [x] T7.1 `git diff main -- apps/api/app/main.py apps/api/app/router.py apps/web/ apps/api/app/modules/spools/schemas.py apps/api/app/modules/slicer/recompute.py` → 0 lines; no Alembic version file; `pyproject.toml` deps unchanged; `config.py` Settings field set unchanged; `resolver.resolve`/`resolve_intent` + `SliceOutcome`/`_classify`/`run_slice_job`/`slice_estimate` + `EstimateRecord` unchanged.
+  - [x] T7.2 NFR20-CONTAINER-1 grep invariant ZERO over the slicer module (incl. the new files); `check-settings-env-compose.py` → OK at the unchanged 50/48/38.
+- [x] **T8** (AC-13, full quality gate) — `ruff format --check` + `ruff check` clean on `apps/api/`; full backend `pytest -q` green (record the exact baseline + new-case counts). No vitest/Playwright (backend only).
+- [x] **T9** (handoff) — dev-story flips `ready-for-dev → review`; code-review owns `→ done`. **Commit / ff-merge / deploy NOT performed by dev-story — controller-owned (ITCM).** Story branch: `feat/E32.5-spoolman-mapped-filament-overrides`. Suggested commit scope when the controller commits: `feat(api): Spoolman-mapped filament overrides + cost-only/mapped invalidation wiring (Story 32.5, Init 20)`. **Deploy caveat (SW-DEPLOY-1):** see the Dev Note — any deploy of this story MUST rebuild/restart the `slicer-worker` overlay + run the in-container import/Orca/parser-cache smoke, because 32.5 lands code under `app.modules.slicer.*`.
 
 ## Dev Notes
 
@@ -302,20 +302,45 @@ docker compose --env-file .env \
 
 ### Dev Agent Record
 
-_(to be completed by `bmad-dev-story`)_
-
 #### Context Reference
+
+- Story spec: this file. Baseline `main` @ `0d34890`; feature branch `feat/E32.5-spoolman-mapped-filament-overrides`.
 
 #### Agent Model Used
 
+- `bmad-dev-story` (Opus 4.8, 1M ctx) for the implementation; a focused follow-up fix pass (Opus 4.8) closed the structured-logging test gap below.
+
 #### Debug Log References
+
+- **Structured-log capture fix (focused pass).** The full backend suite reported 12 failures, all in `tests/test_slicer_spoolman_overrides.py`'s AC-8 observability assertions (`labels.extra_key` / `labels.override_layer` / `labels.trigger`). Root cause was a TEST defect, not an implementation defect: those four scenarios used pytest's `caplog`, whose root handler is evicted suite-wide by `app/core/logging.py::configure_logging` (`root.handlers[:] = [handler]`, run inside the FastAPI lifespan via the `client` fixture). In isolation the file passed (70/70); after any app-touching test ran first, `caplog.records` was empty and the assertions failed. Implementation was already correct per the repo's structured-log convention (dotted `labels.*` keys passed via `extra=`, surfaced as record `__dict__` attributes — same convention asserted in `tests/test_spools.py`). Fix: converted the five `caplog`-based tests to the established `_CaptureHandler` pattern (handler attached directly to the module logger, restored in `detach()`), mirroring `tests/test_spools.py`. This also repaired `test_dispatch_does_not_double_log_invalidate`, which was silently false-passing (vacuous assertion over an empty `caplog`). No implementation source (`overrides.py` / `spoolman_invalidation.py`) changed in this pass.
 
 #### Completion Notes List
 
+- Structured-logging assertions now use a leak-proof capture surface; all AC-8 observability fields (`extra_key`, `override_layer`, `external_service`, `filament_count`, `trigger`, no-body invariant) remain asserted verbatim.
+- Gate evidence (focused fix pass, branch `feat/E32.5-…`):
+  - Targeted suite: `uv run pytest tests/test_slicer_spoolman_overrides.py tests/test_spools.py tests/test_slicer_estimate.py tests/test_config.py -q` → **177 passed, 1 skipped**.
+  - Full backend: `uv run pytest -q` → **1292 passed, 3 skipped** (was 12 failed, 1280 passed before the fix — the 12 AC-8 log-capture failures are resolved).
+  - `ruff format --check` + `ruff check` on changed files → **clean** ("7 files already formatted", "All checks passed!").
+  - `git diff --check` → **clean**.
+  - `infra/scripts/check-settings-env-compose.py` → **OK 50/48/38** (unchanged — AC-9 adds no config slot).
+- Independent adversarial review (gpt-5.5 delegate reviewer) verdict: **APPROVE — no blockers.** Reviewer verified the dirty working tree on branch `feat/E32.5-spoolman-mapped-filament-overrides` (new files visible, story/sprint statuses at `review`) and confirmed: `SpoolmanFilament.extra` is internal-only (public DTO/router exclude `extra`); the `map_filament_extra` JSON-parsing / malformed-value / out-of-domain guards hold; the provider sync + pure, the async builder soft-fails on absent/down Spoolman; the builder routes through `SpoolsService.get_summary` (no second poll / no direct client); the churn-stable `spoolman_filament_ref` field + single ref function are correct; the price-only vs mapped-override invalidation dispatch routes correctly (cost-only never enqueues — the R1 self-DoS guard); no scope creep. Non-blocking note (not a blocker): a future duplicate `vendor∥material∥name` ref-collision risk — acceptable under the current story contract, relevant to the future SPOOL-EVT-1 / reverse-index work.
+- Closeout (controller, ITCM): independent review APPROVE consumed per the `bmad-code-review`-owns-`review → done` convention (as 32-1/32-2/32-3/32-4). Status flipped `review → done`; sprint row flipped `review → done`. No app code/test changed in this closeout; commit/ff-merge/deploy + the SW-DEPLOY-1 slicer-worker overlay rebuild remain controller-owned. SPOOL-EVT-1 stays deferred (caller supplies `affected_keys`).
+
 #### File List
+
+- `apps/api/app/modules/slicer/models.py` (M) — `FilamentOverrides` / `PrintIntentPreset.spoolman_filament_ref` / bundle `spoolman_overrides_ref`.
+- `apps/api/app/modules/slicer/overrides.py` (M) — `map_filament_extra`, `spoolman_filament_ref`, `SpoolmanOverrideProvider`, `build_spoolman_override_provider`.
+- `apps/api/app/modules/slicer/spoolman_invalidation.py` (A) — `filament_price_per_gram`, `classify_spoolman_delta`, `apply_spoolman_filament_change`.
+- `apps/api/app/modules/spools/models.py` (M) — `SpoolmanFilament.extra` + price/weight fields the mapper/classifier read.
+- `apps/api/app/modules/spools/router.py` (M) — Spoolman read surface alignment.
+- `apps/api/tests/test_slicer_spoolman_overrides.py` (A) — full Story 32.5 test surface.
+- `apps/api/tests/test_spools.py` (M) — Spoolman model/router test alignment.
 
 ### Change Log
 
 | Date | Version | Description | Author |
 |---|---|---|---|
 | 2026-06-02 | v0.1 | Story spec authored to `ready-for-dev` (`bmad-create-story`; spec-only, no code). Baseline `main` @ `0d34890`. | bmad-create-story |
+| 2026-06-02 | v0.2 | Story 32.5 implemented (`bmad-dev-story`). | bmad-dev-story |
+| 2026-06-02 | v0.3 | Focused fix pass: converted 5 `caplog`-based AC-8 log-capture tests to the leak-proof `_CaptureHandler` pattern (the suite-wide `configure_logging` root-handler reset was evicting `caplog`). Full backend 1292 passed / 3 skipped; ruff + diff-check + drift gate green. Status held at `review` pending independent review. | dev (focused fix) |
+| 2026-06-02 | v1.0 | Review closeout: independent adversarial review (gpt-5.5 delegate) verdict **APPROVE — no blockers** (one non-blocking future ref-collision note). Final controller-verified gates: targeted `tests/test_slicer_spoolman_overrides.py tests/test_spools.py tests/test_slicer_estimate.py tests/test_config.py -q` → 177 passed / 1 skipped in 0.66s; full backend `pytest -q` → 1292 passed / 3 skipped / 1485 warnings in 315.33s; ruff format/check clean; settings-env-compose OK 50/48/38; `git diff --check` clean. Status `review → done`. No app code/test change; commit/ff-merge/deploy + SW-DEPLOY-1 overlay rebuild controller-owned. SPOOL-EVT-1 stays deferred. | bmad-code-review (closeout) |

@@ -60,7 +60,13 @@ def _project_summary(
         )
     return SpoolsSummaryResponse(
         spools=[SpoolView.model_validate(s.model_dump()) for s in snapshot.spools],
-        filaments=[FilamentView.model_validate(f.model_dump()) for f in snapshot.filaments],
+        filaments=[
+            # ``extra`` is the internal Spoolman ``filament.extra`` map (Story 32.5 AC-1);
+            # it is consumed by the slicer override layer and MUST NOT flow to the public
+            # ``extra="forbid"`` FilamentView — exclude it from the projection (AC-9).
+            FilamentView.model_validate(f.model_dump(exclude={"extra"}))
+            for f in snapshot.filaments
+        ],
         vendors=[VendorView.model_validate(v.model_dump()) for v in snapshot.vendors],
         fetched_at=snapshot.fetched_at,
         last_success_ts=last_success,
@@ -126,4 +132,7 @@ async def get_filaments_list(
     snapshot, _ = await _read_snapshot(request)
     if snapshot is None:
         return []
-    return [FilamentView.model_validate(f.model_dump()) for f in snapshot.filaments]
+    # Exclude the internal ``extra`` map (Story 32.5 AC-1) — it never flows to the public DTO.
+    return [
+        FilamentView.model_validate(f.model_dump(exclude={"extra"})) for f in snapshot.filaments
+    ]

@@ -773,3 +773,48 @@ async def test_spoolman_live_smoke_contract(spoolman_settings_overrides) -> None
     assert all(isinstance(s, SpoolmanSpool) for s in spools)
     assert all(isinstance(f, SpoolmanFilament) for f in filaments)
     assert all(isinstance(v, SpoolmanVendor) for v in vendors)
+
+
+# ---- Story 32.5 AC-1 — capture filament.extra on the INTERNAL model only ----
+#
+# Spoolman serializes the user-defined ``filament.extra`` as a ``dict[str, str]`` of
+# JSON-encoded values (Story 32.5 AC-2 parses them). The internal mirror must capture
+# it so the override mapper can read it; the public DTO must NOT expose it (the map is
+# internal-only, ``/api/spools/*`` stays ``extra="forbid"``).
+
+
+def test_spoolman_filament_captures_extra_dict():
+    payload = {
+        **_filament_fixture(7),
+        "extra": {
+            "filament_max_volumetric_speed": "8.0",
+            "nozzle_temperature": "230",
+            "url": '"https://example.test/filament/7"',
+        },
+    }
+    filament = SpoolmanFilament.model_validate(payload)
+    assert filament.extra == {
+        "filament_max_volumetric_speed": "8.0",
+        "nozzle_temperature": "230",
+        "url": '"https://example.test/filament/7"',
+    }
+
+
+def test_spoolman_filament_extra_defaults_empty():
+    # A Spoolman payload with no ``extra`` key ⇒ {} (never None — the mapper iterates it).
+    filament = SpoolmanFilament.model_validate(_filament_fixture(3))
+    assert filament.extra == {}
+    assert filament.extra is not None
+
+
+def test_spoolman_filament_extra_not_exposed_in_public_dto():
+    # The internal ``extra`` map stays internal: the public FilamentView DTO has no such
+    # field, and it is ``extra="forbid"`` so the map cannot leak through the response.
+    from pydantic import ValidationError
+
+    from app.modules.spools.schemas import FilamentView
+
+    assert "extra" not in FilamentView.model_fields
+    # An attempt to construct the public DTO WITH an extra map is rejected (forbid).
+    with pytest.raises(ValidationError):
+        FilamentView.model_validate({**_filament_fixture(1), "extra": {"x": "1"}})
