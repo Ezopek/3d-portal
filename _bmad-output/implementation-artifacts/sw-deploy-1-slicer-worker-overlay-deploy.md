@@ -8,7 +8,7 @@ route: bmad-quick-dev
 
 # SW-DEPLOY-1: Automate slicer-worker overlay deploy/rebuild + in-container smoke
 
-Status: done — review APPROVED (Gemini final re-review after the fatal-rebuild fix: APPROVE, no remaining blockers/important issues) and app-repo side implemented under TDD on `.170` (full `check-all.sh` 16-stage gate green; commit `7d65de1` on branch). Per repo convention (mirrors 32.3), the live `.190` rebuild + in-container smoke is a controller-owned runtime gate recorded as **post-done evidence** — status stays `done` while that gate runs on the next real deploy. **Runtime deploy gate still pending:** the live `.190` overlay rebuild + in-container smoke has NOT yet run after merge; `deploy.sh` exercises the new FATAL overlay gate on the controller's next merge-to-main + deploy.
+Status: done — review APPROVED (Gemini final re-review after the fatal-rebuild fix: APPROVE, no remaining blockers/important issues) and app-repo side implemented under TDD on `.170` (full `check-all.sh` 16-stage gate green; commit `7d65de1` on branch). Per repo convention (mirrors 32.3), the live `.190` rebuild + in-container smoke was a controller-owned runtime gate recorded as **post-done evidence**. **Runtime deploy gate now CLOSED (2026-06-02, post-merge of `19d6dd3` to origin/main):** the post-merge `deploy.sh` and a forced overlay gate-closure run both passed on `.190`; the live overlay rebuild + in-container smoke and a runtime health probe confirm the worker runs `portal-slicer-worker:0.1.0` with all five slicer modules importable. No outstanding gates remain (see § Runtime deploy gate — CLOSED below).
 
 Type: quick-dev (infra/deploy) — promotion of the `deferred-work.md` SW-DEPLOY-1 entry per the Epic 32 retro §5/A1 recommendation.
 
@@ -107,6 +107,8 @@ No configs change is required for this story — the deferred-work recipe alread
 
 ### Runtime gate (controller-owned — NOT run from `.170`)
 
+> **CLOSED 2026-06-02** — this gate has since been exercised on `.190` after merge; see § "Runtime deploy gate — CLOSED" below for evidence. The instructions below are retained for reference.
+
 The live overlay rebuild + in-container smoke needs Docker/SSH to `.190` and is **not** run from this authoring host. It is exercised by the next slicer-touching deploy, or on demand now via:
 
 ```bash
@@ -134,6 +136,12 @@ Re-ran after the fixes: 13/13 pytest green, `bash -n` clean, smoke payload `py_c
 - **Focused** — `infra/scripts` pytest 13 passed; `bash -n` OK for `slicer-worker-overlay.sh` / `deploy.sh` / `check-all.sh`; sprint-status YAML parses; `py_compile` conftest OK; `shellcheck` still missing on `.170`.
 - **Commit on branch:** `7d65de1` (`feat: automate slicer worker overlay deploy`), branch `feat/SW-DEPLOY-1-slicer-overlay-deploy`. Pushed to origin with `--no-verify`: the pre-push hook had already run all-green but exited 141 / output-plumbing before updating the remote, and the semantic full gate had passed immediately before.
 
-### Runtime deploy gate — STILL PENDING (post-done, controller-owned)
+### Runtime deploy gate — CLOSED (post-done evidence, controller-owned, 2026-06-02)
 
-The live `.190` overlay rebuild + in-container smoke has **not** yet been run after merge. `deploy.sh` runs the new fatal overlay gate on the next real deploy; the current live runtime gate remains **pending** until the controller merges `main` and deploys. This is the only outstanding item — recorded as post-done evidence, not a status blocker.
+The live `.190` overlay rebuild + in-container smoke has now run after merge of `19d6dd3` (`feat: automate slicer worker overlay deploy`) to `origin/main`. The runtime gate is **closed**; this is the post-done evidence the `done` status was holding for, and there are no outstanding items.
+
+- **Post-merge `deploy.sh` (exit 0):** base stack restarted, migrations OK, symbolication verify OK (release `0.1.0+19d6dd3`), runbook fingerprint OK. The overlay deploy hook detected **no `apps/api` change** in range `0f34c07..HEAD` and **auto-skipped** the overlay rebuild — correct AC2 base-aware behavior for this deploy range (web/docs-only delta leaves `portal-api` cached).
+- **Forced current-gate-closure run (exit 0):** `FORCE_SLICER_WORKER_REBUILD=1 infra/scripts/slicer-worker-overlay.sh deploy` — `docker build` of `portal-slicer-worker:0.1.0` completed (image id `sha256:83779407c257b765c41e7340a5d7016de59d1f80e16fb2b2bfee5b69e7dbe454`), overlay service recreated/started, in-container smoke printed `SLICER_WORKER_SMOKE_OK modules=5 orca=/opt/orca/orca estimate_store_dir=/data/content/slicer`.
+- **Runtime probe on `.190`:** `curl http://127.0.0.1:8090/api/health` → `{"status":"ok","version":"0.1.0"}`; `docker ps` shows `3d-portal-slicer-worker-1` on `portal-slicer-worker:0.1.0` Up (web/api/arq/render/redis also Up); in-container `importlib` resolves `True` for `app.modules.slicer.{gcode_parse,estimate_store,recompute,overrides,spoolman_invalidation}`; `estimate_store_dir=/data/content/slicer`; `orca_bin=/opt/orca/orca`.
+
+This also closes the open 32.4/32.5 overlay gate (retro §4/A2): the worker image now carries the `recompute`/`overrides`/`spoolman_invalidation` modules. No `apps/api`/`portal-api` change deploys without the overlay rebuild going forward — the FATAL hook guarantees it.
