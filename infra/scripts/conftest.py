@@ -1,16 +1,23 @@
 """Make migrate_catalog_3mf.py importable from tests/."""
+# `import trimesh` is deferred into the fixtures below (not module-level) so that
+# unrelated tests in this tree (e.g. the SW-DEPLOY-1 shell-hook tests, which are
+# stdlib-only) can be collected under the apps/api venv, which does not carry the
+# heavy trimesh/migrate dependency. The migrate-tool tests run under
+# infra/scripts/.venv, where trimesh is present, and import it on first use.
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 import pytest
-import trimesh
 
 
 @pytest.fixture
 def make_sphere():
     """Factory for a unit icosphere (642 faces by default)."""
+    import trimesh
 
     def _make(radius: float = 10.0, subdivisions: int = 2) -> trimesh.Trimesh:
         return trimesh.creation.icosphere(subdivisions=subdivisions, radius=radius)
@@ -21,6 +28,7 @@ def make_sphere():
 @pytest.fixture
 def make_cube():
     """Factory for an axis-aligned box mesh (12 faces)."""
+    import trimesh
 
     def _make(extents=(10.0, 10.0, 10.0)) -> trimesh.Trimesh:
         return trimesh.creation.box(extents=extents)
@@ -35,6 +43,8 @@ def make_3mf(tmp_path):
     For one mesh: writes a single-body 3mf via mesh.export.
     For multiple meshes: builds a Scene and exports it as 3mf.
     """
+
+    import trimesh
 
     def _make(name: str, meshes: list) -> Path:
         path = tmp_path / name

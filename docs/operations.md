@@ -10,6 +10,53 @@ bash infra/scripts/deploy.sh
 
 This script builds images locally, ships them to `.190` via SSH, restarts the docker-compose stack, and runs alembic migrations to bring the schema in sync.
 
+### Slicer-worker overlay deploy (SW-DEPLOY-1)
+
+The slicer-worker (Initiative 20 / Epic 32) is a **configs-side overlay**, not part of the base stack `deploy.sh` builds. Its image `portal-slicer-worker:0.1.0` is built `FROM portal-api:0.1.0` from a recipe owned by the **configs repo** on `.190`:
+
+- `/mnt/raid/configs/docker-compose-recipes/workers/slicer-worker.Dockerfile`
+- `/mnt/raid/configs/docker-compose-recipes/workers/slicer-worker.yml` (service + profile `slicer-worker`)
+
+Because the overlay layers on the `portal-api` base, any `apps/api/**` change rebuilds `portal-api` but leaves the overlay running the **old** image — a silent API↔worker version skew that only surfaces when a slice/estimate job runs (this is the failure that hit Story 32.3). `deploy.sh` now closes that gap automatically: after the base stack is up + migrated it runs
+
+```bash
+infra/scripts/slicer-worker-overlay.sh deploy
+```
+
+which **self-scopes** off `infra/.last-deploy-sha` (the range being deployed), and:
+
+1. **detects** whether the range touches `apps/api/**` (the `portal-api` base) — if not, it skips (no-op, exit 0);
+2. **rebuilds** `portal-slicer-worker:0.1.0` from the configs Dockerfile and restarts the overlay service on the fresh base;
+3. **smokes** the running container: importlib presence for `app.modules.slicer.{gcode_parse,estimate_store,recompute,overrides,spoolman_invalidation}`, the `slicer_estimate_store_dir` + `slicer_orca_bin` Settings, an Orca binary `--help` reachability check (no real slice), and a `parse_gcode_metadata` / `map_filament_extra` functional smoke.
+
+**Fatality:** **any** overlay rebuild/restart/smoke failure is fatal and aborts the deploy. The rebuild is deliberately not best-effort — a swallowed `docker build` failure would leave the old image running and the presence-based smoke would pass against stale-but-present modules (the exact silent skew this exists to prevent). Because the abort happens before the state-file write, a failed run does **not** advance `infra/.last-deploy-sha`. If the overlay simply isn't deployed on a given host, opt out with `SKIP_SLICER_WORKER=1` rather than relying on a tolerated error.
+
+**Switches (env vars):**
+
+| Var | Effect |
+|---|---|
+| `SKIP_SLICER_WORKER=1` | Hard opt-out — the overlay phase does nothing, exit 0. |
+| `FORCE_SLICER_WORKER_REBUILD=1` | Force "rebuild needed" regardless of the range. Use to close the 32.4/32.5 overlay gate manually, or after any out-of-band `portal-api` rebuild. |
+| `DRY_RUN=1` | Print the fully-resolved `ssh … docker build …` / `… exec` commands + smoke payload; run no SSH/Docker. The safe local inspection path on `.170`. |
+| `SLICER_OVERLAY_RECIPE_DIR`, `SLICER_OVERLAY_DOCKERFILE`, `SLICER_OVERLAY_COMPOSE_FILE`, `SLICER_WORKER_IMAGE`, `SLICER_WORKER_SERVICE`, `SLICER_WORKER_PROFILE` | Override the configs-side recipe paths / image tag / service / profile if the configs repo relocates them. The recipe is **never vendored** into this repo. |
+
+**Manual fallback** (the pre-automation recipe, e.g. to close the gate by hand on `.190`):
+
+```bash
+# rebuild the overlay on the fresh portal-api base, then restart it:
+ssh -p 30022 ezop@192.168.2.190 \
+  "docker build -f /mnt/raid/configs/docker-compose-recipes/workers/slicer-worker.Dockerfile \
+     -t portal-slicer-worker:0.1.0 /mnt/raid/configs/docker-compose-recipes/workers"
+ssh -p 30022 ezop@192.168.2.190 \
+  "cd /mnt/raid/docker-compose/3d-portal && docker compose --env-file .env \
+     -f docker-compose.yml -f /mnt/raid/configs/docker-compose-recipes/workers/slicer-worker.yml \
+     --profile slicer-worker up -d slicer-worker"
+# or, equivalently, from this repo:
+FORCE_SLICER_WORKER_REBUILD=1 bash infra/scripts/slicer-worker-overlay.sh deploy
+```
+
+The detection + command-generation logic is unit-tested (no Docker/SSH) in `infra/scripts/tests/test_slicer_worker_overlay.py`; the live rebuild + in-container smoke is exercised by the controller's next slicer-touching deploy on `.190`.
+
 ## Catalog (post-SoT)
 
 The portal's source of truth is now the `portal.db` SQLite database on `.190` plus the `portal-content` volume. Models, files, tags, categories, notes, prints, and external links are managed through the admin API (`/api/admin/*`) and reverse-synced from WSL via the agent token + `scripts/hydrate_local_tree.py` (see SoT migration section below). The legacy one-way Windows → `.190` rsync is no longer used.

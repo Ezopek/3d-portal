@@ -132,6 +132,14 @@ Post-repair runtime verification PASSED: slicer-worker image `sha256:217a827f95e
 
 **Trigger / priority:** Real should-fix-soon tech debt — **not blocking 32.3** (runtime was manually repaired and verified above). Promote before the next story that touches `app.modules.slicer.*` or otherwise rebases the `portal-api` image (e.g. 32.4 invalidation/recompute, 32.5 Spoolman override, 32.6 FE), since each such deploy currently re-opens the same silent-skew window. Until automated, every deploy that changes slicer code MUST be followed by the manual overlay rebuild + in-container import/Orca/parser smoke above.
 
+**STATUS — app-repo side IMPLEMENTED (2026-06-02, bmad-quick-dev).** Promoted per the Epic 32 retro §5/A1 recommendation and implemented on branch `feat/SW-DEPLOY-1-slicer-overlay-deploy` (sprint-status key `sw-deploy-1-slicer-worker-overlay-deploy`):
+- `infra/scripts/slicer-worker-overlay.sh` — `detect`/`rebuild`/`smoke`/`deploy` subcommands; env-var-driven configs paths/image/profile/host (recipe **referenced, never vendored** — HC2 preserved); `DRY_RUN=1` command-generation seam; `FORCE_SLICER_WORKER_REBUILD=1` (manual 32.4/32.5 gate closure) + `SKIP_SLICER_WORKER=1` (hard opt-out).
+- `infra/scripts/deploy.sh` — overlay phase wired **after** `alembic upgrade head`; **any** rebuild/restart/smoke failure is **FATAL** and aborts before the state-file write, so a failed run is not recorded successful (rebuild made fatal per Gemini review — a swallowed build failure would pass the presence-based smoke against the stale image). Detection is `portal-api`-base-aware: any `apps/api/**` change ⇒ rebuild needed; web/docs/render-only ⇒ skip.
+- In-container smoke now covers all three classes named in the fix sketch **plus** 32.4/32.5: importlib(`gcode_parse`,`estimate_store`,`recompute`,`overrides`,`spoolman_invalidation`) + Settings(`slicer_estimate_store_dir`,`slicer_orca_bin`) + Orca `--help` reachability + `parse_gcode_metadata`/`map_filament_extra` functional smoke.
+- Tests: `infra/scripts/tests/test_slicer_worker_overlay.py` (13 cases, stdlib+pytest, no Docker/SSH) + a `check-all.sh` stage. Docs: `docs/operations.md` § "Slicer-worker overlay deploy".
+
+**Remaining (controller-owned):** the live `.190` rebuild + in-container smoke cannot run from `.170` (no Docker/SSH side effects from the authoring host). It is exercised by the next slicer-touching deploy, or on demand now via `FORCE_SLICER_WORKER_REBUILD=1 bash infra/scripts/slicer-worker-overlay.sh deploy` — which also **closes the open 32.4/32.5 overlay gate (retro A2)**. No configs-repo edit is required (the recipe already exists from 32.2/32.3); if the recipe paths ever relocate, only the env-var defaults change.
+
 ---
 
 ## Deferred from: Story 32.5 dev-story (2026-06-02)

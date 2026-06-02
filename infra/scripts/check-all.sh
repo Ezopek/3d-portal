@@ -80,6 +80,12 @@ run_stage "apps/api pytest" SKIP_PYTEST "$ROOT/apps/api" \
 run_stage "workers/render pytest" SKIP_PYTEST "$ROOT/workers/render" \
   "$WORKER_VENV/pytest" -q
 
+# SW-DEPLOY-1 — infra/scripts unit tests (slicer-worker overlay detect +
+# DRY_RUN shell-command generation). Stdlib + pytest, no Docker/SSH. Run with
+# the apps/api venv pytest since it is the one provisioned on the dev box.
+run_stage "infra/scripts pytest" SKIP_INFRA_TESTS "$ROOT" \
+  "$API_VENV/pytest" -q "$ROOT/infra/scripts/tests/test_slicer_worker_overlay.py"
+
 run_stage "apps/web visual regression" SKIP_VISUAL "$ROOT/apps/web" \
   npm run test:visual
 

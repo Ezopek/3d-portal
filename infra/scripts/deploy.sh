@@ -147,6 +147,34 @@ ssh -p "$SSH_PORT" "$TARGET_HOST" "cd $COMPOSE_DIR && docker compose --env-file 
 echo "→ Run alembic migrations"
 ssh -p "$SSH_PORT" "$TARGET_HOST" "cd $COMPOSE_DIR && docker compose run --rm api alembic upgrade head"
 
+# --- Slicer-worker overlay rebuild + smoke (SW-DEPLOY-1) -----------------
+# The slicer-worker is a configs-side OVERLAY (image
+# portal-slicer-worker:$VERSION, built FROM portal-api:$VERSION) that the
+# steps above do NOT touch. Any apps/api/** change rebuilds the portal-api
+# base, so the overlay must rebuild on it or the worker silently keeps
+# running stale `app.modules.slicer.*` code — the Story 32.3 API↔worker
+# version skew (deferred-work.md SW-DEPLOY-1; epic-32 retro §4/§5). This
+# phase runs AFTER the base stack is up + migrated (the fresh
+# portal-api:$VERSION is already `docker load`-ed on the host above). The
+# hook self-scopes via infra/.last-deploy-sha — still the PREVIOUS deploy's
+# SHA at this point, i.e. exactly the range being deployed now — and SKIPS
+# (no-op, exit 0) when the range contains no apps/api change.
+#
+# Fatality (AC6): ANY overlay rebuild/restart/smoke failure is FATAL and
+# aborts the deploy under `set -e`. The rebuild is deliberately NOT
+# best-effort — a swallowed `docker build` failure would leave the OLD image
+# running and the presence-based smoke would pass against stale-but-present
+# modules, i.e. the exact silent skew this exists to surface. Because the
+# abort happens before the state-file write at the end, a failed run does NOT
+# advance infra/.last-deploy-sha (it is not recorded as a success). The escape
+# hatch for "the overlay isn't deployed on this host" is SKIP_SLICER_WORKER=1;
+# force the rebuild (manual 32.4/32.5 gate closure) with
+# FORCE_SLICER_WORKER_REBUILD=1.
+echo "→ Slicer-worker overlay rebuild + smoke (SW-DEPLOY-1)"
+PORTAL_HOST="$TARGET_HOST" PORTAL_SSH_PORT="$SSH_PORT" \
+  PORTAL_VERSION="$VERSION" PORTAL_COMPOSE_DIR="$COMPOSE_DIR" \
+  bash "$REPO_DIR/infra/scripts/slicer-worker-overlay.sh" deploy
+
 # --- Post-deploy verify (Story 3.2; FR15) --------------------------------
 # Non-fatal gate: deploy success is decoupled from verify outcome
 # (NFR-R3). Capture the FR12 exit code (0/1/2/3/4) and print an exit-code-
