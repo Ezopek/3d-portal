@@ -628,12 +628,30 @@ def test_no_bench_or_windows_path_literal_in_slicer_module():
     assert offenders == [], f"bench/Windows path/exe literal leaked into: {offenders}"
 
 
-# --- AC-13: scope fence — no router mounted ------------------------------------
+# --- AC-13 / Story 32.6: scope fence — narrow read-only router only -------------
 
 
-def test_slicer_module_mounts_no_router():
+def test_slicer_module_mounts_only_narrow_estimates_read_router():
     module = REPO_ROOT / "apps/api/app/modules/slicer"
-    assert not (module / "router.py").exists()
+    router_path = module / "router.py"
+    assert router_path.exists()
+    router_text = router_path.read_text(encoding="utf-8")
+
+    # Story 32.6 intentionally adds the first slicer HTTP surface, but it is a single
+    # authenticated read seam. Keep the old scope-fence intent: no recompute/enqueue/write
+    # API surface is mounted from the slicer module.
+    assert 'APIRouter(prefix="/api/estimates"' in router_text
+    assert router_text.count("@router.get") == 1
+    assert "@router.post" not in router_text
+    assert "from app.modules.slicer.recompute" not in router_text
+    assert ".enqueue" not in router_text
+    assert "store.write" not in router_text
+
     api_router = re.compile(r"\bAPIRouter\b")
+    offenders = []
     for path in module.glob("*.py"):
-        assert not api_router.search(path.read_text(encoding="utf-8")), f"APIRouter in {path.name}"
+        if path.name == "router.py":
+            continue
+        if api_router.search(path.read_text(encoding="utf-8")):
+            offenders.append(path.name)
+    assert offenders == []

@@ -4,7 +4,7 @@ baseline_commit: 7b081e36f4571b16ec31e621d33e78050e01aacd
 
 # Story 32.6: Frontend `PrintIntentPreset` selector + estimate display (fresh / stale / queued / failed / loading / absent) + the narrow estimate read/resolve API seam the UI renders on top of
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -321,22 +321,96 @@ docker compose --env-file .env \
 
 #### Agent Model Used
 
-- _(to be filled by `bmad-dev-story`)_
+- `bmad-dev-story` (controller-routed ITCM autonomous mode) on `claude-opus-4-8[1m]`. Implementation across a partial dev-story pass + a focused continuation pass (the focused pass hit `max_turns`); this entry is the controller-verified close-out of the now-green gates. AC-1b (recompute-enqueue endpoint) DEFERRED per the sprint decision (read-only seam sufficient for the display MVP, no "recompute now" button in visual scope) — recorded in `deferred-work.md`.
 
 #### Debug Log References
 
-- _(to be filled by `bmad-dev-story`)_
+- Focused continuation pass hit `max_turns`; gates re-verified by the controller after the run (evidence below). One controller-side type-only fix-up applied (see Completion Notes) — no app-logic change.
 
 #### Completion Notes List
 
-- _(to be filled by `bmad-dev-story`)_
+- **AC-1b deferred (honest):** the optional recompute-enqueue endpoint (`POST /api/estimates/recompute`) was NOT implemented — the read-only seam (AC-1) is sufficient for the 32.6 display MVP, no "recompute now" affordance is in visual scope, and deferring avoids the SW-DEPLOY-1 slicer-worker overlay-rebuild entanglement (read-only seam ⇒ standard API/web deploy). Recorded in `deferred-work.md`. The `EstimateDisplay` renders `absent`/`stale` as terminal-until-the-deferred-event-source-fires (SPOOL-EVT-1), as the AC-1b text permits.
+- **Controller-side type-only test-helper fix (honest disclosure):** `apps/web/tests/visual/estimates-display.spec.ts` had its `stubEstimate` route-helper return type changed to `Promise<unknown>` because Playwright `page.route()` returns `Promise<Disposable>` in this repo's version — a type-only change to make `npm run typecheck` green. No runtime/app-logic behavior changed; it touches a visual-test helper signature only.
+- **Backend targeted (green):** `cd apps/api && uv run pytest tests/test_estimate_api.py tests/test_route_enforcement_gate.py tests/test_spools_routes.py -q` → `28 passed, 67 warnings in 3.57s`.
+- **Backend ruff (clean):** `uv run ruff format --check app/modules/slicer/router.py app/modules/slicer/schemas.py app/modules/slicer/estimate_read.py tests/test_estimate_api.py` → `4 files already formatted`; `ruff check` over the same paths → `All checks passed!`.
+- **Web unit (green):** `cd apps/web && npm test -- --run src/modules/estimates` → `6 passed (6)` test files, `64 passed (64)` tests.
+- **Web typecheck (green):** `npm run typecheck` → green (after the type-only test-helper fix above).
+- **Web lint (green):** `npm run lint` → green (only the pre-existing React-version warning line, no new findings).
+- **Visual (green):** new 32.6 baselines generated via `npm run test:visual -- tests/visual/estimates-display.spec.ts tests/visual/print-intent-preset-selector.spec.ts --update-snapshots`, then the normal focused visual rerun → `24 passed (9.4s)`. 24 new snapshot files under `apps/web/tests/visual/__snapshots__/estimates-display.spec.ts/` + `.../print-intent-preset-selector.spec.ts/` (× the 4 visual projects). `baseline-reviewed:` sign-off is pending independent review.
+- **Whitespace:** `git diff --check` → clean.
+- **Status:** `review` (independent review pending; code-review owns `→ done`). Commit/ff-merge/deploy NOT performed — controller-owned (ITCM).
+
+#### Review Fix-ups (independent adversarial review → REQUEST_CHANGES → addressed, 2026-06-02)
+
+An independent adversarial review returned **REQUEST_CHANGES** with two blockers; both are now fixed (scope kept narrow — no commit/deploy; Status stays `review`).
+
+- **Blocker 1 (read path mutated the real bundle store) — FIXED.** `GET /api/estimates` is documented + intended read-only ("never enqueues, slices, or writes"), but the production resolver path could write bundle/snapshot files: `SettingsEstimateResolver.resolve_preset` called Story 32.1 `resolve(…, store=BundleStore(…), …)`, and `resolve` persists a fresh bundle + provenance snapshot (`store.write_snapshot` / `store.write_bundle`) on a content MISS. Fix: a `_ReadOnlyBundleStore(BundleStore)` adapter in `estimate_read.py` (a NEW 32.6 file — the engine `bundle_store.py` is UNtouched, AC-9 preserved) whose `write_bundle` / `write_snapshot` are no-ops returning the would-be path; `resolve_preset` now resolves through it. A content HIT is still served from disk and the `bundle_hash` derivation is byte-identical; a miss just computes the hash in-memory without persisting. The real (writing) `BundleStore` continues to back every OTHER caller (Story 32.5 dispatch, the worker, `resolve_intent`) — the adapter is local to the read seam. **Regression test (production resolver path, NOT the fake):** `test_production_resolver_read_path_does_not_mutate_bundle_store` (`tests/test_estimate_api.py`) points settings at the checked-in vendored fixtures + a tmp bundle-store root, runs the real `SettingsEstimateResolver.resolve_preset`, and asserts ZERO `*.json` written under the store root — with a guard that the SAME resolve against a real writing store DOES persist (so the no-write assertion is not vacuous). Verified the test catches the regression: reverting the adapter to `BundleStore` makes it fail (2 stray files: a bundle + a snapshot); restored ⇒ green.
+- **Blocker 2 (AC-1b deferral not recorded in `deferred-work.md`) — FIXED.** The Completion Notes claimed AC-1b was "Recorded in `deferred-work.md`", but no Story 32.6 entry existed. Appended a `## Deferred from: Story 32.6 dev-story (2026-06-02)` section with **EST-RECOMPUTE-1** (the optional guarded `POST /api/estimates/recompute` enqueue endpoint — why deferred, fix sketch, SW-DEPLOY-1 deploy note) and **EST-INGEST-1** (the catalog↔STL ingestion gap, AC-9). Existing deferred-work entries left intact.
+
+**Fix evidence (re-run after the changes):**
+- Backend targeted: `cd apps/api && uv run pytest tests/test_estimate_api.py tests/test_route_enforcement_gate.py tests/test_spools_routes.py -q` → `29 passed, 67 warnings` (was 28; +1 = the new production-path regression test).
+- `tests/test_estimate_api.py` alone → `11 passed` (was 10; +1).
+- Backend ruff on changed files: `uv run ruff format --check app/modules/slicer/estimate_read.py tests/test_estimate_api.py` → `2 files already formatted`; `ruff check` over the same → `All checks passed!`.
+- Frontend untouched by these fixes ⇒ the heavy FE gates were NOT re-run (they remain at the v0.2 evidence above).
+
+#### Independent Re-review → APPROVE + Controller Close-out (2026-06-02)
+
+After the two blockers were fixed, the controller re-ran the full gate set and an independent adversarial re-review was performed on the fixed diff. Verdict: **APPROVE**. Story closed `review → done` (controller-owned ITCM close-out; NO commit/ff-merge/deploy/branch-delete performed here).
+
+- **Independent re-review verdict: APPROVE.** The re-review specifically confirmed:
+  - **Blocker 1 fixed** — `estimate_read.py:197-223` + `246-269` (the `_ReadOnlyBundleStore` no-write adapter makes the production `GET /api/estimates` read path non-mutating while computing the byte-identical `bundle_hash`); the route carries no write/enqueue/slice path.
+  - **Regression test quality good** — `tests/test_estimate_api.py:380-431` (`test_production_resolver_read_path_does_not_mutate_bundle_store`) exercises the real `SettingsEstimateResolver.resolve_preset` and is non-vacuous (the same resolve against a real writing store DOES persist).
+  - **Blocker 2 fixed** — the Story 32.6 deferral section exists in `deferred-work.md` (≈ lines 159-192: EST-RECOMPUTE-1 AC-1b enqueue + EST-INGEST-1 catalog↔STL ingestion); existing deferred entries intact.
+
+- **Controller gates after the fix (all green):**
+  - Backend target: `cd apps/api && uv run pytest tests/test_estimate_api.py tests/test_route_enforcement_gate.py tests/test_spools_routes.py -q` → `29 passed, 67 warnings in 3.36s`.
+  - Backend ruff: `ruff format --check` → `4 files already formatted`; `ruff check` → `All checks passed!`.
+  - Web units: `6 passed` (test files) / `64 passed` (tests).
+  - Web typecheck: green.
+  - Web lint: green (only the pre-existing React-version warning line).
+  - Focused visual: `24 passed (9.4s)` — the 32.6 baselines (× 4 projects) `baseline-reviewed:` signed off at close-out (NFR20-VISUAL-VERIFICATION-1, FR13).
+  - `git diff --check`: clean.
+  - YAML sprint status: `review` → `done` at this close-out.
+
+- **Close-out actions:** Status `review → done`; sprint-status row `32-6-frontend-print-intent-preset-estimate-display` → `done`; deferred-work entries (EST-RECOMPUTE-1 / EST-INGEST-1) kept intact. Commit / ff-merge / deploy / branch-delete remain controller-owned (ITCM) and were NOT performed by this close-out. epic-32 stays `in-progress`; epic-32-retrospective stays `pending`.
 
 #### File List
 
-- _(to be filled by `bmad-dev-story`)_
+**Backend (new):**
+- `apps/api/app/modules/slicer/router.py` — `/api/estimates` authenticated read router
+- `apps/api/app/modules/slicer/schemas.py` — UI-safe `extra="forbid"` DTOs
+- `apps/api/app/modules/slicer/estimate_read.py` — `EstimateReadService` (resolve→read→project); **review fix:** adds the `_ReadOnlyBundleStore` no-write adapter so the production read path never mutates real bundle-store artifacts (Blocker 1)
+- `apps/api/tests/test_estimate_api.py` — backend API-seam tests; **review fix:** adds `test_production_resolver_read_path_does_not_mutate_bundle_store` (production-resolver no-write regression, Blocker 1)
+
+**Backend (modified):**
+- `apps/api/app/router.py` — one `include_router` line mounting the estimates router
+
+**Docs (modified):**
+- `_bmad-output/implementation-artifacts/deferred-work.md` — **review fix:** Story 32.6 deferral section (EST-RECOMPUTE-1 AC-1b enqueue + EST-INGEST-1 catalog↔STL ingestion), Blocker 2
+
+**Frontend (new):**
+- `apps/web/src/modules/estimates/components/PrintIntentPresetSelector.tsx` (+ `.test.tsx`)
+- `apps/web/src/modules/estimates/components/EstimateDisplay.tsx` (+ `.test.tsx`)
+- `apps/web/src/modules/estimates/components/OverrideContextPanel.tsx` (+ `.test.tsx`)
+- `apps/web/src/modules/estimates/components/EstimatesPanel.tsx` — module mount surface
+- `apps/web/src/modules/estimates/hooks/useEstimate.ts` — TanStack Query hook
+- `apps/web/src/modules/estimates/lib/format.ts` (+ `.test.ts`) — finite-guarded formatters
+- `apps/web/src/modules/estimates/lib/preset.ts` (+ `.test.ts`) — preset shape/key helpers
+- `apps/web/src/modules/estimates/lib/i18n-honesty.test.ts` — SPOOL-EVT-1 no-auto-propagation copy guard
+- `apps/web/src/routes/estimates/index.tsx` — self-contained route surface (supplies `stl_hash`)
+- `apps/web/tests/visual/estimates-display.spec.ts` — visual spec (+ `__snapshots__/`)
+- `apps/web/tests/visual/print-intent-preset-selector.spec.ts` — visual spec (+ `__snapshots__/`)
+
+**Frontend (modified):**
+- `apps/web/src/lib/api-types.ts` — estimate DTO types
+- `apps/web/src/locales/en.json` + `apps/web/src/locales/pl.json` — `modules.estimates.*` / `modules.slicer.*` keys (material names verbatim)
+- `apps/web/src/routeTree.gen.ts` — auto-regenerated for the new route
 
 ### Change Log
 
 | Date | Version | Description | Author |
 |---|---|---|---|
 | 2026-06-02 | v0.1 | Story spec authored to `ready-for-dev` (`bmad-create-story`; spec-only, no code). Baseline `main` @ `7b081e3`. Confirmed by focused grep/read: NO HTTP estimate endpoint exists (slicer module mounts zero routes) ⇒ AC-1 narrow read/resolve API seam; NO catalog↔STL linkage ⇒ ingestion OUT OF SCOPE. SPOOL-EVT-1 (live Spoolman event source/reverse index) stays deferred ⇒ AC-6 no-auto-propagation honesty constraint. | bmad-create-story |
+| 2026-06-02 | v0.2 | `in-progress → review`. `bmad-dev-story` implemented the read-only seam (AC-1) + the `apps/web/src/modules/estimates/` module (selector + display + override panel + hook + finite-guarded formatters + preset helpers) + i18n keys (en+pl) + visual baselines × 4 projects. **AC-1b DEFERRED** (read-only seam sufficient; no "recompute now" in visual scope) → `deferred-work.md`. Gates (controller-verified after a focused continuation pass hit `max_turns`): backend targeted `28 passed`; ruff format+check clean on the new files; web unit `6 files / 64 tests passed`; typecheck + lint green; focused visual `24 passed` with 24 new baselines (sign-off pending review); `git diff --check` clean. One **controller-side type-only** fix to `tests/visual/estimates-display.spec.ts` (`stubEstimate` → `Promise<unknown>` to match Playwright `page.route()` `Promise<Disposable>`; no app-logic change). Independent review pending; code-review owns `→ done`. Commit/merge/deploy NOT performed (controller-owned ITCM). | bmad-dev-story |
+| 2026-06-02 | v0.3 | **Independent adversarial review → REQUEST_CHANGES → 2 blockers fixed** (Status stays `review`; narrow scope; no commit/deploy). **Blocker 1:** the production read path (`SettingsEstimateResolver.resolve_preset` → Story 32.1 `resolve`) could write bundle/snapshot files on a content miss; fixed with a `_ReadOnlyBundleStore` no-write adapter in `estimate_read.py` (engine `bundle_store.py` untouched, AC-9 preserved) + a production-resolver-path regression test (`test_production_resolver_read_path_does_not_mutate_bundle_store`, proven to catch the regression). **Blocker 2:** appended the missing Story 32.6 deferral to `deferred-work.md` (EST-RECOMPUTE-1 AC-1b enqueue + EST-INGEST-1 catalog↔STL ingestion). Re-run gates: backend targeted `29 passed` (+1); `tests/test_estimate_api.py` `11 passed` (+1); ruff format+check clean on the changed backend files. Frontend untouched ⇒ heavy FE gates not re-run. | bmad-dev-story (review fix-up) |
+| 2026-06-02 | v0.4 | **`review → done`** (controller-owned ITCM close-out). Independent adversarial **re-review of the fixed diff → APPROVE** (confirmed Blocker 1 fixed at `estimate_read.py:197-223`/`246-269` + route has no write/enqueue/slice path; regression test quality good at `test_estimate_api.py:380-431`; Blocker 2 fixed in `deferred-work.md` ≈ lines 159-192). Controller gates green: backend target `29 passed, 67 warnings in 3.36s`; ruff `4 files already formatted` / `All checks passed!`; web units `6 passed / 64 passed`; typecheck green; lint green (only the pre-existing React-version warning); focused visual `24 passed (9.4s)` with `baseline-reviewed:` sign-off; `git diff --check` clean. Deferred-work entries (EST-RECOMPUTE-1 / EST-INGEST-1) kept intact. Commit / ff-merge / deploy / branch-delete NOT performed (controller-owned ITCM); epic-32 stays `in-progress`, epic-32-retrospective stays `pending`. | bmad-code-review (close-out) |

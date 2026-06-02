@@ -18,6 +18,7 @@ import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as RequestsIndexRouteImport } from './routes/requests/index'
 import { Route as QueueIndexRouteImport } from './routes/queue/index'
 import { Route as PrinterIndexRouteImport } from './routes/printer/index'
+import { Route as EstimatesIndexRouteImport } from './routes/estimates/index'
 import { Route as CatalogIndexRouteImport } from './routes/catalog/index'
 import { Route as ShareTokenRouteImport } from './routes/share/$token'
 import { Route as SettingsShareLinksRouteImport } from './routes/settings/share-links'
@@ -73,6 +74,11 @@ const QueueIndexRoute = QueueIndexRouteImport.update({
 const PrinterIndexRoute = PrinterIndexRouteImport.update({
   id: '/printer/',
   path: '/printer/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EstimatesIndexRoute = EstimatesIndexRouteImport.update({
+  id: '/estimates/',
+  path: '/estimates/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CatalogIndexRoute = CatalogIndexRouteImport.update({
@@ -146,6 +152,7 @@ export interface FileRoutesByFullPath {
   '/settings/share-links': typeof SettingsShareLinksRoute
   '/share/$token': typeof ShareTokenRoute
   '/catalog/': typeof CatalogIndexRoute
+  '/estimates/': typeof EstimatesIndexRoute
   '/printer/': typeof PrinterIndexRoute
   '/queue/': typeof QueueIndexRoute
   '/requests/': typeof RequestsIndexRoute
@@ -168,6 +175,7 @@ export interface FileRoutesByTo {
   '/settings/share-links': typeof SettingsShareLinksRoute
   '/share/$token': typeof ShareTokenRoute
   '/catalog': typeof CatalogIndexRoute
+  '/estimates': typeof EstimatesIndexRoute
   '/printer': typeof PrinterIndexRoute
   '/queue': typeof QueueIndexRoute
   '/requests': typeof RequestsIndexRoute
@@ -191,6 +199,7 @@ export interface FileRoutesById {
   '/settings/share-links': typeof SettingsShareLinksRoute
   '/share/$token': typeof ShareTokenRoute
   '/catalog/': typeof CatalogIndexRoute
+  '/estimates/': typeof EstimatesIndexRoute
   '/printer/': typeof PrinterIndexRoute
   '/queue/': typeof QueueIndexRoute
   '/requests/': typeof RequestsIndexRoute
@@ -215,6 +224,7 @@ export interface FileRouteTypes {
     | '/settings/share-links'
     | '/share/$token'
     | '/catalog/'
+    | '/estimates/'
     | '/printer/'
     | '/queue/'
     | '/requests/'
@@ -237,6 +247,7 @@ export interface FileRouteTypes {
     | '/settings/share-links'
     | '/share/$token'
     | '/catalog'
+    | '/estimates'
     | '/printer'
     | '/queue'
     | '/requests'
@@ -259,6 +270,7 @@ export interface FileRouteTypes {
     | '/settings/share-links'
     | '/share/$token'
     | '/catalog/'
+    | '/estimates/'
     | '/printer/'
     | '/queue/'
     | '/requests/'
@@ -282,6 +294,7 @@ export interface RootRouteChildren {
   SettingsShareLinksRoute: typeof SettingsShareLinksRoute
   ShareTokenRoute: typeof ShareTokenRoute
   CatalogIndexRoute: typeof CatalogIndexRoute
+  EstimatesIndexRoute: typeof EstimatesIndexRoute
   PrinterIndexRoute: typeof PrinterIndexRoute
   QueueIndexRoute: typeof QueueIndexRoute
   RequestsIndexRoute: typeof RequestsIndexRoute
@@ -353,6 +366,13 @@ declare module '@tanstack/react-router' {
       path: '/printer'
       fullPath: '/printer/'
       preLoaderRoute: typeof PrinterIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/estimates/': {
+      id: '/estimates/'
+      path: '/estimates'
+      fullPath: '/estimates/'
+      preLoaderRoute: typeof EstimatesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/catalog/': {
@@ -450,6 +470,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsShareLinksRoute: SettingsShareLinksRoute,
   ShareTokenRoute: ShareTokenRoute,
   CatalogIndexRoute: CatalogIndexRoute,
+  EstimatesIndexRoute: EstimatesIndexRoute,
   PrinterIndexRoute: PrinterIndexRoute,
   QueueIndexRoute: QueueIndexRoute,
   RequestsIndexRoute: RequestsIndexRoute,

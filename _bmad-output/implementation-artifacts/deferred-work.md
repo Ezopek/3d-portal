@@ -156,6 +156,43 @@ Source: Story 32.5 (Spoolman-mapped filament overrides) AC-6 / AC-9 scope fence.
 
 ---
 
+## Deferred from: Story 32.6 dev-story (2026-06-02)
+
+Source: Story 32.6 (frontend `PrintIntentPreset` selector + estimate display + the narrow estimate read/resolve API seam) AC-1b explicit-optional deferral. The read-only seam (AC-1, `GET /api/estimates`) shipped; the optional guarded recompute-enqueue endpoint (AC-1b) was judged unnecessary for the 32.6 display MVP and deferred per the AC-1b "OPTIONAL for the MVP slice … MAY be deferred to a follow-up (recorded in `deferred-work.md`)" clause.
+
+### EST-RECOMPUTE-1 — optional guarded `POST /api/estimates/recompute` enqueue endpoint
+
+**Source:** Story 32.6 AC-1b (explicit optional deferral) + the AC-9 scope fence.
+
+**Where:** would live in `apps/api/app/modules/slicer/router.py` (the new estimates router), reusing the **existing** Story 32.4 `apps/api/app/modules/slicer/recompute.py` (`enqueue_recompute` / `invalidate`) + `enqueue.py` primitives byte-identically (CALLED, not edited). FE affordance would mount in `apps/web/src/modules/estimates/` (a "recompute now" button on `EstimateDisplay` for an `absent`/`stale` key).
+
+**Problem:** Story 32.6 ships only the read-only seam: `GET /api/estimates` resolves a `PrintIntentPreset` → `bundle_hash`, reads the persisted `EstimateRecord`, and projects the UI-safe DTO; an absent/stale record is a terminal display state until something *else* marks it (the deferred live event source, SPOOL-EVT-1, or an operator/ops trigger). There is **no** authenticated endpoint that lets the UI (re)queue a slice for an already-resolvable `(stl_hash, preset→bundle_hash)` whose record is `stale`/`absent`. So the `EstimateDisplay` renders `absent`/`stale` as terminal-until-the-deferred-event-source-fires, with no user-driven "recompute now" path.
+
+**Why deferred (not blocking 32.6):**
+- The read seam alone satisfies the 32.6 display goal (FR20-PRESET-1 + FR20-FAILURE-1 FE half) — render every estimate state honestly. No "recompute now" affordance is in the 32.6 visual scope.
+- Deferring keeps the **read-only** deploy path clean: a read-only seam changes no worker code path, so the standard API/web deploy suffices and the SW-DEPLOY-1 slicer-worker overlay-rebuild entanglement is avoided (an enqueue endpoint would re-queue a slice that runs on the `portal-slicer-worker` overlay, re-opening the SW-DEPLOY-1 window on every deploy).
+- It is genuinely optional per AC-1b's own text ("include the enqueue seam only if a button-driven 'recompute now' is in the visual scope").
+
+**Fix sketch (when promoted):** add a separate authenticated `POST /api/estimates/recompute` that (1) `validate_content_hash`-gates the caller `stl_hash`, (2) resolves the preset to `bundle_hash` via the SAME `SettingsEstimateResolver` path the read endpoint uses (note: the read path resolves through a non-mutating `_ReadOnlyBundleStore` — review blocker #1; an enqueue path that genuinely needs a persisted bundle must resolve through the real writing `BundleStore`, a deliberate divergence to call out), (3) calls the existing Story 32.4 `enqueue_recompute` for a `stale`/`absent` key only, idempotent per the 32.4 `_job_id` dedupe (no re-enqueue of an already-`queued` key — bounds the R1 self-DoS), returning `status="queued"`. Tests per AC-1b: `test_recompute_endpoint_enqueues_via_story_324_primitive`, `test_recompute_endpoint_idempotent_on_already_queued`, `test_recompute_endpoint_requires_auth`.
+
+**Trigger / priority:** Real follow-up, **not blocking 32.6**. Promote when a user-driven "recompute now" affordance enters scope, OR alongside the catalog↔STL ingestion story (below) that first produces real per-part `stl_hash`es worth recomputing on demand. **Deploy note:** unlike the 32.6 read-only seam, this endpoint's enqueue runs on the slicer-worker overlay — its deploy MUST follow the SW-DEPLOY-1 manual overlay rebuild + in-container import/Orca smoke.
+
+### EST-INGEST-1 — catalog↔STL ingestion (part → `stl_hash` linkage feeding the estimate read)
+
+**Source:** Story 32.6 AC-9 (explicit out-of-scope dependency) + the pre-enumeration grep (zero `stl_hash`/`content_hash` references under `apps/api/app/modules/catalog/`).
+
+**Where:** `apps/api/app/modules/catalog/` (no `stl_hash` linkage today) ↔ the Story 32.3 `EstimateStore` content key `(stl_hash, bundle_hash)` the 32.6 read seam reads by.
+
+**Problem:** There is no path from a catalog part to the content hash the estimate store is keyed by. 32.6 ships the display + read seam keyed by a **supplied** `stl_hash` (driven by a self-contained route/tests); it does NOT hash catalog STLs, persist a part→`stl_hash` map, or trigger a first slice. Until that ingestion lands, the live catalog-detail estimate is wired against supplied/known hashes, not auto-derived from every catalog part.
+
+**Why deferred (not blocking 32.6):** building the ingestion (STL hashing + part→hash persistence + first-slice trigger) is broad work that exceeds the 32.6 display story; AC-9 surfaces it explicitly as OUT OF SCOPE rather than silently bridging it.
+
+**Fix sketch (when promoted):** a dedicated ingestion story that hashes catalog STLs (reusing the existing `stl_cache`/content-hash discipline), persists the part→`stl_hash` map, and triggers the first resolve+slice — feeding real hashes into the 32.6 read seam (and EST-RECOMPUTE-1 if promoted).
+
+**Trigger / priority:** Real follow-up, **not blocking 32.6**. Promote when the live catalog-detail estimate (auto-derived per part) is needed end-to-end.
+
+---
+
 ## Declined / done
 
 _(none yet)_

@@ -409,3 +409,53 @@ export interface SpoolsSummaryResponse {
   fetched_at: string | null;
   last_success_ts: string | null;
 }
+
+// --- Initiative 20 Story 32.6 — UI-safe estimate read DTOs (slicer/schemas.py) ---
+// These mirror the backend `EstimateView` projection. They carry ONLY UI fields —
+// NO settings_ids / bundle_hash / stl_hash / Orca key / g-code (FR20-PRESET-1).
+
+// The material classes the resolver supports (FR20). Material names are UNtranslated
+// (a portal↔Orca naming convention, NFR20-I18N-PARITY-1), so they are a literal union.
+export type MaterialClass = "PLA" | "PETG" | "PCTG" | "TPU";
+
+// The portal-defined quality tiers the resolver maps to Orca process profiles.
+export type QualityTier = "aesthetic" | "standard" | "strong";
+
+// The estimate lifecycle the UI renders: the Decision AJ EstimateStatus
+// {fresh,stale,queued,failed} plus "absent" (a 200 store miss). "loading" is a
+// query/transport state the FE owns; it is never a server-reported value.
+export type UIEstimateStatus = "fresh" | "stale" | "queued" | "failed" | "absent";
+
+// The granular parse-failure reasons the backend classifies (rendered "here's why").
+export type EstimateFailureReason =
+  | "parse_failure"
+  | "missing_metadata_line"
+  | "unparseable_time"
+  | "unparseable_numeric";
+
+export interface EstimateWarningView {
+  code: string;
+  message: string;
+}
+
+export interface OverrideContextView {
+  material_class: MaterialClass;
+  quality_tier: QualityTier;
+  pinned_filament_name: string | null;
+  custom_overrides_applied: boolean;
+  purchase_url: string | null;
+}
+
+export interface EstimateView {
+  status: UIEstimateStatus;
+  time_seconds: number | null;
+  filament_g: number | null;
+  filament_mm: number | null;
+  filament_cm3: number | null;
+  filament_cost: number | null;
+  currency: string | null;
+  computed_at: string | null;
+  warnings: EstimateWarningView[];
+  failure_reason: EstimateFailureReason | null;
+  override_context: OverrideContextView;
+}
