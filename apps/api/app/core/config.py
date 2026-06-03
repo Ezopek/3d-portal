@@ -166,6 +166,24 @@ class Settings(BaseSettings):
     # pre-check is sub-slice fast by design" (AC-10).
     slicer_info_timeout_seconds: int = Field(default=60, ge=1)
 
+    # Catalog-STL estimate ingestion (EST-INGEST-1) — the single configurable default
+    # print-intent preset the ingestion service resolves + slices for each catalog STL
+    # part. Typed as plain str here (no slicer-module import into core config); the
+    # PrintIntentPreset construction validates material_class/quality_tier against their
+    # Literal sets at the seam, so a bad env value fails loud, not silently.
+    #
+    # PLA / standard pin the bundle the shipped FilesTab UX default bar ("PLA · Standard")
+    # reads on first load — the first slice MUST populate that exact bundle or the
+    # default-load chip is permanently ``absent`` (see _bmad-output/ux/…-files-ux.md).
+    slicer_default_material_class: str = "PLA"
+    slicer_default_quality_tier: str = "standard"
+    # ARBITRARY-until-multi-printer: the homelab printer identity used as THE printer
+    # across the Epic 32 test suite. Env-overridable; resolve fails LOUD + classified if
+    # no vendored profile matches. Replace when a printer registry / per-model printer
+    # selection lands. Operator owns confirming a vendored profile for
+    # (this printer, PLA, standard) exists on .190 (see EST-INGEST-1 runtime gate).
+    slicer_default_printer_ref: str = "creality-k1-max-microswiss-hf"
+
     # Observability
     otel_exporter_otlp_endpoint: str | None = None
     otel_exporter_otlp_headers: str | None = None  # e.g. "authorization=Bearer <token>"
