@@ -108,8 +108,10 @@ Every BMAD story is implemented on its own short-lived branch — *not* in a ser
    - Pre-commit hook itself working (it has broken before — verify before relying on it)
 
    One-shot wrapper: `infra/scripts/check-all.sh` runs every gate above (skip
-   individual stages with `SKIP_VISUAL=1`, `SKIP_PYTEST=1`, etc.). Opt in to
-   auto-run on push with `git config core.hooksPath .githooks`.
+   individual stages with `SKIP_VISUAL=1`, `SKIP_PYTEST=1`, etc.). This is the
+   **explicit full closeout/merge gate** — run it before the ff-merge to `main`.
+   The opt-in `.githooks/pre-push` hook is a *lean* transport gate, not this
+   aggregate; see § "Pre-push hook policy & gate evidence" below.
 4. Merge to `main` with fast-forward only — never a merge commit, never a squash:
    ```bash
    git checkout main && git merge --ff-only feat/E5.14-catalog-filters
@@ -142,6 +144,31 @@ Every BMAD story is implemented on its own short-lived branch — *not* in a ser
 Story branches still never trigger a deploy directly — their commits don't touch `main` until the final ff-merge.
 
 The design history (including the abandoned HEAD-only first attempt that swallowed code commits in mixed ff-merges) is in `_bmad-output/implementation-artifacts/spec-deploy-skip-gate.md` (status `abandoned`) and the active spec `spec-deploy-skip-gate-range.md`.
+
+### Pre-push hook policy & gate evidence
+
+Two distinct gates, deliberately not the same thing:
+
+| Gate | What runs | When |
+|---|---|---|
+| **Lean pre-push hook** (`.githooks/pre-push`, opt-in via `git config core.hooksPath .githooks`) | Fast, deterministic, low-output checks only: `git diff --check`, ruff format+check (`apps/api` + `workers/render`), web typecheck + lint, and the cheap drift gates (`check-settings-env-compose.py`, `uv lock --check`, `check-local-env-secrets.sh`). | Every `git push` (transport-time). Seconds, not minutes; a handful of output lines, not thousands. |
+| **Full gate** (`infra/scripts/check-all.sh`) | Everything the lean hook runs **plus** the heavy stages: `apps/web` production build, vitest, `apps/api` + `workers/render` + `infra/scripts` pytest, and Playwright visual regression. The repo's local **CI-equivalent** (there is no hosted CI). | **Required** before a story-branch ff-merge to `main`, before deploy, and for one-shot baseline audits. Run it standalone and tee the log (below). |
+
+**Why the split.** The old `.githooks/pre-push` exec'd `check-all.sh` directly. Its multi-megabyte stdout intermittently produced **SIGPIPE / exit-141-after-success** on Hermes/SSH pushes — the checks went all-green, then a downstream pipe consumer closed and the hook died with 141, forcing a `git push --no-verify`. Moving the heavy/chatty stages out of transport-time removes that failure mode without weakening any gate: the heavy checks are still mandatory, just at closeout/merge/deploy rather than on every push.
+
+**Semantic gates are NOT weakened.** Build / vitest / pytest / visual regression remain hard requirements before merge/deploy. They moved location (full gate), not status. A story branch is not mergeable until `check-all.sh` is green standalone. On unprovisioned clones the lean hook may skip missing local toolchain stages; the standalone full gate remains the authoritative closeout/merge/deploy gate.
+
+**Gate evidence — where logs go.** Run the full gate with `tee` into the gitignored `.hermes/run-logs/` scratch dir so the all-green evidence is recoverable:
+
+```bash
+mkdir -p .hermes/run-logs && infra/scripts/check-all.sh 2>&1 | tee .hermes/run-logs/check-all-$(date +%Y%m%d_%H%M%S).log
+```
+
+`.hermes/` is gitignored (local-only; the logs reference internal hosts/paths). The exact log path is the closeout evidence to cite back to the controller — `check-all.sh` prints `all green.` and exits 0 on a clean standalone run.
+
+**Safe one-shot `--no-verify`.** `git push --no-verify` is permitted **only** when *both* hold: (a) `infra/scripts/check-all.sh` (or the lean hook itself) already passed all-green **standalone** with logged evidence, and (b) the hook failure is **transport/output-only** — a SIGPIPE/exit-141 after the checks already reported green, not a real check failure. It is a one-shot escape for the output-pipe failure mode, never a way to skip a red gate. If a stage is genuinely failing, fix the underlying issue; do not `--no-verify` past it.
+
+**Agent push runbook — output/transport-only hook failures.** If a push aborts with exit 141 (or a truncated-pipe error) *after* the lean hook printed its `OK` lines: re-run the relevant check standalone, capture evidence to `.hermes/run-logs/`, and only then push once with `--no-verify`. If the hook printed an `XX` line, that is a real failure — fix it, do not bypass. The runbook lives in `docs/operations.md` § "Push gate & hook runbook".
 
 ### Trivial commits direct to main
 

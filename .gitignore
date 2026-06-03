@@ -122,3 +122,9 @@ infra/.last-verify-runbook
 
 # Deploy skip-gate state (range pointer; written on deploy-success only)
 infra/.last-deploy-sha
+
+# Hermes agent scratch — full-gate evidence logs + run prompts (local-only).
+# `.hermes/run-logs/` is where agents tee `infra/scripts/check-all.sh` output
+# for closeout evidence (see AGENTS.md § "Pre-push hook policy & gate evidence");
+# the logs reference internal hosts/paths and must not enter history.
+.hermes/

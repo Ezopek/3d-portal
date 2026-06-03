@@ -2,6 +2,56 @@
 
 > **Note:** Several scripts referenced in this runbook (`infra/scripts/deploy.sh`, `infra/scripts/backup-sqlite.sh`, `infra/scripts/gen-htpasswd.sh`) and the production stack are introduced in Phase 12 of the implementation plan and may not exist yet. These instructions reflect the intended deployment workflow.
 
+## Push gate & hook runbook
+
+Two gates guard quality (full policy + rationale in AGENTS.md § "Pre-push hook
+policy & gate evidence"):
+
+- **Lean pre-push hook** (`.githooks/pre-push`, opt-in via `git config
+  core.hooksPath .githooks`) — fast, deterministic, low-output checks run on
+  every `git push`: `git diff --check`, ruff format+check (`apps/api` +
+  `workers/render`), web typecheck + lint, and the cheap drift gates
+  (`check-settings-env-compose.py`, `uv lock --check`,
+  `check-local-env-secrets.sh`). Seconds, a few output lines. Heavy stages are
+  NOT here.
+- **Full gate** (`infra/scripts/check-all.sh`) — the local CI-equivalent
+  (no hosted CI). Everything the lean hook runs **plus** the web production
+  build, vitest, pytest (api + worker + infra/scripts), and Playwright visual
+  regression. **Required** before any ff-merge to `main` and before deploy.
+
+### Full-gate evidence logs
+
+Run the full gate with `tee` so the all-green evidence is recoverable:
+
+```bash
+mkdir -p .hermes/run-logs && infra/scripts/check-all.sh 2>&1 | tee .hermes/run-logs/check-all-$(date +%Y%m%d_%H%M%S).log
+```
+
+`.hermes/run-logs/` is gitignored local scratch (the logs reference internal
+hosts/paths). Cite the exact log path back to the controller at story closeout.
+`check-all.sh` prints `all green.` and exits 0 on a clean standalone run; a
+non-zero exit lists the failed stages.
+
+### Output / transport-only hook failures
+
+The old hook exec'd the full aggregate on every push; its multi-megabyte stdout
+intermittently caused **SIGPIPE / exit-141-after-success** on Hermes/SSH pushes
+(checks went green, then a downstream pipe closed and the hook died with 141).
+The lean hook removes that by staying quiet on the happy path. On unprovisioned clones it may skip missing local toolchain stages; the standalone full gate remains authoritative for closeout/merge/deploy. If you still hit
+a transport/output-only abort:
+
+1. The lean hook printed only `OK` lines (no `XX`) but the push aborted with
+   exit 141 / a truncated-pipe error → this is the output-pipe failure mode,
+   not a check failure.
+2. Re-run the relevant check (or the full gate) standalone and tee the evidence
+   to `.hermes/run-logs/` (above). Confirm all-green.
+3. Only then push once with `git push --no-verify`. This is a one-shot escape
+   for the transport/output failure mode **after** standalone all-green
+   evidence — never a way to skip a red gate.
+
+If the hook printed an `XX <stage>` line, that is a **real** failure: fix the
+underlying issue and re-push. Do not `--no-verify` past a genuine red stage.
+
 ## Deploy to `.190`
 
 ```bash

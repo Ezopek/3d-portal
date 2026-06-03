@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
-# Run every per-story quality gate listed in AGENTS.md against the working
-# tree. Exits 0 only when ALL gates are green. Intended for:
-#   - Manual `infra/scripts/check-all.sh` before pushing a story branch
-#   - The `.githooks/pre-push` hook (opt-in via `git config core.hooksPath .githooks`)
+# Explicit FULL closeout/merge gate (the repo's local CI-equivalent — there is
+# no hosted CI). Runs every per-story quality gate listed in AGENTS.md against
+# the working tree and exits 0 only when ALL gates are green. Intended for:
+#   - The required gate before a story-branch ff-merge to `main` / deploy
 #   - One-shot baseline audits after long autonomous batches
+#   - Tee-loggable evidence runs:
+#       mkdir -p .hermes/run-logs && infra/scripts/check-all.sh 2>&1 | tee .hermes/run-logs/check-all-$(date +%Y%m%d_%H%M%S).log
+#
+# This is NO LONGER the default `.githooks/pre-push` hook. That hook is now a
+# lean, low-output transport gate (ruff/typecheck/lint/cheap-drift only); the
+# heavy stages below (production build, vitest, pytest, visual regression) run
+# here, not on every push. See AGENTS.md § "Pre-push hook policy & gate
+# evidence". Do not re-point pre-push at this aggregate — its multi-megabyte
+# stdout is what produced the SIGPIPE/exit-141-after-success pushes.
 #
 # Order is fast-to-slow so failures surface early. The script does NOT spawn
 # Vite for `test:visual`; that step starts its own dev server via Playwright's

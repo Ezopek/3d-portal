@@ -1,14 +1,132 @@
 #!/usr/bin/env bash
-# Opt-in pre-push hook: runs every per-story quality gate against the working
-# tree before allowing the push. Enable once per clone:
+# Lean pre-push transport gate (opt-in: `git config core.hooksPath .githooks`).
 #
-#     git config core.hooksPath .githooks
+# Runs ONLY fast, deterministic, low-output checks that are safe to run on
+# every push: whitespace/conflict-marker scan, ruff format+lint, web
+# typecheck+lint, and the cheap settings/env/uv drift gates. It deliberately
+# does NOT run the production build, vitest, pytest, visual regression, or any
+# other slow/chatty stage — those live in `infra/scripts/check-all.sh`, the
+# explicit full closeout/merge gate (run it before merge to `main`).
 #
-# Disable with `git config --unset core.hooksPath` or skip a single push with
-# `git push --no-verify` (use sparingly — bypassing the gate is the path that
-# put the project in the "pre-existing test failure" mess this hook prevents).
+# Why lean: the old hook exec'd the full aggregate on every push. Its multi-
+# megabyte stdout intermittently produced SIGPIPE / exit-141-after-success in
+# Hermes/SSH pushes (a downstream consumer closed the pipe after the checks had
+# already gone all-green), forcing a one-shot `git push --no-verify`. This hook
+# stays quiet on the happy path — one `OK <stage>` line per stage, full output
+# only on failure — so a clean push prints a handful of lines, not thousands.
 #
-# Skip individual stages inline:
-#     SKIP_VISUAL=1 git push          # visual regression takes ~35 s, opt out
-#     SKIP_VISUAL=1 SKIP_PYTEST=1 git push   # both backends
-exec "$(git rev-parse --show-toplevel)/infra/scripts/check-all.sh"
+# Policy & escape hatch: see AGENTS.md § "Pre-push hook policy & gate evidence".
+# Each stage is individually skippable inline, e.g. `SKIP_WEB=1 git push`.
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+API_VENV="$ROOT/apps/api/.venv/bin"
+WORKER_VENV="$ROOT/workers/render/.venv/bin"
+
+FAILED=()
+PASSED=()
+SKIPPED=()
+
+# step NAME SKIPVAR WORKDIR CMD...
+# Runs CMD quietly in WORKDIR. On success prints "OK NAME". On failure prints
+# "XX NAME" plus the captured (indented) output and marks the push as failed.
+# Capturing stdout/stderr and replaying only on failure keeps happy-path output
+# tiny — the SIGPIPE/exit-141 mitigation.
+step() {
+  local name="$1" skipvar="$2" wd="$3"
+  shift 3
+  if [[ "${!skipvar:-}" == "1" ]]; then
+    SKIPPED+=("$name ($skipvar=1)")
+    printf '  - %s (skipped: %s=1)\n' "$name" "$skipvar"
+    return 0
+  fi
+  local out
+  if out="$(cd "$wd" && "$@" 2>&1)"; then
+    PASSED+=("$name")
+    printf '  OK  %s\n' "$name"
+  else
+    FAILED+=("$name")
+    printf '  XX  %s\n' "$name"
+    printf '%s\n' "$out" | sed 's/^/      /'
+  fi
+  return 0
+}
+
+# Skip a tool-backed stage (don't fail transport) when its toolchain is absent.
+# A missing venv/npm/uv is an un-provisioned environment, not a code defect —
+# the full gate (check-all.sh) is the authoritative semantic gate, so surface
+# the gap loudly here but let the push through.
+have_path() {
+  if [[ -x "$1" ]]; then
+    return 0
+  fi
+  SKIPPED+=("$2 (missing $1)")
+  printf '  - %s (skipped: %s not found)\n' "$2" "$1"
+  return 1
+}
+have_cmd() {
+  if command -v "$1" >/dev/null 2>&1; then
+    return 0
+  fi
+  SKIPPED+=("$2 (missing $1)")
+  printf '  - %s (skipped: %s not on PATH)\n' "$2" "$1"
+  return 1
+}
+
+echo "pre-push: lean transport gate (full gate = infra/scripts/check-all.sh)"
+
+# 1. Whitespace errors + leftover conflict markers in the working tree.
+step "git diff --check" SKIP_DIFFCHECK "$ROOT" git diff --check
+
+# 2. Python format + lint (ruff) — silent on success, deterministic, ~1s.
+if have_path "$API_VENV/ruff" "apps/api ruff"; then
+  step "apps/api ruff format" SKIP_RUFF "$ROOT/apps/api" "$API_VENV/ruff" format --check .
+  step "apps/api ruff check"  SKIP_RUFF "$ROOT/apps/api" "$API_VENV/ruff" check .
+fi
+if have_path "$WORKER_VENV/ruff" "workers/render ruff"; then
+  step "workers/render ruff format" SKIP_RUFF "$ROOT/workers/render" "$WORKER_VENV/ruff" format --check .
+  step "workers/render ruff check"  SKIP_RUFF "$ROOT/workers/render" "$WORKER_VENV/ruff" check .
+fi
+
+# 3. Web typecheck + lint — deterministic, no test/build. Skip whole block with
+#    SKIP_WEB=1. The heavy web stages (build, vitest, visual) stay in the full
+#    gate, NOT here.
+if have_path "$ROOT/apps/web/node_modules/.bin/tsc" "apps/web typecheck"; then
+  step "apps/web typecheck" SKIP_WEB "$ROOT/apps/web" npm run --silent typecheck
+fi
+if have_path "$ROOT/apps/web/node_modules/.bin/eslint" "apps/web lint"; then
+  step "apps/web lint" SKIP_WEB "$ROOT/apps/web" npm run --silent lint -- --max-warnings=0
+fi
+
+# 4. Cheap drift gates (each <1s, low output) — same checks check-all runs, but
+#    fast+deterministic so they belong in every push too.
+if have_path "$API_VENV/python" "settings-env-compose-diff"; then
+  step "settings-env-compose-diff" SKIP_DRIFT "$ROOT" \
+    "$API_VENV/python" "$ROOT/infra/scripts/check-settings-env-compose.py"
+fi
+if have_cmd uv "uv-lock-check"; then
+  step "uv-lock-check (apps/api)" SKIP_UV_LOCK "$ROOT/apps/api" uv lock --check
+  step "uv-lock-check (workers/render)" SKIP_UV_LOCK "$ROOT/workers/render" uv lock --check
+fi
+step "local-env-secrets" SKIP_LOCAL_ENV_SECRETS "$ROOT" \
+  bash "$ROOT/infra/scripts/check-local-env-secrets.sh"
+
+echo
+if (( ${#FAILED[@]} > 0 )); then
+  printf 'pre-push BLOCKED: %d stage(s) failed: %s\n' "${#FAILED[@]}" "${FAILED[*]}" >&2
+  echo "Fix the above, or — for a transport-only/output-only hook failure AFTER a" >&2
+  echo "standalone all-green run — push once with:  git push --no-verify" >&2
+  echo "Full gate (run before merge to main):" >&2
+  echo "  mkdir -p .hermes/run-logs && infra/scripts/check-all.sh 2>&1 | tee .hermes/run-logs/check-all-\$(date +%Y%m%d_%H%M%S).log" >&2
+  exit 1
+fi
+
+printf 'pre-push OK: %d passed' "${#PASSED[@]}"
+if (( ${#SKIPPED[@]} > 0 )); then
+  printf ', %d skipped' "${#SKIPPED[@]}"
+fi
+printf '. Lean gate only — run the full gate before merge:\n'
+echo "  mkdir -p .hermes/run-logs && infra/scripts/check-all.sh 2>&1 | tee .hermes/run-logs/check-all-\$(date +%Y%m%d_%H%M%S).log"
+exit 0
