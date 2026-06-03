@@ -14,8 +14,8 @@ import {
   type StlFile,
 } from "@/modules/catalog/components/viewer3d";
 import { useFileIndex } from "@/modules/catalog/components/viewer3d/hooks/useFileIndex";
+import { CatalogEstimateProfileSelector } from "@/modules/estimates/components/CatalogEstimateProfileSelector";
 import { EstimateChip } from "@/modules/estimates/components/EstimateChip";
-import { PrintIntentPresetSelector } from "@/modules/estimates/components/PrintIntentPresetSelector";
 import { RowEstimatePanel } from "@/modules/estimates/components/RowEstimatePanel";
 import {
   CATALOG_ESTIMATE_PRINTER_REF,
@@ -176,11 +176,15 @@ export function FilesTab({
         </div>
       )}
 
-      {/* EST-DISPLAY-1 (UX §A) — member-visible GLOBAL estimate-profile selector above the
-          STL list. Read-only: it re-keys which estimate every chip/panel reads; it never
-          enqueues or recomputes. Separate from the admin render controls below. */}
+      {/* EST-DISPLAY-1 (UX §A; product correction) — compact, member-visible estimate process /
+          quality profile selector, visually subordinate to the STL list. This surface is an
+          orientational per-STL gram ESTIMATE preview only: material class + Spoolman pin are NOT
+          exposed here (they stay at the EST-INGEST-1 internal defaults so the chip/panel query
+          keys are unchanged). Read-only: it re-keys which estimate every chip/panel reads; it
+          never enqueues, recomputes, or exposes ordering / spool semantics. Separate from the
+          admin render controls below. */}
       {active === "stl" && stlFiles.length > 0 && (
-        <PrintIntentPresetSelector value={preset} onChange={setPreset} />
+        <CatalogEstimateProfileSelector value={preset} onChange={setPreset} />
       )}
 
       {isAdmin && active === "stl" && visible.length > 0 && (

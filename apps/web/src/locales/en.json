@@ -575,6 +575,7 @@
   "modules.estimates.selector.title": "Print preset",
   "modules.estimates.selector.material_class_label": "Material",
   "modules.estimates.selector.quality_tier_label": "Quality",
+  "modules.estimates.selector.profile_label": "Estimate profile",
   "modules.estimates.selector.spool_pin_label": "Pinned filament (optional)",
   "modules.estimates.selector.spool_pin_none": "No pin (material default)",
   "modules.estimates.quality.aesthetic": "Aesthetic",

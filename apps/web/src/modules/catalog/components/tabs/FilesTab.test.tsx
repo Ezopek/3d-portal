@@ -212,7 +212,7 @@ describe("FilesTab — admin render controls (unchanged, separate from estimates
     render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
     expect(screen.queryByRole("button", { name: /re-render preview/i })).toBeNull();
     // The estimate-profile selector is member-visible (not admin-gated).
-    expect(screen.getByText("Print preset")).toBeTruthy();
+    expect(screen.getByLabelText(/estimate profile/i)).toBeTruthy();
   });
 
   it("clicking Re-render posts an empty selection so the worker uses persisted flags", async () => {
@@ -236,15 +236,46 @@ describe("FilesTab — admin render controls (unchanged, separate from estimates
 describe("FilesTab — EST-DISPLAY-1 estimate surface", () => {
   it("shows the member-visible estimate-profile selector on the STL tab only", () => {
     render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
-    expect(screen.getByText("Print preset")).toBeTruthy();
+    expect(screen.getByLabelText(/estimate profile/i)).toBeTruthy();
     // Switch to the Source tab → the estimate selector is gone (STL-only surface).
     fireEvent.click(screen.getByRole("button", { name: /source/i }));
-    expect(screen.queryByText("Print preset")).toBeNull();
+    expect(screen.queryByLabelText(/estimate profile/i)).toBeNull();
   });
 
   it("does not render the selector when there are no STL files", () => {
     render(<FilesTab modelId={MODEL_ID} files={[FILES[2]!]} />, { wrapper: wrap() });
+    expect(screen.queryByLabelText(/estimate profile/i)).toBeNull();
+  });
+
+  it("exposes ONLY the quality profile — no material or pinned-filament controls (estimate-only surface)", () => {
+    // Product correction: this surface is an orientational gram-estimate preview, not print
+    // ordering or spool availability, so material class + Spoolman pin are NOT surfaced here.
+    render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
+    expect(screen.getByLabelText(/estimate profile/i)).toBeTruthy();
+    expect(screen.queryByLabelText(/material/i)).toBeNull();
+    expect(screen.queryByLabelText(/pinned filament/i)).toBeNull();
+    // No "Print preset" fieldset legend either.
     expect(screen.queryByText("Print preset")).toBeNull();
+  });
+
+  it("changing the estimate profile re-keys the estimate read to the chosen quality tier", async () => {
+    render(<FilesTab modelId={MODEL_ID} files={FILES_WITH_HASH} />, { wrapper: wrap() });
+    await waitFor(() => expect(estimateCalls().length).toBeGreaterThanOrEqual(2));
+    // Default reads are PLA · standard (material stays at the internal default).
+    expect(estimateCalls().every((u) => u.includes("material_class=PLA"))).toBe(true);
+    fetchMock.mockClear();
+    fireEvent.change(screen.getByLabelText(/estimate profile/i), {
+      target: { value: "strong" },
+    });
+    await waitFor(() =>
+      expect(estimateCalls().some((u) => u.includes("quality_tier=strong"))).toBe(true),
+    );
+    // Material class is still the unchanged internal default on the re-keyed read.
+    expect(
+      estimateCalls()
+        .filter((u) => u.includes("quality_tier=strong"))
+        .every((u) => u.includes("material_class=PLA")),
+    ).toBe(true);
   });
 
   it("reads GET /api/estimates keyed by sha256 + preset + the catalog printer ref", async () => {
@@ -269,12 +300,15 @@ describe("FilesTab — EST-DISPLAY-1 estimate surface", () => {
 
   it("missing-hash STL row fires NO estimate read and shows the honest no-hash chip", async () => {
     render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
-    // Let any mount effects flush.
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    // The honest no-hash chips render synchronously (no request); wait for them, then assert
+    // that no /estimates read fired. The compact estimate-profile selector makes no network
+    // call of its own, so hash-less STL rows produce zero fetches at all.
+    await waitFor(() =>
+      expect(
+        screen.getAllByTitle("No estimate available for this file.").length,
+      ).toBeGreaterThanOrEqual(2),
+    );
     expect(estimateCalls()).toEqual([]);
-    expect(
-      screen.getAllByTitle("No estimate available for this file.").length,
-    ).toBeGreaterThanOrEqual(2);
   });
 
   it("network error → quiet error chip, distinct from absent", async () => {

@@ -145,3 +145,44 @@ does not change the read contract and is not load-bearing for "grams visible inl
 **Visual baseline result.** Controller regenerated/reviewed the affected catalog-detail/share/viewer
 baselines plus the new focused `catalog-filestab-estimate` four-state matrix; the final aggregate
 visual regression passed (`404 passed / 24 skipped`).
+
+## Correction — STL-preset-compact (post-done product correction)
+
+> bmad-quick-dev, 2026-06-04, branch `fix/STL-preset-compact` (off `main`). Author-of-record record
+> only; controller (Laura/ITCM) owns review + commit/merge/deploy. Status row NOT flipped here.
+
+**Product signal.** The Catalog detail → Files → STL tab is an orientational per-STL **gram-estimate
+preview** surface — NOT print ordering and NOT spool availability. The shipped v1 reused
+`PrintIntentPresetSelector` verbatim (see *Design Notes → Selector reuse vs. compact projection*),
+which exposed three full-width labelled controls (Material, Quality, Pinned filament) in a `<fieldset>`
+panel above the list. Material class and the Spoolman pin are unnecessary — and misleading (they imply
+ordering/spool semantics) — on this surface. The only high-leverage choice here is the print
+process/quality profile.
+
+**Change.**
+- New `apps/web/src/modules/estimates/components/CatalogEstimateProfileSelector.tsx` — a compact,
+  right-aligned, inline `quality_tier`-only selector, visually subordinate to the STL list.
+- `FilesTab.tsx` now renders `CatalogEstimateProfileSelector` instead of `PrintIntentPresetSelector`
+  on the STL surface. `material_class` (PLA) and `spoolman_filament_ref` (null) stay as the
+  **internal preset defaults** carried in the same `PrintIntentPresetInput` state ⇒ the estimate
+  query keys (`sha256 + preset + printerRef`) and the chip/panel re-render behaviour are **unchanged**
+  except for the tier the member actually picks (AC-2/AC-6 preserved).
+- `PrintIntentPresetSelector` and the standalone `/estimates` surface (`EstimatesPanel`) are
+  **untouched** — material/pin selection still lives there.
+- i18n: new `modules.estimates.selector.profile_label` key (en `Estimate profile` / pl `Profil wyceny`).
+
+**Scope guard.** No backend/API/DTO change; no enqueue/recompute; no ordering or spool-availability
+semantics added to this surface. The expanded `RowEstimatePanel` (read-only provenance: "computed
+against PLA · Standard") is intentionally retained — it reports what the estimate reflects, it is not
+an input control.
+
+**Verification (authoring env).**
+- `npx vitest run` (from `apps/web`) — `src/modules/estimates` + `src/modules/catalog/components/tabs`:
+  14 files / 128 tests passed, incl. new `CatalogEstimateProfileSelector.test.tsx` (5) and the extended
+  `FilesTab.test.tsx` (21: material/pin-absent + profile re-key assertions).
+- `npm run typecheck` — clean. `npm run lint -- --max-warnings=0` — clean (pre-existing React-version
+  warning only).
+- `npm run test:visual -- catalog-filestab-estimate --update-snapshots` — 16 baselines (4 states ×
+  4 projects) regenerated + reran green; delta inspected (fresh + expanded, desktop-light): compact
+  `Profil wyceny` selector replaces the fieldset panel, grams chip + full expanded `EstimateDisplay`
+  intact. Controller owns final aggregate `check-all.sh` visual sign-off.
