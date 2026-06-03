@@ -13,6 +13,7 @@ import asyncio
 import logging
 import secrets
 from datetime import UTC, datetime
+from typing import Protocol, runtime_checkable
 
 import httpx
 from redis.exceptions import WatchError
@@ -43,6 +44,31 @@ _LOCK_EXPIRY_SECONDS = 90
 # leader's eventual success/failure without presenting a false unavailable state
 # while Spoolman is still healthy — Decision AD/FR19-FAILURE-1"
 _LOCK_POLL_SLEEP_SECONDS = 0.1
+
+# SPOOL-EVT-1 — previous successful snapshot, retained across poll ticks so the live
+# change source can diff old→new filaments. This is an ADDITIVE key: it does NOT alter the
+# 31.x contract surface above (the public summary cache + last-success + lock keys are
+# untouched). It is deliberately NOT the 30s public cache (_CACHE_KEY) — that expires
+# between 60s ticks, so a separate, longer-lived baseline is required.
+_PREV_SNAPSHOT_KEY = "spools:summary:prev:v1"
+# because "comfortably greater than the 60s poll cadence so the diff baseline survives
+# several missed/lock-contended ticks (e.g. Spoolman briefly down) without forcing a
+# no-dispatch warm-up on recovery, while still bounding stale-baseline storage — SPOOL-EVT-1"
+_PREV_SNAPSHOT_TTL_SECONDS = 3600
+
+
+@runtime_checkable
+class SnapshotChangeHandler(Protocol):
+    """The change-notification seam the live event source plugs into (SPOOL-EVT-1).
+
+    Kept generic + slicer-agnostic so ``SpoolsService`` owns ONLY snapshot retention and the
+    previous→current diff handoff — the slicer-side diff/classify/dispatch lives in
+    ``app.modules.slicer.spoolman_event_source`` and is wired in at the cron composition root.
+    """
+
+    async def handle(self, previous: SpoolmanSnapshot, current: SpoolmanSnapshot) -> None:
+        """React to a successful poll: ``previous`` is the last retained snapshot."""
+        ...
 
 
 class SpoolsService:
@@ -117,7 +143,12 @@ class SpoolsService:
         value = raw.decode() if isinstance(raw, bytes) else raw
         return datetime.fromisoformat(value)
 
-    async def refresh_summary(self) -> SpoolmanSnapshot | None:
+    async def refresh_summary(
+        self, *, change_handler: SnapshotChangeHandler | None = None
+    ) -> SpoolmanSnapshot | None:
+        # ``change_handler`` (SPOOL-EVT-1) is passed ONLY by the cron poll path; the
+        # request-path cold-cache fallback in ``get_summary`` calls this without one, so it
+        # never rolls the diff baseline nor dispatches invalidations from a user request.
         # Per-refresh unique token so the lock-release path can compare-and-
         # delete on its own value (AC-9 ownership invariant) instead of blindly
         # deleting whatever currently sits at _LOCK_KEY — guards the
@@ -155,6 +186,11 @@ class SpoolsService:
             # rotations so the FE soft-fail indicator can compute "Xm ago"
             # from arbitrary delays per FR19-FAILURE-1.
             await self._redis.set(_LAST_SUCCESS_KEY, now_iso)
+            if change_handler is not None:
+                # SPOOL-EVT-1 — diff against the retained baseline and dispatch invalidations.
+                # Best-effort + isolated: a handler error must never break the poll's success
+                # path or the lock release below (the cache is already written).
+                await self._handle_snapshot_change(change_handler, snapshot)
             _LOG.info(
                 "spools.poll.refresh",
                 extra={
@@ -194,3 +230,53 @@ class SpoolsService:
             # safest primitive supported by both production redis-py and
             # the test fake without an extra dependency.
             await self._release_lock(token)
+
+    async def _handle_snapshot_change(
+        self, change_handler: SnapshotChangeHandler, current: SpoolmanSnapshot
+    ) -> None:
+        """Diff against the retained previous snapshot and dispatch invalidations (SPOOL-EVT-1).
+
+        The FIRST poll after deploy (or after the prev key TTL-expired) has no baseline ⇒ it
+        only *warms* the baseline and dispatches NOTHING (AC: first-poll warmup). Otherwise the
+        retained ``previous`` and the fresh ``current`` are handed to the injected handler.
+
+        The baseline is advanced ONLY after the handler returns cleanly, so a transient handler
+        failure re-diffs the SAME delta on the next tick rather than silently dropping it — safe
+        because the downstream 32.4/32.5 dispatch is idempotent (``mark_stale`` is idempotent,
+        the re-slice enqueue is ``_job_id``-deduped, and cost-only recompute is in-place
+        arithmetic). Any error is swallowed + logged: the poll's success path and lock release
+        must not be broken by the (best-effort) live-invalidation side-channel.
+        """
+        try:
+            raw_prev = await self._redis.get(_PREV_SNAPSHOT_KEY)
+            if raw_prev is None:
+                await self._redis.set(
+                    _PREV_SNAPSHOT_KEY,
+                    current.model_dump_json(),
+                    ex=_PREV_SNAPSHOT_TTL_SECONDS,
+                )
+                _LOG.info(
+                    "spools.poll.snapshot_baseline_warmed",
+                    extra={
+                        "event.action": "spools.poll.snapshot_baseline_warmed",
+                        "labels.external_service": "spoolman",
+                    },
+                )
+                return
+            previous = SpoolmanSnapshot.model_validate_json(raw_prev)
+            await change_handler.handle(previous, current)
+            # Advance the baseline only on a clean handler run (at-least-once + idempotent).
+            await self._redis.set(
+                _PREV_SNAPSHOT_KEY,
+                current.model_dump_json(),
+                ex=_PREV_SNAPSHOT_TTL_SECONDS,
+            )
+        except Exception as exc:
+            _LOG.warning(
+                "spools.poll.change_handler_error",
+                extra={
+                    "event.action": "spools.poll.change_handler_error",
+                    "labels.external_service": "spoolman",
+                    "labels.error_class": type(exc).__name__,
+                },
+            )
