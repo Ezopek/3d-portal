@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { EstimateDisplay } from "@/modules/estimates/components/EstimateDisplay";
 import { PrintIntentPresetSelector } from "@/modules/estimates/components/PrintIntentPresetSelector";
 import { useEstimate } from "@/modules/estimates/hooks/useEstimate";
+import { useRecomputeEstimate } from "@/modules/estimates/hooks/useRecomputeEstimate";
 import {
   defaultPreset,
   type PrintIntentPresetInput,
@@ -33,6 +34,7 @@ export function EstimatesPanel({ stlHash, printerRef }: Props) {
   const { t } = useTranslation();
   const [preset, setPreset] = useState<PrintIntentPresetInput>(defaultPreset);
   const query = useEstimate(stlHash, preset, printerRef);
+  const recompute = useRecomputeEstimate(stlHash, preset, printerRef);
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4 p-4">
@@ -43,6 +45,9 @@ export function EstimatesPanel({ stlHash, printerRef }: Props) {
         isError={query.isError}
         data={query.data}
         onRetry={() => void query.refetch()}
+        onRecompute={() => recompute.mutate()}
+        isRecomputing={recompute.isPending}
+        isRecomputeError={recompute.isError}
       />
     </div>
   );

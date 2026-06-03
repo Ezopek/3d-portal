@@ -22,6 +22,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from urllib.parse import quote
 
@@ -34,7 +35,12 @@ from pydantic import ValidationError
 from app.core.auth.jwt import encode_token
 from app.main import create_app
 from app.modules.slicer.bundle_store import BundleStore
-from app.modules.slicer.estimate_read import ResolvedPreset, SettingsEstimateResolver
+from app.modules.slicer.enqueue import slice_job_id
+from app.modules.slicer.estimate_read import (
+    PresetResolveError,
+    ResolvedPreset,
+    SettingsEstimateResolver,
+)
 from app.modules.slicer.estimate_store import EstimateStore
 from app.modules.slicer.models import (
     EstimateFailureReason,
@@ -46,9 +52,16 @@ from app.modules.slicer.models import (
 )
 from app.modules.slicer.overrides import NoopOverrideProvider
 from app.modules.slicer.resolver import VendoredProfileSource, resolve
-from app.modules.slicer.router import get_estimate_resolver, get_estimate_store
+from app.modules.slicer.router import (
+    get_arq_pool,
+    get_estimate_resolver,
+    get_estimate_store,
+    get_recompute_resolver,
+)
 from app.modules.slicer.schemas import EstimateView, OverrideContextView, WarningView
 from app.modules.slicer.validation import NullCliValidator
+from app.modules.slicer.worker import SLICER_QUEUE_NAME
+from app.modules.slicer.worker_job import SLICE_JOB_NAME
 from app.modules.spools.models import SpoolmanFilament
 
 FIXTURES = Path(__file__).parent / "fixtures" / "slicer"
@@ -91,6 +104,14 @@ def _failed() -> EstimateRecord:
     )
 
 
+def _stale() -> EstimateRecord:
+    return _fresh(status=EstimateStatus.stale)
+
+
+def _queued() -> EstimateRecord:
+    return _fresh(status=EstimateStatus.queued)
+
+
 # === fake resolver ===========================================================
 
 
@@ -104,9 +125,14 @@ class _FakeResolver:
     def __init__(self, *, pinned: SpoolmanFilament | None = None) -> None:
         self.called = False
         self.pinned = pinned
+        # When set, ``resolve_preset`` raises ``PresetResolveError`` (the 422 path) — lets a
+        # recompute test exercise the unresolvable-preset branch without a second resolver type.
+        self.fail_reason: str | None = None
 
     async def resolve_preset(self, intent: PrintIntentPreset) -> ResolvedPreset:
         self.called = True
+        if self.fail_reason is not None:
+            raise PresetResolveError(self.fail_reason)
         return ResolvedPreset(bundle_hash=BUNDLE_HASH, pinned_filament=self.pinned)
 
 
@@ -429,3 +455,254 @@ async def test_production_resolver_read_path_does_not_mutate_bundle_store(
         assert written == [], f"read path mutated the bundle store: {written}"
     finally:
         get_settings.cache_clear()
+
+
+# === EST-RECOMPUTE-1 — guarded POST /api/estimates/recompute ===================
+#
+# The enqueue seam under test: the authenticated POST validates the stl_hash, resolves the
+# preset to a bundle_hash via the SAME resolver seam (here a fake), and enqueues an idempotent
+# by-hash re-slice through the Story 32.4 `enqueue_recompute` helper — guarded so an already
+# `queued` record does NOT re-enqueue, and never fabricating numbers for an absent/failed key.
+# A fake arq pool records the enqueue so the deterministic Story 32.4 job-id / queue kwargs are
+# assertable without a live Redis; no real Orca / worker runs.
+
+
+class _FakeArqPool:
+    """Records ``enqueue_job`` calls so a test can assert the Story 32.4 enqueue kwargs."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[tuple, dict]] = []
+
+    async def enqueue_job(self, *args, **kwargs):
+        self.calls.append((args, kwargs))
+        return SimpleNamespace(job_id=kwargs.get("_job_id"))
+
+
+@pytest_asyncio.fixture
+async def recompute_seam(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[tuple[AsyncClient, EstimateStore, _FakeResolver, _FakeArqPool]]:
+    """Mirror of ``seam`` for the POST recompute endpoint: also overrides the recompute
+    resolver seam and installs a fake arq pool via the ``get_arq_pool`` dependency seam.
+    """
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/s.db")
+    monkeypatch.setenv("ADMIN_EMAIL", "admin@localhost.localdomain")
+    monkeypatch.setenv("ADMIN_PASSWORD", "pw")
+    monkeypatch.setenv("JWT_SECRET", "test")
+    monkeypatch.setenv("TOTP_FERNET_KEY", "ZmFrZS10ZXN0LWtleS0zMi1ieXRlcy1mb3ItdGVzdHM=")
+
+    from app.core.config import get_settings
+    from app.core.db.session import get_engine, init_schema
+
+    get_settings.cache_clear()
+    get_engine.cache_clear()
+
+    app = create_app()
+    init_schema(get_engine())
+
+    store = EstimateStore(tmp_path / "estimates-root")
+    resolver = _FakeResolver()
+    arq_pool = _FakeArqPool()
+    app.dependency_overrides[get_estimate_store] = lambda: store
+    app.dependency_overrides[get_recompute_resolver] = lambda: resolver
+    app.dependency_overrides[get_arq_pool] = lambda: arq_pool
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+        headers={"X-Portal-Client": "web"},
+    ) as ac:
+        yield ac, store, resolver, arq_pool
+
+    app.dependency_overrides.clear()
+    get_settings.cache_clear()
+    get_engine.cache_clear()
+
+
+def _recompute_body(
+    *,
+    stl_hash: str = STL_HASH,
+    material_class: str = "PLA",
+    quality_tier: str = "standard",
+    printer_ref: str = "p1s",
+    spoolman_filament_ref: str | None = None,
+) -> dict:
+    body = {
+        "stl_hash": stl_hash,
+        "material_class": material_class,
+        "quality_tier": quality_tier,
+        "printer_ref": printer_ref,
+    }
+    if spoolman_filament_ref is not None:
+        body["spoolman_filament_ref"] = spoolman_filament_ref
+    return body
+
+
+@pytest.mark.asyncio
+async def test_recompute_requires_auth(recompute_seam):
+    ac, _store, resolver, arq_pool = recompute_seam
+    r = await ac.post("/api/estimates/recompute", json=_recompute_body())  # no cookie
+    assert r.status_code == 401
+    # No work on an unauthenticated request — neither resolve nor enqueue.
+    assert resolver.called is False
+    assert arq_pool.calls == []
+
+
+@pytest.mark.asyncio
+async def test_recompute_rejects_malformed_stl_hash_before_resolve_or_enqueue(recompute_seam):
+    ac, _store, resolver, arq_pool = recompute_seam
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.post("/api/estimates/recompute", json=_recompute_body(stl_hash="not-a-hash"))
+    assert r.status_code == 422
+    # Path-safety gate fires BEFORE any resolve/store/queue work (no garbage hash in a _job_id).
+    assert resolver.called is False
+    assert arq_pool.calls == []
+
+
+@pytest.mark.asyncio
+async def test_recompute_unresolvable_preset_returns_422_without_enqueue(recompute_seam):
+    ac, _store, resolver, arq_pool = recompute_seam
+    resolver.fail_reason = "unsupported_printer"  # the preset classifies as unresolvable
+
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.post("/api/estimates/recompute", json=_recompute_body())
+    assert r.status_code == 422
+    assert resolver.called is True
+    # A preset with no bundle never enqueues a job.
+    assert arq_pool.calls == []
+
+
+@pytest.mark.asyncio
+async def test_recompute_already_queued_is_idempotent_no_enqueue(recompute_seam):
+    ac, store, _resolver, arq_pool = recompute_seam
+    store.write(_queued())
+
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.post("/api/estimates/recompute", json=_recompute_body())
+    assert r.status_code == 200
+    body = r.json()
+    # The R1 self-DoS guard: a recompute already in flight does NOT re-enqueue.
+    assert body["enqueued"] is False
+    assert arq_pool.calls == []
+    # The still-servable queued estimate is returned, projected honestly.
+    assert body["estimate"]["status"] == "queued"
+    assert body["estimate"]["filament_g"] == 76.76
+
+
+@pytest.mark.asyncio
+async def test_recompute_fresh_enqueues_once_and_marks_queued(recompute_seam):
+    ac, store, _resolver, arq_pool = recompute_seam
+    store.write(_fresh())
+
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.post("/api/estimates/recompute", json=_recompute_body())
+    assert r.status_code == 200
+    body = r.json()
+    assert body["enqueued"] is True
+    # Enqueued exactly once.
+    assert len(arq_pool.calls) == 1
+    # The persisted record transitioned fresh → queued (still carrying its numbers).
+    persisted = store.read(STL_HASH, BUNDLE_HASH)
+    assert persisted is not None and persisted.status == EstimateStatus.queued
+    assert persisted.filament_g == 76.76
+    # The response reflects the queued transition, still servable.
+    assert body["estimate"]["status"] == "queued"
+    assert body["estimate"]["filament_g"] == 76.76
+
+
+@pytest.mark.asyncio
+async def test_recompute_stale_enqueues_once_and_marks_queued(recompute_seam):
+    ac, store, _resolver, arq_pool = recompute_seam
+    store.write(_stale())
+
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.post("/api/estimates/recompute", json=_recompute_body())
+    assert r.status_code == 200
+    body = r.json()
+    assert body["enqueued"] is True
+    assert len(arq_pool.calls) == 1
+    persisted = store.read(STL_HASH, BUNDLE_HASH)
+    assert persisted is not None and persisted.status == EstimateStatus.queued
+    assert body["estimate"]["status"] == "queued"
+
+
+@pytest.mark.asyncio
+async def test_recompute_absent_enqueues_without_fabricated_numbers(recompute_seam):
+    ac, store, _resolver, arq_pool = recompute_seam  # no record seeded ⇒ a miss
+
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.post("/api/estimates/recompute", json=_recompute_body())
+    assert r.status_code == 200
+    body = r.json()
+    # Enqueued so the worker can fill the absent key, but NO record is fabricated.
+    assert body["enqueued"] is True
+    assert len(arq_pool.calls) == 1
+    assert store.read(STL_HASH, BUNDLE_HASH) is None  # still a genuine miss
+    est = body["estimate"]
+    assert est["status"] == "absent"
+    assert est["time_seconds"] is None
+    assert est["filament_g"] is None
+    assert est["filament_cost"] is None
+
+
+@pytest.mark.asyncio
+async def test_recompute_failed_enqueues_without_fabricated_numbers(recompute_seam):
+    ac, store, _resolver, arq_pool = recompute_seam
+    store.write(_failed())
+
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.post("/api/estimates/recompute", json=_recompute_body())
+    assert r.status_code == 200
+    body = r.json()
+    # A failed key re-queues (worker retry) but is NOT "queued over" a good number — it stays
+    # failed in the store (mark_queued no-ops on failed) and projects honestly.
+    assert body["enqueued"] is True
+    assert len(arq_pool.calls) == 1
+    persisted = store.read(STL_HASH, BUNDLE_HASH)
+    assert persisted is not None and persisted.status == EstimateStatus.failed
+    est = body["estimate"]
+    assert est["status"] == "failed"
+    assert est["failure_reason"] == "unparseable_time"
+    assert est["time_seconds"] is None
+    assert est["filament_g"] is None
+
+
+@pytest.mark.asyncio
+async def test_recompute_uses_deterministic_story_324_enqueue_kwargs(recompute_seam):
+    ac, store, _resolver, arq_pool = recompute_seam
+    store.write(_fresh())
+
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.post("/api/estimates/recompute", json=_recompute_body())
+    assert r.status_code == 200
+    assert len(arq_pool.calls) == 1
+    args, kwargs = arq_pool.calls[0]
+    # The Story 32.4 `enqueue_recompute` plumbing — NOT re-derived here: job name, the
+    # (stl_hash, bundle_hash) 2-tuple payload, the deterministic _job_id, and the queue name.
+    assert args == (SLICE_JOB_NAME, STL_HASH, BUNDLE_HASH)
+    assert kwargs["_job_id"] == slice_job_id(STL_HASH, BUNDLE_HASH)
+    assert kwargs["_queue_name"] == SLICER_QUEUE_NAME
+
+
+@pytest.mark.asyncio
+async def test_recompute_response_carries_no_internal_field_names(recompute_seam):
+    ac, store, _resolver, _arq_pool = recompute_seam
+    store.write(_fresh())
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.post("/api/estimates/recompute", json=_recompute_body())
+    assert r.status_code == 200
+    raw = r.text
+    for internal in (
+        "settings_ids",
+        "bundle_hash",
+        "stl_hash",
+        "job_id",
+        "_job_id",
+        "_queue_name",
+        "source_snapshot_ref",
+        "spoolman_overrides_ref",
+        "filament_max_volumetric_speed",
+        "gcode",
+    ):
+        assert internal not in raw, f"internal field {internal!r} leaked into the response body"

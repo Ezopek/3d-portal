@@ -1,7 +1,7 @@
-import { AlertTriangle, FileQuestion, Loader2 } from "lucide-react";
+import { AlertTriangle, FileQuestion, Loader2, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import type { EstimateView } from "@/lib/api-types";
+import type { EstimateView, UIEstimateStatus } from "@/lib/api-types";
 import {
   formatCost,
   formatDuration,
@@ -11,6 +11,7 @@ import {
 } from "@/modules/estimates/lib/format";
 import { OverrideContextPanel } from "@/modules/estimates/components/OverrideContextPanel";
 import { formatTimeOfDay, minutesSince } from "@/modules/spools/lib/format";
+import { Button } from "@/ui/button";
 import { EmptyState } from "@/ui/custom/EmptyState";
 
 interface Props {
@@ -22,6 +23,16 @@ interface Props {
   onRetry: () => void;
   /** Injected for a deterministic soft-fail label (AC-12); defaults to wall clock. */
   now?: Date;
+  /**
+   * EST-RECOMPUTE-1 — request a guarded re-slice. When omitted, no recompute affordance is
+   * rendered (keeps the pure-display call sites unchanged). Surfaced for the absent / stale /
+   * failed states; a `queued` record is already in flight, so it shows no button.
+   */
+  onRecompute?: () => void;
+  /** The recompute mutation is in flight (button disabled + spinner). */
+  isRecomputing?: boolean;
+  /** The recompute mutation failed (a small inline, retryable error line). */
+  isRecomputeError?: boolean;
 }
 
 /**
@@ -43,8 +54,23 @@ export function EstimateDisplay({
   data,
   onRetry,
   now,
+  onRecompute,
+  isRecomputing = false,
+  isRecomputeError = false,
 }: Props) {
   const { t } = useTranslation();
+
+  // The recompute affordance, rendered only when a handler is wired (pure-display call sites
+  // pass none). Honest copy: an absent key reads "Estimate now", everything else "Recompute".
+  const recompute = (status: UIEstimateStatus) =>
+    onRecompute ? (
+      <RecomputeButton
+        status={status}
+        onRecompute={onRecompute}
+        isRecomputing={isRecomputing}
+        isRecomputeError={isRecomputeError}
+      />
+    ) : null;
 
   // 1) loading — never flash absent/failed.
   if (isPending) {
@@ -86,6 +112,7 @@ export function EstimateDisplay({
           />
         </div>
         <OverrideContextPanel context={data.override_context} />
+        {recompute("absent")}
       </div>
     );
   }
@@ -109,6 +136,7 @@ export function EstimateDisplay({
           )}
         </div>
         <OverrideContextPanel context={data.override_context} />
+        {recompute("failed")}
       </div>
     );
   }
@@ -187,6 +215,51 @@ export function EstimateDisplay({
       )}
 
       <OverrideContextPanel context={data.override_context} />
+      {/* A stale estimate is the user-driven recompute case; a queued one is already in flight
+          (no button), and a fresh one needs no recompute affordance. */}
+      {isStale && recompute("stale")}
+    </div>
+  );
+}
+
+function RecomputeButton({
+  status,
+  onRecompute,
+  isRecomputing,
+  isRecomputeError,
+}: {
+  status: UIEstimateStatus;
+  onRecompute: () => void;
+  isRecomputing: boolean;
+  isRecomputeError: boolean;
+}) {
+  const { t } = useTranslation();
+  const label =
+    status === "absent"
+      ? t("modules.estimates.recompute.action_absent")
+      : t("modules.estimates.recompute.action");
+  return (
+    <div className="flex flex-col gap-1">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="self-start"
+        disabled={isRecomputing}
+        onClick={onRecompute}
+      >
+        {isRecomputing ? (
+          <Loader2 className="size-3.5 animate-spin" aria-hidden />
+        ) : (
+          <RefreshCw className="size-3.5" aria-hidden />
+        )}
+        {isRecomputing ? t("modules.estimates.recompute.pending") : label}
+      </Button>
+      {isRecomputeError && (
+        <p role="alert" className="text-xs text-destructive">
+          {t("modules.estimates.recompute.error")}
+        </p>
+      )}
     </div>
   );
 }

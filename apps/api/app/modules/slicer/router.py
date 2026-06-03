@@ -21,7 +21,7 @@ slicer-worker overlay out of the deploy path (SW-DEPLOY-1).
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
@@ -35,8 +35,9 @@ from app.modules.slicer.estimate_read import (
     project_estimate,
 )
 from app.modules.slicer.estimate_store import EstimateStore
-from app.modules.slicer.models import MaterialClass, PrintIntentPreset, QualityTier
-from app.modules.slicer.schemas import EstimateView
+from app.modules.slicer.models import EstimateStatus, MaterialClass, PrintIntentPreset, QualityTier
+from app.modules.slicer.recompute import enqueue_recompute
+from app.modules.slicer.schemas import EstimateView, RecomputeRequest, RecomputeResponse
 from app.modules.slicer.stl_cache import validate_content_hash
 
 router = APIRouter(prefix="/api/estimates", tags=["estimates"])
@@ -60,6 +61,32 @@ def get_estimate_resolver(request: Request) -> EstimateResolver:
     """
     redis_factory = getattr(request.app.state, "redis", None)
     return SettingsEstimateResolver(redis_factory=redis_factory)
+
+
+def get_recompute_resolver(request: Request) -> EstimateResolver:
+    """The preset → ``bundle_hash`` resolver for the ENQUEUE path (EST-RECOMPUTE-1).
+
+    Same resolver seam + same ``bundle_hash`` derivation as ``get_estimate_resolver``, but
+    constructed with ``persist_bundle=True`` so a content-miss bundle is written through the
+    real ``BundleStore`` — otherwise a by-hash re-slice enqueued for a never-yet-resolved
+    bundle would classify a typed ``missing_bundle`` failure on the worker (the deliberate
+    read-vs-enqueue divergence the deferral called out). Overridable in tests via
+    ``app.dependency_overrides`` (the same ``_FakeResolver`` the read tests inject).
+    """
+    redis_factory = getattr(request.app.state, "redis", None)
+    return SettingsEstimateResolver(redis_factory=redis_factory, persist_bundle=True)
+
+
+def get_arq_pool(request: Request) -> Any:
+    """The arq pool the recompute enqueue rides (``request.app.state.arq``), as an injectable
+    dependency seam so tests can fake the queue (assert the deterministic Story 32.4 enqueue
+    kwargs) without a live Redis. A missing pool ⇒ 503 (the queue is genuinely unavailable —
+    a classified, no-internal-leak transport error, never a silent drop of the recompute).
+    """
+    arq_pool = getattr(request.app.state, "arq", None)
+    if arq_pool is None:
+        raise HTTPException(status_code=503, detail="recompute queue unavailable")
+    return arq_pool
 
 
 @router.get(
@@ -111,3 +138,76 @@ async def read_estimate(
     record = store.read(stl_hash, resolved.bundle_hash)
     override_context = build_override_context(intent, resolved.pinned_filament)
     return project_estimate(record, override_context=override_context)
+
+
+@router.post(
+    "/recompute",
+    response_model=RecomputeResponse,
+    summary="Enqueue a guarded re-slice for a preset's estimate (members + admin)",
+    description=(
+        "EST-RECOMPUTE-1 (Story 32.6 AC-1b, promoted). Resolves the preset to its "
+        "content-addressed bundle and enqueues an idempotent by-hash re-slice via the Story "
+        "32.4 enqueue helper, so the UI can (re)queue an estimate that is absent/stale/failed. "
+        "Guarded against self-DoS: a record already 'queued' is an idempotent no-op (no second "
+        "enqueue). Never fabricates numbers — an absent/failed key is returned in its honest "
+        "current state with enqueued=true. Authenticated + CSRF-gated; not public; enqueues by "
+        "hash only (no source-file hashing, no new job helper, no bulk/unbounded route)."
+    ),
+)
+async def recompute_estimate(
+    body: RecomputeRequest,
+    store: Annotated[EstimateStore, Depends(get_estimate_store)],
+    resolver: Annotated[EstimateResolver, Depends(get_recompute_resolver)],
+    arq_pool: Annotated[Any, Depends(get_arq_pool)],
+    _user_id: uuid.UUID = current_user,
+) -> RecomputeResponse:
+    # Path-safety gate (mirrors GET): reject a malformed/traversal-shaped stl_hash BEFORE any
+    # resolve/store/queue work — no work on garbage, no untrusted hash woven into a path/_job_id.
+    try:
+        validate_content_hash(body.stl_hash)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="malformed stl_hash") from exc
+
+    intent = PrintIntentPreset(
+        name=f"{body.material_class} {body.quality_tier}",
+        material_class=body.material_class,
+        quality_tier=body.quality_tier,
+        printer_ref=body.printer_ref,
+        spoolman_filament_ref=body.spoolman_filament_ref,
+    )
+
+    try:
+        resolved = await resolver.resolve_preset(intent)
+    except PresetResolveError as exc:
+        # Same classified, no-internal-leak 422 the read endpoint returns for an unresolvable
+        # preset — and the enqueue is short-circuited (no job for a preset that has no bundle).
+        raise HTTPException(status_code=422, detail="preset not resolvable") from exc
+
+    override_context = build_override_context(intent, resolved.pinned_filament)
+    record = store.read(body.stl_hash, resolved.bundle_hash)
+
+    # Idempotency / self-DoS guard (R1): a recompute already in flight ('queued') must NOT
+    # re-enqueue — return its still-servable projected estimate untouched. The Story 32.4
+    # _job_id dedupe would drop a duplicate job anyway; short-circuiting here also avoids a
+    # redundant queue round-trip and keeps enqueued=false honest.
+    if record is not None and record.status == EstimateStatus.queued:
+        return RecomputeResponse(
+            enqueued=False,
+            estimate=project_estimate(record, override_context=override_context),
+        )
+
+    # fresh / stale / failed / absent ⇒ enqueue an idempotent by-hash re-slice. Reuse the Story
+    # 32.4 helper BYTE-IDENTICALLY (its own validate_content_hash + slice_job_id + queue name);
+    # do NOT re-derive the job-id/queue constants or hash a source file here.
+    await enqueue_recompute(arq_pool, stl_hash=body.stl_hash, bundle_hash=resolved.bundle_hash)
+
+    # fresh / stale ⇒ mark queued (still SERVABLE: last numbers + a "recomputing" banner).
+    # failed ⇒ mark_queued is a no-op (returns the failed record unchanged — never "queued over"
+    # a failure); absent (miss) ⇒ mark_queued returns None (never fabricate a record). In both
+    # cases the honest current state is what we project — no fabricated numbers.
+    queued = store.mark_queued(body.stl_hash, resolved.bundle_hash)
+    result_record = queued if queued is not None else record
+    return RecomputeResponse(
+        enqueued=True,
+        estimate=project_estimate(result_record, override_context=override_context),
+    )

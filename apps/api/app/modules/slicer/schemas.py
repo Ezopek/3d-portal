@@ -65,6 +65,24 @@ class OverrideContextView(BaseModel):
     purchase_url: str | None = None
 
 
+class RecomputeRequest(BaseModel):
+    """The guarded recompute POST body (EST-RECOMPUTE-1) — the SAME preset-resolution
+    inputs the ``GET /api/estimates`` read endpoint takes, as a validated JSON body.
+
+    ``extra="forbid"`` so an unexpected field is a 422, not a silently-ignored input. The
+    ``stl_hash`` shape (64 lowercase hex) is re-validated in the handler via
+    ``validate_content_hash`` BEFORE it is woven into any resolve/store/queue path — this DTO
+    only carries it, it does not own the path-safety gate.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    stl_hash: str
+    material_class: MaterialClass
+    quality_tier: QualityTier
+    printer_ref: str
+    spoolman_filament_ref: str | None = None
+
+
 class EstimateView(BaseModel):
     """The UI-safe estimate the read endpoint returns (AC-1).
 
@@ -86,3 +104,22 @@ class EstimateView(BaseModel):
     warnings: list[WarningView] = Field(default_factory=list)
     failure_reason: EstimateFailureReason | None = None
     override_context: OverrideContextView
+
+
+class RecomputeResponse(BaseModel):
+    """The guarded recompute POST response (EST-RECOMPUTE-1).
+
+    Carries the FACT that a re-slice was enqueued ON THIS CALL (``enqueued``) plus the honest
+    projected estimate state (``estimate`` — the SAME UI-safe ``EstimateView`` the read
+    endpoint returns). ``enqueued`` is ``False`` only when the record is already ``queued`` (a
+    recompute is in flight, so the call is an idempotent no-op — the R1 self-DoS guard); it is
+    ``True`` for the ``fresh``/``stale``/``failed``/``absent`` enqueue paths.
+
+    No ``bundle_hash`` / ``job_id`` / queue-name / settings_ids / g-code crosses the wire — the
+    same FR20-PRESET-1 no-internal-leak contract as ``EstimateView`` (``enqueued`` is the only
+    addition, a plain boolean carrying no slicer internals).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    enqueued: bool
+    estimate: EstimateView

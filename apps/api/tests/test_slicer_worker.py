@@ -637,14 +637,33 @@ def test_slicer_module_mounts_only_narrow_estimates_read_router():
     assert router_path.exists()
     router_text = router_path.read_text(encoding="utf-8")
 
-    # Story 32.6 intentionally adds the first slicer HTTP surface, but it is a single
-    # authenticated read seam. Keep the old scope-fence intent: no recompute/enqueue/write
-    # API surface is mounted from the slicer module.
+    # Story 32.6 added the first slicer HTTP surface (a single authenticated GET read seam);
+    # EST-RECOMPUTE-1 adds exactly ONE more: a guarded authenticated POST /recompute. Preserve
+    # the scope-fence intent: a NARROW surface — exactly one GET + one POST, the POST reuses the
+    # Story 32.4 enqueue plumbing BYTE-IDENTICALLY (no duplicated job-id/queue constants, no
+    # source-file hashing), never writes an estimate record from the API, and mounts no bulk /
+    # unbounded route.
     assert 'APIRouter(prefix="/api/estimates"' in router_text
     assert router_text.count("@router.get") == 1
-    assert "@router.post" not in router_text
-    assert "from app.modules.slicer.recompute" not in router_text
-    assert ".enqueue" not in router_text
+    # Exactly one POST, and it is the narrow /recompute path (no bulk/unbounded variant).
+    assert router_text.count("@router.post") == 1
+    assert '"/recompute"' in router_text
+    # No bulk / unbounded fan-out surface: the Story 32.4 bulk helpers + the store's
+    # whole-subtree iterator must NOT be reachable from the API router.
+    assert "invalidate_bulk" not in router_text
+    assert "recompute_cost_only_bulk" not in router_text
+    assert "iter_all_estimates" not in router_text
+    # The POST REUSES Story 32.4 enqueue_recompute (not a re-implemented enqueue): the helper is
+    # imported + called, and the router does NOT re-derive the job-id / queue-name plumbing nor
+    # call arq directly, nor hash a source file.
+    assert "from app.modules.slicer.recompute import enqueue_recompute" in router_text
+    assert "enqueue_recompute(" in router_text
+    assert "def slice_job_id" not in router_text
+    assert "slice_job_id(" not in router_text
+    assert ".enqueue_job(" not in router_text
+    assert "populate_from_source" not in router_text
+    # The API never writes an estimate record (the worker owns the fresh terminus); status
+    # transitions go through the store's guarded mark_queued, never a direct write().
     assert "store.write" not in router_text
 
     api_router = re.compile(r"\bAPIRouter\b")

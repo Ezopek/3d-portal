@@ -139,6 +139,77 @@ describe("EstimateDisplay — AC-6 cost-only vs mapped honesty", () => {
   });
 });
 
+describe("EstimateDisplay — EST-RECOMPUTE-1 recompute affordance", () => {
+  it("renders no recompute button when no handler is wired (pure-display call sites)", () => {
+    renderDisplay({ data: view({ status: "stale" }) });
+    expect(
+      screen.queryByRole("button", { name: /recompute|estimate now/i }),
+    ).toBeNull();
+  });
+
+  it("absent shows an 'Estimate now' button that triggers the handler", () => {
+    const onRecompute = vi.fn();
+    renderDisplay({ data: view({ status: "absent" }), onRecompute });
+    const btn = screen.getByRole("button", { name: /estimate now/i });
+    fireEvent.click(btn);
+    expect(onRecompute).toHaveBeenCalledTimes(1);
+  });
+
+  it("stale shows a 'Recompute estimate' button that triggers the handler", () => {
+    const onRecompute = vi.fn();
+    renderDisplay({ data: view({ status: "stale" }), onRecompute });
+    const btn = screen.getByRole("button", { name: /recompute estimate/i });
+    fireEvent.click(btn);
+    expect(onRecompute).toHaveBeenCalledTimes(1);
+  });
+
+  it("failed shows a recompute button (retry path)", () => {
+    const onRecompute = vi.fn();
+    renderDisplay({
+      data: view({ status: "failed", failure_reason: "unparseable_time" }),
+      onRecompute,
+    });
+    fireEvent.click(screen.getByRole("button", { name: /recompute estimate/i }));
+    expect(onRecompute).toHaveBeenCalledTimes(1);
+  });
+
+  it("queued shows NO recompute button (a recompute is already in flight)", () => {
+    renderDisplay({ data: view({ status: "queued" }), onRecompute: vi.fn() });
+    expect(
+      screen.queryByRole("button", { name: /recompute|estimate now/i }),
+    ).toBeNull();
+  });
+
+  it("fresh shows NO recompute button (nothing to recompute)", () => {
+    renderDisplay({ data: view({ status: "fresh" }), onRecompute: vi.fn() });
+    expect(
+      screen.queryByRole("button", { name: /recompute|estimate now/i }),
+    ).toBeNull();
+  });
+
+  it("disables the button and shows a pending label while recomputing", () => {
+    const onRecompute = vi.fn();
+    renderDisplay({
+      data: view({ status: "stale" }),
+      onRecompute,
+      isRecomputing: true,
+    });
+    const btn = screen.getByRole("button", { name: /queuing/i });
+    expect((btn as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(btn);
+    expect(onRecompute).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a retryable error line when the recompute mutation failed", () => {
+    renderDisplay({
+      data: view({ status: "stale" }),
+      onRecompute: vi.fn(),
+      isRecomputeError: true,
+    });
+    expect(screen.getByText(/couldn't queue the recompute/i)).toBeTruthy();
+  });
+});
+
 describe("EstimateDisplay — no internal labels leak into the DOM (AC-8)", () => {
   it("renders no Orca key / settings_ids / bundle_hash / g-code text", () => {
     const { container } = renderDisplay({

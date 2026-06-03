@@ -459,3 +459,12 @@ export interface EstimateView {
   failure_reason: EstimateFailureReason | null;
   override_context: OverrideContextView;
 }
+
+// EST-RECOMPUTE-1 — the guarded POST /api/estimates/recompute response. `enqueued` is the
+// FACT that a re-slice was queued ON THIS CALL (false only when a recompute was already in
+// flight, the self-DoS guard); `estimate` is the honest projected state (the same
+// `EstimateView` the read endpoint returns — no bundle_hash / job_id / queue internals).
+export interface RecomputeResponse {
+  enqueued: boolean;
+  estimate: EstimateView;
+}

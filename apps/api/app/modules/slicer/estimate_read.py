@@ -233,21 +233,36 @@ class SettingsEstimateResolver:
     ``build_spoolman_override_provider`` use; NO second poll). It then CALLS Story 32.1
     ``resolve`` (the bundle_hash derivation is NOT re-implemented).
 
-    The ``resolve`` call may, on a content miss, build a fresh bundle, but the store is a
-    ``_ReadOnlyBundleStore`` whose ``write_bundle`` / ``write_snapshot`` are no-ops — so
-    this read endpoint NEVER mutates the real bundle-store artifacts (review blocker #1).
-    A content HIT is still served from disk; a miss just computes the ``bundle_hash``
-    in-memory without persisting it. The endpoint also never writes an ``EstimateRecord``.
+    The ``resolve`` call may, on a content miss, build a fresh bundle. For the READ path
+    (``persist_bundle=False``, the default) the store is a ``_ReadOnlyBundleStore`` whose
+    ``write_bundle`` / ``write_snapshot`` are no-ops — so ``GET /api/estimates`` NEVER mutates
+    the real bundle-store artifacts (review blocker #1). A content HIT is still served from
+    disk; a miss just computes the ``bundle_hash`` in-memory without persisting it. The read
+    endpoint also never writes an ``EstimateRecord``.
+
+    For the RECOMPUTE/enqueue path (``persist_bundle=True``) the real, WRITING ``BundleStore``
+    is used instead — the deliberate divergence the EST-RECOMPUTE-1 deferral called out: a
+    by-hash re-slice enqueued for a brand-new bundle would classify a typed ``missing_bundle``
+    failure on the worker unless the resolved bundle is persisted first, so the enqueue path
+    must let the content-miss write through (the resolve still derives the SAME ``bundle_hash``;
+    only the side-effecting persistence differs). The ``bundle_hash`` derivation + resolve
+    precedence are byte-identical between the two modes.
     """
 
-    def __init__(self, *, redis_factory: object | None) -> None:
+    def __init__(self, *, redis_factory: object | None, persist_bundle: bool = False) -> None:
         self._redis_factory = redis_factory
+        self._persist_bundle = persist_bundle
 
     async def resolve_preset(self, intent: PrintIntentPreset) -> ResolvedPreset:
         settings = get_settings()
         source = VendoredProfileSource(settings.slicer_vendored_profiles_dir)
-        # Read-only: a content miss must not append a bundle/snapshot from a GET.
-        bundle_store = _ReadOnlyBundleStore(settings.slicer_bundle_store_dir)
+        # Read path: a content miss must not append a bundle/snapshot from a GET. Recompute
+        # path: persist through the real store so the worker's by-hash load finds the bundle.
+        bundle_store: BundleStore = (
+            BundleStore(settings.slicer_bundle_store_dir)
+            if self._persist_bundle
+            else _ReadOnlyBundleStore(settings.slicer_bundle_store_dir)
+        )
 
         pinned_filament: SpoolmanFilament | None = None
         if intent.spoolman_filament_ref is not None:
