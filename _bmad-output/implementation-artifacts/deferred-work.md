@@ -256,6 +256,39 @@ Source: 3 BMAD adversarial subagent reviews (Blind Hunter, Edge-Case Hunter, Acc
 
 ---
 
+## Deferred from: STL estimate profile-availability gating — product decision (2026-06-04)
+
+Source: operator/controller product decision after runtime verification of the EST-DISPLAY-1 compact STL estimate profile selector (commit `60e4dd1 fix(catalog): compact STL estimate profile selector`). This is a **recorded product/UX decision**, not a review finding — the decision is made; the implementation is the parked bridge work below. No code is changed by this entry.
+
+### EST-TIERS-1 — gate the Catalog STL estimate selector to actually-resolvable process profiles (no 422 path)
+
+**Source:** Operator/controller product decision (2026-06-04), grounded in controller runtime + code evidence.
+
+**Where:**
+- FE: `apps/web/src/modules/estimates/components/CatalogEstimateProfileSelector.tsx` (the compact `quality_tier`-only selector) + `apps/web/src/modules/estimates/lib/preset.ts` (`QUALITY_TIERS = ["aesthetic", "standard", "strong"]`, `DEFAULT_QUALITY_TIER = "standard"`). The selector renders all three tiers as plain `<option>`s; the standalone `PrintIntentPresetSelector` shares the same `QUALITY_TIERS` source.
+- BE contract: `apps/api/app/modules/slicer/router.py:131-136` catches `PresetResolveError` from the resolver and returns **HTTP 422** `detail="preset not resolvable"` for `GET /api/estimates`; lines 138-140 read the estimate store only AFTER a successful resolve; `apps/api/app/modules/slicer/estimate_read.py:164-178` projects a store miss for a *resolvable* profile as **HTTP 200** body `status="absent"` (null numerics).
+- Vendored intents: `/data/content/slicer/vendored/intents/creality-k1-max-microswiss-hf/PLA/` on `.190` contains only `standard.json`; `aesthetic.json` and `strong.json` are absent.
+
+**Problem:** The selector exposes `aesthetic` / `standard` / `strong`, but only `standard` is vendored for the catalog printer/material identity (`creality-k1-max-microswiss-hf` · PLA). Controller live resolver smoke (`SettingsEstimateResolver(redis_factory=None)`): `standard` resolves OK (`bundle_hash=25b03be589a4…`); `aesthetic` and `strong` both raise `PresetResolveError` reason `unsupported_material_class` (the resolver maps the missing intent partial to that classified failure). Through the router that surfaces as a user-facing **HTTP 422** the moment a member picks Aesthetic or Strong. Note the contract asymmetry the decision relies on: **missing process profile → 422**, whereas a **missing/backfilled estimate for an otherwise-resolvable profile → HTTP 200 `status="absent"`** — only the former is the failing path being closed here.
+
+**Product decision (operator/controller, made — not open):**
+- The interim path is **NOT** to fake / vendor placeholder Orca intent profiles for `aesthetic` / `strong`, and **NOT** to leave selectable options that 422.
+- Implement the safe transition state: the Files/STL estimate selector must expose **only process profiles that are actually resolvable** for the selected printer/material, **or** clearly **disable** the unavailable ones without firing a failing request.
+- Preferred compact UX: **Standard selectable**; **Aesthetic / Strong may be shown but disabled** with short honest copy (e.g. "profile not imported yet") if visibility is judged useful — otherwise omit them. **No 422 / no error toast / no error path** reachable from this surface.
+- Availability must **not be hardcoded in the frontend** — add / adjust the backend contract if needed so the FE derives which profiles are resolvable for a given printer/material rather than baking the `standard`-only assumption into TS. (The `QUALITY_TIERS` constant is currently the hardcode that would have to go.)
+- This is a **bridge** until the admin profile-management panel exists (the surface that will let an operator import/manage Orca intent profiles, at which point Aesthetic/Strong become genuinely available rather than gated).
+
+**Why deferred (not built in this entry):** This entry **records the decision**; the controller task explicitly scopes to artifact capture with no application-code change, no profile vendoring, no backfill. The implementation is a follow-up quick-dev story.
+
+**Fix sketch (when promoted):**
+- BE: expose resolvable-profile availability per `(printer_ref, material_class)` so the FE can query it — e.g. a small read endpoint or an `available: bool` projection per tier — instead of the FE assuming `standard`-only. Keep `GET /api/estimates` semantics unchanged (still 422 for a genuinely unresolvable preset; the FE simply stops offering it).
+- FE: drive the `CatalogEstimateProfileSelector` options from that availability signal (replace the static `QUALITY_TIERS` map): resolvable tiers selectable; unavailable tiers either omitted or rendered `disabled` with the "profile not imported yet" copy (en + pl parity). Default stays `standard` (the EST-INGEST-1 ingest default, guaranteed resolvable). No request fires for a disabled tier.
+- This is a **visible UI change** → it must clear the **mockup / render mini-gate** before merge, plus the standard `npm run test:visual` baseline pass.
+
+**Trigger / priority:** Real should-fix product correction — a currently-reachable user-facing 422 on a member surface. Promote as a small quick-dev story now (bridge), and **fold into / supersede by the admin profile-management panel initiative** when that lands (the panel removes the gate by making the missing profiles importable). Cross-ref: EST-DISPLAY-1 spec "Decision — process-profile availability gating" section (`spec-est-display-1-filestab-estimate-chip.md`).
+
+---
+
 ## Declined / done
 
 _(none yet)_

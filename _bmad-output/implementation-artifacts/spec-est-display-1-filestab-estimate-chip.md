@@ -186,3 +186,37 @@ an input control.
   4 projects) regenerated + reran green; delta inspected (fresh + expanded, desktop-light): compact
   `Profil wyceny` selector replaces the fieldset panel, grams chip + full expanded `EstimateDisplay`
   intact. Controller owns final aggregate `check-all.sh` visual sign-off.
+
+## Decision — process-profile availability gating (product decision, no code here)
+
+> Operator/controller product decision, 2026-06-04. **Decision record only** — no application code,
+> no profile vendoring, no backfill changed by this note. Implementation is parked as EST-TIERS-1 in
+> `deferred-work.md` and is a follow-up quick-dev story. Status row NOT flipped.
+
+**Context.** The compact `CatalogEstimateProfileSelector` (above) exposes the full
+`QUALITY_TIERS = ["aesthetic", "standard", "strong"]` set (`preset.ts`), but for the catalog
+printer/material identity (`creality-k1-max-microswiss-hf` · PLA) only `standard.json` is vendored on
+`.190` (`…/vendored/intents/creality-k1-max-microswiss-hf/PLA/`). Controller live resolver smoke:
+`standard` resolves (`bundle_hash=25b03be589a4…`); `aesthetic` + `strong` raise `PresetResolveError`
+(reason `unsupported_material_class`), which `router.py:131-136` surfaces as **HTTP 422**
+`"preset not resolvable"` on `GET /api/estimates`. So a member picking Aesthetic or Strong on this
+member-visible surface currently hits a user-facing 422. (Contrast: a *resolvable* profile with no
+stored estimate is HTTP 200 `status="absent"` per `estimate_read.py:164-178` — that honest absent
+state is fine and unaffected; only the unresolvable-profile 422 is the failing path.)
+
+**Decision.**
+- Do **not** fake/vendor placeholder Orca intents for the missing tiers, and do **not** leave
+  selectable options that 422.
+- The selector must offer **only resolvable process profiles** for the active printer/material, **or**
+  render unavailable ones **disabled** with short honest copy (e.g. "profile not imported yet") when
+  visibility is useful. No 422 / no error toast / no error path from this surface.
+- Availability is **not** hardcoded in the FE: add/adjust the backend contract so the FE derives
+  resolvable tiers per `(printer_ref, material_class)` rather than baking in the `standard`-only
+  assumption (the static `QUALITY_TIERS` map is the hardcode to retire).
+- **Bridge** until the admin profile-management panel exists (which makes the missing profiles
+  importable, removing the gate).
+- Implementation is a **visible UI change** ⇒ must clear the mockup/render mini-gate + `test:visual`
+  baseline pass when built.
+
+**Where it lives.** Parked as `EST-TIERS-1` in `deferred-work.md` (full evidence, fix sketch, promote
+trigger). This section is the surface-local anchor on the spec the selector was last corrected under.
