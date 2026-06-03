@@ -31,6 +31,15 @@ export const QUALITY_TIERS: readonly QualityTier[] = [
 export const DEFAULT_MATERIAL_CLASS: MaterialClass = "PLA";
 export const DEFAULT_QUALITY_TIER: QualityTier = "standard";
 
+// because "the catalog estimate chip MUST read the SAME printer bundle EST-INGEST-1 sliced
+// against, or every read is permanently `absent`" — EST-INGEST-1 ingests catalog STL parts
+// using the backend `slicer_default_printer_ref` (apps/api/app/core/config.py:185), so the
+// FilesTab chip/panel resolve must pass this exact ref as `printer_ref`. This is the FE half
+// of that magic-constant contract; it is NOT the standalone `/estimates` demo route's "p1s"
+// placeholder. Arbitrary-until-multi-printer: replace when a printer registry / per-model
+// printer selection lands (mirrors the backend `slicer_default_printer_ref` note).
+export const CATALOG_ESTIMATE_PRINTER_REF = "creality-k1-max-microswiss-hf";
+
 /** The selector's output: a `PrintIntentPreset`-shaped object (NO Orca keys). */
 export interface PrintIntentPresetInput {
   material_class: MaterialClass;

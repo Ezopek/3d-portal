@@ -14,6 +14,14 @@ import {
   type StlFile,
 } from "@/modules/catalog/components/viewer3d";
 import { useFileIndex } from "@/modules/catalog/components/viewer3d/hooks/useFileIndex";
+import { EstimateChip } from "@/modules/estimates/components/EstimateChip";
+import { PrintIntentPresetSelector } from "@/modules/estimates/components/PrintIntentPresetSelector";
+import { RowEstimatePanel } from "@/modules/estimates/components/RowEstimatePanel";
+import {
+  CATALOG_ESTIMATE_PRINTER_REF,
+  defaultPreset,
+  type PrintIntentPresetInput,
+} from "@/modules/estimates/lib/preset";
 import { useAuth } from "@/shell/AuthContext";
 import { Button } from "@/ui/button";
 
@@ -49,6 +57,12 @@ export function FilesTab({
   const triggerRender = useTriggerRender(modelId);
   const upload = useUploadFile(modelId);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // EST-DISPLAY-1 — one GLOBAL, member-visible estimate preset feeds every STL row chip AND
+  // the expanded panel (UX §A; not per-row). Ephemeral component state (UX Q1 v1 default —
+  // resets on navigate; no persistence). Defaults to PLA · standard · no pin, the exact
+  // EST-INGEST-1 default bundle, so the first-load chip shows real numbers, not `absent`.
+  const [preset, setPreset] = useState<PrintIntentPresetInput>(defaultPreset);
 
   const stlFiles: StlFile[] = useMemo(
     () =>
@@ -162,6 +176,13 @@ export function FilesTab({
         </div>
       )}
 
+      {/* EST-DISPLAY-1 (UX §A) — member-visible GLOBAL estimate-profile selector above the
+          STL list. Read-only: it re-keys which estimate every chip/panel reads; it never
+          enqueues or recomputes. Separate from the admin render controls below. */}
+      {active === "stl" && stlFiles.length > 0 && (
+        <PrintIntentPresetSelector value={preset} onChange={setPreset} />
+      )}
+
       {isAdmin && active === "stl" && visible.length > 0 && (
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">
@@ -198,62 +219,88 @@ export function FilesTab({
             const stlFile = stlById.get(f.id);
             return (
               <li key={f.id} className="text-sm">
-                <div className="flex items-center gap-3 p-2">
-                  {isAdmin && isStl && (
-                    <input
-                      type="checkbox"
-                      aria-label={`include ${f.original_name} in renders`}
-                      checked={f.selected_for_render}
-                      disabled={setRenderSelection.isPending}
-                      onChange={(e) =>
-                        setRenderSelection.mutate({
-                          fileId: f.id,
-                          selected: e.currentTarget.checked,
-                        })
-                      }
-                    />
-                  )}
-                  {isStl && (
-                    <span className="w-6 shrink-0 font-mono text-xs text-muted-foreground">
-                      {stlIndex.positionOf(f.id)}
+                {/* Mobile (UX §Mobile notes): filename on its own line, metadata
+                    (chip · size · preview · download) reflows to a second line so the
+                    filename never truncates to zero width. On sm+ the metadata group
+                    becomes `display:contents` and the row collapses back to one line. */}
+                <div className="flex flex-col gap-1 p-2 sm:flex-row sm:items-center sm:gap-3">
+                  <div className="flex min-w-0 items-center gap-3 sm:flex-1">
+                    {isAdmin && isStl && (
+                      <input
+                        type="checkbox"
+                        aria-label={`include ${f.original_name} in renders`}
+                        checked={f.selected_for_render}
+                        disabled={setRenderSelection.isPending}
+                        onChange={(e) =>
+                          setRenderSelection.mutate({
+                            fileId: f.id,
+                            selected: e.currentTarget.checked,
+                          })
+                        }
+                      />
+                    )}
+                    {isStl && (
+                      <span className="w-6 shrink-0 font-mono text-xs text-muted-foreground">
+                        {stlIndex.positionOf(f.id)}
+                      </span>
+                    )}
+                    {/* Drop the redundant `stl` kind label inside the STL-filtered tab
+                        (UX §B); keep it for source/3mf rows. */}
+                    {!isStl && (
+                      <span className="font-mono text-xs">{f.kind}</span>
+                    )}
+                    <span className="min-w-0 flex-1 truncate">
+                      {f.original_name}
                     </span>
-                  )}
-                  <span className="font-mono text-xs">{f.kind}</span>
-                  <span className="flex-1 truncate">{f.original_name}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {fmtSize(f.size_bytes)}
-                  </span>
-                  {isStl && stlFile !== undefined && (
-                    <button
-                      type="button"
-                      aria-expanded={isExpanded}
-                      aria-controls={`viewer-row-${f.id}`}
-                      aria-label={`Toggle 3D preview for ${f.original_name}`}
-                      onClick={() =>
-                        setExpandedFileId(isExpanded ? null : f.id)
-                      }
-                      className="flex items-center gap-1 rounded px-2 py-1 text-xs text-foreground hover:bg-accent"
+                  </div>
+                  <div className="flex items-center gap-3 sm:contents">
+                    {/* EST-DISPLAY-1 (UX §B) — inline grams-only chip in a fixed scan
+                        column so grams align vertically down the list; the chip never
+                        truncates. Keyed by `f.sha256` (the stl_hash); empty ⇒ no request. */}
+                    {isStl && (
+                      <div className="flex w-20 shrink-0 justify-end">
+                        <EstimateChip
+                          stlHash={f.sha256}
+                          preset={preset}
+                          printerRef={CATALOG_ESTIMATE_PRINTER_REF}
+                        />
+                      </div>
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      {fmtSize(f.size_bytes)}
+                    </span>
+                    {isStl && stlFile !== undefined && (
+                      <button
+                        type="button"
+                        aria-expanded={isExpanded}
+                        aria-controls={`viewer-row-${f.id}`}
+                        aria-label={`Toggle 3D preview for ${f.original_name}`}
+                        onClick={() =>
+                          setExpandedFileId(isExpanded ? null : f.id)
+                        }
+                        className="flex items-center gap-1 rounded px-2 py-1 text-xs text-foreground hover:bg-accent"
+                      >
+                        {isExpanded ? (
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        ) : (
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        )}
+                        <Box className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    <a
+                      href={`/api/models/${modelId}/files/${f.id}/content?download=1`}
+                      className="flex items-center rounded px-2 py-1 text-xs text-foreground hover:bg-accent"
+                      aria-label={t("catalog.actions.download")}
                     >
-                      {isExpanded ? (
-                        <ChevronDown className="h-3.5 w-3.5" />
-                      ) : (
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      )}
-                      <Box className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                  <a
-                    href={`/api/models/${modelId}/files/${f.id}/content?download=1`}
-                    className="flex items-center rounded px-2 py-1 text-xs text-foreground hover:bg-accent"
-                    aria-label={t("catalog.actions.download")}
-                  >
-                    <Download className="size-3.5" aria-hidden />
-                  </a>
+                      <Download className="size-3.5" aria-hidden />
+                    </a>
+                  </div>
                 </div>
                 {isExpanded && stlFile !== undefined && (
                   <div
                     id={`viewer-row-${f.id}`}
-                    className="border-t border-border bg-muted/10 p-3"
+                    className="grid gap-3 border-t border-border bg-muted/10 p-3 lg:grid-cols-2"
                   >
                     <Suspense
                       fallback={<div className="text-xs">{t("viewer3d.loading_viewer")}</div>}
@@ -266,6 +313,14 @@ export function FilesTab({
                         }}
                       />
                     </Suspense>
+                    {/* EST-DISPLAY-1 (UX §C) — the full shipped EstimateDisplay beside the
+                        viewer (stacks below on mobile), bound to the SAME global preset;
+                        shares the chip's useEstimate query key ⇒ no second fetch. */}
+                    <RowEstimatePanel
+                      stlHash={f.sha256}
+                      preset={preset}
+                      printerRef={CATALOG_ESTIMATE_PRINTER_REF}
+                    />
                   </div>
                 )}
               </li>
