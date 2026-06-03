@@ -165,6 +165,19 @@ Source: Story 32.5 (Spoolman-mapped filament overrides) AC-6 / AC-9 scope fence.
 
 **Trigger / priority:** Real follow-up, **not blocking 32.5** (the dispatch primitive is the load-bearing deliverable and is fully tested). Promote when the live "Spoolman change automatically updates estimates" behavior is needed end-to-end (likely alongside or after Story 32.6's FE estimate display, which is the first surface where a stale/recomputed estimate becomes user-visible).
 
+**STATUS — reverse-index / intent-attribution HALF LANDED via SPOOL-PREQ-1 (2026-06-03, bmad-quick-dev).** The "enumerate which estimate keys depend on a given filament" half (fix-sketch option 1, the `bundle_hash → {filament_ref}` reverse index) is now built and tested on branch `feat/SPOOL-PREQ-1-spoolman-reverse-index`. Spec: `spec-spool-preq-1-spoolman-reverse-index.md`. What shipped:
+- `apps/api/app/modules/slicer/attribution_store.py` — `AttributionStore`, the THIRD append-only file-store sidecar (ref-hash fanout `<root>/attribution/<refhash[:2]>/<refhash>.json`, additive idempotent merge under the estimate-store flock + atomic-publish discipline). Keyed by the churn-stable `spoolman_filament_ref` (hashed for the path, raw ref round-tripped in the body). Persists `ref → {(PrintIntentPreset, bundle_hash)}` — portal-owned intent only, NO Orca internals / NO raw override values.
+- `apps/api/app/modules/slicer/resolver.py` — optional `attribution_sink` DI seam on `resolve()` (mirrors `override_provider`): on a successful resolve whose intent pins a `spoolman_filament_ref`, records `(ref, intent, bundle_hash)` — on BOTH the fresh-persist and exact-bundle-cache-hit branches. `None` sink or unpinned ref ⇒ byte-identical no-op (zero perturbation of existing resolve hashes/tests). `resolve_intent()` defaults to a real settings-wired store so the convenience entry point populates the index wherever it resolves.
+- `lookup_affected_keys(ref, *, attribution_store, estimate_store)` — the deterministic join SPOOL-EVT-1 calls: composes the persisted index with the EXISTING `EstimateStore.iter_all_estimates` (single pass, bundle_hash → {stl_hash}) to return, per pinning intent, an `AffectedGroup(intent, bundle_hash, affected_keys=[(stl_hash, bundle_hash)…])`.
+
+**CONCRETE REMAINING STEP for SPOOL-EVT-1 (the poll-diff event source — still deferred, the only piece left):**
+1. Hook the Init 19 poll refresh (`apps/api/app/modules/spools/service.py` `refresh_summary`, driven by the `poll_spoolman_summary` cron): keep the PREVIOUS `SpoolmanSnapshot` (the service does not retain one today — add a prior-snapshot cache, e.g. a second Redis key) and on each tick diff `filaments` keyed by `spoolman_filament_ref(f)` (the same churn-stable ref this index uses).
+2. For each changed ref, call `groups = lookup_affected_keys(changed_ref, attribution_store=…, estimate_store=…)`.
+3. For each `group` in `groups`, call `apply_spoolman_filament_change(store, arq_pool, intent=group.intent, old=old_filament, new=new_filament, source=…, bundle_store=…, orca_version=…, affected_keys=group.affected_keys)`. One call per pinning intent (each intent re-resolves against `new` internally to get its new `bundle_hash`).
+4. Pure app-side; reuses the existing Spoolman cache (no second poll). Wire the stores from settings (`AttributionStore`/`EstimateStore`/`BundleStore` on `slicer_bundle_store_dir` / `slicer_estimate_store_dir`).
+
+**Deferred perf note (carried, NOT built in SPOOL-PREQ-1):** `lookup_affected_keys` does one `iter_all_estimates` pass per changed ref — O(all estimates). If a future Orca-upgrade-scale bulk diff makes that hot, add a `bundle_hash → {stl_hash}` index written at estimate-persist time (`worker_job.slice_estimate`, where both hashes are in scope) to make the join O(bundles-for-ref). Intentionally not built now (no second index; reuse existing iteration).
+
 **SW-DEPLOY-1 reminder:** the mapped-override path enqueues a re-slice that runs on the slicer-worker overlay, so any deploy of 32.5 must follow the SW-DEPLOY-1 manual overlay rebuild + in-container import/Orca/resolve-override smoke above (the new `overrides`/`SpoolmanOverrideProvider`/`spoolman_invalidation` modules + the `SpoolmanFilament.extra` field must reach the worker image).
 
 ---
@@ -203,6 +216,24 @@ Source: Story 32.6 (frontend `PrintIntentPreset` selector + estimate display + t
 **Fix sketch (when promoted):** a dedicated ingestion story that hashes catalog STLs (reusing the existing `stl_cache`/content-hash discipline), persists the part→`stl_hash` map, and triggers the first resolve+slice — feeding real hashes into the 32.6 read seam (and EST-RECOMPUTE-1 if promoted).
 
 **Trigger / priority:** Real follow-up, **not blocking 32.6**. Promote when the live catalog-detail estimate (auto-derived per part) is needed end-to-end.
+
+---
+
+## Deferred from: SPOOL-PREQ-1 review (2026-06-03)
+
+Source: 3 BMAD adversarial subagent reviews (Blind Hunter, Edge-Case Hunter, Acceptance Auditor) of `feat/SPOOL-PREQ-1-spoolman-reverse-index`. Auditor APPROVE; the two Important edge-case findings (empty-string ref recorded; whole-intent dedup bloat) were patched in-flight (falsy-ref guard in `resolver._record_attribution`; dedup-by-`bundle_hash` in `AttributionStore.record`). One finding is parked as genuinely out of this story's scope.
+
+### SPOOL-PREQ-1-D1 — blank-field Spoolman filaments collapse toward a degenerate `spoolman_filament_ref`
+
+**Source:** Edge-Case Hunter [Important, re-scoped to defer].
+
+**Where:** `apps/api/app/modules/slicer/overrides.py:174` `spoolman_filament_ref` — `(vendor_name or "") ∥ (material or "") ∥ name`.
+
+**Problem:** A Spoolman filament with blank `vendor_name` + blank `material` yields a near-degenerate ref `"\x1f\x1f<name>"`; all-blank yields `"\x1f\x1f"`. Two distinct near-empty filaments can collapse toward the same ref bucket, which the SPOOL-PREQ-1 index (and any future SPOOL-EVT-1 diff) would then over-join. SPOOL-PREQ-1's `""`-ref guard closes the *empty-string* pin, but not the `"\x1f\x1f"` degeneracy, which originates upstream in the ref derivation.
+
+**Why deferred (not fixed in SPOOL-PREQ-1):** the ref-derivation contract is owned by `overrides.py` / Story 32.5, not by this story's reverse index. A blank-vendor+blank-material+blank-name Spoolman record is not a realistic inventory state, and guarding it belongs at the ref-derivation seam (e.g. reject/skip a blank ref in `spoolman_filament_ref`, or require a non-blank Spoolman name) — fixing it inside the attribution store would be the wrong layer. Surfaced so a future Spoolman-ingestion hardening pass can decide the upstream policy.
+
+**Trigger / priority:** Low. Promote if real Spoolman inventory ever produces blank vendor/material/name filaments, or alongside SPOOL-EVT-1 when the poll-diff first consumes real `spoolman_filament_ref`s.
 
 ---
 

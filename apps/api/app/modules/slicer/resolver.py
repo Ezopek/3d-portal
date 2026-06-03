@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Final
 
 from app.core.config import get_settings
+from app.modules.slicer.attribution_store import AttributionSink, AttributionStore
 from app.modules.slicer.bundle_store import BundleStore
 from app.modules.slicer.merge import (
     InvalidPartialError,
@@ -167,6 +168,27 @@ def _content_hash(payload: dict) -> str:
     return hashlib.new(_HASH_ALGORITHM, _canonical_json(payload).encode("utf-8")).hexdigest()
 
 
+def _record_attribution(
+    attribution_sink: AttributionSink | None,
+    intent: PrintIntentPreset,
+    bundle_hash: str,
+) -> None:
+    """SPOOL-PREQ-1 reverse-index write — DI-clean, non-breaking by default.
+
+    Records ``(spoolman_filament_ref, intent, bundle_hash)`` so a future Spoolman
+    filament change (SPOOL-EVT-1) can map the ref back to the affected estimate keys.
+    A ``None`` sink (the default — today's behavior) OR an intent with no usable pin is a
+    byte-identical no-op: resolve output is unchanged. "No usable pin" is any FALSY ref —
+    ``None`` and the empty string alike — so a degenerate ``spoolman_filament_ref=""`` pin
+    (the field has no non-blank validator) never creates a meaningless index bucket. Fired
+    on BOTH success branches (fresh persist AND exact-bundle cache hit), because a cache hit
+    is still a real pin of that ref to that bundle.
+    """
+    if attribution_sink is None or not intent.spoolman_filament_ref:
+        return
+    attribution_sink.record(intent.spoolman_filament_ref, intent, bundle_hash)
+
+
 def resolve(
     intent: PrintIntentPreset,
     *,
@@ -175,6 +197,7 @@ def resolve(
     override_provider: OverrideProvider,
     validator: CliValidator,
     orca_version: str,
+    attribution_sink: AttributionSink | None = None,
 ) -> ResolveOutcome:
     """Resolve ``intent`` to a persisted bundle, or a classified failure (AC-7).
 
@@ -190,6 +213,11 @@ def resolve(
        return it directly (idempotent; skips re-validation + re-persist).
     4. otherwise validate (required-key schema ⇒ ``invalid_partial``; CLI smoke ⇒
        ``cli_validation_failed``) then persist append-only and return success.
+
+    ``attribution_sink`` (SPOOL-PREQ-1) is an OPTIONAL reverse-index write seam mirroring
+    ``override_provider``: on a SUCCESSFUL resolve whose intent pins a
+    ``spoolman_filament_ref`` it records ``(ref, intent, bundle_hash)``. ``None`` (the
+    default) ⇒ byte-identical no-op, so every existing caller is unaffected.
     """
     # (1) unsupported material class — fail loud, before any hashing/writing.
     partials = source.intent_partials(intent)
@@ -251,6 +279,7 @@ def resolve(
     # (3) exact bundle precedence — content hit short-circuits before validation.
     existing = store.load_bundle(bundle_hash)
     if existing is not None:
+        _record_attribution(attribution_sink, intent, existing.bundle_hash)
         return ResolveSuccess(bundle=existing, triple=triple, from_cache=True)
 
     # (4a) required-key schema assertion ⇒ invalid_partial.
@@ -300,6 +329,7 @@ def resolve(
         created_at=_now_iso(),
     )
     store.write_bundle(bundle)
+    _record_attribution(attribution_sink, intent, bundle.bundle_hash)
     return ResolveSuccess(bundle=bundle, triple=triple, from_cache=False)
 
 
@@ -308,6 +338,7 @@ def resolve_intent(
     *,
     override_provider: OverrideProvider | None = None,
     validator: CliValidator | None = None,
+    attribution_sink: AttributionSink | None = None,
 ) -> ResolveOutcome:
     """Settings-wired convenience entry point (AC-12).
 
@@ -315,6 +346,12 @@ def resolve_intent(
     settings — NEVER a hard-coded bench path — and delegates to :func:`resolve`.
     Defaults to the no-op override provider + the null CLI validator (the real
     Spoolman-backed provider is Story 32.5; the real Orca validator is Story 32.2).
+
+    The SPOOL-PREQ-1 ``attribution_sink`` defaults to a real settings-wired
+    ``AttributionStore`` (sharing the bundle-store content root, owning the
+    ``attribution/`` subtree) so the reverse index is populated wherever the convenience
+    entry point resolves. Pass ``NoopAttributionSink()`` to disable, or inject a
+    test/tmp store. The write is a sidecar only — it never perturbs the resolve output.
     """
     settings = get_settings()
     return resolve(
@@ -324,4 +361,5 @@ def resolve_intent(
         override_provider=override_provider or NoopOverrideProvider(),
         validator=validator or NullCliValidator(),
         orca_version=settings.orca_version,
+        attribution_sink=attribution_sink or AttributionStore(settings.slicer_bundle_store_dir),
     )
