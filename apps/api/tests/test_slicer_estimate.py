@@ -179,6 +179,33 @@ def test_settings_ids_extracted_and_dequoted():
     }
 
 
+def test_parses_total_filament_used_g_variant_real_orca():
+    # Regression: tiny production slice emitted `total filament used [g]` rather than
+    # `filament used [g]`; the grams field is still required and should parse.
+    text = _fixture("pla_standard.gcode").replace(
+        "; filament used [g] = 76.76", "; total filament used [g] = 76.76"
+    )
+    parsed = parse_gcode_metadata(text)
+    assert isinstance(parsed, ParsedEstimate)
+    assert parsed.filament_g == pytest.approx(76.76)
+
+
+def test_parses_subsecond_duration_and_total_filament_used_g_real_orca():
+    text = "\n".join(
+        [
+            "; filament used [mm] = 0.02",
+            "; filament used [cm3] = 0.00",
+            "; total filament used [g] = 0.00",
+            "; total filament cost = 0.00",
+            "; estimated printing time (normal mode) = 0.643944s",
+        ]
+    )
+    parsed = parse_gcode_metadata(text)
+    assert isinstance(parsed, ParsedEstimate)
+    assert parsed.time_seconds == 1
+    assert parsed.filament_g == pytest.approx(0.0)
+
+
 def test_parse_is_order_independent():
     # Shuffle the metadata footer lines — the key-anchored parser must not depend on
     # ordering or on g-code body content (only the comment keys).
@@ -226,6 +253,14 @@ def test_duration_m_s_only():
 
 def test_duration_s_only():
     assert parse_duration_to_seconds("47s") == 47
+
+
+def test_duration_fractional_seconds_real_orca_tiny_slice():
+    # Real OrcaSlicer 2.3.2 can emit fractional seconds for very small/tiny slices.
+    # The persisted estimate is integer seconds, so non-zero subsecond durations round up
+    # instead of becoming a silent zero-second print.
+    assert parse_duration_to_seconds("0.643944s") == 1
+    assert parse_duration_to_seconds("1m 0.643944s") == 61
 
 
 def test_duration_with_days():

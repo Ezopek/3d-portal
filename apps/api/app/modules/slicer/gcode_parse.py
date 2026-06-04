@@ -35,14 +35,15 @@ _SECONDS_PER_HOUR = 3600
 _SECONDS_PER_MINUTE = 60
 _SECONDS_PER_SECOND = 1
 
-# OrcaSlicer duration grammar: optional d/h/m/s tokens, each a run of digits immediately
-# followed by its unit (e.g. `3h35m47s`, `8h06m05s`, `35m47s`, `47s`, `1d2h3m4s`). Real
-# Orca 2.3.2 also emits inter-token spaces (e.g. `2m 35s`, `3h 35m 47s`), so optional
-# horizontal whitespace is tolerated BETWEEN tokens — never between a number and its unit
-# (adjacency stays required, so `2 m` is still rejected). Every token is optional, so an
-# all-empty match (or any leftover chars / out-of-order / duplicate tokens) is rejected as
-# garbled below.
-_DURATION_RE = re.compile(r"^(?:(\d+)d)?[ \t]*(?:(\d+)h)?[ \t]*(?:(\d+)m)?[ \t]*(?:(\d+)s)?$")
+# OrcaSlicer duration grammar: optional d/h/m/s tokens. Day/hour/minute tokens are
+# integer-valued; the seconds token may be fractional in tiny slices (real Orca 2.3.2
+# evidence: `0.643944s`). Optional horizontal whitespace is tolerated BETWEEN tokens
+# (e.g. `2m 35s`, `3h 35m 47s`) — never between a number and its unit (adjacency stays
+# required, so `2 m` is still rejected). Every token is optional, so an all-empty match
+# (or any leftover chars / out-of-order / duplicate tokens) is rejected as garbled below.
+_DURATION_RE = re.compile(
+    r"^(?:(\d+)d)?[ \t]*(?:(\d+)h)?[ \t]*(?:(\d+)m)?[ \t]*(?:(\d+(?:\.\d+)?)s)?$"
+)
 
 
 def parse_duration_to_seconds(value: str) -> int | None:
@@ -61,12 +62,15 @@ def parse_duration_to_seconds(value: str) -> int | None:
     if days is None and hours is None and minutes is None and seconds is None:
         # Matched only because every token is optional (e.g. a bare number) — not a duration.
         return None
-    return (
+    total_seconds = (
         int(days or 0) * _SECONDS_PER_DAY
         + int(hours or 0) * _SECONDS_PER_HOUR
         + int(minutes or 0) * _SECONDS_PER_MINUTE
-        + int(seconds or 0) * _SECONDS_PER_SECOND
+        + float(seconds or 0) * _SECONDS_PER_SECOND
     )
+    # The estimate model stores integer seconds. Fractional seconds are real Orca output
+    # for tiny slices; round up so a non-zero duration is never silently truncated to 0.
+    return math.ceil(total_seconds)
 
 
 # Each metadata key token below is "the proven OrcaSlicer 2.3.2 g-code metadata footer
@@ -83,9 +87,12 @@ def _value_re(key_pattern: str) -> re.Pattern[str]:
 # silent-mode line (its `(silent mode)` breaks the `time =` adjacency).
 _TIME_NORMAL_RE = _value_re(r"estimated printing time \(normal mode\)")
 _TIME_BARE_RE = _value_re(r"estimated printing time")
-_FILAMENT_MM_RE = _value_re(r"filament used \[mm\]")
-_FILAMENT_CM3_RE = _value_re(r"filament used \[cm3\]")
-_FILAMENT_G_RE = _value_re(r"filament used \[g\]")
+# Orca footer variants observed in 2.3.2 differ by field: some use `filament used [g]`,
+# tiny/generated slices may emit `total filament used [g]`. Treat the `total ` prefix as
+# a harmless label variant for all three required usage numerics.
+_FILAMENT_MM_RE = _value_re(r"(?:total )?filament used \[mm\]")
+_FILAMENT_CM3_RE = _value_re(r"(?:total )?filament used \[cm3\]")
+_FILAMENT_G_RE = _value_re(r"(?:total )?filament used \[g\]")
 _FILAMENT_COST_RE = _value_re(r"total filament cost")
 
 # The three attribution lines (NFR20-ATTRIBUTION-1). `print_settings_id` cannot collide
