@@ -65,6 +65,9 @@ class FakeRunner:
         self._manifold_values = list(manifold) if isinstance(manifold, list) else None
         self.info_returncode = info_returncode
         self.slice_returncode = slice_returncode
+        self._slice_returncodes = (
+            list(slice_returncode) if isinstance(slice_returncode, list) else None
+        )
         self.slice_stdout = slice_stdout
         self.slice_stderr = slice_stderr
         self.write_gcode = write_gcode
@@ -104,7 +107,10 @@ class FakeRunner:
             raise subprocess.TimeoutExpired(argv, timeout_s)
         if self.write_gcode:
             (outdir / "part.gcode").write_text(f"{GCODE_BODY_MARKER}\nG1 X0 Y0\n")
-        return RunnerResult(self.slice_returncode, self.slice_stdout, self.slice_stderr)
+        slice_returncode = (
+            self._slice_returncodes.pop(0) if self._slice_returncodes else self.slice_returncode
+        )
+        return RunnerResult(slice_returncode, self.slice_stdout, self.slice_stderr)
 
 
 def _make_bundle(bundle_hash: str, *, machine: dict | None = None) -> SlicerProfileBundle:
@@ -341,6 +347,22 @@ def test_non_manifold_info_fast_fails_without_slicing_when_repair_unavailable(sl
     assert out.reason == SliceFailureReason.non_manifold
     assert out.manifold is False
     assert "slice" not in runner.calls  # without repair seam, known-bad mesh is not sliced
+
+
+def test_non_zero_exit_repairs_then_slices_repaired_temp_path(slice_env):
+    runner = FakeRunner(manifold=["yes", "yes"], slice_returncode=[1, 0], write_gcode=True)
+    repairer = FakeMeshRepairer()
+    outcome = _run(slice_env, runner=runner, mesh_repairer=repairer)
+
+    assert outcome.status == SliceStatus.warning
+    assert outcome.used_repaired_mesh is True
+    assert [p.name for p in runner.info_paths] == [
+        slice_env["cache"].read_path(slice_env["stl_hash"]).name,
+        "repaired.stl",
+    ]
+    assert runner.slice_stl is not None
+    assert runner.slice_stl.name == "repaired.stl"
+    assert repairer.calls[0][0] == slice_env["cache"].read_path(slice_env["stl_hash"])
 
 
 def test_non_manifold_info_repairs_then_slices_repaired_temp_path(slice_env):

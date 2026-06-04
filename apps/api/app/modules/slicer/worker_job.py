@@ -276,14 +276,46 @@ def _classify(
             )
 
     # (4) slice into a context-managed scratch dir; g-code discarded on block exit
-    # (AC-5 parse-and-discard) regardless of success/failure.
-    return _slice_checked_mesh(
+    # (AC-5 parse-and-discard) regardless of success/failure. Some Orca mesh
+    # failures surface as a generic non-zero slice exit instead of the explicit
+    # non-manifold info verdict, so the repair fallback is also attempted for
+    # that narrow post-slice classification.
+    primary_outcome = _slice_checked_mesh(
         bundle=bundle,
         cli=cli,
         sink=sink,
         stl_path=stl_path,
         manifold=info.manifold,
     )
+    if (
+        primary_outcome.status == SliceStatus.failed
+        and primary_outcome.reason == SliceFailureReason.non_zero_exit
+        and mesh_repairer is not None
+        and hasattr(mesh_repairer, "repair")
+    ):
+        with tempfile.TemporaryDirectory(prefix="portal-mesh-repair-") as repair_scratch:
+            repaired_stl = Path(repair_scratch) / "repaired.stl"
+            if not mesh_repairer.repair(stl_path, repaired_stl):
+                return primary_outcome
+            try:
+                repaired_info = cli.info_precheck(repaired_stl)
+            except subprocess.TimeoutExpired:
+                return SliceOutcome(status=SliceStatus.failed, reason=SliceFailureReason.timeout)
+            except OSError:
+                return SliceOutcome(
+                    status=SliceStatus.failed, reason=SliceFailureReason.launch_error
+                )
+            if repaired_info.returncode != 0 or repaired_info.manifold is False:
+                return primary_outcome
+            return _slice_checked_mesh(
+                bundle=bundle,
+                cli=cli,
+                sink=sink,
+                stl_path=repaired_stl,
+                manifold=repaired_info.manifold,
+                used_repaired_mesh=True,
+            )
+    return primary_outcome
 
 
 def run_slice_job(
