@@ -322,6 +322,10 @@ def test_admesh_repairer_decodes_non_utf8_tool_output_defensively(monkeypatch, t
     def fake_run(argv, **kwargs):
         assert kwargs["encoding"] == "utf-8"
         assert kwargs["errors"] == "replace"
+        assert "--nearby" in argv
+        assert "--fill-holes" in argv
+        assert "--normal-directions" in argv
+        assert "--normal-values" in argv
         target.write_bytes(b"solid repaired\nendsolid repaired\n")
         return subprocess.CompletedProcess(argv, 0, stdout="bad byte: \ufffd", stderr="")
 

@@ -72,7 +72,15 @@ class AdmeshRepairer:
     def repair(self, source: Path, target: Path) -> bool:
         try:
             completed = subprocess.run(
-                ["admesh", f"--write-binary-stl={target}", str(source)],
+                [
+                    "admesh",
+                    "--nearby",
+                    "--fill-holes",
+                    "--normal-directions",
+                    "--normal-values",
+                    f"--write-binary-stl={target}",
+                    str(source),
+                ],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
