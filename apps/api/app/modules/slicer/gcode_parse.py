@@ -36,9 +36,11 @@ _SECONDS_PER_MINUTE = 60
 _SECONDS_PER_SECOND = 1
 
 # OrcaSlicer duration grammar: optional d/h/m/s tokens, each a run of digits followed by
-# its unit (e.g. `3h35m47s`, `8h06m05s`, `35m47s`, `47s`, `1d2h3m4s`). Every token is
+# its unit (e.g. `3h35m47s`, `6h 54m 23s`, `35m47s`, `47s`, `1d2h3m4s`). Real Orca
+# 2.3.2 inserts spaces between tokens in production g-code, while older synthetic
+# fixtures used the compact form; both are the same duration contract. Every token is
 # optional, so an all-empty match (or any leftover chars) is rejected as garbled below.
-_DURATION_RE = re.compile(r"^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$")
+_DURATION_RE = re.compile(r"^(?:(\d+)d\s*)?(?:(\d+)h\s*)?(?:(\d+)m\s*)?(?:(\d+)s)?$")
 
 
 def parse_duration_to_seconds(value: str) -> int | None:

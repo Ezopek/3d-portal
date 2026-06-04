@@ -202,6 +202,11 @@ def test_duration_h_m_s():
     assert parse_duration_to_seconds("3h35m47s") == 3 * 3600 + 35 * 60 + 47
 
 
+def test_duration_h_m_s_with_orca_spaces():
+    # Real OrcaSlicer 2.3.2 emits spaces between duration tokens in production g-code.
+    assert parse_duration_to_seconds("6h 54m 23s") == 6 * 3600 + 54 * 60 + 23
+
+
 def test_duration_m_s_only():
     assert parse_duration_to_seconds("35m47s") == 35 * 60 + 47
 
