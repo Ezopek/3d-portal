@@ -24,7 +24,7 @@ import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import sentry_sdk
 from opentelemetry import trace
@@ -57,6 +57,30 @@ _tracer = trace.get_tracer(__name__)
 # hand-off seam). Default is a no-op discard so 32.3 slots in without reshaping this
 # module (AC-5).
 GcodeSink = Callable[[Path], None]
+_REPAIRED_MESH_WARNING = "Estimate used a repaired mesh copy; original STL unchanged."
+
+
+class MeshRepairer(Protocol):
+    """Repairs a source STL into target path without mutating the source."""
+
+    def repair(self, source: Path, target: Path) -> bool: ...
+
+
+class AdmeshRepairer:
+    """Production mesh-repair adapter used only as a non-manifold estimate fallback."""
+
+    def repair(self, source: Path, target: Path) -> bool:
+        try:
+            completed = subprocess.run(
+                ["admesh", f"--write-binary-stl={target}", str(source)],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return completed.returncode == 0 and target.exists() and target.stat().st_size > 0
 
 
 def discard_sink(gcode_path: Path) -> None:
@@ -80,6 +104,78 @@ def _find_gcode(outdir: Path) -> Path | None:
     return matches[0] if matches else None
 
 
+def _slice_checked_mesh(
+    *,
+    bundle,
+    cli: OrcaCli,
+    sink: GcodeSink,
+    stl_path: Path,
+    manifold: bool | None,
+    used_repaired_mesh: bool = False,
+) -> SliceOutcome:
+    """Slice a mesh that has already passed the cheap precheck."""
+    with tempfile.TemporaryDirectory(prefix="portal-slice-") as scratch:
+        scratch_dir = Path(scratch)
+        machine, process, filament = _materialize_triple(bundle, scratch_dir)
+        try:
+            run = cli.run_slice(
+                machine=machine,
+                process=process,
+                filament=filament,
+                stl=stl_path,
+                outdir=scratch_dir,
+            )
+        except subprocess.TimeoutExpired:
+            return SliceOutcome(
+                status=SliceStatus.failed,
+                reason=SliceFailureReason.timeout,
+                manifold=manifold,
+                used_repaired_mesh=used_repaired_mesh,
+            )
+        except OSError:
+            return SliceOutcome(
+                status=SliceStatus.failed,
+                reason=SliceFailureReason.launch_error,
+                manifold=manifold,
+                used_repaired_mesh=used_repaired_mesh,
+            )
+
+        if run.returncode != 0:
+            reason = (
+                SliceFailureReason.cli_rejected_profile
+                if is_profile_rejection(run.stderr)
+                else SliceFailureReason.non_zero_exit
+            )
+            return SliceOutcome(
+                status=SliceStatus.failed,
+                reason=reason,
+                manifold=manifold,
+                used_repaired_mesh=used_repaired_mesh,
+            )
+
+        gcode = _find_gcode(scratch_dir)
+        if gcode is None:
+            return SliceOutcome(
+                status=SliceStatus.failed,
+                reason=SliceFailureReason.missing_gcode,
+                manifold=manifold,
+                used_repaired_mesh=used_repaired_mesh,
+            )
+
+        sink(gcode)
+        warnings = [SliceWarning(message=m) for m in parse_slice_warnings(run.stdout, run.stderr)]
+        if used_repaired_mesh:
+            warnings.append(SliceWarning(message=_REPAIRED_MESH_WARNING))
+        status = SliceStatus.warning if warnings else SliceStatus.ok
+        return SliceOutcome(
+            status=status,
+            warnings=warnings,
+            manifold=manifold,
+            gcode_temp_ref=str(gcode),
+            used_repaired_mesh=used_repaired_mesh,
+        )
+
+
 def _classify(
     *,
     stl_hash: str,
@@ -88,6 +184,7 @@ def _classify(
     bundle_store: BundleStore,
     cli: OrcaCli,
     sink: GcodeSink,
+    mesh_repairer: MeshRepairer | None = None,
 ) -> SliceOutcome:
     """Run the slice pipeline and return the classified outcome (no timing/identity)."""
     # (1) bundle — a miss is an integrity fault (the resolver should have persisted
@@ -129,69 +226,54 @@ def _classify(
             manifold=info.manifold,
         )
     if info.manifold is False:
-        return SliceOutcome(
-            status=SliceStatus.failed, reason=SliceFailureReason.non_manifold, manifold=False
-        )
+        if mesh_repairer is None:
+            return SliceOutcome(
+                status=SliceStatus.failed, reason=SliceFailureReason.non_manifold, manifold=False
+            )
+        with tempfile.TemporaryDirectory(prefix="portal-mesh-repair-") as repair_scratch:
+            repaired_stl = Path(repair_scratch) / "repaired.stl"
+            if not mesh_repairer.repair(stl_path, repaired_stl):
+                return SliceOutcome(
+                    status=SliceStatus.failed,
+                    reason=SliceFailureReason.non_manifold,
+                    manifold=False,
+                )
+            try:
+                repaired_info = cli.info_precheck(repaired_stl)
+            except subprocess.TimeoutExpired:
+                return SliceOutcome(status=SliceStatus.failed, reason=SliceFailureReason.timeout)
+            except OSError:
+                return SliceOutcome(
+                    status=SliceStatus.failed, reason=SliceFailureReason.launch_error
+                )
+            if repaired_info.returncode != 0 or repaired_info.manifold is False:
+                return SliceOutcome(
+                    status=SliceStatus.failed,
+                    reason=(
+                        SliceFailureReason.info_precheck_failed
+                        if repaired_info.returncode != 0
+                        else SliceFailureReason.non_manifold
+                    ),
+                    manifold=repaired_info.manifold,
+                )
+            return _slice_checked_mesh(
+                bundle=bundle,
+                cli=cli,
+                sink=sink,
+                stl_path=repaired_stl,
+                manifold=repaired_info.manifold,
+                used_repaired_mesh=True,
+            )
 
     # (4) slice into a context-managed scratch dir; g-code discarded on block exit
     # (AC-5 parse-and-discard) regardless of success/failure.
-    with tempfile.TemporaryDirectory(prefix="portal-slice-") as scratch:
-        scratch_dir = Path(scratch)
-        machine, process, filament = _materialize_triple(bundle, scratch_dir)
-        try:
-            run = cli.run_slice(
-                machine=machine,
-                process=process,
-                filament=filament,
-                stl=stl_path,
-                outdir=scratch_dir,
-            )
-        except subprocess.TimeoutExpired:
-            return SliceOutcome(
-                status=SliceStatus.failed,
-                reason=SliceFailureReason.timeout,
-                manifold=info.manifold,
-            )
-        except OSError:
-            # Orca could not be launched for the slice pass (review fix #3).
-            return SliceOutcome(
-                status=SliceStatus.failed,
-                reason=SliceFailureReason.launch_error,
-                manifold=info.manifold,
-            )
-
-        if run.returncode != 0:
-            # cli_rejected_profile is defense-in-depth (should be caught at 32.1
-            # resolve-time validation); everything else is a generic non_zero_exit.
-            reason = (
-                SliceFailureReason.cli_rejected_profile
-                if is_profile_rejection(run.stderr)
-                else SliceFailureReason.non_zero_exit
-            )
-            return SliceOutcome(status=SliceStatus.failed, reason=reason, manifold=info.manifold)
-
-        # exit 0 but NO g-code ⇒ there is no parser input. Returning ok/warning here
-        # would be a plausible-but-wrong silent zero downstream (FR20-FAILURE-1) — so
-        # classify a typed missing_gcode failure instead (review fix #1, BLOCKER). The
-        # scratch dir (and any partial g-code) is still discarded at block exit (AC-5).
-        gcode = _find_gcode(scratch_dir)
-        if gcode is None:
-            return SliceOutcome(
-                status=SliceStatus.failed,
-                reason=SliceFailureReason.missing_gcode,
-                manifold=info.manifold,
-            )
-
-        # success: hand the temp g-code to the parser sink (Story 32.3), then discard.
-        sink(gcode)
-        warnings = [SliceWarning(message=m) for m in parse_slice_warnings(run.stdout, run.stderr)]
-        status = SliceStatus.warning if warnings else SliceStatus.ok
-        return SliceOutcome(
-            status=status,
-            warnings=warnings,
-            manifold=info.manifold,
-            gcode_temp_ref=str(gcode),
-        )
+    return _slice_checked_mesh(
+        bundle=bundle,
+        cli=cli,
+        sink=sink,
+        stl_path=stl_path,
+        manifold=info.manifold,
+    )
 
 
 def run_slice_job(
@@ -203,6 +285,7 @@ def run_slice_job(
     cli: OrcaCli,
     orca_version: str,
     gcode_sink: GcodeSink | None = None,
+    mesh_repairer: MeshRepairer | None = None,
 ) -> SliceOutcome:
     """Run one slice job and return the classified, instrumented :class:`SliceOutcome`.
 
@@ -232,6 +315,7 @@ def run_slice_job(
             bundle_store=bundle_store,
             cli=cli,
             sink=sink,
+            mesh_repairer=mesh_repairer,
         )
         outcome = outcome.model_copy(
             update={
@@ -246,6 +330,7 @@ def run_slice_job(
         span.set_attribute("slicer.warning_count", len(outcome.warnings))
         if outcome.manifold is not None:
             span.set_attribute("slicer.manifold", outcome.manifold)
+        span.set_attribute("slicer.used_repaired_mesh", outcome.used_repaired_mesh)
         if outcome.reason is not None:
             span.set_attribute("slicer.failure_reason", outcome.reason.value)
 
@@ -277,6 +362,7 @@ def _emit_completion(outcome: SliceOutcome) -> None:
         "labels.orca_version": outcome.orca_version,
         "labels.slice_wall_ms": outcome.slice_wall_ms,
         "labels.warning_count": len(outcome.warnings),
+        "labels.used_repaired_mesh": outcome.used_repaired_mesh,
     }
     if outcome.manifold is not None:
         extra["labels.manifold"] = outcome.manifold
@@ -301,11 +387,16 @@ def _assemble_estimate_record(
     """
     if outcome.status == SliceStatus.failed:
         return None
+    warnings = list(outcome.warnings)
+    has_repair_warning = any(w.message == _REPAIRED_MESH_WARNING for w in warnings)
+    if outcome.used_repaired_mesh and not has_repair_warning:
+        warnings.append(SliceWarning(message=_REPAIRED_MESH_WARNING))
     key = dict(
         stl_hash=outcome.stl_hash,
         bundle_hash=outcome.bundle_hash,
         orca_version=outcome.orca_version,
-        warnings=outcome.warnings,
+        warnings=warnings,
+        used_repaired_mesh=outcome.used_repaired_mesh,
         computed_at=_now_iso(),
     )
     if isinstance(parse_result, ParsedEstimate):
@@ -383,6 +474,7 @@ async def slice_estimate(ctx: dict[str, Any], stl_hash: str, bundle_hash: str) -
         cli=ctx["cli"],
         orca_version=ctx["orca_version"],
         gcode_sink=sink,
+        mesh_repairer=ctx.get("mesh_repairer", AdmeshRepairer()),
     )
     estimate_store: EstimateStore | None = ctx.get("estimate_store")
     if estimate_store is not None:
@@ -397,6 +489,7 @@ async def slice_estimate(ctx: dict[str, Any], stl_hash: str, bundle_hash: str) -
                 span.set_attribute("slicer.bundle_hash", record.bundle_hash)
                 span.set_attribute("slicer.orca_version", record.orca_version)
                 span.set_attribute("slicer.estimate_status", record.status.value)
+                span.set_attribute("slicer.used_repaired_mesh", record.used_repaired_mesh)
                 if record.reason is not None:
                     span.set_attribute("slicer.estimate_failure_reason", record.reason.value)
                 estimate_store.write(record)

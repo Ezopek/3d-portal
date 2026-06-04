@@ -98,6 +98,7 @@ def test_estimate_failure_reason_extends_not_reshapes_sliceoutcome():
         "stl_hash",
         "bundle_hash",
         "orca_version",
+        "used_repaired_mesh",
     }
 
 
@@ -559,10 +560,11 @@ class _StubStore:
         return None
 
 
-def _ok_outcome(status=SliceStatus.ok, warnings=None):
+def _ok_outcome(status=SliceStatus.ok, warnings=None, *, used_repaired_mesh: bool = False):
     return SliceOutcome(
         status=status,
         warnings=warnings or [],
+        used_repaired_mesh=used_repaired_mesh,
         manifold=True,
         stl_hash=STL_HASH,
         bundle_hash=BUNDLE_HASH,
@@ -612,6 +614,18 @@ def test_slice_estimate_persists_fresh_record_on_ok(monkeypatch):
     assert rec.time_seconds == 3 * 3600 + 35 * 60 + 47
 
 
+def test_slice_estimate_persists_repaired_mesh_provenance_warning(monkeypatch):
+    store = _run_slice_estimate(
+        monkeypatch,
+        outcome=_ok_outcome(used_repaired_mesh=True),
+        gcode_text=_fixture("pla_standard.gcode"),
+    )
+    rec = store.records[(STL_HASH, BUNDLE_HASH)]
+    assert rec.status == EstimateStatus.fresh
+    assert rec.used_repaired_mesh is True
+    assert any("repaired mesh copy" in warning.message for warning in rec.warnings)
+
+
 def test_slice_estimate_persists_failed_record_on_parse_failure(monkeypatch):
     store = _run_slice_estimate(
         monkeypatch, outcome=_ok_outcome(), gcode_text=_fixture("garbled.gcode")
@@ -646,6 +660,7 @@ def test_classify_and_run_slice_job_orchestration_unreshaped():
         "bundle_store",
         "cli",
         "sink",
+        "mesh_repairer",
     ]
     run_sig = inspect.signature(worker_job_module.run_slice_job)
     assert list(run_sig.parameters) == [
@@ -656,9 +671,10 @@ def test_classify_and_run_slice_job_orchestration_unreshaped():
         "cli",
         "orca_version",
         "gcode_sink",
+        "mesh_repairer",
     ]
-    source = inspect.getsource(worker_job_module._classify)
-    assert "sink(gcode)" in source  # the 32.2 sink hand-off call site is intact
+    source = inspect.getsource(worker_job_module._slice_checked_mesh)
+    assert "sink(gcode)" in source  # the parser hand-off stays in the shared slice helper
 
 
 # === AC-9: settings slot + grep invariant ====================================

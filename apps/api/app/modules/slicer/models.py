@@ -235,6 +235,9 @@ class SliceOutcome(BaseModel):
     stl_hash: str | None = None
     bundle_hash: str | None = None
     orca_version: str | None = None
+    # True when the estimate was computed from a temporary repaired mesh copy. The
+    # content-addressed original STL remains unchanged.
+    used_repaired_mesh: bool = False
 
 
 # --- Story 32.3 (Decision AJ) — typed estimate + parse-failure taxonomy ---------
@@ -304,6 +307,9 @@ class EstimateRecord(BaseModel):
     # attribution but do not fail the record (AC-4).
     settings_ids: dict[str, str] = Field(default_factory=dict)
     warnings: list[SliceWarning] = Field(default_factory=list)
+    # Provenance flag for Option A repair fallback: estimate numerics came from a
+    # temporary repaired STL copy, not from mutating the catalog/content-cache source.
+    used_repaired_mesh: bool = False
     status: EstimateStatus
     reason: EstimateFailureReason | None = None
     computed_at: str

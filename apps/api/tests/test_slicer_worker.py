@@ -62,6 +62,7 @@ class FakeRunner:
         slice_oserror: BaseException | None = None,
     ) -> None:
         self.manifold = manifold
+        self._manifold_values = list(manifold) if isinstance(manifold, list) else None
         self.info_returncode = info_returncode
         self.slice_returncode = slice_returncode
         self.slice_stdout = slice_stdout
@@ -74,16 +75,20 @@ class FakeRunner:
         self.calls: list[str] = []
         self.captured_outdir: Path | None = None
         self.captured_machine: str | None = None
+        self.info_paths: list[Path] = []
+        self.slice_stl: Path | None = None
 
     def __call__(self, argv: list[str], timeout_s: float) -> RunnerResult:
         if "--info" in argv:
             self.calls.append("info")
+            self.info_paths.append(Path(argv[-1]))
             if self.info_oserror is not None:
                 raise self.info_oserror
             if self.info_timeout:
                 raise subprocess.TimeoutExpired(argv, timeout_s)
+            manifold = self._manifold_values.pop(0) if self._manifold_values else self.manifold
             return RunnerResult(
-                self.info_returncode, f"facets: 1200\nmanifold: {self.manifold}\nvolume: 42", ""
+                self.info_returncode, f"facets: 1200\nmanifold: {manifold}\nvolume: 42", ""
             )
         # slice
         self.calls.append("slice")
@@ -94,6 +99,7 @@ class FakeRunner:
         self.captured_machine = machine_path.read_text()
         outdir = Path(argv[argv.index("--outputdir") + 1])
         self.captured_outdir = outdir
+        self.slice_stl = Path(argv[-1])
         if self.slice_timeout:
             raise subprocess.TimeoutExpired(argv, timeout_s)
         if self.write_gcode:
@@ -132,7 +138,22 @@ def slice_env(tmp_path):
     }
 
 
-def _run(slice_env, runner: FakeRunner, *, gcode_sink=None) -> SliceOutcome:
+class FakeMeshRepairer:
+    def __init__(self, *, succeeds: bool = True) -> None:
+        self.succeeds = succeeds
+        self.calls: list[tuple[Path, Path]] = []
+        self.written_bytes: bytes | None = None
+
+    def repair(self, source: Path, target: Path) -> bool:
+        self.calls.append((source, target))
+        if not self.succeeds:
+            return False
+        self.written_bytes = source.read_bytes() + b"\nrepaired-copy\n"
+        target.write_bytes(self.written_bytes)
+        return True
+
+
+def _run(slice_env, runner: FakeRunner, *, gcode_sink=None, mesh_repairer=None) -> SliceOutcome:
     cli = OrcaCli(orca_bin="/opt/orca/orca", runner=runner, info_timeout_s=60, slice_timeout_s=900)
     return run_slice_job(
         stl_hash=slice_env["stl_hash"],
@@ -142,6 +163,7 @@ def _run(slice_env, runner: FakeRunner, *, gcode_sink=None) -> SliceOutcome:
         cli=cli,
         orca_version="2.3.2",
         gcode_sink=gcode_sink,
+        mesh_repairer=mesh_repairer,
     )
 
 
@@ -290,13 +312,54 @@ def test_info_precheck_runs_before_slice(slice_env):
     assert runner.calls == ["info", "slice"]  # info STRICTLY before slice
 
 
-def test_non_manifold_info_fast_fails_without_slicing(slice_env):
+def test_non_manifold_info_fast_fails_without_slicing_when_repair_unavailable(slice_env):
     runner = FakeRunner(manifold="no")
-    out = _run(slice_env, runner)
+    out = _run(slice_env, runner, mesh_repairer=None)
     assert out.status == SliceStatus.failed
     assert out.reason == SliceFailureReason.non_manifold
     assert out.manifold is False
-    assert "slice" not in runner.calls  # the minutes-long slice is NEVER attempted
+    assert "slice" not in runner.calls  # without repair seam, known-bad mesh is not sliced
+
+
+def test_non_manifold_info_repairs_then_slices_repaired_temp_path(slice_env):
+    runner = FakeRunner(manifold=["no", "yes"])
+    repairer = FakeMeshRepairer()
+    original = slice_env["cache"].read_path(slice_env["stl_hash"])
+
+    out = _run(slice_env, runner, mesh_repairer=repairer)
+
+    assert out.status != SliceStatus.failed
+    assert out.used_repaired_mesh is True
+    assert runner.calls == ["info", "info", "slice"]
+    assert repairer.calls[0][0] == original
+    assert repairer.calls[0][1].name == "repaired.stl"
+    assert runner.info_paths == [original, repairer.calls[0][1]]
+    assert runner.slice_stl == repairer.calls[0][1]
+
+
+def test_failed_non_manifold_repair_keeps_non_manifold_failure(slice_env):
+    runner = FakeRunner(manifold="no")
+    repairer = FakeMeshRepairer(succeeds=False)
+
+    out = _run(slice_env, runner, mesh_repairer=repairer)
+
+    assert out.status == SliceStatus.failed
+    assert out.reason == SliceFailureReason.non_manifold
+    assert out.used_repaired_mesh is False
+    assert runner.calls == ["info"]
+
+
+def test_non_manifold_repair_does_not_overwrite_original_stl(slice_env):
+    runner = FakeRunner(manifold=["no", "yes"])
+    repairer = FakeMeshRepairer()
+    original = slice_env["cache"].read_path(slice_env["stl_hash"])
+    before = original.read_bytes()
+
+    out = _run(slice_env, runner, mesh_repairer=repairer)
+
+    assert out.status != SliceStatus.failed
+    assert original.read_bytes() == before
+    assert repairer.written_bytes != before
 
 
 # --- AC-5: temp g-code emit + parse-and-discard + 32.3 sink seam ---------------
@@ -488,7 +551,7 @@ def test_uppercase_hash_is_rejected_as_malformed(slice_env):
 @pytest.mark.parametrize(
     "runner_kwargs,override",
     [
-        ({"manifold": "no"}, {}),
+        ({"manifold": "no"}, {"mesh_repairer": None}),
         ({"info_returncode": 2}, {}),
         ({"slice_returncode": 1, "slice_stderr": "boom"}, {}),
         ({"slice_returncode": 1, "slice_stderr": "failed to load"}, {}),
@@ -502,8 +565,9 @@ def test_uppercase_hash_is_rejected_as_malformed(slice_env):
     ],
 )
 def test_failure_never_returns_silent_zero(slice_env, runner_kwargs, override):
+    mesh_repairer = override.pop("mesh_repairer", object())
     slice_env.update(override)
-    out = _run(slice_env, FakeRunner(**runner_kwargs))
+    out = _run(slice_env, FakeRunner(**runner_kwargs), mesh_repairer=mesh_repairer)
     assert isinstance(out, SliceOutcome)
     assert out.status == SliceStatus.failed
     assert out.reason is not None  # a machine-readable reason ALWAYS accompanies failure

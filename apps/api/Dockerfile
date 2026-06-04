@@ -8,7 +8,7 @@ WORKDIR /app
 # pattern (workers/render/Dockerfile is built with the same context).
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential libffi-dev && \
+        admesh build-essential libffi-dev && \
     rm -rf /var/lib/apt/lists/*
 
 COPY apps/api/pyproject.toml ./
