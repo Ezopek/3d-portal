@@ -312,6 +312,24 @@ def test_info_precheck_runs_before_slice(slice_env):
     assert runner.calls == ["info", "slice"]  # info STRICTLY before slice
 
 
+def test_admesh_repairer_decodes_non_utf8_tool_output_defensively(monkeypatch, tmp_path):
+    from app.modules.slicer import worker_job as worker_job_module
+
+    source = tmp_path / "source.stl"
+    target = tmp_path / "target.stl"
+    source.write_bytes(b"solid mesh\nendsolid mesh\n")
+
+    def fake_run(argv, **kwargs):
+        assert kwargs["encoding"] == "utf-8"
+        assert kwargs["errors"] == "replace"
+        target.write_bytes(b"solid repaired\nendsolid repaired\n")
+        return subprocess.CompletedProcess(argv, 0, stdout="bad byte: \ufffd", stderr="")
+
+    monkeypatch.setattr(worker_job_module.subprocess, "run", fake_run)
+
+    assert worker_job_module.AdmeshRepairer().repair(source, target) is True
+
+
 def test_non_manifold_info_fast_fails_without_slicing_when_repair_unavailable(slice_env):
     runner = FakeRunner(manifold="no")
     out = _run(slice_env, runner, mesh_repairer=None)
