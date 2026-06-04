@@ -83,6 +83,31 @@ class RecomputeRequest(BaseModel):
     spoolman_filament_ref: str | None = None
 
 
+class QualityTierAvailability(BaseModel):
+    """A UI-safe availability projection for one portal quality tier.
+
+    EST-TIERS-1 uses this bridge contract so the frontend can render only tiers whose
+    process profile is currently resolvable for ``(printer_ref, material_class)`` without
+    probing ``GET /api/estimates`` and turning missing vendored profiles into a user-facing
+    422. ``reason`` is intentionally short and generic — it carries no filesystem path or
+    Orca internals.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    quality_tier: QualityTier
+    available: bool
+    reason: str | None = None
+
+
+class QualityTierAvailabilityResponse(BaseModel):
+    """Resolvable quality-tier set for one printer/material pair (EST-TIERS-1)."""
+
+    model_config = ConfigDict(extra="forbid")
+    printer_ref: str
+    material_class: MaterialClass
+    tiers: list[QualityTierAvailability]
+
+
 class EstimateView(BaseModel):
     """The UI-safe estimate the read endpoint returns (AC-1).
 

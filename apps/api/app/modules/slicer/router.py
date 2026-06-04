@@ -37,10 +37,18 @@ from app.modules.slicer.estimate_read import (
 from app.modules.slicer.estimate_store import EstimateStore
 from app.modules.slicer.models import EstimateStatus, MaterialClass, PrintIntentPreset, QualityTier
 from app.modules.slicer.recompute import enqueue_recompute
-from app.modules.slicer.schemas import EstimateView, RecomputeRequest, RecomputeResponse
+from app.modules.slicer.schemas import (
+    EstimateView,
+    QualityTierAvailability,
+    QualityTierAvailabilityResponse,
+    RecomputeRequest,
+    RecomputeResponse,
+)
 from app.modules.slicer.stl_cache import validate_content_hash
 
 router = APIRouter(prefix="/api/estimates", tags=["estimates"])
+
+QUALITY_TIER_ORDER: tuple[QualityTier, ...] = ("aesthetic", "standard", "strong")
 
 
 def get_estimate_store() -> EstimateStore:
@@ -87,6 +95,52 @@ def get_arq_pool(request: Request) -> Any:
     if arq_pool is None:
         raise HTTPException(status_code=503, detail="recompute queue unavailable")
     return arq_pool
+
+
+@router.get(
+    "/quality-tiers",
+    response_model=QualityTierAvailabilityResponse,
+    summary="List resolvable estimate quality tiers for one printer/material pair",
+    description=(
+        "EST-TIERS-1 bridge contract. Resolves each portal quality tier for the given "
+        "(printer_ref, material_class) and reports which tiers are actually available. "
+        "This lets the Files/STL selector disable missing profiles before a member can "
+        "send an estimate read/recompute request that would otherwise 422."
+    ),
+)
+async def read_quality_tier_availability(
+    material_class: Annotated[MaterialClass, Query()],
+    printer_ref: Annotated[str, Query(description="Portal printer identity (resolve input)")],
+    resolver: Annotated[EstimateResolver, Depends(get_estimate_resolver)],
+    _user_id: uuid.UUID = current_user,
+) -> QualityTierAvailabilityResponse:
+    tiers: list[QualityTierAvailability] = []
+    for quality_tier in QUALITY_TIER_ORDER:
+        intent = PrintIntentPreset(
+            name=f"{material_class} {quality_tier}",
+            material_class=material_class,
+            quality_tier=quality_tier,
+            printer_ref=printer_ref,
+            spoolman_filament_ref=None,
+        )
+        try:
+            await resolver.resolve_preset(intent)
+        except PresetResolveError:
+            tiers.append(
+                QualityTierAvailability(
+                    quality_tier=quality_tier,
+                    available=False,
+                    reason="profile_not_imported",
+                )
+            )
+        else:
+            tiers.append(QualityTierAvailability(quality_tier=quality_tier, available=True))
+
+    return QualityTierAvailabilityResponse(
+        printer_ref=printer_ref,
+        material_class=material_class,
+        tiers=tiers,
+    )
 
 
 @router.get(

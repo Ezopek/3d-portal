@@ -576,6 +576,7 @@
   "modules.estimates.selector.material_class_label": "Materiał",
   "modules.estimates.selector.quality_tier_label": "Jakość",
   "modules.estimates.selector.profile_label": "Profil wyceny",
+  "modules.estimates.selector.profile_unavailable_option": "{{profile}} — profil niezaimportowany",
   "modules.estimates.selector.spool_pin_label": "Przypięty filament (opcjonalnie)",
   "modules.estimates.selector.spool_pin_none": "Bez przypięcia (domyślny dla materiału)",
   "modules.estimates.quality.aesthetic": "Estetyczna",

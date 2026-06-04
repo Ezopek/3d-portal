@@ -638,13 +638,17 @@ def test_slicer_module_mounts_only_narrow_estimates_read_router():
     router_text = router_path.read_text(encoding="utf-8")
 
     # Story 32.6 added the first slicer HTTP surface (a single authenticated GET read seam);
-    # EST-RECOMPUTE-1 adds exactly ONE more: a guarded authenticated POST /recompute. Preserve
-    # the scope-fence intent: a NARROW surface — exactly one GET + one POST, the POST reuses the
-    # Story 32.4 enqueue plumbing BYTE-IDENTICALLY (no duplicated job-id/queue constants, no
-    # source-file hashing), never writes an estimate record from the API, and mounts no bulk /
-    # unbounded route.
+    # EST-RECOMPUTE-1 added a guarded authenticated POST /recompute; EST-TIERS-1 adds exactly ONE
+    # more narrow authenticated GET (/quality-tiers — the tier-availability bridge read that lets
+    # the selector disable unresolvable profiles before a member can 422 an estimate read). Preserve
+    # the scope-fence intent: a NARROW surface — exactly TWO GETs (quality-tier availability +
+    # estimate read) and ONE POST (guarded recompute). The POST reuses the Story 32.4 enqueue
+    # plumbing BYTE-IDENTICALLY (no duplicated job-id/queue constants, no source-file hashing),
+    # never writes an estimate record from the API, and mounts no bulk / unbounded write route.
     assert 'APIRouter(prefix="/api/estimates"' in router_text
-    assert router_text.count("@router.get") == 1
+    assert router_text.count("@router.get") == 2
+    # The added GET is the narrow tier-availability read (no bulk/unbounded variant).
+    assert '"/quality-tiers"' in router_text
     # Exactly one POST, and it is the narrow /recompute path (no bulk/unbounded variant).
     assert router_text.count("@router.post") == 1
     assert '"/recompute"' in router_text

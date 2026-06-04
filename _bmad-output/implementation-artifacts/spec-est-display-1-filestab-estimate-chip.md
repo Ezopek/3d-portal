@@ -220,3 +220,39 @@ state is fine and unaffected; only the unresolvable-profile 422 is the failing p
 
 **Where it lives.** Parked as `EST-TIERS-1` in `deferred-work.md` (full evidence, fix sketch, promote
 trigger). This section is the surface-local anchor on the spec the selector was last corrected under.
+
+## Implementation note — EST-TIERS-1 quality-tier availability bridge
+
+> **STATUS: IMPLEMENTED via `bmad-quick-dev` (2026-06-04), pending controller review / full gate / merge / deploy.**
+> Promoted from the recorded product decision in `deferred-work.md` and built on branch
+> `fix/EST-TIERS-1-quality-tier-availability`. The earlier exploratory draft was inspected and **adopted
+> with one correctness fix** (fail-open availability — see below) through the quick-dev flow; it is no
+> longer a non-authoritative draft. The chosen UI direction (keep unavailable tiers visible but disabled
+> with short honest copy, preserving discoverability for future admin-imported profiles) is rendered in
+> `.hermes/sketches/t_41d3aef1/quality-tier-availability-disabled.html` and covered by a deferred-baseline
+> Playwright case (`filestab-estimate-tiers-disabled.png`). Full `check-all.sh` / `test:visual` baseline
+> generation + commit/merge/deploy remain controller-owned. Full closeout: `deferred-work.md` EST-TIERS-1
+> STATUS section.
+
+**Backend contract.** `GET /api/estimates/quality-tiers?material_class=...&printer_ref=...` returns one
+availability row per portal quality tier, resolving each tier through the same `resolve_preset` resolver
+seam as `GET /api/estimates`; a `PresetResolveError` becomes a UI-safe `{ quality_tier, available: false,
+reason: "profile_not_imported" }` row (no path / Orca leak) instead of a user-triggered estimate-read 422.
+Direct `GET /api/estimates` / `POST /api/estimates/recompute` semantics are unchanged: genuinely
+unresolvable presets still return HTTP 422, and resolvable store misses still return HTTP 200
+`status="absent"`. The endpoint is authenticated and not public.
+
+**Frontend bridge.** `FilesTab` asks the availability contract for the catalog printer/material (via the
+`useQualityTierAvailability` hook, 5-min `staleTime`) and passes it to `CatalogEstimateProfileSelector`.
+Unavailable options render disabled as `<profile> — profile not imported yet` /
+`<profile> — profil niezaimportowany`, and the selector ignores change events for disabled tiers, so no
+chip/panel query re-key and no estimate read/recompute request fires for Aesthetic/Strong while their
+intent profiles are missing.
+
+**Fail-open availability (correctness fix adopted over the draft).** A tier is treated as unavailable
+**only** when the backend explicitly returns `available: false`. An omitted prop (standalone selector
+use), an empty list (availability still loading), or a missing row (availability fetch errored) all leave
+the tier **selectable**. This guarantees the product invariant that **Standard is never locked out** — a
+transient availability-endpoint failure must not disable the whole selector (the draft's `=== true` check
+plus `?? []` default would have disabled every tier, Standard included, on a fetch error). Covered by a
+regression test in `CatalogEstimateProfileSelector.test.tsx`.

@@ -57,6 +57,7 @@ function estimateView(overrides: Partial<EstimateView> = {}): EstimateView {
 interface RouterOpts {
   estimate?: EstimateView;
   estimateError?: boolean;
+  unavailableTiers?: string[];
 }
 
 // Route fetch by URL so the order of the (always-mounted) preset-bar `/spools/summary` read,
@@ -66,6 +67,20 @@ function installRouter(opts: RouterOpts = {}) {
   fetchMock.mockImplementation((input: unknown) => {
     const url = String(input);
     if (url.includes("/spools/summary")) return Promise.resolve(json(EMPTY_SUMMARY));
+    if (url.includes("/estimates/quality-tiers")) {
+      const unavailable = new Set(opts.unavailableTiers ?? ["aesthetic", "strong"]);
+      return Promise.resolve(
+        json({
+          printer_ref: "creality-k1-max-microswiss-hf",
+          material_class: "PLA",
+          tiers: ["aesthetic", "standard", "strong"].map((quality_tier) => ({
+            quality_tier,
+            available: !unavailable.has(quality_tier),
+            reason: unavailable.has(quality_tier) ? "profile_not_imported" : null,
+          })),
+        }),
+      );
+    }
     if (url.includes("/estimates")) {
       if (opts.estimateError) return Promise.resolve(json({ detail: "boom" }, 500));
       return Promise.resolve(json(opts.estimate ?? estimateView({ status: "absent" })));
@@ -77,7 +92,13 @@ function installRouter(opts: RouterOpts = {}) {
 function estimateCalls(): string[] {
   return fetchMock.mock.calls
     .map((c) => String(c[0]))
-    .filter((u) => u.includes("/estimates"));
+    .filter((u) => u.includes("/estimates") && !u.includes("/estimates/quality-tiers"));
+}
+
+function availabilityCalls(): string[] {
+  return fetchMock.mock.calls
+    .map((c) => String(c[0]))
+    .filter((u) => u.includes("/estimates/quality-tiers"));
 }
 
 function findCall(predicate: (url: string, init: RequestInit) => boolean) {
@@ -259,8 +280,14 @@ describe("FilesTab — EST-DISPLAY-1 estimate surface", () => {
   });
 
   it("changing the estimate profile re-keys the estimate read to the chosen quality tier", async () => {
+    installRouter({ unavailableTiers: [] });
     render(<FilesTab modelId={MODEL_ID} files={FILES_WITH_HASH} />, { wrapper: wrap() });
     await waitFor(() => expect(estimateCalls().length).toBeGreaterThanOrEqual(2));
+    await waitFor(() =>
+      expect((screen.getByRole("option", { name: "Strong" }) as HTMLOptionElement).disabled).toBe(
+        false,
+      ),
+    );
     // Default reads are PLA · standard (material stays at the internal default).
     expect(estimateCalls().every((u) => u.includes("material_class=PLA"))).toBe(true);
     fetchMock.mockClear();
@@ -276,6 +303,24 @@ describe("FilesTab — EST-DISPLAY-1 estimate surface", () => {
         .filter((u) => u.includes("quality_tier=strong"))
         .every((u) => u.includes("material_class=PLA")),
     ).toBe(true);
+  });
+
+  it("disables unavailable tiers from backend availability before they can fire estimate reads", async () => {
+    render(<FilesTab modelId={MODEL_ID} files={FILES_WITH_HASH} />, { wrapper: wrap() });
+    await waitFor(() => expect(availabilityCalls().length).toBe(1));
+    await waitFor(() =>
+      expect(screen.getByRole("option", { name: /Strong.*profile not imported yet/i })).toBeTruthy(),
+    );
+    const strong = screen.getByRole("option", {
+      name: /Strong.*profile not imported yet/i,
+    }) as HTMLOptionElement;
+    expect(strong.disabled).toBe(true);
+
+    fetchMock.mockClear();
+    fireEvent.change(screen.getByLabelText(/estimate profile/i), {
+      target: { value: "strong" },
+    });
+    expect(estimateCalls()).toEqual([]);
   });
 
   it("reads GET /api/estimates keyed by sha256 + preset + the catalog printer ref", async () => {

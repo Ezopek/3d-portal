@@ -2,6 +2,7 @@ import { useId } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { QualityTier } from "@/lib/api-types";
+import type { QualityTierAvailability } from "@/modules/estimates/hooks/useQualityTierAvailability";
 import {
   QUALITY_TIERS,
   type PrintIntentPresetInput,
@@ -10,6 +11,12 @@ import {
 interface Props {
   value: PrintIntentPresetInput;
   onChange: (next: PrintIntentPresetInput) => void;
+  /**
+   * EST-TIERS-1: when supplied by the Catalog Files/STL surface, unavailable tiers are
+   * rendered disabled and cannot re-key estimate reads into a resolver 422. Omitted keeps the
+   * standalone/pure unit-test behavior: all portal tiers are selectable.
+   */
+  availability?: readonly QualityTierAvailability[];
 }
 
 /**
@@ -25,9 +32,25 @@ interface Props {
  * (`EstimatesPanel` + `PrintIntentPresetSelector`); ordering / spool semantics are deliberately
  * NOT exposed on this surface.
  */
-export function CatalogEstimateProfileSelector({ value, onChange }: Props) {
+export function CatalogEstimateProfileSelector({
+  value,
+  onChange,
+  availability,
+}: Props) {
   const { t } = useTranslation();
   const selectId = useId();
+  const availabilityByTier = new Map(
+    availability?.map((tier) => [tier.quality_tier, tier]) ?? [],
+  );
+
+  // Fail OPEN: a tier is unavailable only when the backend explicitly reports
+  // `available: false`. An omitted/undefined availability prop (standalone use), an empty list
+  // (still loading), or a missing row (availability fetch errored) all leave the tier
+  // SELECTABLE. This guarantees the product invariant that Standard is never locked out — a
+  // disabled-everything selector on a transient fetch error would be worse than the 422 this
+  // gate closes. Disabling only happens once the backend has positively said a tier is missing.
+  const isAvailable = (tier: QualityTier) =>
+    availabilityByTier.get(tier)?.available !== false;
 
   return (
     <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
@@ -36,17 +59,27 @@ export function CatalogEstimateProfileSelector({ value, onChange }: Props) {
       </label>
       <select
         id={selectId}
-        className="rounded-md border bg-background px-2 py-1 text-xs text-foreground"
+        className="rounded-md border bg-background px-2 py-1 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-60"
         value={value.quality_tier}
-        onChange={(e) =>
-          onChange({ ...value, quality_tier: e.target.value as QualityTier })
-        }
+        onChange={(e) => {
+          const quality_tier = e.target.value as QualityTier;
+          if (!isAvailable(quality_tier)) return;
+          onChange({ ...value, quality_tier });
+        }}
       >
-        {QUALITY_TIERS.map((q) => (
-          <option key={q} value={q}>
-            {t(`modules.estimates.quality.${q}`)}
-          </option>
-        ))}
+        {QUALITY_TIERS.map((q) => {
+          const available = isAvailable(q);
+          const label = t(`modules.estimates.quality.${q}`);
+          return (
+            <option key={q} value={q} disabled={!available}>
+              {available
+                ? label
+                : t("modules.estimates.selector.profile_unavailable_option", {
+                    profile: label,
+                  })}
+            </option>
+          );
+        })}
       </select>
     </div>
   );

@@ -94,7 +94,28 @@ async function stubModelDetail(page: Page) {
   );
 }
 
-async function stubEstimate(page: Page, body: Record<string, unknown>) {
+// EST-TIERS-1 — a single `**/api/estimates**` route serves BOTH the estimate read and the
+// `/quality-tiers` availability read, branching on the path. Folding them into ONE handler makes
+// the stub independent of Playwright's route-precedence semantics: a separate, more-specific
+// `**/api/estimates/quality-tiers**` route can lose the match to this generic glob (the observed
+// flake where the availability rows never reach the selector), and an unhandled tiers request
+// would stall `waitForReady`'s `networkidle`. The default body reports every tier available, so
+// the chip states above render an all-selectable selector exactly as before.
+const ALL_TIERS_AVAILABLE = {
+  printer_ref: "creality-k1-max-microswiss-hf",
+  material_class: "PLA",
+  tiers: [
+    { quality_tier: "aesthetic", available: true, reason: null },
+    { quality_tier: "standard", available: true, reason: null },
+    { quality_tier: "strong", available: true, reason: null },
+  ],
+};
+
+async function stubEstimate(
+  page: Page,
+  body: Record<string, unknown>,
+  tiers: Record<string, unknown> = ALL_TIERS_AVAILABLE,
+) {
   // Deterministic empty spools so the preset selector's pin list has no entries.
   await page.route("**/api/spools/summary**", (r) =>
     r.fulfill({
@@ -109,13 +130,22 @@ async function stubEstimate(page: Page, body: Record<string, unknown>) {
       }),
     }),
   );
-  await page.route("**/api/estimates**", (r) =>
-    r.fulfill({
+  await page.route("**/api/estimates**", (r) => {
+    // The tier-availability read shares the `/api/estimates` prefix; serve it from the SAME
+    // handler so the disabled-tier body is never shadowed by the generic estimate stub.
+    if (r.request().url().includes("/quality-tiers")) {
+      return r.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(tiers),
+      });
+    }
+    return r.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(body),
-    }),
-  );
+    });
+  });
 }
 
 const STATES: Array<{ name: string; body: Record<string, unknown> }> = [
@@ -149,6 +179,48 @@ for (const state of STATES) {
     );
   });
 }
+
+// EST-TIERS-1 — the compact STL profile selector must render the unresolvable tiers
+// (Aesthetic / Strong for the catalog printer·PLA identity, which has only `standard.json`
+// vendored) DISABLED with honest "profile not imported yet" copy, while Standard stays
+// selectable. This availability body is handed to the unified `stubEstimate` route above so the
+// `/quality-tiers` read is fulfilled deterministically (no route-precedence flake).
+// Baseline status: deferred to the controller-owned visual pass, same precedent as the
+// EST-DISPLAY-1 cases above.
+const TIERS_AESTHETIC_STRONG_UNAVAILABLE = {
+  printer_ref: "creality-k1-max-microswiss-hf",
+  material_class: "PLA",
+  tiers: [
+    { quality_tier: "aesthetic", available: false, reason: "profile_not_imported" },
+    { quality_tier: "standard", available: true, reason: null },
+    { quality_tier: "strong", available: false, reason: "profile_not_imported" },
+  ],
+};
+
+test("FilesTab estimate profile selector — unavailable tiers disabled (EST-TIERS-1)", async ({
+  page,
+}) => {
+  await page.clock.install({ time: new Date(FIXED_NOW_ISO) });
+  await stubModelDetail(page);
+  await stubEstimate(
+    page,
+    estimate({ status: "fresh" }),
+    TIERS_AESTHETIC_STRONG_UNAVAILABLE,
+  );
+  await page.goto(`/catalog/${MODEL_ID}`);
+  await waitForReady(page);
+  await page.getByRole("tabpanel").first().waitFor({ state: "visible" });
+  // The Strong tier resolves to no vendored profile → its <option> must be DISABLED before the
+  // snapshot. Assert the disabled state directly (locale-independent: the visual projects render
+  // pl-PL, so the honest "profile not imported yet" copy is localised — the localised copy itself
+  // is pixel-verified by the screenshot below).
+  await page
+    .locator('select option[value="strong"][disabled]')
+    .waitFor({ state: "attached" });
+  await expect(page.getByRole("tabpanel").first()).toHaveScreenshot(
+    "filestab-estimate-tiers-disabled.png",
+  );
+});
 
 test("FilesTab estimate chip — expanded panel reuses EstimateDisplay", async ({
   page,

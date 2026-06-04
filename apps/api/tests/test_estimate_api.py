@@ -128,11 +128,14 @@ class _FakeResolver:
         # When set, ``resolve_preset`` raises ``PresetResolveError`` (the 422 path) — lets a
         # recompute test exercise the unresolvable-preset branch without a second resolver type.
         self.fail_reason: str | None = None
+        self.fail_tiers: set[str] = set()
+        self.seen_intents: list[PrintIntentPreset] = []
 
     async def resolve_preset(self, intent: PrintIntentPreset) -> ResolvedPreset:
         self.called = True
-        if self.fail_reason is not None:
-            raise PresetResolveError(self.fail_reason)
+        self.seen_intents.append(intent)
+        if self.fail_reason is not None or intent.quality_tier in self.fail_tiers:
+            raise PresetResolveError(self.fail_reason or "unsupported_material_class")
         return ResolvedPreset(bundle_hash=BUNDLE_HASH, pinned_filament=self.pinned)
 
 
@@ -262,6 +265,47 @@ async def test_read_endpoint_resolves_preset_to_bundle_and_reads_record(seam):
     assert body["warnings"] == [{"code": "slice_warning", "message": "floating cantilever"}]
     assert body["override_context"]["material_class"] == "PLA"
     assert body["override_context"]["quality_tier"] == "standard"
+
+
+@pytest.mark.asyncio
+async def test_quality_tier_availability_reports_resolvable_and_unavailable_tiers(seam):
+    ac, _store, resolver = seam
+    resolver.fail_tiers = {"aesthetic", "strong"}
+    ac.cookies.set("portal_access", _member_cookie())
+
+    r = await ac.get(
+        "/api/estimates/quality-tiers?material_class=PLA&printer_ref=creality-k1-max-microswiss-hf"
+    )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body == {
+        "printer_ref": "creality-k1-max-microswiss-hf",
+        "material_class": "PLA",
+        "tiers": [
+            {"quality_tier": "aesthetic", "available": False, "reason": "profile_not_imported"},
+            {"quality_tier": "standard", "available": True, "reason": None},
+            {"quality_tier": "strong", "available": False, "reason": "profile_not_imported"},
+        ],
+    }
+    assert [intent.quality_tier for intent in resolver.seen_intents] == [
+        "aesthetic",
+        "standard",
+        "strong",
+    ]
+    assert all(intent.material_class == "PLA" for intent in resolver.seen_intents)
+    assert all(
+        intent.printer_ref == "creality-k1-max-microswiss-hf" for intent in resolver.seen_intents
+    )
+
+
+@pytest.mark.asyncio
+async def test_quality_tier_availability_requires_auth(seam):
+    ac, _store, _resolver = seam
+
+    r = await ac.get("/api/estimates/quality-tiers?material_class=PLA&printer_ref=p1s")
+
+    assert r.status_code == 401
 
 
 @pytest.mark.asyncio

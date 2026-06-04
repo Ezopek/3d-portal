@@ -48,6 +48,53 @@ describe("CatalogEstimateProfileSelector (EST-DISPLAY-1 product correction)", ()
     expect(calls[0]?.spoolman_filament_ref).toBeNull();
   });
 
+  it("renders backend-unavailable tiers disabled with honest copy and ignores their change events", () => {
+    const calls: PrintIntentPresetInput[] = [];
+    render(
+      <CatalogEstimateProfileSelector
+        value={DEFAULT_PRESET}
+        onChange={(p) => calls.push(p)}
+        availability={[
+          { quality_tier: "aesthetic", available: false, reason: "profile_not_imported" },
+          { quality_tier: "standard", available: true, reason: null },
+          { quality_tier: "strong", available: false, reason: "profile_not_imported" },
+        ]}
+      />,
+    );
+
+    const strong = screen.getByRole("option", {
+      name: /Strong.*profile not imported yet/i,
+    }) as HTMLOptionElement;
+    expect(strong.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/estimate profile/i), {
+      target: { value: "strong" },
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("fails open: an empty availability list (still loading / errored) keeps every tier selectable", () => {
+    const calls: PrintIntentPresetInput[] = [];
+    render(
+      <CatalogEstimateProfileSelector
+        value={DEFAULT_PRESET}
+        onChange={(p) => calls.push(p)}
+        availability={[]}
+      />,
+    );
+
+    // Standard (the default + always-resolvable tier) must never be locked out by a transient
+    // empty/errored availability response.
+    expect((screen.getByRole("option", { name: "Standard" }) as HTMLOptionElement).disabled).toBe(
+      false,
+    );
+    const strong = screen.getByRole("option", { name: "Strong" }) as HTMLOptionElement;
+    expect(strong.disabled).toBe(false);
+    fireEvent.change(screen.getByLabelText(/estimate profile/i), {
+      target: { value: "strong" },
+    });
+    expect(calls.map((p) => p.quality_tier)).toEqual(["strong"]);
+  });
+
   it("never exposes a raw Orca key in any control or option", () => {
     const { container } = render(
       <CatalogEstimateProfileSelector

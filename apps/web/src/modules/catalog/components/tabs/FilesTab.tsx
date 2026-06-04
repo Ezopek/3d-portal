@@ -17,6 +17,7 @@ import { useFileIndex } from "@/modules/catalog/components/viewer3d/hooks/useFil
 import { CatalogEstimateProfileSelector } from "@/modules/estimates/components/CatalogEstimateProfileSelector";
 import { EstimateChip } from "@/modules/estimates/components/EstimateChip";
 import { RowEstimatePanel } from "@/modules/estimates/components/RowEstimatePanel";
+import { useQualityTierAvailability } from "@/modules/estimates/hooks/useQualityTierAvailability";
 import {
   CATALOG_ESTIMATE_PRINTER_REF,
   defaultPreset,
@@ -63,6 +64,15 @@ export function FilesTab({
   // resets on navigate; no persistence). Defaults to PLA · standard · no pin, the exact
   // EST-INGEST-1 default bundle, so the first-load chip shows real numbers, not `absent`.
   const [preset, setPreset] = useState<PrintIntentPresetInput>(defaultPreset);
+  const tierAvailability = useQualityTierAvailability(
+    preset.material_class,
+    CATALOG_ESTIMATE_PRINTER_REF,
+  );
+  // Pass `undefined` until the availability read resolves (and on error) so the selector
+  // fails open — every tier stays selectable rather than locking out Standard while the
+  // (5-min-cached) availability query is in flight or has failed. Once resolved, the array
+  // disables only the tiers the backend reports as unresolvable.
+  const catalogTierAvailability = tierAvailability.data?.tiers;
 
   const stlFiles: StlFile[] = useMemo(
     () =>
@@ -184,7 +194,11 @@ export function FilesTab({
           never enqueues, recomputes, or exposes ordering / spool semantics. Separate from the
           admin render controls below. */}
       {active === "stl" && stlFiles.length > 0 && (
-        <CatalogEstimateProfileSelector value={preset} onChange={setPreset} />
+        <CatalogEstimateProfileSelector
+          value={preset}
+          onChange={setPreset}
+          availability={catalogTierAvailability}
+        />
       )}
 
       {isAdmin && active === "stl" && visible.length > 0 && (
