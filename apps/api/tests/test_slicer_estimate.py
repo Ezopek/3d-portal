@@ -156,6 +156,19 @@ def test_parses_tpu_metadata():
     assert parsed.time_seconds == 8 * 3600 + 6 * 60 + 5  # 8h06m05s
 
 
+def test_parses_spaced_duration_real_orca_format():
+    # Regression: real OrcaSlicer 2.3.2 emits inter-token spaces (`2m 35s`) in the normal-mode
+    # time line — previously misclassified unparseable_time, blocking the estimate backfill.
+    # The required filament mass/length/volume fields must still parse unchanged (the
+    # gram-display field is NOT weakened by the time-grammar fix).
+    parsed = parse_gcode_metadata(_fixture("orca_spaced_duration.gcode"))
+    assert isinstance(parsed, ParsedEstimate)
+    assert parsed.time_seconds == 2 * 60 + 35  # 2m 35s == 155
+    assert parsed.filament_mm == pytest.approx(412.83)
+    assert parsed.filament_cm3 == pytest.approx(0.99)
+    assert parsed.filament_g == pytest.approx(1.23)
+
+
 def test_settings_ids_extracted_and_dequoted():
     parsed = parse_gcode_metadata(_fixture("pla_standard.gcode"))
     assert isinstance(parsed, ParsedEstimate)
@@ -228,6 +241,25 @@ def test_duration_garbled_returns_none():
 def test_duration_empty_returns_none():
     assert parse_duration_to_seconds("") is None
     assert parse_duration_to_seconds("   ") is None
+
+
+def test_duration_spaced_tokens_real_orca():
+    # Real OrcaSlicer 2.3.2 emits inter-token spaces (runtime evidence: stl_hash=488a748e…,
+    # bundle_hash=25b03be5…, "estimated printing time = '2m 35s'" wrongly unparseable_time).
+    assert parse_duration_to_seconds("2m 35s") == 2 * 60 + 35
+    assert parse_duration_to_seconds("3h 35m 47s") == 3 * 3600 + 35 * 60 + 47
+    assert parse_duration_to_seconds("1d 2h 3m 4s") == 86400 + 2 * 3600 + 3 * 60 + 4
+
+
+def test_duration_rejects_number_unit_gap():
+    # Whitespace is tolerated only BETWEEN tokens, never between a number and its unit.
+    assert parse_duration_to_seconds("2 m") is None
+    assert parse_duration_to_seconds("2m35 s") is None
+
+
+def test_duration_rejects_out_of_order_or_duplicate_tokens():
+    assert parse_duration_to_seconds("35m3h") is None  # d→h→m→s order only
+    assert parse_duration_to_seconds("2m3m") is None  # no duplicate unit
 
 
 # === AC-4: classified parse failure, never a silent zero =====================

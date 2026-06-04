@@ -35,16 +35,18 @@ _SECONDS_PER_HOUR = 3600
 _SECONDS_PER_MINUTE = 60
 _SECONDS_PER_SECOND = 1
 
-# OrcaSlicer duration grammar: optional d/h/m/s tokens, each a run of digits followed by
-# its unit (e.g. `3h35m47s`, `6h 54m 23s`, `35m47s`, `47s`, `1d2h3m4s`). Real Orca
-# 2.3.2 inserts spaces between tokens in production g-code, while older synthetic
-# fixtures used the compact form; both are the same duration contract. Every token is
-# optional, so an all-empty match (or any leftover chars) is rejected as garbled below.
-_DURATION_RE = re.compile(r"^(?:(\d+)d\s*)?(?:(\d+)h\s*)?(?:(\d+)m\s*)?(?:(\d+)s)?$")
+# OrcaSlicer duration grammar: optional d/h/m/s tokens, each a run of digits immediately
+# followed by its unit (e.g. `3h35m47s`, `8h06m05s`, `35m47s`, `47s`, `1d2h3m4s`). Real
+# Orca 2.3.2 also emits inter-token spaces (e.g. `2m 35s`, `3h 35m 47s`), so optional
+# horizontal whitespace is tolerated BETWEEN tokens — never between a number and its unit
+# (adjacency stays required, so `2 m` is still rejected). Every token is optional, so an
+# all-empty match (or any leftover chars / out-of-order / duplicate tokens) is rejected as
+# garbled below.
+_DURATION_RE = re.compile(r"^(?:(\d+)d)?[ \t]*(?:(\d+)h)?[ \t]*(?:(\d+)m)?[ \t]*(?:(\d+)s)?$")
 
 
 def parse_duration_to_seconds(value: str) -> int | None:
-    """Normalize an Orca duration string (``3h35m47s``) to whole seconds (AC-3).
+    """Normalize an Orca duration string (``3h35m47s`` or spaced ``2m 35s``) to seconds (AC-3).
 
     Returns ``None`` for an empty / token-less / garbled value so the caller classifies a
     typed ``unparseable_time`` (AC-4), never a plausible-but-wrong zero-second print.
