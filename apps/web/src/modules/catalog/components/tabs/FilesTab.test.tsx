@@ -58,6 +58,7 @@ interface RouterOpts {
   estimate?: EstimateView;
   estimateError?: boolean;
   unavailableTiers?: string[];
+  unavailableTiersByMaterial?: Partial<Record<string, string[]>>;
 }
 
 // Route fetch by URL so the order of the (always-mounted) preset-bar `/spools/summary` read,
@@ -68,11 +69,14 @@ function installRouter(opts: RouterOpts = {}) {
     const url = String(input);
     if (url.includes("/spools/summary")) return Promise.resolve(json(EMPTY_SUMMARY));
     if (url.includes("/estimates/quality-tiers")) {
-      const unavailable = new Set(opts.unavailableTiers ?? ["aesthetic", "strong"]);
+      const material = new URL(url, "http://test.local").searchParams.get("material_class") ?? "PLA";
+      const unavailable = new Set(
+        opts.unavailableTiersByMaterial?.[material] ?? opts.unavailableTiers ?? ["aesthetic", "strong"],
+      );
       return Promise.resolve(
         json({
           printer_ref: "creality-k1-max-microswiss-hf",
-          material_class: "PLA",
+          material_class: material,
           tiers: ["aesthetic", "standard", "strong"].map((quality_tier) => ({
             quality_tier,
             available: !unavailable.has(quality_tier),
@@ -232,8 +236,8 @@ describe("FilesTab — admin render controls (unchanged, separate from estimates
     mockUseAuth.mockReturnValue({ isAdmin: false });
     render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
     expect(screen.queryByRole("button", { name: /re-render preview/i })).toBeNull();
-    // The estimate-profile selector is member-visible (not admin-gated).
-    expect(screen.getByLabelText(/estimate profile/i)).toBeTruthy();
+    // The estimate selector is member-visible (not admin-gated).
+    expect(screen.getByLabelText(/material/i)).toBeTruthy();
   });
 
   it("clicking Re-render posts an empty selection so the worker uses persisted flags", async () => {
@@ -255,27 +259,27 @@ describe("FilesTab — admin render controls (unchanged, separate from estimates
 });
 
 describe("FilesTab — EST-DISPLAY-1 estimate surface", () => {
-  it("shows the member-visible estimate-profile selector on the STL tab only", () => {
+  it("shows the member-visible estimate selector on the STL tab only", () => {
     render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
-    expect(screen.getByLabelText(/estimate profile/i)).toBeTruthy();
+    expect(screen.getByLabelText(/material/i)).toBeTruthy();
     // Switch to the Source tab → the estimate selector is gone (STL-only surface).
     fireEvent.click(screen.getByRole("button", { name: /source/i }));
-    expect(screen.queryByLabelText(/estimate profile/i)).toBeNull();
+    expect(screen.queryByLabelText(/material/i)).toBeNull();
   });
 
   it("does not render the selector when there are no STL files", () => {
     render(<FilesTab modelId={MODEL_ID} files={[FILES[2]!]} />, { wrapper: wrap() });
-    expect(screen.queryByLabelText(/estimate profile/i)).toBeNull();
+    expect(screen.queryByLabelText(/material/i)).toBeNull();
   });
 
-  it("exposes ONLY the quality profile — no material or pinned-filament controls (estimate-only surface)", () => {
-    // Product correction: this surface is an orientational gram-estimate preview, not print
-    // ordering or spool availability, so material class + Spoolman pin are NOT surfaced here.
+  it("surfaces material + quality (Path B reversal) but NO pinned-filament/spool control", () => {
+    // Story 33.1 / Init 21 Path B: material is now surfaced so per-material compatibility (the
+    // TPU directive) is live here; the surface stays an estimate preview — no Spoolman pin /
+    // spool control, `spoolman_filament_ref` stays null (AC-18).
     render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
-    expect(screen.getByLabelText(/estimate profile/i)).toBeTruthy();
-    expect(screen.queryByLabelText(/material/i)).toBeNull();
-    expect(screen.queryByLabelText(/pinned filament/i)).toBeNull();
-    // No "Print preset" fieldset legend either.
+    expect(screen.getByLabelText(/material/i)).toBeTruthy();
+    expect(screen.getByRole("radiogroup", { name: /quality/i })).toBeTruthy();
+    expect(screen.queryByLabelText(/pinned filament|spool/i)).toBeNull();
     expect(screen.queryByText("Print preset")).toBeNull();
   });
 
@@ -284,16 +288,14 @@ describe("FilesTab — EST-DISPLAY-1 estimate surface", () => {
     render(<FilesTab modelId={MODEL_ID} files={FILES_WITH_HASH} />, { wrapper: wrap() });
     await waitFor(() => expect(estimateCalls().length).toBeGreaterThanOrEqual(2));
     await waitFor(() =>
-      expect((screen.getByRole("option", { name: "Strong" }) as HTMLOptionElement).disabled).toBe(
+      expect((screen.getByRole("radio", { name: "Strong" }) as HTMLButtonElement).disabled).toBe(
         false,
       ),
     );
-    // Default reads are PLA · standard (material stays at the internal default).
+    // Default reads are PLA · standard (material defaults to PLA).
     expect(estimateCalls().every((u) => u.includes("material_class=PLA"))).toBe(true);
     fetchMock.mockClear();
-    fireEvent.change(screen.getByLabelText(/estimate profile/i), {
-      target: { value: "strong" },
-    });
+    fireEvent.click(screen.getByRole("radio", { name: "Strong" }));
     await waitFor(() =>
       expect(estimateCalls().some((u) => u.includes("quality_tier=strong"))).toBe(true),
     );
@@ -309,17 +311,36 @@ describe("FilesTab — EST-DISPLAY-1 estimate surface", () => {
     render(<FilesTab modelId={MODEL_ID} files={FILES_WITH_HASH} />, { wrapper: wrap() });
     await waitFor(() => expect(availabilityCalls().length).toBe(1));
     await waitFor(() =>
-      expect(screen.getByRole("option", { name: /Strong.*profile not imported yet/i })).toBeTruthy(),
+      expect(screen.getByRole("radio", { name: /Strong.*Not available yet/i })).toBeTruthy(),
     );
-    const strong = screen.getByRole("option", {
-      name: /Strong.*profile not imported yet/i,
-    }) as HTMLOptionElement;
+    const strong = screen.getByRole("radio", {
+      name: /Strong.*Not available yet/i,
+    }) as HTMLButtonElement;
     expect(strong.disabled).toBe(true);
 
     fetchMock.mockClear();
-    fireEvent.change(screen.getByLabelText(/estimate profile/i), {
-      target: { value: "strong" },
+    fireEvent.click(strong);
+    expect(estimateCalls()).toEqual([]);
+  });
+
+  it("does not fire an estimate read while a material switch lands on an unavailable target tier", async () => {
+    installRouter({
+      unavailableTiersByMaterial: {
+        PLA: ["aesthetic", "strong"],
+        TPU: ["standard"],
+      },
     });
+    render(<FilesTab modelId={MODEL_ID} files={FILES_WITH_HASH} />, { wrapper: wrap() });
+    await waitFor(() => expect(availabilityCalls().some((u) => u.includes("material_class=PLA"))).toBe(true));
+    await waitFor(() => expect(estimateCalls().length).toBeGreaterThan(0));
+
+    fetchMock.mockClear();
+    fireEvent.change(screen.getByLabelText(/material/i), { target: { value: "TPU" } });
+
+    await waitFor(() => expect(availabilityCalls().some((u) => u.includes("material_class=TPU"))).toBe(true));
+    await waitFor(() =>
+      expect(screen.getByRole("radio", { name: /Standard.*Not available yet/i })).toBeTruthy(),
+    );
     expect(estimateCalls()).toEqual([]);
   });
 

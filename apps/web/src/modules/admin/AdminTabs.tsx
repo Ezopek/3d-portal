@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
 
-type ActiveTab = "users" | "invites";
+type ActiveTab = "users" | "invites" | "profiles";
 
 export function AdminTabs({ activeTab }: { activeTab: ActiveTab }) {
   const { t } = useTranslation();
@@ -40,6 +40,19 @@ export function AdminTabs({ activeTab }: { activeTab: ActiveTab }) {
         )}
       >
         {t("admin.tabs.invites")}
+      </Link>
+      <Link
+        to="/admin/profiles"
+        role="tab"
+        aria-selected={activeTab === "profiles"}
+        className={cn(
+          baseTab,
+          activeTab === "profiles"
+            ? "border-primary text-foreground"
+            : "border-transparent text-muted-foreground hover:text-foreground",
+        )}
+      >
+        {t("admin.tabs.profiles")}
       </Link>
     </nav>
   );

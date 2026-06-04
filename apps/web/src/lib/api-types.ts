@@ -468,3 +468,43 @@ export interface RecomputeResponse {
   enqueued: boolean;
   estimate: EstimateView;
 }
+
+// --- Story 33.1 (Decision AK) — read-only admin profile inventory DTOs ---
+// Mirror `slicer/schemas.py` AdminProfile*. Carry ONLY the projected fields — NO Orca
+// keys / paths / g-code (the AC-9 no-leak fence, mirrored on the FE).
+
+// The single primary status per slot, by the AC-4 precedence
+// (incompatible → not_imported → not_resolvable → offerable).
+export type AdminProfileStatus =
+  | "offerable"
+  | "not_imported"
+  | "not_resolvable"
+  | "incompatible";
+
+export interface AdminProfileProvenance {
+  // The vendored system-tree content hash (the FE may truncate it for display); null on a
+  // slot that does not resolve.
+  source_system_tree_hash: string | null;
+  orca_version: string | null;
+}
+
+export interface AdminProfileSlot {
+  material_class: MaterialClass;
+  quality_tier: QualityTier;
+  imported: boolean;
+  resolvable: boolean;
+  compatible: boolean;
+  // offerable === (imported && resolvable && compatible)
+  offerable: boolean;
+  status: AdminProfileStatus;
+  // Structured reason category (the FE localizes it); null only when offerable.
+  reason: string | null;
+  // Operator-assigned label — reserved for the Story 33.3 label store, null in 33.1.
+  portal_label: string | null;
+  provenance: AdminProfileProvenance;
+}
+
+export interface AdminProfileInventoryResponse {
+  printer_ref: string;
+  slots: AdminProfileSlot[];
+}

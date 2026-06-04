@@ -10,6 +10,7 @@ interface Props {
   stlHash: string;
   preset: PrintIntentPresetInput;
   printerRef: string;
+  enabled?: boolean;
 }
 
 /**
@@ -21,8 +22,8 @@ interface Props {
  * one network request per `(hash, preset)`, not two. Read-only: it renders the server
  * cache/recompute state as-is; there is no recompute affordance.
  */
-export function RowEstimatePanel({ stlHash, preset, printerRef }: Props) {
-  const query = useEstimate(stlHash, preset, printerRef);
+export function RowEstimatePanel({ stlHash, preset, printerRef, enabled = true }: Props) {
+  const query = useEstimate(stlHash, preset, printerRef, { enabled });
 
   // No hash ⇒ the read seam was never engaged; show the honest no-hash state rather than a
   // perpetual spinner (a disabled query stays `isPending`).

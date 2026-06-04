@@ -17,6 +17,7 @@ interface Props {
   stlHash: string;
   preset: PrintIntentPresetInput;
   printerRef: string;
+  enabled?: boolean;
 }
 
 /**
@@ -30,10 +31,11 @@ interface Props {
  * It is NON-INTERACTIVE (a `<span>`, never focusable) — the chip never triggers a recompute
  * (EST-RECOMPUTE-1 is deferred). State is signalled by glyph + text + color, never color alone.
  */
-export function EstimateChip({ stlHash, preset, printerRef }: Props) {
+export function EstimateChip({ stlHash, preset, printerRef, enabled = true }: Props) {
   const { t } = useTranslation();
-  // Always called (rules of hooks); self-disables when `stlHash` is empty.
-  const query = useEstimate(stlHash, preset, printerRef);
+  // Always called (rules of hooks); self-disables when `stlHash` is empty or the parent
+  // availability gate has not confirmed the selected slot is offerable.
+  const query = useEstimate(stlHash, preset, printerRef, { enabled });
 
   const base =
     "inline-flex shrink-0 items-center justify-end gap-1 tabular-nums text-xs";

@@ -73,13 +73,18 @@ initiatives:
     status: 'planning'
     started: '2026-05-29'
     sections: 'see "Initiative 19" H2 below — Decisions AD (cache topology + poll cadence + leader-election + observability), AE (network transport — internal docker network with configs-side coordination + P4a fallback), AF (data-model carry-through for future cost-calc UX)'
+  - id: 21
+    name: 'Admin-Managed Orca Process Profiles + User-Facing Selector Options'
+    status: 'planning'
+    started: '2026-06-04'
+    sections: 'see "Initiative 21" H2 below — Decisions AK (admin-managed profile inventory read over the resolver + compatibility-map representation/enforcement, offerable = imported ∧ resolvable ∧ compatible), AL (import write posture — in-place vendored-tree write + on-disk sidecar manifest + audit, no DB)'
 ---
 
 # Architecture Decision Document — 3d-portal
 
 **Maintainer:** Ezop
 **Created:** 2026-05-09 (Initiative 1)
-**Last updated:** 2026-05-29 (Initiative 19 Spoolman Read-Only Inventory planning extension via sprint-change-proposal-2026-05-29-spoolman.md — Decisions AD + AE + AF appended after Initiative 18 H2)
+**Last updated:** 2026-06-04 (Initiative 21 Admin-Managed Orca Process Profiles planning extension via sprint-change-proposal-2026-06-04-profile-admin.md, status `approved` 2026-06-04 — Decisions AK + AL appended after Initiative 20 H2)
 
 This is the living project architecture document for **3d-portal**. It grows over time, one **Initiative** at a time, mirroring the `prd.md` initiatives index. Each initiative documents its own context analysis, starter evaluation, core decisions, patterns, structure, and validation. New initiatives extend this file — do **not** fork (`architecture-v2.md`, `architecture-glitchtip.md`).
 
@@ -101,6 +106,7 @@ Source-of-truth for capability contracts: `prd.md`. Source-of-truth for technica
 | 10 | Operator Polish Batch | 🚧 planning | — | 3 architectural decisions (L — ModelNote bilingual schema migration forward-only Alembic; M — anonymous share-link frontend route shell; N — admin manual-add model + file upload write surface). Three epics E15+E16+E17. Source SCP: `sprint-change-proposal-2026-05-22-init10.md`. See section "Initiative 10" below. |
 | 19 | Spoolman Read-Only Inventory (MVP-A) | 🚧 planning | — | 3 architectural decisions (AD — cache topology Redis 30s TTL + arq 60s poll + SETNX leader-election + observability with `external_service=spoolman` tag + 3-row cache-coherence table for `["spools", "summary"]` query-key; AE — network transport via internal docker network with configs-side coordination PR + P4a host-network fallback; AF — data-model carry-through surfacing ALL Spoolman cost-relevant fields end-to-end in DTOs + cache for future Phase D cost-calc UX). Single epic E31 (5 stories 31.1-31.5). All stories `gpt-5.4-mini` Codex routing (no NFR-SECURITY adjacency). Source SCP: `sprint-change-proposal-2026-05-29-spoolman.md`. See section "Initiative 19" below. |
 | 20 | STL Slicer Estimates (Per-Part MVP) | 🚧 planning | — | 3 architectural decisions (AH — resolver: recursive Orca system+user inheritance merge + `type` injection + instantiation drop + Spoolman override layer + real-slice validation + canonicalized `bundle_hash` over machine ∥ process ∥ filament ∥ `orca_version` + append-only bundles + `SourceProfileSnapshot` provenance; AI — dedicated containerized headless OrcaSlicer 2.3.2 slicer-worker + `(stl_ref, bundle_ref)` job contract + `<root>/stl/<hash[:2]>/<hash>.stl` cache + g-code parse-and-discard + configs-side compose ownership; AJ — `EstimateRecord` keyed `(stl_hash, bundle_hash)` + exhaustive recompute-trigger table + cost-only-arithmetic-recompute rule preventing re-slice storms). Resolver precedence: exact bundle > custom override > material default > unsupported. Single epic E32 (6 stories 32.1-32.6). Per-STL only; no whole-plate slicing; not e-commerce; Spoolman = inventory SoT; Fenrir = bench-only. Source SCP: `sprint-change-proposal-2026-05-31-stl-slicer-estimates.md`. See section "Initiative 20" below. |
+| 21 | Admin-Managed Orca Process Profiles + User-Facing Selector Options | 🚧 planning | — | 2 architectural decisions (AK — admin-managed profile **inventory read** projected over the existing resolver (`resolve_preset` resolvability + `VendoredProfileSource` provenance, no new resolve logic) **+ the OD-7 compatibility map** as a first-class explicit declaration extending the named FE↔BE `QualityTier`/`MaterialClass` contract, backend = SoT, FE mirrors + parity-tested, `offerable = imported ∧ resolvable ∧ compatible`; AL — import **write posture**: validated triple (structural `resolve()` ∧ compatibility) written **in-place** into `SLICER_VENDORED_PROFILES_DIR/intents/...` (provenance-snapshot-safe) + **on-disk sidecar manifest** for admin metadata + per-slot compatibility status/reason + existing audit log, **no Alembic migration in v1**, configs-side portal-content RW mount is a write-slice-only HC2 item). Read-only inventory first (zero write/deploy risk). Single epic E33 (3 stories 33.1-33.3). Process/intent profiles only; NOT Spoolman inventory/cost. Preserves Init 20 `bundle_hash` + `source_system_tree_hash` + append-only invariants. Source SCP: `sprint-change-proposal-2026-06-04-profile-admin.md`. See section "Initiative 21" below. |
 
 ## Initiative 0 — Product Foundation: Home 3D-Printing Catalog
 
@@ -2851,3 +2857,72 @@ The auth-loading state (`auth.isLoading === true`) continues to render the spinn
 - Configs-side coordination: `~/repos/configs/docker-compose-recipes/workers/slicer-worker.yml` PR per Decision AI — **NOT a 3d-portal commit**; HC2 trip-wire honored.
 - Inventory SoT: Initiative 19 (Spoolman) — the slicer initiative consumes Spoolman filament records + `filament.extra.url`, does not own or duplicate inventory.
 - Memory entries informing decisions: [[feedback_scp_pre_enumeration_phase]] (cache-topology enumeration § B + magic-constant contract pointing § C apply to the resolver hash constants, the `(stl_hash, bundle_hash)` cache key, the slice-concurrency cap, and the Orca/timeout literals in every Init 20 story spec).
+
+## Initiative 21 — Admin-Managed Orca Process Profiles + User-Facing Selector Options
+
+**Status:** 🚧 planning (started 2026-06-04). Source SCP: `sprint-change-proposal-2026-06-04-profile-admin.md` (status `approved` 2026-06-04 — operator go; approval scoped to planning-artifact appends, NOT code implementation). Init 21 introduces two architectural decisions for an **admin-managed Orca process-profile surface** that drives **admin-approved + material-compatible** user-facing estimate options. The decisions are grounded in shipped Init 20 code — the resolver, its fixed vendored layout, the EST-TIERS-1 availability seam, the admin auth/router/upload patterns — not blue-sky; this is the phase-3 graduation of the SCP's pre-enumeration save (§ 2). All app-layer code is portal-owned; the only configs-side item (portal-content RW mount) is isolated to the write slice (HC2 boundary).
+
+### Pre-enumeration save (reuse + extend, never parallel-implement)
+
+| Concern | Existing artifact (reuse/extend) | Posture |
+|---|---|---|
+| Resolver read contract | `apps/api/app/modules/slicer/resolver.py:114-123` `VendoredProfileSource` — `<root>/system/*.json` + `<root>/intents/<printer_ref>/<material_class>/<quality_tier>.json`; missing intent ⇒ classified `unsupported_material_class` (`:226`), never silent fallback | An imported profile IS, in resolver terms, an intent triple file in that path. The panel manages the *inputs* of this read. |
+| Availability seam | `GET /api/estimates/quality-tiers` (`router.py:101-131`) resolves each `QUALITY_TIER_ORDER` (`:51`) tier and reports `{quality_tier, available, reason}` | Admin-ify, don't re-derive. Inventory read returns a **superset** (add provenance + import + compatibility metadata); the two must agree on resolvability (parity test). |
+| Named FE↔BE grid contract | backend `QualityTier`/`MaterialClass` literals ↔ FE `QUALITY_TIERS` (`apps/web/src/modules/estimates/lib/preset.ts:25`) + `MaterialClass` mirror (`preset.ts:4,9`) | The compatibility map extends this contract (per-material allowed-tier table), backend SoT + FE mirror, parity-tested — same shape as `QUALITY_TIER_ORDER`↔`QUALITY_TIERS`. |
+| Admin auth + router | `current_admin` / `admin_required` 403 (`apps/api/app/core/auth/dependencies.py`); admin router `prefix="/api/admin"` (`apps/api/app/modules/admin/router.py:29`) | Mount the profiles route here; reuse the guard; keep it out of `_PUBLIC_ROUTES` (Init 6 route-enforcement gate). |
+| Multipart upload + audit | `apps/api/app/modules/sot/admin_router.py` `admin_upload_file` + `record_event` audit | Write slice mirrors this shape (JSON payloads, far smaller than STL). |
+| FE admin surface | `apps/web/src/modules/admin/AdminTabs.tsx:6` (`ActiveTab = "users" \| "invites"`) + `routes/admin/`; `useAuth().isAdmin` gate | Extend `ActiveTab` with `"profiles"` + add `routes/admin/profiles.tsx`, mirroring `users.tsx`/`invites.tsx`. |
+| Provenance / hash invariants | `bundle_hash` byte-pinned input order (`resolver.py`); `source_system_tree_hash` snapshot built for in-place edits (`resolver.py:300-309`); append-only stores, no slicer Alembic schema by design | Preserved, not edited (NFR21-PROVENANCE-1). An in-place system-tree write yields a new snapshot identity automatically — provenance safety is structural. |
+| Read-only-at-runtime posture | vendored dir documented read-only at runtime (`config.py`) | A write path **reverses** this posture — a named decision (Decision AL / OD-2), contained to the write slice, not the read-only first slice. |
+
+### Decision AK — Admin-managed profile inventory read + compatibility-map representation & enforcement
+
+**Decision:** The admin profile inventory is a **read-only superset projection over the existing resolver**, NOT a new resolution path. For each `(printer_ref, material_class, quality_tier)` slot it returns `{imported, resolvable, compatible, reason, portal_label, provenance: {source_system_tree_hash, orca_version}}`, computed by:
+
+1. **`resolvable`** — reuse the EST-TIERS-1 `resolve_preset` seam (the same logic behind `GET /api/estimates/quality-tiers`). The inventory and the public availability endpoint MUST agree on resolvability for the same slot (one source of truth, asserted by a shared parity test).
+2. **`imported`** — file presence of the intent triple in `<root>/intents/<printer_ref>/<material_class>/<quality_tier>.json` (the resolver's own input).
+3. **`compatible`** — evaluated against the **compatibility map** (below).
+4. **`provenance`** — projected from the resolved bundle's snapshot; **no Orca-internal keys, no file paths, no g-code** leak into the DTO (mirrors the existing no-internal-leak fence).
+
+**Compatibility map (OD-7) — the load-bearing representation choice:** the map is a **first-class, explicit declaration**, NOT implied by mere file presence or by resolvability. Resolvability is **necessary but not sufficient** — a slot is offerable only when it is BOTH structurally resolvable AND declared compatible for its material class:
+
+> **`offerable = imported ∧ resolvable ∧ compatible`**
+
+- **Representation:** extend the existing named FE↔BE grid contract with a **per-material allowed-tier / compatibility table** (which `quality_tier` process slots are valid for each `material_class`). The **backend is the source of truth**; the FE mirrors it and a parity test asserts they agree — exactly the proven `QUALITY_TIER_ORDER` ↔ `QUALITY_TIERS` mirroring pattern (`router.py:51` ↔ `preset.ts:25`). No new free-text taxonomy.
+- **Enforcement (read slice, Story 33.1):** the inventory **never marks an incompatible `(material_class, quality_tier)` slot as offerable**; a resolvable-but-incompatible slot (e.g. a PLA-class process profile sitting in a TPU slot) is reported as **not offerable** with a structured incompatibility `reason`. The projection that feeds the user selector excludes incompatible slots — asserted by a shared test so neither the admin grid nor the user selector can surface a TPU-incompatible process choice for TPU (nor vice-versa).
+- **User-facing contract preserved:** `GET /api/estimates/quality-tiers` keeps its `{quality_tier, available, reason}` shape; the compatibility dimension folds into `available` (false when incompatible) and `reason` (carries the incompatibility cause). The DTO does not change shape.
+- **Concrete data deferred:** the exact per-material compatible-slot set (e.g. which slots are TPU-compatible) is an **admin-data question** confirmed at the PRD/data phase, not a code constant baked here. The magic-constant discipline ([[feedback_scp_pre_enumeration_phase]] § C) applies: any concrete allowed-slot set in a story spec must point to the operator-confirmed material-compatibility contract, not to "what happens to resolve."
+
+**Why a projection, not a new endpoint family:** re-deriving availability in an admin path would create a second source of truth that could drift from the member-facing endpoint — the precise failure class the parity test exists to prevent. The admin read is strictly a *superset* of the public read.
+
+**Boundary:** Decision AK covers the **read** + the compatibility-map *representation and consumption*. **Authoring/editing** the map and **writing** profiles is Decision AL. Story 33.1 consumes the map read-only.
+
+### Decision AL — Profile import write posture + on-disk metadata (no DB)
+
+**Decision:** A validated import writes the intent triple **directly, in-place** into `SLICER_VENDORED_PROFILES_DIR/intents/<printer_ref>/<material_class>/<quality_tier>.json` (OD-2), with admin metadata in an **on-disk sidecar manifest** and who/when in the **existing admin audit log** — **no Alembic migration, no slicer DB schema** (OD-4). This is the write slice (Story 33.2) and owns the only novel risk in the initiative.
+
+**Import validation (two gates, both required before publish):**
+
+1. **Structural resolvability (OD-3):** run the existing `resolve()` merge/normalize/required-keys path (default `NullCliValidator`) — availability == resolvability is the live contract; this is exactly what determines the user-facing 422/availability today. Real-Orca CLI slice-validation (worker-only) is an optional async follow-up, NOT in v1.
+2. **Compatibility (OD-7 / Decision AK):** the target slot must be declared compatible for its material class. An import targeting an incompatible slot (e.g. a non-TPU process profile into a TPU slot) is **rejected with a clear structured reason** and is NOT published/exposed — `resolvable ∧ ¬compatible` is still not offerable. The rejection reason surfaces in the admin panel.
+
+**Write posture (named reversal):** the vendored dir is documented as **read-only at runtime** (Init 20 / `config.py` — "exported artifacts, never a live read at resolve time"). An admin write reverses that posture. Per the repo's NFR-carve-out-reversal discipline, this is a **deliberate, named decision** contained to the write slice — the read-only first slice (Story 33.1) does not touch it. The write reuses the `sot/admin_router.py` multipart + `_write_atomic` + `record_event` shape (JSON payloads are far smaller than the STL uploads that pattern already handles).
+
+**Provenance safety is structural (NFR21-PROVENANCE-1):** the `source_system_tree_hash` snapshot (`resolver.py:300-309`) was deliberately built for in-place edits of vendored profiles, so an admin write that mutates the system tree yields a **new snapshot identity automatically** — the panel does not re-invent provenance. Importing a profile MUST NOT perturb the `bundle_hash` of an unrelated already-persisted bundle (byte-pinned input order is preserved); the append-only bundle/estimate stores are not edited.
+
+**On-disk sidecar manifest (OD-4):** admin metadata — portal label, importer, timestamp, original filename, status, and **per-slot compatibility status + reason** — lives in a sidecar manifest in the vendored tree, consistent with the slicer subsystem's no-DB / append-only posture. The PROFILE-ADMIN-1 inventory read (Decision AK) reflects this manifest as the single source of truth for the compatibility decision per imported slot. A DB-table alternative was considered and **not** recommended for v1 (would introduce the slicer subsystem's first Alembic schema, against its documented Boundaries).
+
+**Configs/app boundary (HC2, write slice only):** if the import writes to the portal-content volume from the api container, the portal-content volume RW mount is a `~/repos/configs/docker-compose-recipes/workers/slicer-worker.yml` (+ api compose) coordination item — **NOT a 3d-portal commit**. **Deploy-safety:** vendored profiles are *data* on the shared `portal-content` volume, not code in the worker image, so an admin write is visible to the slicer-worker overlay **without an image rebuild** — this initiative does **not** trip the SW-DEPLOY-1 overlay-rebuild gate (no new slicer module). The read-only first slice is a pure API+web change on the standard deploy path.
+
+**OD-6 (re-slice on import):** NOT in the read slice; optional in the write slice and **gated on EST-PARSE-1** (the estimate parser/backfill pipeline being healthy). Reuse the existing EST-RECOMPUTE-1 `POST /api/estimates/recompute` per (stl_hash, preset) rather than a new bulk-enqueue surface.
+
+### Cross-references
+
+- PRD: `prd.md` § Initiative 21 (FR21-PROFILE-INVENTORY-1 + FR21-COMPAT-1 + FR21-PROFILE-IMPORT-1 + FR21-SELECTOR-1 + NFR21-* link back to Decisions AK + AL).
+- Epics: `epics.md` § Initiative 21 (Story 33.1 implements Decision AK read + compatibility consumption; Story 33.2 implements Decision AL write + compatibility enforcement; Story 33.3 is the optional manage/lifecycle slice).
+- Source SCP: `sprint-change-proposal-2026-06-04-profile-admin.md` § 2 (pre-enumeration) + § 5 (open decisions) + § 6 (stories).
+- Predecessor / superseded: Initiative 20 (resolver + EST-TIERS-1 availability seam); EST-TIERS-1 (`deferred-work.md`) — the disk-presence availability gate this initiative makes admin-managed.
+- Inventory SoT: Initiative 19 (Spoolman) — process/intent profiles only; Spoolman is NOT touched.
+- UX work item: **UX-PROFILE-1** (`bmad-ux`) — designs the *surfacing* of the AK compatibility map (admin grid + user selector), NOT the underlying rules. Blocks FE story ACs (NFR21-UX-1).
+- Configs-side coordination: portal-content RW mount per Decision AL — **NOT a 3d-portal commit**; HC2 boundary honored; write slice only.
+- Memory entries informing decisions: [[feedback_scp_pre_enumeration_phase]] (the pre-enumeration save above follows § A; the magic-constant contract § C applies to the per-material compatible-slot set + any import validation/size constants in every Init 21 story spec).

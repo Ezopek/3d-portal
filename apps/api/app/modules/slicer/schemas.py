@@ -131,6 +131,70 @@ class EstimateView(BaseModel):
     override_context: OverrideContextView
 
 
+# --- Story 33.1 (Decision AK, OD-7) — read-only admin profile inventory DTOs --------
+#
+# The admin-facing per-slot projection over the resolver. Like every DTO in this module
+# it is ``extra="forbid"`` and carries ONLY the projected fields — no Orca-internal keys,
+# no filesystem paths, no g-code, no raw profile bodies (the AC-9 no-leak fence, mirrored
+# by the negative-assertion test). It is a SUPERSET projection: ``resolvable`` reuses the
+# same resolve seam as ``GET /api/estimates/quality-tiers`` (AC-6 parity); ``imported`` +
+# ``compatible`` + ``provenance`` are added on top.
+
+# The single primary status per slot, by the AC-4 precedence
+# (Incompatible → Not imported → Not resolvable → Offerable).
+AdminProfileStatus = Literal["offerable", "not_imported", "not_resolvable", "incompatible"]
+
+
+class AdminProfileProvenance(BaseModel):
+    """The leak-fenced provenance of a resolved profile (AC-9).
+
+    Exposes ONLY the snapshot tree hash (content identity of the vendored system tree, may
+    be truncated for display by the FE) and the Orca version. Both are ``None`` for a slot
+    that does not resolve (no resolved profile ⇒ no provenance). NO Orca-internal profile
+    keys, NO filesystem paths, NO g-code — the same FR20-PRESET-1 fence as ``EstimateView``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    source_system_tree_hash: str | None = None
+    orca_version: str | None = None
+
+
+class AdminProfileSlot(BaseModel):
+    """One ``(material_class, quality_tier)`` slot in the admin inventory (AC-3).
+
+    ``offerable === (imported and resolvable and compatible)``; ``status`` is the single
+    primary status by the AC-4 precedence; ``reason`` is the structured category (the FE
+    localizes it) and is non-null for every non-offerable slot. ``portal_label`` is the
+    operator-assigned display label — reserved for the Story 33.3 label store, so ``None``
+    in this read-only slice (the FE falls back to the localized tier label).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    material_class: MaterialClass
+    quality_tier: QualityTier
+    imported: bool
+    resolvable: bool
+    compatible: bool
+    offerable: bool
+    status: AdminProfileStatus
+    reason: str | None = None
+    portal_label: str | None = None
+    provenance: AdminProfileProvenance
+
+
+class AdminProfileInventoryResponse(BaseModel):
+    """The full per-slot inventory for one printer (Story 33.1, FR21-PROFILE-INVENTORY-1).
+
+    Enumerates EVERY slot over the named ``MATERIAL_CLASSES x QUALITY_TIER_ORDER`` grid —
+    including structurally-incompatible and not-imported slots — so the admin grid renders
+    the complete matrix (no blank cells; the empty state IS the all-not-imported grid).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    printer_ref: str
+    slots: list[AdminProfileSlot]
+
+
 class RecomputeResponse(BaseModel):
     """The guarded recompute POST response (EST-RECOMPUTE-1).
 

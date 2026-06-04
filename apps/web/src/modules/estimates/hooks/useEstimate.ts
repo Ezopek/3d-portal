@@ -33,6 +33,7 @@ export function useEstimate(
   stlHash: string,
   preset: PrintIntentPresetInput,
   printerRef: string,
+  options: { enabled?: boolean } = {},
 ) {
   return useQuery<EstimateView>({
     queryKey: ["estimates", stlHash, presetKey(preset), printerRef],
@@ -50,7 +51,9 @@ export function useEstimate(
     },
     staleTime: ESTIMATE_STALE_TIME_MS,
     gcTime: ESTIMATE_GC_TIME_MS,
-    // No stl_hash ⇒ nothing to resolve; do not fire a request that would 422.
-    enabled: stlHash.length > 0 && printerRef.length > 0,
+    // No stl_hash / printer ⇒ nothing to resolve; do not fire a request that would 422.
+    // Callers may additionally hold reads until an availability gate confirms the selected
+    // material+tier is offerable (Story 33.1 / NFR21-NO-422-1).
+    enabled: stlHash.length > 0 && printerRef.length > 0 && options.enabled !== false,
   });
 }

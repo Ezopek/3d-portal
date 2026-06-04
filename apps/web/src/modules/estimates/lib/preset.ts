@@ -31,6 +31,35 @@ export const QUALITY_TIERS: readonly QualityTier[] = [
 export const DEFAULT_MATERIAL_CLASS: MaterialClass = "PLA";
 export const DEFAULT_QUALITY_TIER: QualityTier = "standard";
 
+// Story 33.1 (AC-21) — FE mirror of the backend OD-7 compatibility SoT
+// (apps/api/app/modules/slicer/compatibility.py `MATERIAL_TIER_COMPATIBILITY`). This is the
+// SAME named-contract mirroring discipline as MATERIAL_CLASSES/QUALITY_TIERS above; a vitest
+// parity test (preset-compatibility.test.ts) reads the backend file and asserts agreement so
+// the two cannot drift. The member selector renders material → tier sets purely from this
+// table (incompatible tiers hidden), and a member can never select an incompatible slot.
+//
+// Q5 operator decision (2026-06-04): TPU is currently exposed only through `standard`.
+// The operator will import/manage TPU-specific Orca profiles later; until then, the selector
+// must not pretend TPU supports the PLA/PETG/PCTG tier spread. The parity test guarantees
+// this FE mirror stays byte-identical with the backend SoT.
+export const MATERIAL_TIER_COMPATIBILITY: Record<
+  MaterialClass,
+  readonly QualityTier[]
+> = {
+  PLA: ["aesthetic", "standard", "strong"],
+  PETG: ["aesthetic", "standard", "strong"],
+  PCTG: ["aesthetic", "standard", "strong"],
+  TPU: ["standard"],
+};
+
+/** True when `tier` is a structurally-valid process slot for `material` (FE compat mirror). */
+export function isTierCompatible(
+  material: MaterialClass,
+  tier: QualityTier,
+): boolean {
+  return MATERIAL_TIER_COMPATIBILITY[material].includes(tier);
+}
+
 // because "the catalog estimate chip MUST read the SAME printer bundle EST-INGEST-1 sliced
 // against, or every read is permanently `absent`" — EST-INGEST-1 ingests catalog STL parts
 // using the backend `slicer_default_printer_ref` (apps/api/app/core/config.py:185), so the

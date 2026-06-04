@@ -210,13 +210,10 @@ test("FilesTab estimate profile selector — unavailable tiers disabled (EST-TIE
   await page.goto(`/catalog/${MODEL_ID}`);
   await waitForReady(page);
   await page.getByRole("tabpanel").first().waitFor({ state: "visible" });
-  // The Strong tier resolves to no vendored profile → its <option> must be DISABLED before the
-  // snapshot. Assert the disabled state directly (locale-independent: the visual projects render
-  // pl-PL, so the honest "profile not imported yet" copy is localised — the localised copy itself
-  // is pixel-verified by the screenshot below).
-  await page
-    .locator('select option[value="strong"][disabled]')
-    .waitFor({ state: "attached" });
+  // Aesthetic + Strong resolve to no vendored profile → their radio buttons must be DISABLED
+  // before the snapshot. Assert the disabled state directly without depending on locale-specific
+  // label/copy; the localized copy itself is pixel-verified by the screenshot below.
+  await expect(page.locator("button[role=\"radio\"]:disabled")).toHaveCount(2);
   await expect(page.getByRole("tabpanel").first()).toHaveScreenshot(
     "filestab-estimate-tiers-disabled.png",
   );

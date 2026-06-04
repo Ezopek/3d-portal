@@ -69,10 +69,19 @@ export function FilesTab({
     CATALOG_ESTIMATE_PRINTER_REF,
   );
   // Pass `undefined` until the availability read resolves (and on error) so the selector
-  // fails open — every tier stays selectable rather than locking out Standard while the
-  // (5-min-cached) availability query is in flight or has failed. Once resolved, the array
-  // disables only the tiers the backend reports as unresolvable.
+  // fails open visually — every compatible tier stays selectable rather than locking out
+  // Standard while the (5-min-cached) availability query is in flight or has failed. Once
+  // resolved, the array disables only the tiers the backend reports as unresolvable.
   const catalogTierAvailability = tierAvailability.data?.tiers;
+  const selectedTierAvailability = catalogTierAvailability?.find(
+    (tier) => tier.quality_tier === preset.quality_tier,
+  );
+  // NFR21-NO-422-1: UI fail-open must NOT mean request fail-open. Estimate reads are held
+  // until the backend availability response for the CURRENT material confirms the selected
+  // tier is offerable. This closes the material-switch race (e.g. PLA → TPU/standard before
+  // TPU availability arrives) that could otherwise fire a member-reachable resolver 422.
+  const canReadSelectedEstimate =
+    tierAvailability.isSuccess && selectedTierAvailability?.available === true;
 
   const stlFiles: StlFile[] = useMemo(
     () =>
@@ -281,6 +290,7 @@ export function FilesTab({
                           stlHash={f.sha256}
                           preset={preset}
                           printerRef={CATALOG_ESTIMATE_PRINTER_REF}
+                          enabled={canReadSelectedEstimate}
                         />
                       </div>
                     )}
@@ -338,6 +348,7 @@ export function FilesTab({
                       stlHash={f.sha256}
                       preset={preset}
                       printerRef={CATALOG_ESTIMATE_PRINTER_REF}
+                      enabled={canReadSelectedEstimate}
                     />
                   </div>
                 )}

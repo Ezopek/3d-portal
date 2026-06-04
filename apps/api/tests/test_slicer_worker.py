@@ -778,10 +778,33 @@ def test_slicer_module_mounts_only_narrow_estimates_read_router():
     # transitions go through the store's guarded mark_queued, never a direct write().
     assert "store.write" not in router_text
 
+    # Story 33.1 (PROFILE-ADMIN-1) adds ONE sanctioned sibling: admin_router.py — the
+    # read-only admin profile inventory surface (the `sot/admin_router.py` convention).
+    # Fence it with equal rigor: exactly ONE read-only GET, admin-gated, and NO write /
+    # enqueue / store-mutation surface (the deploy-clean read-only property, AC-10).
+    admin_router_path = module / "admin_router.py"
+    assert admin_router_path.exists()
+    admin_text = admin_router_path.read_text(encoding="utf-8")
+    assert 'APIRouter(prefix="/api/admin"' in admin_text
+    assert admin_text.count("@router.get") == 1
+    assert '"/profiles"' in admin_text
+    for write_method in ("@router.post", "@router.put", "@router.delete", "@router.patch"):
+        assert write_method not in admin_text
+    # Admin-gated (not public), and read-only: no estimate-record write, no enqueue, no
+    # bundle/snapshot persistence reachable from the admin inventory router.
+    assert "current_admin" in admin_text
+    assert "store.write" not in admin_text
+    assert "enqueue" not in admin_text
+    assert "write_bundle" not in admin_text
+    assert "write_snapshot" not in admin_text
+
     api_router = re.compile(r"\bAPIRouter\b")
+    # router.py (the estimates read seam) and admin_router.py (the Story 33.1 admin read
+    # surface, fenced above) are the only two sanctioned APIRouter-bearing modules.
+    sanctioned = {"router.py", "admin_router.py"}
     offenders = []
     for path in module.glob("*.py"):
-        if path.name == "router.py":
+        if path.name in sanctioned:
             continue
         if api_router.search(path.read_text(encoding="utf-8")):
             offenders.append(path.name)

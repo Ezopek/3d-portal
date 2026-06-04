@@ -141,19 +141,47 @@ class VendoredProfileSource:
             tree[profile["name"]] = profile
         return tree
 
-    def intent_partials(self, intent: PrintIntentPreset) -> dict | None:
-        """Return the {machine, process, filament} user partials for ``intent``.
+    def intent_path(self, intent: PrintIntentPreset) -> Path:
+        """The on-disk path of the vendored intent-triple file for ``intent``.
 
-        ``None`` when no vendored intent exists for the material class — the
-        resolver maps that to the classified ``unsupported_material_class``.
+        Single source of the ``<root>/intents/<printer_ref>/<material_class>/
+        <quality_tier>.json`` layout (Decision AH § 1) so existence checks and reads
+        cannot drift from each other.
         """
-        path = (
+        return (
             self._root
             / "intents"
             / intent.printer_ref
             / intent.material_class
             / f"{intent.quality_tier}.json"
         )
+
+    def has_intent(self, intent: PrintIntentPreset) -> bool:
+        """True when the vendored intent-triple file EXISTS (Story 33.1 ``imported``).
+
+        Pure file-existence — it does NOT parse. A present-but-malformed file therefore
+        reports ``imported=true`` while still being ``resolvable=false`` (the inventory's
+        import-vs-resolve distinction, AC-5). Read-only.
+        """
+        return self.intent_path(intent).exists()
+
+    def system_tree_hash(self) -> str:
+        """Content hash of the vendored system-profile tree (Story 33.1 provenance).
+
+        The SAME ``source_system_tree_hash`` value :func:`resolve` persists into the
+        provenance snapshot (resolver.py snapshot ``source_system_tree_hash``) — reused
+        here as a read-only projection so the admin inventory can surface provenance
+        without re-resolving or reading persisted snapshots. Read-only.
+        """
+        return _content_hash(self.system_tree())
+
+    def intent_partials(self, intent: PrintIntentPreset) -> dict | None:
+        """Return the {machine, process, filament} user partials for ``intent``.
+
+        ``None`` when no vendored intent exists for the material class — the
+        resolver maps that to the classified ``unsupported_material_class``.
+        """
+        path = self.intent_path(intent)
         if not path.exists():
             return None
         return json.loads(path.read_text(encoding="utf-8"))

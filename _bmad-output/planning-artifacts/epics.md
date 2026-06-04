@@ -96,6 +96,11 @@ initiatives:
     status: 'planning'
     started: '2026-05-29'
     epics: 'E31 (Spoolman Read-Only Inventory, 5 stories 31.1-31.5 — backend httpx client + Redis cache + arq poll job + env config (31.1); backend `/api/spools/*` routes + DTOs with cost-data carry-through (31.2); frontend `/spools` route + index page + states (31.3); frontend landing low-stock card (31.4); i18n + ops doc + visual baseline regen (31.5)). All stories `gpt-5.4-mini` Codex routing (no NFR-SECURITY adjacency). Source SCP: sprint-change-proposal-2026-05-29-spoolman.md.'
+  - id: 21
+    name: 'Admin-Managed Orca Process Profiles + User-Facing Selector Options'
+    status: 'planning'
+    started: '2026-06-04'
+    epics: 'E33 (Admin-Managed Orca Process Profiles, 3 stories 33.1-33.3, read-only first — read-only admin profile inventory over the resolver + compatibility map consumption (33.1, PROFILE-ADMIN-1); validated import/publish write path (in-place vendored-tree write + sidecar manifest + compatibility enforcement) (33.2, PROFILE-ADMIN-2); optional manage/lifecycle — rename label / disable / delete (33.3, PROFILE-ADMIN-3)). offerable = imported ∧ resolvable ∧ compatible. UX-PROFILE-1 (bmad-ux) required before/with FE work. Process/intent profiles only; NOT Spoolman inventory/cost. Source SCP: sprint-change-proposal-2026-06-04-profile-admin.md.'
 ---
 
 # 3d-portal — Epic Breakdown
@@ -122,6 +127,7 @@ BMAD does not currently ship a dedicated `bmad-edit-epics` skill. New initiative
 | 12 | Anonymous Share View Enrichment + DDoS Hardening | 🚧 planning | started 2026-05-23 | E19 | 7 stories (19.1-19.7); security-first sequencing (rate-limit + throughput BEFORE UX uplift); operator-calibrated thresholds (60 req/min per token+IP; 2 MB/s + 5 concurrent per IP); carousel = member-view-scoped-to-shared-item. Story 19.7 (3D viewer) depends on Init 13 TB-022. |
 | 19 | Spoolman Read-Only Inventory (MVP-A) | 🚧 planning | started 2026-05-29 | E31 | 5 stories (31.1-31.5): 31.1 backend httpx client + Redis 30s TTL + arq 60s poll + SETNX leader-election + env config; 31.2 backend `/api/spools/*` routes + DTOs with cost-data carry-through; 31.3 frontend `/spools` index page + states; 31.4 frontend landing low-stock card; 31.5 i18n + ops doc + visual baseline regen. All stories `gpt-5.4-mini` Codex routing (no NFR-SECURITY adjacency — read-only outbound HTTP to LAN-only Spoolman). Source SCP: `sprint-change-proposal-2026-05-29-spoolman.md`. |
 | 20 | STL Slicer Estimates (Per-Part MVP) | 🚧 planning | started 2026-05-31 | E32 | 6 stories (32.1-32.6): 32.1 profile resolver (Orca system+user inheritance merge + normalize + validate + hash + provenance snapshot); 32.2 containerized headless OrcaSlicer slicer-worker (AppImage + job shape + CLI invoke); 32.3 g-code metadata parse + `(stl_hash, bundle_hash)` cache schema + cost-carry fields; 32.4 invalidation rules + recompute queue + cost-only arithmetic recompute; 32.5 Spoolman-mapped custom filament overrides (volumetric speed / temps / density); 32.6 frontend `PrintIntentPreset` selector + estimate display + soft-fail/warning/failure states. Per-STL only; request totals are linear sums (no whole-plate slicing); not e-commerce; Spoolman = inventory SoT; Fenrir = research/export bench only. Three architecture Decisions (AH resolver, AI slicer-worker container, AJ cache/invalidation). Source SCP: `sprint-change-proposal-2026-05-31-stl-slicer-estimates.md`. |
+| 21 | Admin-Managed Orca Process Profiles + User-Facing Selector Options | 🚧 planning | started 2026-06-04 | E33 | 3 stories (33.1-33.3, read-only first): 33.1 read-only admin profile inventory over the resolver — per `(printer_ref, material_class, quality_tier)` slot `{imported, resolvable, compatible, reason, portal_label, provenance}`, `/api/admin/profiles` admin-gated, + `"profiles"` admin tab grid (PROFILE-ADMIN-1); 33.2 validated import/publish write path — structural `resolve()` ∧ compatibility gates → in-place vendored-tree write + on-disk sidecar manifest + audit, reject incompatible-slot imports (PROFILE-ADMIN-2); 33.3 optional manage/lifecycle — rename label / disable / delete (PROFILE-ADMIN-3). offerable = imported ∧ resolvable ∧ compatible (TPU only offers TPU-compatible process profiles). Two architecture Decisions (AK inventory read + compatibility-map representation/enforcement, AL import write posture + sidecar metadata, no DB). UX-PROFILE-1 (`bmad-ux`) required before/with FE work. Process/intent profiles only; NOT Spoolman inventory/cost; preserves Init 20 `bundle_hash`/provenance invariants. Source SCP: `sprint-change-proposal-2026-06-04-profile-admin.md`. Kanban `t_ce1927cf`. |
 
 ## Initiative 0 — Product Foundation: Home 3D-Printing Catalog
 
@@ -3777,3 +3783,102 @@ Init 20 ships **per-STL** slicer estimates (print time, filament mass/length/vol
 #### Standalone stories — none for Init 20
 
 (No standalone stories outside Epic E32 in Init 20 scope.)
+
+## Initiative 21 — Admin-Managed Orca Process Profiles + User-Facing Selector Options
+
+**Status:** 🚧 planning (started 2026-06-04). Source SCP: `sprint-change-proposal-2026-06-04-profile-admin.md` (status `approved` 2026-06-04 — operator go; approval scoped to planning-artifact appends, NOT code; implementation remains BLOCKED per SCP § 7). Predecessor: Init 20 (STL Slicer Estimates, Epic E32 — shipped); Init 21 builds on its resolver + the EST-TIERS-1 availability bridge and supersedes the EST-TIERS-1 hand-placement workaround. Single epic E33, 3 stories (33.1-33.3), **read-only inventory first**. Architecture: `architecture.md` § Initiative 21 (Decisions AK + AL). Kanban: `t_ce1927cf`.
+
+> **Story breakdown is epic-level sketch.** Full acceptance criteria, task lists, pre-enumeration saves, test-target counts, and Codex routing are produced per story by `bmad-create-story` at dev-entry time. **No story spec files exist yet** — stories stay `backlog`. **UX-PROFILE-1 (`bmad-ux` / Sally) is a REQUIRED, OPEN work item** that designs the admin profile grid + the user-facing selector surface and **blocks finalizing the FE acceptance criteria** for Story 33.1 (grid) and the selector behavior; it must run before/with FE story authoring. Authoring these planning artifacts did NOT authorize dev-story execution / code implementation — that remains gated on an explicit operator go per SCP § 7.
+
+### Overview
+
+Init 21 gives the operator a first-class **admin panel to see, import, and manage Orca process/intent profiles** per `(printer_ref, material_class, quality_tier)` slot, and makes the **user-facing Files/STL selector expose only admin-approved + material-compatible options**. Today profiles are hand-placed on the `.190` portal-content volume under `SLICER_VENDORED_PROFILES_DIR` and per-tier availability is derived purely from disk presence (the EST-TIERS-1 bridge); only `standard.json` exists for the catalog printer/material, so Aesthetic/Strong resolve to `unsupported_material_class` and are disabled. This initiative replaces hand-placement + the disk-presence gate with an admin-managed, **compatibility-constrained** surface where **offerable = imported ∧ resolvable ∧ compatible** (TPU is specific enough to require dedicated, declared-compatible process profiles; a PLA/PETG-derived process slot must never be surfaced as TPU-valid even if it resolves). The user-facing `GET /api/estimates/quality-tiers` `{quality_tier, available, reason}` contract is preserved — only the *source of truth* behind "available" gains an admin-managed, compatibility-aware front end. Process/intent profiles only — NOT Spoolman inventory/cost (a separate SoT). The Init 20 `bundle_hash`, `source_system_tree_hash` provenance snapshot, and append-only stores are preserved invariants.
+
+### Requirements Inventory
+
+**FR ↔ Epic / Story matrix:**
+
+| FR | Epic | Story | Notes |
+|---|---|---|---|
+| FR21-PROFILE-INVENTORY-1 | E33 | 33.1 | Admin-only read of the managed inventory (per-slot `{imported, resolvable, compatible, reason, portal_label, provenance}`) as a superset projection over the resolver. Anchors Decision AK. |
+| FR21-COMPAT-1 | E33 | 33.1 (consume read-only) + 33.2 (enforce on import) | Material/filament-class ↔ process-profile compatibility map; neither surface offers an incompatible combination. Anchors Decision AK (OD-7). |
+| FR21-PROFILE-IMPORT-1 | E33 | 33.2 | Validated import (structural `resolve()` ∧ compatibility) → in-place vendored-tree write + sidecar manifest + audit; incompatible-slot import rejected. Anchors Decision AL. |
+| FR21-SELECTOR-1 | E33 | 33.1 (projection) + 33.2 (end-to-end) | User selector consumes admin-approved + compatibility-filtered availability; preserved `{quality_tier, available, reason}` DTO. |
+
+**NFR ↔ Epic / Story matrix:**
+
+| NFR | Epic | Story | Notes |
+|---|---|---|---|
+| NFR21-PROVENANCE-1 | E33 | 33.2 | Import preserves unrelated `bundle_hash`; in-place system-tree write yields a new `source_system_tree_hash` snapshot automatically. |
+| NFR21-NO-422-1 | E33 | 33.1 + 33.2 | No member-reachable resolve 422 — offer only offerable slots. |
+| NFR21-UX-1 | E33 | 33.1 (grid) + selector (UX-PROFILE-1) | UX-designed admin grid + selector (disabled-with-explanation vs hidden); `bmad-ux` before/with FE work. |
+| NFR21-AUTH-1 | E33 | 33.1 + 33.2 | `/api/admin/*` profiles route admin-gated via `current_admin`, absent from `_PUBLIC_ROUTES`; Init 6 route-enforcement gate passes. |
+| NFR21-OBS-1 | E33 | 33.2 | Import/manage writes via `record_event` (`slicer_profile.import`/`.delete`) + instrumented per the observability contract; no profile bodies logged in full. |
+| NFR21-I18N-PARITY-1 | E33 | 33.1 (grid) + selector | `modules.admin.profiles.*` + compatibility-reason keys in BOTH en.json + pl.json. Material names untranslated. |
+| NFR21-VISUAL-VERIFICATION-1 | E33 | 33.1 + selector | New baselines for offerable vs not-offerable-with-reason states × 4 projects; gated on UX-PROFILE-1. |
+| NFR21-DETERMINISM-1 | E33 | All stories (pre-merge gate) | 3× consecutive identical pytest + vitest pass counts. |
+
+### Epic List
+
+| Epic | Name | Status | Stories |
+|---|---|---|---|
+| E33 | Admin-Managed Orca Process Profiles | 🚧 backlog | 33.1 + 33.2 + 33.3 (read-only first) |
+
+#### Epic E33 — Admin-Managed Orca Process Profiles
+
+**Goal:** ship the admin profile-management surface — a read-only managed-inventory admin grid first, then a validated import/publish write path, then optional lifecycle management — so the operator can see/import/manage Orca process profiles in-product and the user selector exposes only admin-approved + material-compatible options, retiring the EST-TIERS-1 hand-placement workaround. Backend (admin router) + frontend (admin tab + selector), plus a write-slice-only configs-side portal-content RW-mount coordination (NOT a 3d-portal commit). **Sequencing: read-first, write-second** (mirrors the proven Story 32.6 read-seam-first pattern): 33.1 (read-only, zero write/deploy risk) → 33.2 (write path, carries the novel risk) → 33.3 (optional). UX-PROFILE-1 designs the FE surfaces before/with 33.1's FE half + the selector. Each story carries NFR21-DETERMINISM-1; the FE work carries NFR21-UX-1 + NFR21-I18N-PARITY-1 + NFR21-VISUAL-VERIFICATION-1.
+
+##### Story 33.1 — Read-only admin profile inventory + compatibility surfacing (PROFILE-ADMIN-1; FR21-PROFILE-INVENTORY-1, FR21-COMPAT-1 read-only, FR21-SELECTOR-1 projection, NFR21-NO-422-1, NFR21-AUTH-1, NFR21-UX-1, NFR21-I18N-PARITY-1, NFR21-VISUAL-VERIFICATION-1; Decision AK)
+
+**Realizes:** FR21-PROFILE-INVENTORY-1 + FR21-COMPAT-1 (read-only consumption) + FR21-SELECTOR-1 (projection). Anchors Decision AK. **Recommended FIRST slice — safe, deploy-clean.**
+
+**Sketch:** **Backend (additive, read-only):** `GET /api/admin/profiles?printer_ref=…` (admin-gated via `current_admin`, mounted under `/api/admin`, absent from `_PUBLIC_ROUTES`) returning per `(printer_ref, material_class, quality_tier)` slot `{imported, resolvable, compatible, reason, portal_label, provenance: {source_system_tree_hash, orca_version}}`. Reuses the EST-TIERS-1 `resolve_preset` resolvability logic + `VendoredProfileSource` provenance — **no new resolve logic**, an admin-facing superset projection — plus the OD-7 compatibility map to compute `compatible` + the structured `reason` when a slot is resolvable-but-incompatible. **Frontend:** new `"profiles"` tab in `AdminTabs.tsx` (extend `ActiveTab`) + `routes/admin/profiles.tsx`, gated on `isAdmin`, rendering the printer × material × tier grid with imported/resolvable/**compatibility** status + human-readable reason + provenance. Read-only list view; en+pl i18n parity. **FE surface is UX-designed (UX-PROFILE-1), not a raw status dump.**
+
+**Depends on:** Init 20 resolver + EST-TIERS-1 availability seam (shipped). **UX dependency:** UX-PROFILE-1 before FE ACs are locked. **Coordinates with:** 33.2 (which authors/edits the map this story consumes read-only).
+
+**Acceptance boundaries (sketched; finalized by bmad-create-story):**
+- Non-admin → 403; route authenticated + absent from `_PUBLIC_ROUTES` (Init 6 route-enforcement gate passes).
+- The inventory's `resolvable`/`reason` for every tier **agrees** with `GET /api/estimates/quality-tiers` for the same printer/material — shared parity test (one source of truth).
+- Per slot, a clear **compatibility status + reason**: offerable (imported ∧ resolvable ∧ compatible) or not, and when not, *why* (not imported / not resolvable / incompatible for this material class). A resolvable-but-incompatible slot is shown **not offerable** with an explicit incompatibility reason — never "available."
+- The inventory **never marks an incompatible `(material_class, quality_tier)` slot offerable**; a shared test asserts the projection feeding the user selector excludes incompatible slots (no TPU-incompatible process choice for TPU, nor vice-versa); selector parity asserted.
+- Provenance fields project from the resolved bundle's snapshot; **no Orca-internal keys, no file paths, no g-code** leak into the DTO.
+- **Read-only** — no write/upload/multipart surface, no on-disk write, no configs change, no slicer-worker module → SW-DEPLOY-1 overlay rebuild NOT triggered.
+
+**Test targets (sketched):** pytest on 403-for-non-admin; the resolvability-parity assertion vs `quality-tiers`; the incompatible-slot-not-offerable + selector-projection-excludes-incompatible assertions; the no-internal-leak DTO fence. vitest on the grid states; Playwright baselines for offerable vs not-offerable-with-reason states (post UX-PROFILE-1).
+
+**Out of scope:** import/upload, delete, re-slice, metadata mutation, printer registry, label editing, **authoring/editing the compatibility map** (consumed read-only here; authored in 33.2/33.3).
+
+##### Story 33.2 — Validated import/publish write path (PROFILE-ADMIN-2; FR21-PROFILE-IMPORT-1, FR21-COMPAT-1 enforcement, FR21-SELECTOR-1 end-to-end, NFR21-PROVENANCE-1, NFR21-NO-422-1, NFR21-AUTH-1, NFR21-OBS-1; Decision AL) — carries the novel risk
+
+**Realizes:** FR21-PROFILE-IMPORT-1 + FR21-COMPAT-1 (enforcement) + FR21-SELECTOR-1 (end-to-end). Anchors Decision AL.
+
+**Sketch:** multipart import of an intent triple → validate via the existing `resolve()` (OD-3 structural resolvability) **AND** validate material/process compatibility (OD-7) → on success write the triple **in-place** into `SLICER_VENDORED_PROFILES_DIR/intents/...` (OD-2) → on-disk sidecar manifest (portal label, importer, timestamp, original filename, status, **per-slot compatibility status + reason**, OD-4) + admin audit (`slicer_profile.import` via `record_event`). Mirrors the `sot/admin_router.py` multipart + `_write_atomic` + audit shape (JSON payloads, far smaller than STL). This slice owns the **vendored-dir write-posture reversal** (read-only-at-runtime → admin write) and the **configs RW-volume coordination** (HC2, NOT a 3d-portal commit). Defer the optional re-slice trigger (OD-6) — gated on EST-PARSE-1.
+
+**Depends on:** 33.1 (the inventory read + compatibility-map consumption it writes to).
+
+**Acceptance boundaries (sketched):**
+- **No incompatible publish:** an import targeting a slot whose profile is not compatible with the declared material/filament class (e.g. a non-TPU process profile into a TPU slot) is **rejected with a clear structured reason** and NOT published/exposed — structural resolvability alone does not make a slot offerable (resolvable ∧ compatible). Rejection reason surfaced in the admin panel.
+- **Selector invariant end-to-end:** after a successful import the user selector offers the newly-published slot **only if** compatible; an incompatible or compatible-but-unpublished slot never becomes member-reachable (no member-reachable 422; no incompatible combination offered).
+- The compatibility decision + reason for each imported slot persist to the sidecar manifest and are reflected by the 33.1 inventory read (single source of truth).
+- **Provenance preserved (NFR21-PROVENANCE-1):** import does not perturb an unrelated bundle's `bundle_hash`; an in-place system-tree write yields a distinct `source_system_tree_hash` snapshot; append-only stores untouched.
+- Import audit-logged (`slicer_profile.import`); route admin-gated + out of `_PUBLIC_ROUTES`.
+
+**Test targets (sketched):** pytest on incompatible-slot rejection + not-exposed; successful-compatible import → resolves + inventory reflects it; unrelated-bundle hash byte-stability across import; system-tree-mutation → distinct snapshot hash; audit-event assertion; 403-for-non-admin.
+
+**Out of scope:** re-slice/backfill on import (OD-6, gated on EST-PARSE-1); label rename / disable / delete (33.3); printer registry; real-Orca CLI slice-validation (optional follow-up); any Spoolman change.
+
+##### Story 33.3 — Profile lifecycle management: rename label / disable / delete (PROFILE-ADMIN-3; optional; FR21-PROFILE-INVENTORY-1 manage extension, NFR21-AUTH-1, NFR21-OBS-1)
+
+**Realizes:** profile lifecycle management once import exists. **Optional / lowest priority.**
+
+**Sketch:** admin actions over already-imported profiles — edit the portal label, disable (hide from the selector without deleting the file), delete (with audit). Each action updates the sidecar manifest + audit log (`slicer_profile.delete` etc.) and is reflected by the 33.1 inventory read. Admin-gated; no new resolve logic.
+
+**Depends on:** 33.2 (import/manifest must exist). **UX dependency:** UX-PROFILE-1 (manage actions + rejection-reason surfacing).
+
+**Test targets (sketched):** pytest on disable → slot no longer offerable in the selector projection but still listed in the admin inventory as disabled; delete → audited + removed from inventory; 403-for-non-admin.
+
+**Out of scope:** printer registry; arbitrary free-text tier labels (OD-1 deferred); bulk operations; re-slice.
+
+#### Standalone stories — none for Init 21
+
+(No standalone stories outside Epic E33 in Init 21 scope. UX-PROFILE-1 is a `bmad-ux` work item, tracked in sprint-status as `ux-profile-1-*`, not a dev story.)

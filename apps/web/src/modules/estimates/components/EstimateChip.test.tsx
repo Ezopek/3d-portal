@@ -42,9 +42,14 @@ function ok(data: EstimateView) {
   return { isPending: false, isError: false, data, refetch: vi.fn() };
 }
 
-function chip(stlHash = HASH) {
+function chip(stlHash = HASH, props: Partial<React.ComponentProps<typeof EstimateChip>> = {}) {
   return (
-    <EstimateChip stlHash={stlHash} preset={defaultPreset()} printerRef={PRINTER} />
+    <EstimateChip
+      stlHash={stlHash}
+      preset={defaultPreset()}
+      printerRef={PRINTER}
+      {...props}
+    />
   );
 }
 
@@ -60,10 +65,26 @@ describe("EstimateChip", () => {
     render(chip(""));
     // The hook is still invoked with the EMPTY hash so it self-disables (enabled guard);
     // the chip must not show grams for a hashless file.
-    expect(mockUseEstimate).toHaveBeenCalledWith("", expect.anything(), PRINTER);
+    expect(mockUseEstimate).toHaveBeenCalledWith(
+      "",
+      expect.anything(),
+      PRINTER,
+      { enabled: true },
+    );
     const el = screen.getByTitle("No estimate available for this file.");
     expect(el.textContent).toContain("—");
     expect(el.textContent).not.toContain("42");
+  });
+
+  it("passes the parent availability gate to the estimate hook", () => {
+    mockUseEstimate.mockReturnValue(ok(view()));
+    render(chip(HASH, { enabled: false }));
+    expect(mockUseEstimate).toHaveBeenCalledWith(
+      HASH,
+      expect.anything(),
+      PRINTER,
+      { enabled: false },
+    );
   });
 
   it("loading → aria-busy status, no value flashed", () => {

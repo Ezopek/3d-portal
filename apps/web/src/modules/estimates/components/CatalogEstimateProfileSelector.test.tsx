@@ -1,58 +1,75 @@
 import "@/locales/i18n";
 
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import i18n from "@/locales/i18n";
 import type { PrintIntentPresetInput } from "@/modules/estimates/lib/preset";
 import { CatalogEstimateProfileSelector } from "./CatalogEstimateProfileSelector";
 
-afterEach(() => {
-  cleanup();
+afterEach(cleanup);
+
+beforeAll(async () => {
+  await i18n.changeLanguage("en");
 });
 
-const DEFAULT_PRESET: PrintIntentPresetInput = {
+const PLA_STANDARD: PrintIntentPresetInput = {
   material_class: "PLA",
   quality_tier: "standard",
   spoolman_filament_ref: null,
 };
 
-describe("CatalogEstimateProfileSelector (EST-DISPLAY-1 product correction)", () => {
-  it("exposes ONLY the quality profile — no material or pinned-filament controls", () => {
+const TPU_STANDARD: PrintIntentPresetInput = {
+  material_class: "TPU",
+  quality_tier: "standard",
+  spoolman_filament_ref: null,
+};
+
+function tierButton(name: RegExp) {
+  return screen.getByRole("radio", { name }) as HTMLButtonElement;
+}
+
+describe("CatalogEstimateProfileSelector (Story 33.1 — Path B material reversal)", () => {
+  it("surfaces a MATERIAL control (the documented EST-DISPLAY-1 reversal)", () => {
     render(
-      <CatalogEstimateProfileSelector
-        value={DEFAULT_PRESET}
-        onChange={() => {}}
-      />,
+      <CatalogEstimateProfileSelector value={PLA_STANDARD} onChange={() => {}} />,
     );
-    expect(screen.getByLabelText(/estimate profile/i)).toBeTruthy();
-    expect(screen.queryByLabelText(/material/i)).toBeNull();
-    expect(screen.queryByLabelText(/pinned filament/i)).toBeNull();
+    expect(screen.getByLabelText(/material/i)).toBeTruthy();
   });
 
-  it("emits a preset that changes ONLY quality_tier, leaving material/pin at their defaults", () => {
+  it("changing material to TPU resets the tier to a compatible one and keeps the spool pin null (AC-18)", () => {
     const calls: PrintIntentPresetInput[] = [];
     render(
       <CatalogEstimateProfileSelector
-        value={DEFAULT_PRESET}
+        value={PLA_STANDARD}
         onChange={(p) => calls.push(p)}
       />,
     );
-    fireEvent.change(screen.getByLabelText(/estimate profile/i), {
-      target: { value: "strong" },
+    fireEvent.change(screen.getByLabelText(/material/i), {
+      target: { value: "TPU" },
     });
-    expect(calls[0]).toEqual({ ...DEFAULT_PRESET, quality_tier: "strong" });
-    // The internal defaults are preserved verbatim so the estimate query key is unchanged
-    // except for the tier the member actually chose.
-    expect(calls[0]?.material_class).toBe("PLA");
+    // Q5 operator decision: TPU is currently standard-only, so a PLA/standard preset stays
+    // on standard while switching material; the spool pin STAYS null (preserved invariant).
+    expect(calls[0]?.material_class).toBe("TPU");
+    expect(calls[0]?.quality_tier).toBe("standard");
     expect(calls[0]?.spoolman_filament_ref).toBeNull();
   });
 
-  it("renders backend-unavailable tiers disabled with honest copy and ignores their change events", () => {
+  it("HIDES structurally-incompatible tiers for the chosen material (AC-19)", () => {
+    render(
+      <CatalogEstimateProfileSelector value={TPU_STANDARD} onChange={() => {}} />,
+    );
+    // Q5 operator decision: TPU offers only Standard; Aesthetic/Strong are hidden.
+    expect(screen.getByRole("radio", { name: /Standard/i })).toBeTruthy();
+    expect(screen.queryByRole("radio", { name: /Aesthetic/i })).toBeNull();
+    expect(screen.queryByRole("radio", { name: /Strong/i })).toBeNull();
+  });
+
+  it("DISABLES compatible-but-unavailable tiers with an explanation and ignores clicks (AC-19)", () => {
     const calls: PrintIntentPresetInput[] = [];
     render(
       <CatalogEstimateProfileSelector
-        value={DEFAULT_PRESET}
+        value={PLA_STANDARD}
         onChange={(p) => calls.push(p)}
         availability={[
           { quality_tier: "aesthetic", available: false, reason: "profile_not_imported" },
@@ -61,84 +78,55 @@ describe("CatalogEstimateProfileSelector (EST-DISPLAY-1 product correction)", ()
         ]}
       />,
     );
-
-    const strong = screen.getByRole("option", {
-      name: /Strong.*profile not imported yet/i,
-    }) as HTMLOptionElement;
+    const strong = tierButton(/Strong.*Not available yet/i);
     expect(strong.disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText(/estimate profile/i), {
-      target: { value: "strong" },
-    });
+    fireEvent.click(strong);
     expect(calls).toEqual([]);
   });
 
-  it("fails open: an empty availability list (still loading / errored) keeps every tier selectable", () => {
+  it("fails OPEN: empty availability keeps every compatible tier selectable, Standard never locked out (AC-20)", () => {
     const calls: PrintIntentPresetInput[] = [];
     render(
       <CatalogEstimateProfileSelector
-        value={DEFAULT_PRESET}
+        value={PLA_STANDARD}
         onChange={(p) => calls.push(p)}
         availability={[]}
       />,
     );
-
-    // Standard (the default + always-resolvable tier) must never be locked out by a transient
-    // empty/errored availability response.
-    expect((screen.getByRole("option", { name: "Standard" }) as HTMLOptionElement).disabled).toBe(
-      false,
-    );
-    const strong = screen.getByRole("option", { name: "Strong" }) as HTMLOptionElement;
+    expect(tierButton(/^Standard$/).disabled).toBe(false);
+    const strong = tierButton(/^Strong$/);
     expect(strong.disabled).toBe(false);
-    fireEvent.change(screen.getByLabelText(/estimate profile/i), {
-      target: { value: "strong" },
-    });
+    fireEvent.click(strong);
     expect(calls.map((p) => p.quality_tier)).toEqual(["strong"]);
   });
 
-  it("never exposes a raw Orca key in any control or option", () => {
+  it("never exposes a raw Orca key or a Spoolman pin control (AC-18)", () => {
     const { container } = render(
-      <CatalogEstimateProfileSelector
-        value={DEFAULT_PRESET}
-        onChange={() => {}}
-      />,
+      <CatalogEstimateProfileSelector value={PLA_STANDARD} onChange={() => {}} />,
     );
     const html = container.innerHTML;
     for (const orca of [
       "filament_max_volumetric_speed",
       "layer_height",
       "nozzle_temperature",
-      "bed_temp",
+      "spoolman_filament_ref",
     ]) {
       expect(html).not.toContain(orca);
     }
+    // No spool/filament pin control is introduced on this surface.
+    expect(screen.queryByLabelText(/pinned filament|spool/i)).toBeNull();
   });
 
-  it("renders the quality options in both locales", async () => {
+  it("renders material + tier controls in both locales", async () => {
     const { rerender } = render(
-      <CatalogEstimateProfileSelector
-        value={DEFAULT_PRESET}
-        onChange={() => {}}
-      />,
+      <CatalogEstimateProfileSelector value={PLA_STANDARD} onChange={() => {}} />,
     );
-    expect(screen.getByRole("option", { name: "Standard" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Standard" })).toBeTruthy();
     await i18n.changeLanguage("pl");
     rerender(
-      <CatalogEstimateProfileSelector
-        value={DEFAULT_PRESET}
-        onChange={() => {}}
-      />,
+      <CatalogEstimateProfileSelector value={PLA_STANDARD} onChange={() => {}} />,
     );
-    expect(screen.getByRole("option", { name: "Standardowa" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "Standardowa" })).toBeTruthy();
     await i18n.changeLanguage("en");
-  });
-
-  it("gives the profile control a discernible label (a11y)", () => {
-    render(
-      <CatalogEstimateProfileSelector
-        value={DEFAULT_PRESET}
-        onChange={() => {}}
-      />,
-    );
-    expect(screen.getByLabelText(/estimate profile/i)).toBeTruthy();
   });
 });

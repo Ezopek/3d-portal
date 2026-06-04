@@ -10,6 +10,7 @@ from app.modules.invite.router import router as invite_public_router
 from app.modules.share.admin_router import router as share_admin_router
 from app.modules.share.member_router import router as share_member_router
 from app.modules.share.router import router as share_router
+from app.modules.slicer.admin_router import router as slicer_admin_router
 from app.modules.slicer.router import router as estimates_router
 from app.modules.sot.admin_router import router as sot_admin_router
 from app.modules.sot.router import router as sot_router
@@ -29,4 +30,5 @@ api_router.include_router(share_member_router)
 api_router.include_router(share_router)
 api_router.include_router(sot_router)
 api_router.include_router(spools_router)
+api_router.include_router(slicer_admin_router)
 api_router.include_router(estimates_router)
