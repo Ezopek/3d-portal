@@ -362,3 +362,24 @@ def test_publish_manifest_failure_on_reimport_restores_previous_pair(
 
 def _snapshot(root: Path) -> dict[str, bytes]:
     return {p.relative_to(root).as_posix(): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+
+
+def test_publish_intent_preserves_existing_intent_mode_and_manifest_inherits_it(tmp_path):
+    """Runtime smoke regression: mkstemp must not publish root-owned/0600 vendored files."""
+    root = tmp_path / "vendored"
+    intent_path = root / "intents" / "creality-k1-max-microswiss-hf" / "TPU" / "standard.json"
+    intent_path.parent.mkdir(parents=True)
+    intent_path.write_text('{"machine":{},"process":{},"filament":{}}', encoding="utf-8")
+    intent_path.chmod(0o664)
+
+    from app.modules.slicer.import_service import manifest_path_for, publish_intent
+
+    publish_intent(
+        {"machine": {}, "process": {}, "filament": {}},
+        intent_path=intent_path,
+        manifest={"manifest_version": "1", "portal_label": "Rosa Flex"},
+    )
+
+    manifest_path = manifest_path_for(intent_path)
+    assert oct(intent_path.stat().st_mode & 0o777) == "0o664"
+    assert oct(manifest_path.stat().st_mode & 0o777) == "0o664"

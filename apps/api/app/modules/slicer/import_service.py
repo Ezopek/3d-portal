@@ -30,6 +30,7 @@ import os
 import re
 import tempfile
 import uuid
+from contextlib import suppress
 from pathlib import Path, PurePath
 from typing import Any, Final
 
@@ -287,12 +288,40 @@ def _json_bytes(payload: dict) -> bytes:
     return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
 
 
-def _stage_temp(target: Path, content: bytes) -> Path:
+def _metadata_source_for(target: Path, template: Path | None = None) -> Path | None:
+    """Choose a live path whose owner/mode the temp publish should inherit.
+
+    ``mkstemp`` creates ``0600`` files owned by the container user (root in production). If we
+    rename that straight into the host-mounted vendored tree, operator/host tooling loses read
+    access. Preserve an existing target's metadata, or for a new sidecar manifest inherit from
+    the intent file template; otherwise fall back to the parent directory's owner and group.
+    """
+    if target.exists():
+        return target
+    if template is not None and template.exists():
+        return template
+    return target.parent if target.parent.exists() else None
+
+
+def _apply_metadata(tmp_path: Path, source: Path | None) -> None:
+    if source is None:
+        return
+    stat = source.stat()
+    os.chmod(tmp_path, stat.st_mode & 0o777)
+    # Non-root dev/test environments may not be allowed to chown. The chmod still avoids
+    # mkstemp's 0600 default; production containers run as root and preserve ownership too.
+    with suppress(PermissionError):
+        os.chown(tmp_path, stat.st_uid, stat.st_gid)
+
+
+def _stage_temp(target: Path, content: bytes, *, template: Path | None = None) -> Path:
     """Write ``content`` to a unique temp sibling of ``target`` (fsynced); return the temp path.
 
     The temp is fully written + fsynced but NOT yet published — the caller commits it with an
     atomic ``os.rename``. A unique ``.<name>.XXXX.tmp`` sibling means concurrent writers never
-    share a temp path; on a write failure the temp is removed before re-raising.
+    share a temp path; on a write failure the temp is removed before re-raising. The temp's
+    owner/mode is normalized before rename so production bind-mount files do not become
+    root-owned ``0600`` artifacts after import.
     """
     target.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(
@@ -304,6 +333,7 @@ def _stage_temp(target: Path, content: bytes) -> Path:
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
+        _apply_metadata(tmp_path, _metadata_source_for(target, template))
     except BaseException:
         tmp_path.unlink(missing_ok=True)
         raise
@@ -345,7 +375,7 @@ def publish_intent(partials: dict, *, intent_path: Path, manifest: dict) -> None
     # Stage both payloads to temp siblings BEFORE committing either (no live file touched yet).
     intent_tmp = _stage_temp(intent_path, _json_bytes(partials))
     try:
-        manifest_tmp = _stage_temp(manifest_path, _json_bytes(manifest))
+        manifest_tmp = _stage_temp(manifest_path, _json_bytes(manifest), template=intent_path)
     except BaseException:
         intent_tmp.unlink(missing_ok=True)
         raise
