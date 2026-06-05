@@ -96,12 +96,17 @@ class _FakeSource:
 
     def __init__(self) -> None:
         self.imported_slots: set[tuple[str, str]] = set()
+        # Story 33.2 (AC-14): controllable manifest labels per slot (default: none).
+        self.manifest_labels: dict[tuple[str, str], str] = {}
 
     def has_intent(self, intent: PrintIntentPreset) -> bool:
         return (intent.material_class, intent.quality_tier) in self.imported_slots
 
     def system_tree_hash(self) -> str:
         return TREE_HASH
+
+    def manifest_label(self, intent: PrintIntentPreset) -> str | None:
+        return self.manifest_labels.get((intent.material_class, intent.quality_tier))
 
 
 # === fixture =================================================================

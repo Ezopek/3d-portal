@@ -23,6 +23,9 @@ from app.core.db.models import AuditLog
 #   recovery_code        — auth.recovery_code.used (entity_id = recovery_codes.id UUID)
 #   render_selection     — admin.render.selection.set/delete (entity_id None: legacy str model_id)
 #   share_token          — admin.share.create/delete (entity_id None: keyed by token string)
+#   slicer_profile       — slicer_profile.import (Story 33.2 admin profile import;
+#                          entity_id = deterministic (printer_ref, material_class,
+#                          quality_tier) slot UUID); slicer_profile.delete reserved for 33.3
 #   tag                  — future tag CRUD (Slice 2C.x)
 #   thumbnail_override   — admin.thumbnail.set/unset (entity_id None: legacy str model_id)
 #   user                 — auth.login.success/fail; auth.totp.enrolled (Story 7.2);
@@ -51,6 +54,7 @@ KNOWN_ENTITY_TYPES: frozenset[str] = frozenset(
         "recovery_code",
         "render_selection",
         "share_token",
+        "slicer_profile",
         "tag",
         "thumbnail_override",
         "user",

@@ -70,7 +70,10 @@ export function ProfilesPage() {
       ) : inventory.data ? (
         <>
           <ProfileLegend />
-          <ProfileInventoryGrid slots={inventory.data.slots} />
+          <ProfileInventoryGrid
+            slots={inventory.data.slots}
+            printerRef={inventory.data.printer_ref}
+          />
           {inventory.data.slots.every((slot) => !slot.offerable) ? (
             <p className="text-xs text-muted-foreground">
               {t("modules.admin.profiles.empty_hint")}

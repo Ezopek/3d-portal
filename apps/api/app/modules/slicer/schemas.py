@@ -182,6 +182,22 @@ class AdminProfileSlot(BaseModel):
     provenance: AdminProfileProvenance
 
 
+class ProfileImportRejection(BaseModel):
+    """Story 33.2 (AC-5/6/7, AC-18) — the structured rejection detail an import returns.
+
+    Carried as the ``detail`` of the 413/422 ``HTTPException`` so the admin panel can localize
+    *why* an import was rejected (admin fails closed/visible). ``reason_category`` is the
+    machine-readable category the FE keys an i18n string off — one of ``too_large`` (413),
+    ``invalid_partial`` / ``incompatible_for_material`` / ``unsupported_material_class`` /
+    ``missing_system_profile`` / ``cli_validation_failed`` (422). ``message`` is a short,
+    non-leaking diagnostic (no Orca-internal profile body, no filesystem path, no g-code).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    reason_category: str
+    message: str
+
+
 class AdminProfileInventoryResponse(BaseModel):
     """The full per-slot inventory for one printer (Story 33.1, FR21-PROFILE-INVENTORY-1).
 

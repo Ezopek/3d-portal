@@ -14,7 +14,15 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 async function _api<T>(path: string, init: RequestInit, canRetry: boolean): Promise<T> {
   const headers = new Headers(init.headers);
-  if (init.body !== undefined && !headers.has("Content-Type")) {
+  // Default JSON, but NEVER stamp a Content-Type on a FormData body — the browser must set
+  // `multipart/form-data; boundary=…` itself, so a forced `application/json` would corrupt
+  // the multipart parse. This lets multipart uploads (Story 33.2 profile import) ride the
+  // wrapper and keep the CSRF header + 401-retry path instead of a raw `fetch`.
+  if (
+    init.body !== undefined &&
+    !(init.body instanceof FormData) &&
+    !headers.has("Content-Type")
+  ) {
     headers.set("Content-Type", "application/json");
   }
   headers.set("X-Portal-Client", "web");

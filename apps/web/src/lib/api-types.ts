@@ -508,3 +508,11 @@ export interface AdminProfileInventoryResponse {
   printer_ref: string;
   slots: AdminProfileSlot[];
 }
+
+// --- Story 33.2 (Decision AL) — validated import/publish write path ---
+// The structured rejection detail an import returns (413/422 `detail`). `reason_category`
+// is the machine-readable category the FE localizes (admin fails closed/visible).
+export interface ProfileImportRejection {
+  reason_category: string;
+  message: string;
+}

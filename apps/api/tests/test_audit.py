@@ -76,6 +76,7 @@ def test_known_entity_types_covers_all_call_site_resources():
         "recovery_code",
         "render_selection",
         "share_token",
+        "slicer_profile",
         "tag",
         "thumbnail_override",
         "user",
@@ -118,3 +119,40 @@ def test_record_event_accepts_invite_token_entity_type(tmp_path):
     assert events[0].entity_type == "invite_token"
     assert events[0].entity_id == invite_id
     assert events[0].actor_user_id == admin_id
+
+
+def test_record_event_accepts_slicer_profile_entity_type(tmp_path):
+    """Story 33.2 / AC-12: ``slicer_profile`` is the entity_type for slicer_profile.import."""
+    db_path = tmp_path / "slicer_profile_audit.db"
+    engine = create_engine_for_url(f"sqlite:///{db_path}")
+    init_schema(engine)
+
+    with Session(engine) as session:
+        admin = User(
+            email="admin@b.c",
+            display_name="Admin",
+            role=UserRole.admin,
+            password_hash="x",
+        )
+        session.add(admin)
+        session.commit()
+        session.refresh(admin)
+        admin_id = admin.id
+
+    slot_id = uuid.uuid4()
+    record_event(
+        engine,
+        action="slicer_profile.import",
+        entity_type="slicer_profile",
+        entity_id=slot_id,
+        actor_user_id=admin_id,
+        after={"printer_ref": "creality-k1-max-microswiss-hf"},
+    )
+
+    with Session(engine) as session:
+        events = session.exec(select(AuditLog)).all()
+
+    assert len(events) == 1
+    assert events[0].action == "slicer_profile.import"
+    assert events[0].entity_type == "slicer_profile"
+    assert events[0].entity_id == slot_id

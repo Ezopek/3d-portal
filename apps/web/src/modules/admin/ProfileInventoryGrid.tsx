@@ -6,11 +6,15 @@ import {
   Info,
   TriangleAlert,
 } from "lucide-react";
-import type { ComponentType } from "react";
+import { useRef, type ChangeEvent, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { AdminProfileSlot, AdminProfileStatus } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
+import {
+  importRejectionCategory,
+  useImportProfile,
+} from "@/modules/admin/hooks/useImportProfile";
 import {
   MATERIAL_CLASSES,
   QUALITY_TIERS,
@@ -154,24 +158,90 @@ function CellReason({ slot }: { slot: AdminProfileSlot }) {
   );
 }
 
-/** Inert "Import" placeholder for compatible-but-not-imported cells (AC-16, Q4 default). */
-function ImportPlaceholder({ slot }: { slot: AdminProfileSlot }) {
+// Reason categories the import already shares with the 33.1 inventory vocabulary — reuse
+// those localized strings (AC-19) rather than duplicating copy. Every other category gets a
+// dedicated `import.error.*` string; an unknown/absent category falls back to `generic` so a
+// rejected import ALWAYS surfaces a reason (admin fails closed/visible — AC-18).
+const REUSED_REASON_CATEGORIES = new Set(["incompatible_for_material", "not_resolvable"]);
+const IMPORT_ERROR_CATEGORIES = new Set([
+  "invalid_partial",
+  "unsupported_material_class",
+  "missing_system_profile",
+  "cli_validation_failed",
+  "too_large",
+]);
+
+function rejectionMessageKey(category: string | null): string {
+  if (category && REUSED_REASON_CATEGORIES.has(category)) {
+    return `modules.admin.profiles.reason.${category}`;
+  }
+  if (category && IMPORT_ERROR_CATEGORIES.has(category)) {
+    return `modules.admin.profiles.import.error.${category}`;
+  }
+  return "modules.admin.profiles.import.error.generic";
+}
+
+/**
+ * Live "Import" affordance for compatible-but-not-imported cells (AC-16/AC-18).
+ *
+ * Renders ONLY on `not_imported` status, so incompatible cells (status `incompatible`) carry
+ * no import action — unchanged from 33.1. A click opens the file picker; selecting a JSON
+ * file posts it for `(printer_ref, material_class, quality_tier)` via `useImportProfile`. The
+ * cell is NOT optimistically flipped to offerable — on success the hook invalidates
+ * `["admin","profiles"]` and the grid refetches the server truth; on rejection the structured
+ * `reason_category` is surfaced as a localized inline error.
+ */
+function ImportControl({ slot, printerRef }: { slot: AdminProfileSlot; printerRef: string }) {
   const { t } = useTranslation();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const importProfile = useImportProfile(printerRef);
   if (slot.status !== "not_imported") return null;
+
+  function onPick(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = ""; // allow re-picking the same file after a rejection
+    if (file) {
+      importProfile.mutate({
+        file,
+        material_class: slot.material_class,
+        quality_tier: slot.quality_tier,
+      });
+    }
+  }
+
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      disabled
-      className="mt-1 h-6 px-2 text-[11px]"
-      title={t("modules.admin.profiles.import_placeholder_tooltip")}
-    >
-      {t("modules.admin.profiles.import_placeholder")}
-    </Button>
+    <div className="mt-1 flex flex-col items-start gap-1">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="application/json"
+        className="sr-only"
+        aria-label={t("modules.admin.profiles.import.choose_file")}
+        onChange={onPick}
+      />
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={importProfile.isPending}
+        className="h-6 px-2 text-[11px]"
+        onClick={() => inputRef.current?.click()}
+      >
+        {importProfile.isPending
+          ? t("modules.admin.profiles.import.importing")
+          : t("modules.admin.profiles.import.action")}
+      </Button>
+      {importProfile.isError ? (
+        <p className="text-[11px] leading-tight text-destructive" role="alert">
+          {t(rejectionMessageKey(importRejectionCategory(importProfile.error)), {
+            material: slot.material_class,
+          })}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
-function CellBody({ slot }: { slot: AdminProfileSlot }) {
+function CellBody({ slot, printerRef }: { slot: AdminProfileSlot; printerRef: string }) {
   return (
     <div className="flex flex-col items-start gap-0.5">
       <div className="flex items-center gap-1">
@@ -182,7 +252,7 @@ function CellBody({ slot }: { slot: AdminProfileSlot }) {
         <span className="text-[11px] text-foreground">{slot.portal_label}</span>
       ) : null}
       <CellReason slot={slot} />
-      <ImportPlaceholder slot={slot} />
+      <ImportControl slot={slot} printerRef={printerRef} />
     </div>
   );
 }
@@ -193,8 +263,17 @@ function CellBody({ slot }: { slot: AdminProfileSlot }) {
  * Desktop: a 4x3 status matrix (rows = MATERIAL_CLASSES in resolve order, columns =
  * QUALITY_TIERS). Mobile: stacked per-material cards. Each cell carries exactly one status
  * by the backend precedence, plus a human-readable reason on every non-offerable cell.
+ *
+ * Story 33.2: `printerRef` is threaded to each cell so a compatible-not-imported cell can
+ * post an import for `(printer_ref, material_class, quality_tier)` (AC-16).
  */
-export function ProfileInventoryGrid({ slots }: { slots: AdminProfileSlot[] }) {
+export function ProfileInventoryGrid({
+  slots,
+  printerRef,
+}: {
+  slots: AdminProfileSlot[];
+  printerRef: string;
+}) {
   const { t } = useTranslation();
   const byKey = new Map(
     slots.map((slot) => [`${slot.material_class}/${slot.quality_tier}`, slot]),
@@ -235,7 +314,7 @@ export function ProfileInventoryGrid({ slots }: { slots: AdminProfileSlot[] }) {
                 const slot = slotFor(material, tier);
                 return (
                   <td key={tier} className="p-2 align-top">
-                    {slot ? <CellBody slot={slot} /> : null}
+                    {slot ? <CellBody slot={slot} printerRef={printerRef} /> : null}
                   </td>
                 );
               })}
@@ -260,7 +339,7 @@ export function ProfileInventoryGrid({ slots }: { slots: AdminProfileSlot[] }) {
                     <span className="text-xs text-muted-foreground">
                       {t(`modules.estimates.quality.${tier}`)}
                     </span>
-                    {slot ? <CellBody slot={slot} /> : null}
+                    {slot ? <CellBody slot={slot} printerRef={printerRef} /> : null}
                   </div>
                 );
               })}

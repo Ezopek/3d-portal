@@ -186,6 +186,20 @@ class VendoredProfileSource:
             return None
         return json.loads(path.read_text(encoding="utf-8"))
 
+    def manifest_label(self, intent: PrintIntentPreset) -> str | None:
+        """Read the operator ``portal_label`` from the Story 33.2 sidecar manifest (AC-14).
+
+        Additive read-only projection (mirrors ``has_intent`` / ``system_tree_hash``): returns
+        the manifest's ``portal_label`` when a sidecar manifest exists next to the intent file,
+        else ``None`` (a slot with no manifest is unchanged 33.1 behavior). It does NOT
+        recompute any live ``imported`` / ``resolvable`` / ``compatible`` field — the manifest
+        is a point-in-time record, never the live SoT (AC-10). Deferred import keeps the
+        ``import_service`` ↔ ``resolver`` dependency one-directional (no module-load cycle).
+        """
+        from app.modules.slicer.import_service import read_manifest_label
+
+        return read_manifest_label(self.intent_path(intent))
+
 
 def _now_iso() -> str:
     """Provenance timestamp. Excluded from every content hash, so non-pure-but-safe."""
