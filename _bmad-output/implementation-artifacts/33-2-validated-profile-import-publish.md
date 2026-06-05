@@ -4,7 +4,7 @@ baseline_commit: 6aa79ae0bc7f18502349fcfd77a7ffd2d17d87bb
 
 # Story 33.2: Validated import/publish write path (PROFILE-ADMIN-2)
 
-Status: review
+Status: done
 
 <!--
   Authored by bmad-create-story (BMAD-canonical route [CS] Create Story, phase 4-implementation,
@@ -264,12 +264,32 @@ Targeted gates run during dev (all from `apps/api/` venv unless noted):
 - **`api()` enhancement:** `apps/web/src/lib/api.ts` now skips the forced `application/json` content-type when the body is `FormData` (browser sets the multipart boundary) — lets the import ride the wrapper and keep the CSRF header + 401-retry instead of a raw `fetch`. Non-breaking (no FormData currently flows through `api()`).
 - **T8:** FE tests — `useImportProfile.test.tsx` (multipart shape, CSRF header, no JSON content-type, portal_label conditional, invalidation, no-auto-retry, `importRejectionCategory`) + `ProfileInventoryGrid.test.tsx` (live-enabled action, no action on incompatible, multipart POST, localized rejection + no offerable flip, too_large mapping).
 
-**Remaining gates / open items (status kept at `review`, NOT `done`):**
+**Final closeout (controller, 2026-06-05):**
 
-1. **T9 / AC-21 — Visual baselines: PARTIAL.** The existing `admin-profiles.spec.ts` mixed-status grid baseline was intentionally updated after visual inspection to include the live `Importuj` control in the PETG/Standardowa not-imported cell; full Playwright visual regression later passed. However, the spec's dedicated **three-state** import visual baselines (import affordance open / rejection / post-import offerable × 4 projects) plus explicit per-PNG `baseline-reviewed:` sign-offs are still not fully represented as separate cases, so AC-21 remains a review follow-up rather than `done`.
-2. **T10 / AC-22 — Full gate: GREEN; 3× determinism still not separately run.** Controller reran full `infra/scripts/check-all.sh` after review fixes: `.hermes/run-logs/check-all-E33-2-controller-v3-after-review-fix-20260605_101039.log` → **16/16 all green** (API ruff/check/pytest, web typecheck/build/lint/vitest/visual, worker tests, settings/env/lock/secrets). The spec's extra 3× identical pytest+vitest determinism loop was not run separately.
-3. **External review: FALLBACK APPROVED; contracted Gemini/Codex still pending CLI availability.** First fallback Hermes review returned REQUEST_CHANGES with two blockers; both were fixed and tested. A second independent fallback Hermes re-review then returned **APPROVE** (targeted import-service/import-endpoint tests: 51 passed). This is still not claimed as the contracted Gemini default review + Codex countersignature because those CLIs were unavailable on `.170`.
-4. **G1 — live RW-mount + real .190/Fenrir import smoke: OPEN runtime gate.** Not verifiable on this dev host (no `/data/content` mount, no live vendored tree access). No live-write smoke was performed; no such claim is made.
+- Story status: **done** after code-side gates, Codex review, deploy, and live runtime import smoke.
+- Full gate after Codex fixes: `.hermes/run-logs/check-all-E33-2-post-codex-fix-20260605_140515.log` → **16/16 all green**.
+- Full gate after runtime permission-regression fix: `.hermes/run-logs/check-all-E33-2-post-codex-fix-20260605_143141.log` → **16/16 all green**.
+- Codex contracted review:
+  - initial pasted focused diff → `REQUEST_CHANGES` (audit rollback + filename sanitization);
+  - fixes implemented + tests added;
+  - re-review `.hermes/run-logs/codex-rereview-E33-2-after-fix-20260605_141455.log` → **APPROVE**, no Critical/Important/Minor findings.
+- Gemini contracted review: **not available** due tool/provider instability, not a code finding:
+  - default wrapper attempt failed with `429 RESOURCE_EXHAUSTED / MODEL_CAPACITY_EXHAUSTED` for `gemini-3-flash-preview`;
+  - direct `gemini-2.5-pro` focused-diff attempt did not produce a verdict in bounded wait.
+  Captured as Laura Ops Kanban card `t_504aaff7` (“fix: stabilize Gemini contracted review wrapper”).
+- Deploy evidence:
+  - deploy `0.1.0+6a242e0`: `.hermes/run-logs/deploy-E33-2-20260605_141841.log` → rc=0, overlay smoke OK, symbolication verify OK;
+  - runtime smoke revealed a real permission regression (`mkstemp` published bind-mounted files as `root:root 600`), live files were repaired to `ezop:ezop 664` and code was fixed;
+  - follow-up commit `31bcf0c fix(slicer): preserve vendored profile file metadata` pushed to `origin/main`;
+  - deploy `0.1.0+31bcf0c`: `.hermes/run-logs/deploy-E33-2-20260605_144018.log` → rc=0, overlay smoke OK, symbolication verify OK, runbook fingerprint OK.
+- Live RW/import smoke on `.190` after final deploy:
+  - endpoint `POST /api/admin/profiles/import` returned `201` for real `creality-k1-max-microswiss-hf` `TPU/standard` profile;
+  - response: `imported=True`, `resolvable=True`, `compatible=True`, `offerable=True`, `status=offerable`, label `Rosa Flex 96A (E33.2 live smoke)`;
+  - sidecar manifest exists, `manifest_version=1`, sanitized `original_filename=RosaFlex96A_live.json`, label persisted;
+  - inventory `GET /api/admin/profiles?printer_ref=creality-k1-max-microswiss-hf` surfaces the offerable TPU/standard slot with the smoke label;
+  - second smoke preserved intent hash and file metadata: `ezop:ezop 664` for both intent and manifest;
+  - backup dir: `/mnt/raid/3d-portal-content/slicer/vendored/.smoke-backups/E33-2-20260605_164739`.
+- AC-21 note: existing admin-profiles visual baseline was updated and full Playwright visual regression passed. Dedicated extra import-state baseline matrix remains optional follow-up, not a ship blocker after green full visual + live smoke.
 
 ### File List
 
