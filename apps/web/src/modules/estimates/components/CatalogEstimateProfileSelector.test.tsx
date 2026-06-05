@@ -25,16 +25,30 @@ const TPU_STANDARD: PrintIntentPresetInput = {
   spoolman_filament_ref: null,
 };
 
-function tierButton(name: RegExp) {
-  return screen.getByRole("radio", { name }) as HTMLButtonElement;
+function qualitySelect() {
+  return screen.getByLabelText(/quality/i) as HTMLSelectElement;
 }
 
-describe("CatalogEstimateProfileSelector (Story 33.1 — Path B material reversal)", () => {
+function tierOption(name: RegExp) {
+  return screen.getByRole("option", { name }) as HTMLOptionElement;
+}
+
+describe("CatalogEstimateProfileSelector (Story 33.1 — Path B material reversal; E33.1 quality-select correction)", () => {
   it("surfaces a MATERIAL control (the documented EST-DISPLAY-1 reversal)", () => {
     render(
       <CatalogEstimateProfileSelector value={PLA_STANDARD} onChange={() => {}} />,
     );
     expect(screen.getByLabelText(/material/i)).toBeTruthy();
+  });
+
+  it("renders the quality control as a native select (E33.1 correction — not a radio group)", () => {
+    render(
+      <CatalogEstimateProfileSelector value={PLA_STANDARD} onChange={() => {}} />,
+    );
+    expect(qualitySelect().tagName).toBe("SELECT");
+    // The old pill/radio group is gone — no radio semantics on this surface.
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(screen.queryByRole("radio")).toBeNull();
   });
 
   it("changing material to TPU resets the tier to a compatible one and keeps the spool pin null (AC-18)", () => {
@@ -59,13 +73,13 @@ describe("CatalogEstimateProfileSelector (Story 33.1 — Path B material reversa
     render(
       <CatalogEstimateProfileSelector value={TPU_STANDARD} onChange={() => {}} />,
     );
-    // Q5 operator decision: TPU offers only Standard; Aesthetic/Strong are hidden.
-    expect(screen.getByRole("radio", { name: /Standard/i })).toBeTruthy();
-    expect(screen.queryByRole("radio", { name: /Aesthetic/i })).toBeNull();
-    expect(screen.queryByRole("radio", { name: /Strong/i })).toBeNull();
+    // Q5 operator decision: TPU offers only Standard; Aesthetic/Strong are not rendered as options.
+    expect(screen.getByRole("option", { name: /Standard/i })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: /Aesthetic/i })).toBeNull();
+    expect(screen.queryByRole("option", { name: /Strong/i })).toBeNull();
   });
 
-  it("DISABLES compatible-but-unavailable tiers with an explanation and ignores clicks (AC-19)", () => {
+  it("DISABLES compatible-but-unavailable tiers with an explanation and ignores selection (AC-19)", () => {
     const calls: PrintIntentPresetInput[] = [];
     render(
       <CatalogEstimateProfileSelector
@@ -78,9 +92,10 @@ describe("CatalogEstimateProfileSelector (Story 33.1 — Path B material reversa
         ]}
       />,
     );
-    const strong = tierButton(/Strong.*Not available yet/i);
+    const strong = tierOption(/Strong.*Not available yet/i);
     expect(strong.disabled).toBe(true);
-    fireEvent.click(strong);
+    // The selectTier guard ignores an unavailable tier even if a change event reaches it.
+    fireEvent.change(qualitySelect(), { target: { value: "strong" } });
     expect(calls).toEqual([]);
   });
 
@@ -93,11 +108,37 @@ describe("CatalogEstimateProfileSelector (Story 33.1 — Path B material reversa
         availability={[]}
       />,
     );
-    expect(tierButton(/^Standard$/).disabled).toBe(false);
-    const strong = tierButton(/^Strong$/);
+    expect(tierOption(/^Standard$/).disabled).toBe(false);
+    const strong = tierOption(/^Strong$/);
     expect(strong.disabled).toBe(false);
-    fireEvent.click(strong);
+    fireEvent.change(qualitySelect(), { target: { value: "strong" } });
     expect(calls.map((p) => p.quality_tier)).toEqual(["strong"]);
+  });
+
+  it("a tier change keeps spoolman_filament_ref null even if the caller carried a ref (invariant #3)", () => {
+    const calls: PrintIntentPresetInput[] = [];
+    render(
+      <CatalogEstimateProfileSelector
+        value={{ ...PLA_STANDARD, spoolman_filament_ref: "stale-ref" }}
+        onChange={(p) => calls.push(p)}
+      />,
+    );
+    fireEvent.change(qualitySelect(), { target: { value: "strong" } });
+    expect(calls[0]?.quality_tier).toBe("strong");
+    expect(calls[0]?.spoolman_filament_ref).toBeNull();
+  });
+
+  it("self-defends: an incompatible incoming quality_tier displays the first compatible tier, no desync", () => {
+    render(
+      <CatalogEstimateProfileSelector
+        value={{ ...TPU_STANDARD, quality_tier: "strong" }}
+        onChange={() => {}}
+      />,
+    );
+    // TPU offers only Standard; "strong" is incompatible so no <option> for it exists. The
+    // controlled select must show Standard rather than silently falling back to a wrong option.
+    expect(qualitySelect().value).toBe("standard");
+    expect(screen.queryByRole("option", { name: /Strong/i })).toBeNull();
   });
 
   it("never exposes a raw Orca key or a Spoolman pin control (AC-18)", () => {
@@ -121,12 +162,12 @@ describe("CatalogEstimateProfileSelector (Story 33.1 — Path B material reversa
     const { rerender } = render(
       <CatalogEstimateProfileSelector value={PLA_STANDARD} onChange={() => {}} />,
     );
-    expect(screen.getByRole("radio", { name: "Standard" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Standard" })).toBeTruthy();
     await i18n.changeLanguage("pl");
     rerender(
       <CatalogEstimateProfileSelector value={PLA_STANDARD} onChange={() => {}} />,
     );
-    expect(screen.getByRole("radio", { name: "Standardowa" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Standardowa" })).toBeTruthy();
     await i18n.changeLanguage("en");
   });
 });

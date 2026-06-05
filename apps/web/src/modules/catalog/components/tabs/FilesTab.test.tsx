@@ -278,7 +278,9 @@ describe("FilesTab — EST-DISPLAY-1 estimate surface", () => {
     // spool control, `spoolman_filament_ref` stays null (AC-18).
     render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
     expect(screen.getByLabelText(/material/i)).toBeTruthy();
-    expect(screen.getByRole("radiogroup", { name: /quality/i })).toBeTruthy();
+    // E33.1: quality is a native <select>, not a radio group.
+    expect((screen.getByLabelText(/quality/i) as HTMLSelectElement).tagName).toBe("SELECT");
+    expect(screen.queryByRole("radiogroup")).toBeNull();
     expect(screen.queryByLabelText(/pinned filament|spool/i)).toBeNull();
     expect(screen.queryByText("Print preset")).toBeNull();
   });
@@ -288,14 +290,14 @@ describe("FilesTab — EST-DISPLAY-1 estimate surface", () => {
     render(<FilesTab modelId={MODEL_ID} files={FILES_WITH_HASH} />, { wrapper: wrap() });
     await waitFor(() => expect(estimateCalls().length).toBeGreaterThanOrEqual(2));
     await waitFor(() =>
-      expect((screen.getByRole("radio", { name: "Strong" }) as HTMLButtonElement).disabled).toBe(
+      expect((screen.getByRole("option", { name: "Strong" }) as HTMLOptionElement).disabled).toBe(
         false,
       ),
     );
     // Default reads are PLA · standard (material defaults to PLA).
     expect(estimateCalls().every((u) => u.includes("material_class=PLA"))).toBe(true);
     fetchMock.mockClear();
-    fireEvent.click(screen.getByRole("radio", { name: "Strong" }));
+    fireEvent.change(screen.getByLabelText(/quality/i), { target: { value: "strong" } });
     await waitFor(() =>
       expect(estimateCalls().some((u) => u.includes("quality_tier=strong"))).toBe(true),
     );
@@ -311,15 +313,16 @@ describe("FilesTab — EST-DISPLAY-1 estimate surface", () => {
     render(<FilesTab modelId={MODEL_ID} files={FILES_WITH_HASH} />, { wrapper: wrap() });
     await waitFor(() => expect(availabilityCalls().length).toBe(1));
     await waitFor(() =>
-      expect(screen.getByRole("radio", { name: /Strong.*Not available yet/i })).toBeTruthy(),
+      expect(screen.getByRole("option", { name: /Strong.*Not available yet/i })).toBeTruthy(),
     );
-    const strong = screen.getByRole("radio", {
+    const strong = screen.getByRole("option", {
       name: /Strong.*Not available yet/i,
-    }) as HTMLButtonElement;
+    }) as HTMLOptionElement;
     expect(strong.disabled).toBe(true);
 
     fetchMock.mockClear();
-    fireEvent.click(strong);
+    // The selectTier guard ignores an unavailable tier even if a change event reaches the select.
+    fireEvent.change(screen.getByLabelText(/quality/i), { target: { value: "strong" } });
     expect(estimateCalls()).toEqual([]);
   });
 
@@ -339,7 +342,7 @@ describe("FilesTab — EST-DISPLAY-1 estimate surface", () => {
 
     await waitFor(() => expect(availabilityCalls().some((u) => u.includes("material_class=TPU"))).toBe(true));
     await waitFor(() =>
-      expect(screen.getByRole("radio", { name: /Standard.*Not available yet/i })).toBeTruthy(),
+      expect(screen.getByRole("option", { name: /Standard.*Not available yet/i })).toBeTruthy(),
     );
     expect(estimateCalls()).toEqual([]);
   });

@@ -658,7 +658,5 @@
   "modules.admin.profiles.error_title": "Nie udało się wczytać profili",
   "modules.admin.profiles.retry": "Ponów",
   "modules.estimates.selector.reason_not_imported": "Jeszcze niedostępny",
-  "modules.estimates.selector.reason_not_imported_tooltip": "Ta jakość nie jest jeszcze skonfigurowana dla {{material}}.",
-  "modules.estimates.selector.reason_unavailable": "Niedostępny",
-  "modules.estimates.selector.reason_unavailable_tooltip": "Tego profilu nie można teraz użyć."
+  "modules.estimates.selector.reason_unavailable": "Niedostępny"
 }

@@ -658,7 +658,5 @@
   "modules.admin.profiles.error_title": "Couldn't load profiles",
   "modules.admin.profiles.retry": "Retry",
   "modules.estimates.selector.reason_not_imported": "Not available yet",
-  "modules.estimates.selector.reason_not_imported_tooltip": "This quality isn't set up for {{material}} yet.",
-  "modules.estimates.selector.reason_unavailable": "Not available",
-  "modules.estimates.selector.reason_unavailable_tooltip": "This profile can't be used right now."
+  "modules.estimates.selector.reason_unavailable": "Not available"
 }

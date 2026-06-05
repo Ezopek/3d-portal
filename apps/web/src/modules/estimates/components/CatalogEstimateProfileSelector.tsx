@@ -2,7 +2,6 @@ import { useId } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { MaterialClass, QualityTier } from "@/lib/api-types";
-import { cn } from "@/lib/utils";
 import type { QualityTierAvailability } from "@/modules/estimates/hooks/useQualityTierAvailability";
 import {
   MATERIAL_CLASSES,
@@ -47,9 +46,14 @@ interface Props {
  *      test asserting agreement.
  *
  * Hybrid disabled-vs-hidden (AC-19): incompatible tiers for the chosen material are HIDDEN
- * (never teased); compatible-but-unavailable tiers are VISIBLE but disabled-with-explanation.
- * Fail-OPEN preserved (AC-20): a transient availability error keeps tiers selectable; Standard
- * is never locked out.
+ * (never teased — no <option>); compatible-but-unavailable tiers are VISIBLE but rendered as a
+ * disabled <option> carrying the explanation inline. Fail-OPEN preserved (AC-20): a transient
+ * availability error keeps tiers selectable; Standard is never locked out.
+ *
+ * Control type (E33.1 correction, operator/controller 2026-06-05): the quality_tier control is a
+ * native <select> — NOT a segmented pill/radio group. A select scales as more tiers are added and
+ * avoids layout drift on this compact surface. Material is likewise a <select>. The hybrid
+ * hide/disable semantics and the fail-open invariant above are unchanged by the control swap.
  * =======================================================================
  */
 export function CatalogEstimateProfileSelector({
@@ -59,7 +63,7 @@ export function CatalogEstimateProfileSelector({
 }: Props) {
   const { t } = useTranslation();
   const materialId = useId();
-  const reasonIdBase = useId();
+  const qualityId = useId();
   const availabilityByTier = new Map(
     availability?.map((tier) => [tier.quality_tier, tier]) ?? [],
   );
@@ -76,6 +80,15 @@ export function CatalogEstimateProfileSelector({
   const compatibleTiers = QUALITY_TIERS.filter((tier) =>
     isTierCompatible(value.material_class, tier),
   );
+
+  // A controlled <select> whose `value` matches no rendered <option> silently falls back to the
+  // first option and desyncs from `value` (no React warning for selects). The FilesTab caller's
+  // selectMaterial re-key keeps `quality_tier` compatible, but make the control self-defending —
+  // as the old radiogroup was — so a future tier/material/caller can never desync the display.
+  // compatibleTiers is always non-empty (every material maps to >=1 tier).
+  const selectedTier = compatibleTiers.includes(value.quality_tier)
+    ? value.quality_tier
+    : (compatibleTiers[0] ?? value.quality_tier);
 
   const selectMaterial = (material_class: MaterialClass) => {
     const tiers = QUALITY_TIERS.filter((tier) =>
@@ -96,7 +109,9 @@ export function CatalogEstimateProfileSelector({
     // unavailable tiers are guarded here. NFR21-NO-422-1 holds structurally.
     if (!isTierCompatible(value.material_class, tier)) return;
     if (!isAvailable(tier)) return;
-    onChange({ ...value, quality_tier: tier });
+    // `spoolman_filament_ref` STAYS null on every emitted preset (preserved invariant #3): this
+    // surface never pins a spool, so a tier change defensively clears any ref the caller carried.
+    onChange({ ...value, quality_tier: tier, spoolman_filament_ref: null });
   };
 
   return (
@@ -120,55 +135,35 @@ export function CatalogEstimateProfileSelector({
       </div>
 
       <div className="flex items-center gap-2">
-        <span className="shrink-0">
+        <label htmlFor={qualityId} className="shrink-0">
           {t("modules.estimates.selector.quality_tier_label")}
-        </span>
-        <div
-          role="radiogroup"
-          aria-label={t("modules.estimates.selector.quality_tier_label")}
-          className="flex flex-wrap gap-1"
+        </label>
+        <select
+          id={qualityId}
+          className="rounded-md border bg-background px-2 py-1 text-xs text-foreground"
+          value={selectedTier}
+          onChange={(e) => selectTier(e.target.value as QualityTier)}
         >
           {compatibleTiers.map((tier) => {
             const available = isAvailable(tier);
-            const selected = value.quality_tier === tier;
             const reasonKey = available
               ? null
               : availabilityByTier.get(tier)?.reason === "profile_not_imported"
                 ? "reason_not_imported"
                 : "reason_unavailable";
-            const describedBy = reasonKey ? `${reasonIdBase}-${tier}` : undefined;
             const label = t(`modules.estimates.quality.${tier}`);
+            // A native <option> can carry no sr-only tooltip span, so the unavailable-tier
+            // reason collapses to inline option text (`label · reason`) plus `disabled` — the
+            // same honest copy in the only channel a select option supports.
             return (
-              <button
-                key={tier}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                aria-describedby={describedBy}
-                disabled={!available}
-                onClick={() => selectTier(tier)}
-                className={cn(
-                  "rounded-md border px-2 py-1 text-xs transition-colors",
-                  selected
-                    ? "border-primary text-foreground"
-                    : "border-border text-muted-foreground hover:text-foreground",
-                  !available && "cursor-not-allowed opacity-60 hover:text-muted-foreground",
-                )}
-              >
+              <option key={tier} value={tier} disabled={!available}>
                 {available
                   ? label
                   : `${label} · ${t(`modules.estimates.selector.${reasonKey}`)}`}
-                {reasonKey ? (
-                  <span id={describedBy} className="sr-only">
-                    {t(`modules.estimates.selector.${reasonKey}_tooltip`, {
-                      material: value.material_class,
-                    })}
-                  </span>
-                ) : null}
-              </button>
+              </option>
             );
           })}
-        </div>
+        </select>
       </div>
     </div>
   );

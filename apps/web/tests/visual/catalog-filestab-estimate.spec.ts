@@ -210,10 +210,11 @@ test("FilesTab estimate profile selector — unavailable tiers disabled (EST-TIE
   await page.goto(`/catalog/${MODEL_ID}`);
   await waitForReady(page);
   await page.getByRole("tabpanel").first().waitFor({ state: "visible" });
-  // Aesthetic + Strong resolve to no vendored profile → their radio buttons must be DISABLED
-  // before the snapshot. Assert the disabled state directly without depending on locale-specific
-  // label/copy; the localized copy itself is pixel-verified by the screenshot below.
-  await expect(page.locator("button[role=\"radio\"]:disabled")).toHaveCount(2);
+  // Aesthetic + Strong resolve to no vendored profile → their <option>s must be DISABLED
+  // before the snapshot (E33.1: quality is a native <select>, not a radio group). Assert the
+  // disabled state directly without depending on locale-specific label/copy; the localized copy
+  // itself is pixel-verified by the screenshot below.
+  await expect(page.locator("option:disabled")).toHaveCount(2);
   await expect(page.getByRole("tabpanel").first()).toHaveScreenshot(
     "filestab-estimate-tiers-disabled.png",
   );
