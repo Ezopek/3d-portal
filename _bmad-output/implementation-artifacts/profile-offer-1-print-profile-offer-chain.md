@@ -7,9 +7,11 @@ initiative: 21
 
 # Story PROFILE-OFFER-1: Minimal PrintProfileOffer / ProfileChain layer over the profile-block library
 
-Status: done (code-side) — backend (T1–T3) AND frontend (T5–T6) dev-complete + verified; **controller full
-aggregate gate PASSED + external review APPROVE** (see Controller closeout below). Remaining merge/deploy/G-SMOKE
-are controller-owned and NOT yet executed. **T4 (G-UXGATE) SATISFIED
+Status: done — backend (T1–T3) AND frontend (T5–T6) dev-complete + verified; **controller full
+aggregate gate PASSED + external review APPROVE + ff-merge + deploy + live G-SMOKE all DONE**
+(see Controller closeout below). Merged to `main` @741ce7b (`feat: add admin profile offers`),
+ff-pushed `origin/main` 4e798ab..741ce7b; `infra/scripts/deploy.sh` RC=0 (release `0.1.0+741ce7b`);
+runtime **G-SMOKE on `.190` PASSED** (RC=0 / `PROFILE_OFFER_SMOKE_OK`). **T4 (G-UXGATE) SATISFIED
 2026-06-06** by the `bmad-ux`/Sally checkpoint `_bmad-output/ux/ux-profile-offer-1-admin-offer-composition-ux-2026-06-06.md`;
 **T5/T6 BUILT 2026-06-06** against that checkpoint by the controller-resumed `bmad-dev-story` flow: the minimal admin
 offer surface (`ProfileOffersPage` — 3 single-select pickers, list + validation badges, curated detail, edit,
@@ -21,9 +23,12 @@ PASSED — RC=0, 16/16 stages green (incl. apps/web visual regression 444 passed
 `.hermes/run-logs/profile-offer-1-controller-check-all-20260606_145028.log`; external review **Gemini CLI 0.45.2 →
 APPROVE** (no blockers / no important / no nits), log `.hermes/run-logs/profile-offer-1-gemini-review-20260606_145933.log`.
 G-DEVGO satisfied (operator dev-go 2026-06-06). **G-PUBLISH remains explicitly deferred** (no resolver publication /
-live slicing / member-selector change). **Remaining controller-owned post-code steps NOT yet executed:** ff-merge to
-`main`, `infra/scripts/deploy.sh`, and the runtime **G-SMOKE** on `.190`. No commit/merge/deploy/live-smoke has
-happened yet. See Dev Agent Record for the exact slice.
+live slicing / member-selector change). **Controller-owned post-code steps ALL EXECUTED 2026-06-06:** commit `741ce7b`
+`feat: add admin profile offers` ff-merged to `main` + pushed `origin/main` (4e798ab..741ce7b); `infra/scripts/deploy.sh`
+RC=0 (log `.hermes/run-logs/profile-offer-1-deploy-20260606_150604.log`; release identity `0.1.0+741ce7b`; slicer-worker
+overlay smoke OK; symbolication verify OK; agent runbook fingerprint OK); runtime **G-SMOKE on `.190` PASSED**
+(log `.hermes/run-logs/profile-offer-1-live-smoke-20260606_151850.log`, RC=0 / `PROFILE_OFFER_SMOKE_OK`). See Dev Agent
+Record / Controller closeout for the exact slice.
 
 <!--
   Authored by the repo-local BMAD author of record (Claude Opus 4.8, 2026-06-06) following the
@@ -654,10 +659,11 @@ TDD red→green per task. Backend implemented as a purely-additive layer over PR
 - **Honest status:** moved to `review`. All story ACs except the controller-owned closeout gates are satisfied;
   the FE acceptance criteria (AC-17..AC-20) are now built + verified, not just designed.
 
-### Controller next step (not a dev-agent call)
+### Controller closeout (all steps executed)
 
 **T5/T6 are built + verified** (FE offer surface + hooks + i18n + the 4 Playwright baselines × 4 projects), so the
-whole card is dev-complete. The closeout gate + external review are now done; the remaining steps are controller-owned:
+whole card is dev-complete. The aggregate gate, external review, ff-merge, deploy, AND the runtime live smoke are now
+**all DONE** — the card is fully closed end-to-end (code + merge + deploy + live smoke):
 
 1. ✅ **DONE 2026-06-06** — Full `infra/scripts/check-all.sh` green (the CI-equivalent aggregate gate — build +
    vitest + pytest + visual regression in one run): **RC=0, 16/16 stages green** (incl. apps/web visual regression
@@ -668,16 +674,24 @@ whole card is dev-complete. The closeout gate + external review are now done; th
    unavailable shell tool but still produced a read-only code-review verdict; the controller had already verified
    the target state + gates separately, so the APPROVE stands on inspected code, not faked. No Codex countersign was
    required (Gemini surfaced no atomicity/leak/validation doubt).
-3. ⏳ **NOT yet executed (controller-owned)** — ff-merge of `feat/E33-profile-offer-1-print-profile-offer-chain` to
-   `main`, then `infra/scripts/deploy.sh`.
-4. ⏳ **NOT yet executed (controller-owned)** — Runtime **G-SMOKE** on `.190` (offer create/list/delete against the
-   live `portal-content` volume + `ezop:ezop 664` owner/mode assertion).
+3. ✅ **DONE 2026-06-06** — Commit `741ce7b` `feat: add admin profile offers`, fast-forward merged to `main` and
+   pushed `origin/main` (**4e798ab..741ce7b**), then `infra/scripts/deploy.sh` **RC=0** (log
+   `.hermes/run-logs/profile-offer-1-deploy-20260606_150604.log`; release identity **`0.1.0+741ce7b`**; slicer-worker
+   overlay smoke OK; symbolication verify OK; agent runbook fingerprint OK).
+4. ✅ **DONE 2026-06-06** — Runtime **G-SMOKE on `.190`** (log
+   `.hermes/run-logs/profile-offer-1-live-smoke-20260606_151850.log`, **RC=0 / `PROFILE_OFFER_SMOKE_OK`**): web route
+   `/admin/profile-offers` HTTP 200; bundle marker hits=2; admin login/scope OK; live profile library blocks summary
+   filament=4 / machine=1 / process=2; smoke created a hidden TPU offer (POST **201**, 32-char `offer_id`,
+   `validation_state=usable`, `reasons=[]`, `chain_blocks=3`); host sidecar stat **`ezop:ezop 664`**; list found the
+   created offer; PATCH **200**; DELETE **204**; sidecar removed; recent offer-route API errors=0.
 
-This bookkeeping pass moved the card `review → done` on the **code side only** (gate green + review APPROVE); steps 3
-and 4 have **not** happened and remain the controller's next actions.
+The card is now `done` end-to-end: aggregate gate green + review APPROVE + ff-merge/push + deploy RC=0 + live G-SMOKE
+RC=0. Nothing controller-owned remains outstanding for this slice.
 
 **G-PUBLISH stays explicitly deferred** — this slice does not compile an offer's chain into the resolver intent
-path, does not slice, and does not change the member selector (still on the 33.1/33.2 grid projection).
+path, does not slice, and does not change the member selector (still on the 33.1/33.2 grid projection). The live
+smoke deliberately exercised only the offer CRUD surface; **no resolver publication, no slicing, no member-selector
+change** was performed.
 
 ### File List
 
@@ -746,3 +760,4 @@ selector. G-PUBLISH not touched.
 | 2026-06-06 | **T4 / G-UXGATE SATISFIED** — `bmad-ux`/Sally checkpoint `_bmad-output/ux/ux-profile-offer-1-admin-offer-composition-ux-2026-06-06.md` authored (extends UX-PROFILE-1, SCP § 8). FE T5/T6 unblocked (AC-16 met; AC-17..20 designed). Sprint-status: offer-row G-UXGATE note + new `ux-profile-offer-1-admin-offer-composition-ux-design=done` row. Design-only; G-PUBLISH NOT authorized; no code/deploy/commit by the UX pass. |
 | 2026-06-06 | **T5/T6 BUILT** (controller-resumed `bmad-dev-story`) — FE offer surface (`ProfileOffersPage`) + 4 CRUD hooks + `api-types` + en/pl i18n (60 keys, parity) + `AdminTabs` tab + `routes/admin/profile-offers.tsx` (+ `routeTree.gen.ts` regen) + vitest (8 + 4) + Playwright 16 baselines (4 states × 4 projects) + `stubProfileOffers`. Consumes the existing backend contract verbatim (no `apps/api/**` change). Verified: web vitest 607 / typecheck / lint / git diff --check clean; baselines stable + reviewed. Collateral: the shared `AdminTabs` gained the offer tab, so 44 admin baselines (users/invites/profiles/profile-library/dropdowns × 4 projects) were regenerated — triaged `stale-baseline` (diff is exclusively the new tab; re-run 108 green). **Status → review.** Remaining = controller-owned (check-all.sh, external review, ff-merge, G-SMOKE). G-PUBLISH still deferred; no commit/merge/deploy/live-smoke by the dev agent. |
 | 2026-06-06 | **CONTROLLER CLOSEOUT (review → done, code-side).** Full `infra/scripts/check-all.sh` PASSED — RC=0, 16/16 stages green (apps/api ruff format+check, workers/render ruff format+check, apps/web typecheck + production build + lint + vitest, apps/api pytest, workers/render pytest, infra/scripts pytest, apps/web visual regression 444 passed / 24 skipped, settings-env-compose-diff, uv-lock-check ×2, local-env-secrets), log `.hermes/run-logs/profile-offer-1-controller-check-all-20260606_145028.log`. External review **Gemini CLI 0.45.2 → APPROVE** (no blockers / no important / no nits), log `.hermes/run-logs/profile-offer-1-gemini-review-20260606_145933.log` (Gemini initially tried an unavailable shell tool but still produced a read-only verdict; controller verified target state + gates separately — recorded honestly, not faked). G-PUBLISH still explicitly deferred. **Remaining controller-owned + NOT yet executed:** ff-merge → `main`, `infra/scripts/deploy.sh`, runtime G-SMOKE on `.190`. No commit/merge/deploy/live-smoke at this bookkeeping pass. |
+| 2026-06-06 | **CONTROLLER MERGE + DEPLOY + LIVE-SMOKE (final closeout).** Commit `741ce7b` `feat: add admin profile offers` ff-merged to `main` + pushed `origin/main` (**4e798ab..741ce7b**). `infra/scripts/deploy.sh` **RC=0** (log `.hermes/run-logs/profile-offer-1-deploy-20260606_150604.log`; release identity **`0.1.0+741ce7b`**; slicer-worker overlay smoke OK; symbolication verify OK; agent runbook fingerprint OK). Runtime **G-SMOKE on `.190` PASSED** (log `.hermes/run-logs/profile-offer-1-live-smoke-20260606_151850.log`, **RC=0 / `PROFILE_OFFER_SMOKE_OK`**): `/admin/profile-offers` HTTP 200; bundle marker hits=2; admin login/scope OK; live library blocks filament=4/machine=1/process=2; created hidden TPU offer POST **201** (32-char `offer_id`, `validation_state=usable`, `reasons=[]`, `chain_blocks=3`); host sidecar **`ezop:ezop 664`**; list found offer; PATCH **200**; DELETE **204**; sidecar removed; offer-route API errors=0. Card fully `done` end-to-end. **G-PUBLISH stays explicitly deferred** — no resolver publication, no slicing, no member-selector change. |
