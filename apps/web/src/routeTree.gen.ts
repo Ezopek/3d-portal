@@ -28,6 +28,7 @@ import { Route as Settings2faRouteImport } from './routes/settings/2fa'
 import { Route as DevComponentsRouteImport } from './routes/dev/components'
 import { Route as CatalogIdRouteImport } from './routes/catalog/$id'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
+import { Route as AdminQueuesRouteImport } from './routes/admin/queues'
 import { Route as AdminProfilesRouteImport } from './routes/admin/profiles'
 import { Route as AdminProfileOffersRouteImport } from './routes/admin/profile-offers'
 import { Route as AdminProfileLibraryRouteImport } from './routes/admin/profile-library'
@@ -129,6 +130,11 @@ const AdminUsersRoute = AdminUsersRouteImport.update({
   path: '/admin/users',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminQueuesRoute = AdminQueuesRouteImport.update({
+  id: '/admin/queues',
+  path: '/admin/queues',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminProfilesRoute = AdminProfilesRouteImport.update({
   id: '/admin/profiles',
   path: '/admin/profiles',
@@ -164,6 +170,7 @@ export interface FileRoutesByFullPath {
   '/admin/profile-library': typeof AdminProfileLibraryRoute
   '/admin/profile-offers': typeof AdminProfileOffersRoute
   '/admin/profiles': typeof AdminProfilesRoute
+  '/admin/queues': typeof AdminQueuesRoute
   '/admin/users': typeof AdminUsersRoute
   '/catalog/$id': typeof CatalogIdRoute
   '/dev/components': typeof DevComponentsRoute
@@ -190,6 +197,7 @@ export interface FileRoutesByTo {
   '/admin/profile-library': typeof AdminProfileLibraryRoute
   '/admin/profile-offers': typeof AdminProfileOffersRoute
   '/admin/profiles': typeof AdminProfilesRoute
+  '/admin/queues': typeof AdminQueuesRoute
   '/admin/users': typeof AdminUsersRoute
   '/catalog/$id': typeof CatalogIdRoute
   '/dev/components': typeof DevComponentsRoute
@@ -217,6 +225,7 @@ export interface FileRoutesById {
   '/admin/profile-library': typeof AdminProfileLibraryRoute
   '/admin/profile-offers': typeof AdminProfileOffersRoute
   '/admin/profiles': typeof AdminProfilesRoute
+  '/admin/queues': typeof AdminQueuesRoute
   '/admin/users': typeof AdminUsersRoute
   '/catalog/$id': typeof CatalogIdRoute
   '/dev/components': typeof DevComponentsRoute
@@ -245,6 +254,7 @@ export interface FileRouteTypes {
     | '/admin/profile-library'
     | '/admin/profile-offers'
     | '/admin/profiles'
+    | '/admin/queues'
     | '/admin/users'
     | '/catalog/$id'
     | '/dev/components'
@@ -271,6 +281,7 @@ export interface FileRouteTypes {
     | '/admin/profile-library'
     | '/admin/profile-offers'
     | '/admin/profiles'
+    | '/admin/queues'
     | '/admin/users'
     | '/catalog/$id'
     | '/dev/components'
@@ -297,6 +308,7 @@ export interface FileRouteTypes {
     | '/admin/profile-library'
     | '/admin/profile-offers'
     | '/admin/profiles'
+    | '/admin/queues'
     | '/admin/users'
     | '/catalog/$id'
     | '/dev/components'
@@ -324,6 +336,7 @@ export interface RootRouteChildren {
   AdminProfileLibraryRoute: typeof AdminProfileLibraryRoute
   AdminProfileOffersRoute: typeof AdminProfileOffersRoute
   AdminProfilesRoute: typeof AdminProfilesRoute
+  AdminQueuesRoute: typeof AdminQueuesRoute
   AdminUsersRoute: typeof AdminUsersRoute
   CatalogIdRoute: typeof CatalogIdRoute
   DevComponentsRoute: typeof DevComponentsRoute
@@ -477,6 +490,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminUsersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/queues': {
+      id: '/admin/queues'
+      path: '/admin/queues'
+      fullPath: '/admin/queues'
+      preLoaderRoute: typeof AdminQueuesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/profiles': {
       id: '/admin/profiles'
       path: '/admin/profiles'
@@ -524,6 +544,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminProfileLibraryRoute: AdminProfileLibraryRoute,
   AdminProfileOffersRoute: AdminProfileOffersRoute,
   AdminProfilesRoute: AdminProfilesRoute,
+  AdminQueuesRoute: AdminQueuesRoute,
   AdminUsersRoute: AdminUsersRoute,
   CatalogIdRoute: CatalogIdRoute,
   DevComponentsRoute: DevComponentsRoute,

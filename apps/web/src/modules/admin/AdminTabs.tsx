@@ -3,7 +3,13 @@ import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
 
-type ActiveTab = "users" | "invites" | "profiles" | "profile-library" | "profile-offers";
+type ActiveTab =
+  | "users"
+  | "invites"
+  | "profiles"
+  | "profile-library"
+  | "profile-offers"
+  | "queues";
 
 export function AdminTabs({ activeTab }: { activeTab: ActiveTab }) {
   const { t } = useTranslation();
@@ -79,6 +85,19 @@ export function AdminTabs({ activeTab }: { activeTab: ActiveTab }) {
         )}
       >
         {t("admin.tabs.profileOffers")}
+      </Link>
+      <Link
+        to="/admin/queues"
+        role="tab"
+        aria-selected={activeTab === "queues"}
+        className={cn(
+          baseTab,
+          activeTab === "queues"
+            ? "border-primary text-foreground"
+            : "border-transparent text-muted-foreground hover:text-foreground",
+        )}
+      >
+        {t("admin.tabs.queues")}
       </Link>
     </nav>
   );

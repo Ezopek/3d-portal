@@ -398,3 +398,30 @@ export async function stubProfileOffers(
     return route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
   });
 }
+
+/**
+ * ADMIN-JOBS-1 (AC-22) — stub `GET /api/admin/queues` for the read-only queue console.
+ *
+ * Serves a curated snapshot DTO (allowlist fields only — no raw args/kwargs/result), or a
+ * 500 for the fails-closed state. The four projects (desktop-light/dark, mobile-light/dark)
+ * are pixel-stable: the payload is identical on every poll and carries no rendered timestamp.
+ */
+export async function stubAdminQueues(
+  page: Page,
+  opts: { snapshot?: unknown; error?: boolean } = {},
+) {
+  await page.route("**/api/admin/queues**", (route: Route) => {
+    if (opts.error) {
+      return route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "boom" }),
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(opts.snapshot ?? {}),
+    });
+  });
+}
