@@ -78,13 +78,18 @@ initiatives:
     status: 'planning'
     started: '2026-06-04'
     sections: 'see "Initiative 21" H2 below — Decisions AK (admin-managed profile inventory read over the resolver + compatibility-map representation/enforcement, offerable = imported ∧ resolvable ∧ compatible), AL (import write posture — in-place vendored-tree write + on-disk sidecar manifest + audit, no DB)'
+  - id: 22
+    name: 'Admin Operational Observability (Worker/Job Console)'
+    status: 'planning'
+    started: '2026-06-06'
+    sections: 'see "Initiative 22" H2 below — Decisions AO (admin queue-console read model: raw-arq live snapshot over app.state arq/Redis + business-keyed status-key context reuse + console lives in admin area not the member /queue slot + durable ledger deferred), AP (worker-liveness tri-state from the coarse <queue>:health-check key, coarse ~1h liveness accepted for MVP, interval-lowering deferred), AQ (leak fence / read-only privacy contract — field-allowlist DTO, never raw pickled args/kwargs/result, curated error_class/context, admin-only GET-only)'
 ---
 
 # Architecture Decision Document — 3d-portal
 
 **Maintainer:** Ezop
 **Created:** 2026-05-09 (Initiative 1)
-**Last updated:** 2026-06-04 (Initiative 21 Admin-Managed Orca Process Profiles planning extension via sprint-change-proposal-2026-06-04-profile-admin.md, status `approved` 2026-06-04 — Decisions AK + AL appended after Initiative 20 H2)
+**Last updated:** 2026-06-06 (Initiative 22 Admin Operational Observability — Worker/Job Console for ARQ queues — planning extension via sprint-change-proposal-2026-06-06-init22-admin-jobs-console.md, status `proposed` 2026-06-06 — Decisions AO + AP + AQ appended after Initiative 21 H2. Read-only admin MVP; implementation BLOCKED until bmad-create-story + dev-go. Prior: 2026-06-04 Initiative 21 Decisions AK + AL.)
 
 This is the living project architecture document for **3d-portal**. It grows over time, one **Initiative** at a time, mirroring the `prd.md` initiatives index. Each initiative documents its own context analysis, starter evaluation, core decisions, patterns, structure, and validation. New initiatives extend this file — do **not** fork (`architecture-v2.md`, `architecture-glitchtip.md`).
 
@@ -107,6 +112,7 @@ Source-of-truth for capability contracts: `prd.md`. Source-of-truth for technica
 | 19 | Spoolman Read-Only Inventory (MVP-A) | 🚧 planning | — | 3 architectural decisions (AD — cache topology Redis 30s TTL + arq 60s poll + SETNX leader-election + observability with `external_service=spoolman` tag + 3-row cache-coherence table for `["spools", "summary"]` query-key; AE — network transport via internal docker network with configs-side coordination PR + P4a host-network fallback; AF — data-model carry-through surfacing ALL Spoolman cost-relevant fields end-to-end in DTOs + cache for future Phase D cost-calc UX). Single epic E31 (5 stories 31.1-31.5). All stories `gpt-5.4-mini` Codex routing (no NFR-SECURITY adjacency). Source SCP: `sprint-change-proposal-2026-05-29-spoolman.md`. See section "Initiative 19" below. |
 | 20 | STL Slicer Estimates (Per-Part MVP) | 🚧 planning | — | 3 architectural decisions (AH — resolver: recursive Orca system+user inheritance merge + `type` injection + instantiation drop + Spoolman override layer + real-slice validation + canonicalized `bundle_hash` over machine ∥ process ∥ filament ∥ `orca_version` + append-only bundles + `SourceProfileSnapshot` provenance; AI — dedicated containerized headless OrcaSlicer 2.3.2 slicer-worker + `(stl_ref, bundle_ref)` job contract + `<root>/stl/<hash[:2]>/<hash>.stl` cache + g-code parse-and-discard + configs-side compose ownership; AJ — `EstimateRecord` keyed `(stl_hash, bundle_hash)` + exhaustive recompute-trigger table + cost-only-arithmetic-recompute rule preventing re-slice storms). Resolver precedence: exact bundle > custom override > material default > unsupported. Single epic E32 (6 stories 32.1-32.6). Per-STL only; no whole-plate slicing; not e-commerce; Spoolman = inventory SoT; Fenrir = bench-only. Source SCP: `sprint-change-proposal-2026-05-31-stl-slicer-estimates.md`. See section "Initiative 20" below. |
 | 21 | Admin-Managed Orca Process Profiles + User-Facing Selector Options | 🚧 planning | — | 2 architectural decisions (AK — admin-managed profile **inventory read** projected over the existing resolver (`resolve_preset` resolvability + `VendoredProfileSource` provenance, no new resolve logic) **+ the OD-7 compatibility map** as a first-class explicit declaration extending the named FE↔BE `QualityTier`/`MaterialClass` contract, backend = SoT, FE mirrors + parity-tested, `offerable = imported ∧ resolvable ∧ compatible`; AL — import **write posture**: validated triple (structural `resolve()` ∧ compatibility) written **in-place** into `SLICER_VENDORED_PROFILES_DIR/intents/...` (provenance-snapshot-safe) + **on-disk sidecar manifest** for admin metadata + per-slot compatibility status/reason + existing audit log, **no Alembic migration in v1**, configs-side portal-content RW mount is a write-slice-only HC2 item). Read-only inventory first (zero write/deploy risk). Single epic E33 (3 stories 33.1-33.3). Process/intent profiles only; NOT Spoolman inventory/cost. Preserves Init 20 `bundle_hash` + `source_system_tree_hash` + append-only invariants. Source SCP: `sprint-change-proposal-2026-06-04-profile-admin.md`. See section "Initiative 21" below. |
+| 22 | Admin Operational Observability (Worker/Job Console) | 🚧 planning | — | 3 architectural decisions (AO — admin queue-console **read model**: a read-only raw-arq **live snapshot** computed per-request over the lifespan-owned `app.state` arq pool + raw Redis (`apps/api/app/main.py:64-94`) — per-pool `zcard` queued (exact) + bounded `SCAN arq:in-progress:*` + bounded hard-capped `SCAN arq:result:*` (**never** the unbounded `KEYS` of `all_job_results()`) — no new table, no worker change; reuses the existing business-keyed status keys (`render:status:{model_id}`, slicer `EstimateStatus`) as the job-context layer; **console lives in the admin area `/admin/queues`, NOT the member `/queue` slot**; durable job-activity ledger **deferred** (G-LEDGER). AP — **worker-liveness tri-state** from the coarse `<queue>:health-check` key (presence + age; `health_check_interval` 3600s today, surfaced verbatim) — coarse ~1h liveness **accepted for MVP** (running/queued stay exact), interval-lowering deferred (G-LIVENESS). AQ — **leak fence / read-only privacy contract**: field-allowlist DTO, never raw pickled `args`/`kwargs`/`result`, curated `error_class`/`context`, `current_admin`-gated, `GET`-only, no `_PUBLIC_ROUTES` edit). Endpoint `GET /api/admin/queues` in a new `apps/api/app/modules/queue/` package (OD-4); FE `/admin/queues` admin tab. Single epic E34 (1 read-only MVP story, ADMIN-JOBS-1). API-read-only + FE → SW-DEPLOY-1 NOT triggered. Sequenced BEFORE G-PUBLISH (Init 21 PROFILE-OFFER-1). Discovery: `spec-admin-jobs-console.md` (commit dcb9df8). Source SCP: `sprint-change-proposal-2026-06-06-init22-admin-jobs-console.md`. See section "Initiative 22" below. |
 
 ## Initiative 0 — Product Foundation: Home 3D-Printing Catalog
 
@@ -2956,3 +2962,68 @@ The auth-loading state (`auth.isLoading === true`) continues to render the spinn
 - UX work item: **UX-PROFILE-1** (`bmad-ux`) — designs the *surfacing* of the AK compatibility map (admin grid + user selector), NOT the underlying rules. Blocks FE story ACs (NFR21-UX-1).
 - Configs-side coordination: portal-content RW mount per Decision AL — **NOT a 3d-portal commit**; HC2 boundary honored; write slice only.
 - Memory entries informing decisions: [[feedback_scp_pre_enumeration_phase]] (the pre-enumeration save above follows § A; the magic-constant contract § C applies to the per-material compatible-slot set + any import validation/size constants in every Init 21 story spec).
+
+## Initiative 22 — Admin Operational Observability (Worker/Job Console)
+
+**Status:** 🚧 planning (started 2026-06-06). Source SCP: `sprint-change-proposal-2026-06-06-init22-admin-jobs-console.md` (status `proposed` 2026-06-06 — approval scoped to planning-artifact appends, NOT code implementation). Discovery + architecture/UX design: `_bmad-output/implementation-artifacts/spec-admin-jobs-console.md` (ADMIN-JOBS-1, commit `dcb9df8`). Init 22 introduces three architectural decisions for a **read-only, admin-only worker/job console** over the three live ARQ pools (API `arq:api`, Render `arq:queue`, Slicer `arq:slicer`). The decisions are grounded in shipped code (the FastAPI-lifespan-owned arq pool + raw Redis on `app.state`, the admin router/auth patterns, the existing business-keyed status keys) and the installed `arq==0.28.0` source — not blue-sky. All code is app-layer + read-only; **no worker image change → the SW-DEPLOY-1 overlay-rebuild gate is NOT tripped**, and there is no configs-side coordination.
+
+### Pre-enumeration save (reuse + extend, never parallel-implement)
+
+| Concern | Existing artifact (reuse/extend) | Posture |
+|---|---|---|
+| arq pool + raw Redis | `app.state.arq = await create_pool(...)` + `app.state.redis = RedisFactory(...)` created once in the FastAPI lifespan (`apps/api/app/main.py:64-94`), closed on shutdown | The console reads via `request.app.state.arq` / `.redis` — **never** an ad-hoc connection (project-context backend rule). |
+| arq read surface | `ArqRedis.queued_jobs()` (`arq/connections.py:210`), `all_job_results()` (`:192`), `Job.status()`/`Job.info()` (`arq/jobs.py`), per-queue `<queue>:health-check` key + counters (`arq/worker.py:255-259,773-785`); key prefixes fixed in `arq/constants.py` | REUSE, do not invent. **Replace `all_job_results()`'s `KEYS arq:result:*` with a bounded `SCAN`**; use `zcard` for depth; avoid `queued_jobs()` (it deserializes args). |
+| Business-keyed status keys | render worker `render:status:{model_id}` / `render:stl_preview:{model_file_id}` (60-min TTL); slicer `EstimateStatus` keyed `(stl_hash, bundle_hash)` | REUSE as the `context` layer ("what was this job about") instead of building a new ledger. |
+| Admin router + auth | per-module `admin_router.py` mounted in `apps/api/app/router.py`; `current_admin` default-value dep (`apps/api/app/core/auth/dependencies.py:76`); route-enforcement gate (`apps/api/app/main.py:50` + `apps/api/tests/test_route_enforcement_gate.py`) | Mount the console route here; `current_admin`-gated route passes the gate with **no** `_PUBLIC_ROUTES` edit. |
+| Admin FE chrome | `apps/web/src/modules/admin/AdminTabs.tsx` (Users/Invites/Profiles/…) + `routes/admin/*.tsx`; shell `AuthGate` discipline | EXTEND with one `"queues"` tab + `routes/admin/queues.tsx`, mirroring `profiles.tsx`. Adding a TanStack route ripples `routeTree.gen.ts` + AdminTabs visual baselines ([[reference_web_routetree_regen]]). |
+| Member `/queue` slot | `apps/web/src/routes/queue/index.tsx` + `ModuleRail.tsx:10` — the **member-facing future print queue** (AGENTS.md v2 module), a "Coming soon" stub | **NOT this feature.** The console is operator/infra observability — it lives in the admin area, not the member slot (Decision AO location clause). |
+
+### Decision AO — Admin queue-console read model + location + ledger-deferred
+
+**Decision:** the console is a **read-only raw-arq live snapshot** computed **per-request** over the lifespan-owned `app.state` arq pool + raw Redis — **no new table, no worker instrumentation, no Alembic migration**. For each pool it computes:
+
+1. **`queued`** = `redis.zcard(queue_name)` — exact, O(1), no scan.
+2. **`worker`** = parse the `<queue>:health-check` string (counters `j_complete/j_failed/j_retried/j_ongoing/queued` + heartbeat timestamp) and compute age (Decision AP).
+3. **`running_jobs`** = bounded `SCAN MATCH arq:in-progress:* COUNT <small>`; for each id, `Job(id).info()` for the function name (only) + curated context; attribute to queue. Cardinality ≤ total concurrency (≈ 1 api + 2 render + N slicer) so the SCAN is tiny.
+4. **`recent`** = bounded `SCAN MATCH arq:result:* COUNT <small>` with a **hard cap**, each key `deserialize_result` → project to **allowlisted** fields only (Decision AQ), grouped by `JobResult.queue_name`. Results expire with arq's `keep_result` (~1h) so this list is ephemeral and **labelled Redis-resident** (NFR22-RETENTION-HONESTY-1).
+5. **`context`** = derived from the **existing** business-keyed status keys (`render:status:{model_id}`, slicer `EstimateStatus`) and/or the job id (slicer's deterministic `slice:<stl_hash>:<bundle_hash>` yields a stl-hash prefix) — **never** from raw `args`/`kwargs`/`result`.
+
+**Hard finding (drives the design):** arq's `all_job_results()` uses Redis `KEYS arq:result:*` (`arq/connections.py:192-208`), which blocks Redis — the "broad key scan" the controller warned against. The MVP **must** use a bounded `SCAN` with a hard cap, **never** an unbounded `KEYS` in a request path (NFR22-REDIS-LOAD-1).
+
+**Data-model tradeoff (the controller-asked justification):** Option A (raw-arq snapshot only) is shipped for the MVP; Option C (hybrid raw-arq live layer + durable ledger for context-rich failure history) is the design target with the **ledger as an explicit deferred slice (G-LEDGER)**. Rationale: UC1/UC2 need only live state, answered exactly + cheaply by raw arq; UC3 needs failures legible past Redis TTL, which the MVP closes *cheaply* by reusing the existing business-keyed status keys instead of building a table that would touch every enqueue site + worker function + add an Alembic migration. Visibility-first: prove the surface with (A)+reuse before paying (B)'s cost.
+
+**Location clause:** the console lives in the **admin area** (`GET /api/admin/queues` backend in a new `apps/api/app/modules/queue/` package per OD-4; FE `/admin/queues` admin tab), **NOT** the member-facing `/queue` print-queue module slot — conflating them would mis-scope a member module and put infra internals on a member route.
+
+**Boundary:** Decision AO covers the read model, data-model tradeoff, and location. Liveness derivation is Decision AP; the privacy fence is Decision AQ.
+
+### Decision AP — Worker-liveness tri-state from the coarse health key
+
+**Decision:** worker liveness is a **tri-state derived from the `<queue>:health-check` key's presence + age**, honestly labelled — `alive` (present, age < interval), `idle/stale` (present, age ≥ interval), `unknown/down` (absent). The raw counters, heartbeat timestamp, and the **actual `interval_s`** (read from the worker's `health_check_interval`, not a chosen constant) are surfaced verbatim.
+
+**Hard finding:** arq's `health_check_interval` defaults to **3600 s (1 hour)** and **none of the three pools override it** (discovery § 3/§ 6). So the health key is refreshed at most ~once/hour and "is this worker alive *right now*?" is **not** answerable at useful resolution from the health key alone. **Ruling: accept coarse (~1h) liveness for the MVP** — the *running/queued* signals UC1/UC2 actually need are exact regardless of health-key granularity. The console is honest about the coarseness (it shows the interval + heartbeat age). Lowering `health_check_interval` to ~30-60 s on each `WorkerSettings` (`apps/api/app/workers/__init__.py`, `workers/render/render/worker.py`, `apps/api/app/modules/slicer/worker.py`) would give near-real-time liveness but is a **worker-config change → worker image rebuild/redeploy**, out of this read-only API-only MVP — **deferred (G-LIVENESS)**.
+
+### Decision AQ — Leak fence / read-only privacy contract (load-bearing)
+
+**Decision:** the console **must never serialize raw arq payloads.** arq stores **pickled `args`, `kwargs`, and `result`** on every queued job and every result (`arq/jobs.py:58-64`); these can embed absolute paths, model internals, Spoolman data, or token material. The fence (each clause → an AC + negative test in the create-story spec):
+
+1. **Admin-only** — `current_admin`; non-admin → 403, anonymous → 401; route-enforcement gate green with **no `_PUBLIC_ROUTES` edit**.
+2. **Field allowlist, not denylist** — the DTO carries only `queue_name`, friendly `role`, `function`, `job_id`, counts, timings/ages, `success/outcome`, liveness, and a curated `context`. A test asserts the serialized response matches the allowlist and contains **no** `args`/`kwargs`/`result` keys (mirrors the 33.1 AC-9 provenance fence).
+3. **No raw paths / no raw error bodies** — `error_class` is a curated category (exception type name at most), never a traceback/message; `context.ref` is an id / hash-prefix, never a filesystem path. Negative test asserts no path-like substrings (`/`, drive letters, `..`).
+4. **No `args`/`kwargs` deserialization leak** — avoid `queued_jobs()` (it deserializes args); use `zcard` for depth + `Job.info()` (function name only) for the bounded in-progress set.
+5. **No secrets, ever** (project-context cross-cutting rule); **No destructive surface** — `GET` only, no enqueue/abort/purge (NFR22-READONLY-1).
+
+**Logging/observability:** namespaced logger `app.queue.admin`; structured JSON per `~/repos/configs/docs/observability-logging-contract.md`; **no payloads logged**.
+
+### Deploy / cross-repo boundary
+
+- **Deploy-safety:** the MVP is **API-read-only + FE**. No worker image change ⇒ the SW-DEPLOY-1 overlay-rebuild gate is **not** tripped; this is a pure standard-deploy-path API+web change (cf. 33.1's deploy-clean reasoning). The only deferred decision that would change this is OD-2's worker-interval lowering (G-LIVENESS) — it would add a worker redeploy + heartbeat-freshness smoke.
+- **No configs-side coordination** — the console reads Redis already owned by the api process; no new mount, no new container, no nginx change.
+
+### Cross-references
+
+- PRD: `prd.md` § Initiative 22 (FR22-QUEUE-SNAPSHOT-1 + FR22-LIVENESS-1 + FR22-CONSOLE-UI-1 + NFR22-* link back to Decisions AO + AP + AQ).
+- Epics: `epics.md` § Initiative 22 (Story 34.1 implements Decisions AO + AP + AQ as the single read-only MVP slice).
+- Discovery: `_bmad-output/implementation-artifacts/spec-admin-jobs-console.md` (ADMIN-JOBS-1, commit `dcb9df8`) — grounds every seam cited above.
+- Predecessor / sequencing: Initiative 21 (Epic E33) — the slice/recompute queues this console observes; **sequenced BEFORE G-PUBLISH** (Init 21 PROFILE-OFFER-1 real-resolver publication) so queue effects are observable before publishing begins.
+- arq 0.28.0 grounding: `arq/constants.py` (key prefixes), `arq/jobs.py:25-64,152-169` (JobStatus + JobResult), `arq/connections.py:183-220` (`queued_jobs`, `all_job_results` = `KEYS`), `arq/worker.py:187-259,773-785` (health-check key + interval + counters).
+- Memory entries informing decisions: [[feedback_scp_pre_enumeration_phase]] (the pre-enumeration save above follows § A; the magic-constant contract § C applies to the polling interval + `recent[]` SCAN cap in the Init 22 story spec), [[reference_web_routetree_regen]] (routeTree regen + AdminTabs baseline ripple from the new tab).

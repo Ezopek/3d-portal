@@ -101,6 +101,11 @@ initiatives:
     status: 'planning'
     started: '2026-06-04'
     epics: 'E33 (Admin-Managed Orca Process Profiles, 3 stories 33.1-33.3, read-only first — read-only admin profile inventory over the resolver + compatibility map consumption (33.1, PROFILE-ADMIN-1); validated import/publish write path (in-place vendored-tree write + sidecar manifest + compatibility enforcement) (33.2, PROFILE-ADMIN-2); optional manage/lifecycle — rename label / disable / delete (33.3, PROFILE-ADMIN-3)). offerable = imported ∧ resolvable ∧ compatible. UX-PROFILE-1 (bmad-ux) required before/with FE work. Process/intent profiles only; NOT Spoolman inventory/cost. Source SCP: sprint-change-proposal-2026-06-04-profile-admin.md.'
+  - id: 22
+    name: 'Admin Operational Observability (Worker/Job Console)'
+    status: 'planning'
+    started: '2026-06-06'
+    epics: 'E34 (Admin Worker/Job Queue Console, 1 read-only MVP story 34.1 ADMIN-JOBS-1 — admin-only read-only console over the 3 live ARQ pools: backend GET /api/admin/queues snapshot (per-pool zcard queued + bounded SCAN in-progress + bounded hard-capped SCAN recent results, never KEYS) + FE /admin/queues admin tab (per-queue cards + running strip + recent ~1h list with retention label, fails-closed). Raw-arq live snapshot + reuse of business-keyed status keys as context; durable ledger DEFERRED (G-LEDGER); coarse health-key liveness accepted for MVP (G-LIVENESS); read-only, NO retry/kill/purge/pause/resume (G-ACTIONS). Decisions AO/AP/AQ. Sequenced BEFORE G-PUBLISH (Init 21 PROFILE-OFFER-1). Implementation BLOCKED until bmad-create-story + dev-go (G-DEVGO). Discovery: spec-admin-jobs-console.md (commit dcb9df8). Source SCP: sprint-change-proposal-2026-06-06-init22-admin-jobs-console.md.'
 ---
 
 # 3d-portal — Epic Breakdown
@@ -128,6 +133,7 @@ BMAD does not currently ship a dedicated `bmad-edit-epics` skill. New initiative
 | 19 | Spoolman Read-Only Inventory (MVP-A) | 🚧 planning | started 2026-05-29 | E31 | 5 stories (31.1-31.5): 31.1 backend httpx client + Redis 30s TTL + arq 60s poll + SETNX leader-election + env config; 31.2 backend `/api/spools/*` routes + DTOs with cost-data carry-through; 31.3 frontend `/spools` index page + states; 31.4 frontend landing low-stock card; 31.5 i18n + ops doc + visual baseline regen. All stories `gpt-5.4-mini` Codex routing (no NFR-SECURITY adjacency — read-only outbound HTTP to LAN-only Spoolman). Source SCP: `sprint-change-proposal-2026-05-29-spoolman.md`. |
 | 20 | STL Slicer Estimates (Per-Part MVP) | 🚧 planning | started 2026-05-31 | E32 | 6 stories (32.1-32.6): 32.1 profile resolver (Orca system+user inheritance merge + normalize + validate + hash + provenance snapshot); 32.2 containerized headless OrcaSlicer slicer-worker (AppImage + job shape + CLI invoke); 32.3 g-code metadata parse + `(stl_hash, bundle_hash)` cache schema + cost-carry fields; 32.4 invalidation rules + recompute queue + cost-only arithmetic recompute; 32.5 Spoolman-mapped custom filament overrides (volumetric speed / temps / density); 32.6 frontend `PrintIntentPreset` selector + estimate display + soft-fail/warning/failure states. Per-STL only; request totals are linear sums (no whole-plate slicing); not e-commerce; Spoolman = inventory SoT; Fenrir = research/export bench only. Three architecture Decisions (AH resolver, AI slicer-worker container, AJ cache/invalidation). Source SCP: `sprint-change-proposal-2026-05-31-stl-slicer-estimates.md`. |
 | 21 | Admin-Managed Orca Process Profiles + User-Facing Selector Options | 🚧 planning | started 2026-06-04 | E33 | 3 stories (33.1-33.3, read-only first): 33.1 read-only admin profile inventory over the resolver — per `(printer_ref, material_class, quality_tier)` slot `{imported, resolvable, compatible, reason, portal_label, provenance}`, `/api/admin/profiles` admin-gated, + `"profiles"` admin tab grid (PROFILE-ADMIN-1); 33.2 validated import/publish write path — structural `resolve()` ∧ compatibility gates → in-place vendored-tree write + on-disk sidecar manifest + audit, reject incompatible-slot imports (PROFILE-ADMIN-2); 33.3 optional manage/lifecycle — rename label / disable / delete (PROFILE-ADMIN-3). offerable = imported ∧ resolvable ∧ compatible (TPU only offers TPU-compatible process profiles). Two architecture Decisions (AK inventory read + compatibility-map representation/enforcement, AL import write posture + sidecar metadata, no DB). UX-PROFILE-1 (`bmad-ux`) required before/with FE work. Process/intent profiles only; NOT Spoolman inventory/cost; preserves Init 20 `bundle_hash`/provenance invariants. Source SCP: `sprint-change-proposal-2026-06-04-profile-admin.md`. Kanban `t_ce1927cf`. |
+| 22 | Admin Operational Observability (Worker/Job Console) | 🚧 planning | started 2026-06-06 | E34 | 1 read-only MVP story (34.1 ADMIN-JOBS-1): admin-only worker/job **console** over the 3 live ARQ pools (API `arq:api`, Render `arq:queue`, Slicer `arq:slicer`) — backend `GET /api/admin/queues` snapshot (per-pool `zcard` queued exact + bounded `SCAN arq:in-progress:*` + bounded hard-capped `SCAN arq:result:*`, **never** unbounded `KEYS`; all via the lifespan-owned `app.state` arq/Redis) + FE `/admin/queues` admin tab (per-queue cards with queued/running headline + tri-state liveness chip + raw counters; "running now" strip; "recent ~1h" list **labelled Redis-resident**; loading/empty/error **fails-closed**; focus-gated polling, no WebSocket/SSE). Answers UC1 "did my change wake the backend?" / UC2 "is something running ahead?" / UC3 "what are these red jobs?". **Read-only, admin-only — NO retry/kill/purge/pause/resume.** MVP = raw-arq live snapshot + reuse of existing business-keyed status keys (`render:status:{model_id}`, slicer `EstimateStatus`) as context. **Durable job-activity ledger DEFERRED** (G-LEDGER); coarse ~1h health-key liveness accepted for MVP, interval-lowering deferred (G-LIVENESS); operator-action controls deferred (G-ACTIONS). Load-bearing **leak fence** (field-allowlist DTO, never raw pickled `args`/`kwargs`/`result`). Three architecture Decisions (AO read-model+location+ledger-deferred, AP coarse-health-key liveness, AQ leak fence/read-only privacy). API-read-only + FE → SW-DEPLOY-1 NOT triggered. **Sequenced BEFORE G-PUBLISH** (Init 21 PROFILE-OFFER-1). Implementation BLOCKED until bmad-create-story + dev-go. Discovery: `spec-admin-jobs-console.md` (commit dcb9df8). Source SCP: `sprint-change-proposal-2026-06-06-init22-admin-jobs-console.md`. |
 
 ## Initiative 0 — Product Foundation: Home 3D-Printing Catalog
 
@@ -3918,3 +3924,74 @@ Init 21 gives the operator a first-class **admin panel to see, import, and manag
 #### Standalone stories — none for Init 21
 
 (No standalone stories outside Epic E33 in Init 21 scope. UX-PROFILE-1 is a `bmad-ux` work item, tracked in sprint-status as `ux-profile-1-*`, not a dev story; the PROFILE-OFFER-1 offer-composition UX checkpoint is tracked as `ux-profile-offer-1-*`.)
+
+## Initiative 22 — Admin Operational Observability (Worker/Job Console)
+
+**Status:** 🚧 planning (started 2026-06-06). Source SCP: `sprint-change-proposal-2026-06-06-init22-admin-jobs-console.md` (status `proposed` 2026-06-06 — approval scoped to planning-artifact appends, NOT code; implementation gated). Discovery + architecture/UX design: `_bmad-output/implementation-artifacts/spec-admin-jobs-console.md` (candidate id **ADMIN-JOBS-1**, commit `dcb9df8`). Predecessor: Init 21 (Admin-Managed Orca Process Profiles, Epic E33) — whose slice/recompute queues this console observes. Single epic **E34**. Architecture: `architecture.md` § Initiative 22 (Decisions AO + AP + AQ). **Sequenced BEFORE G-PUBLISH** (the Init 21 PROFILE-OFFER-1 real-resolver publication / live slicing step) so the operator can observe queue effects before publishing begins.
+
+> **Story breakdown is epic-level sketch.** Full acceptance criteria, task lists, pre-enumeration saves, test-target counts, and Codex routing are produced per story by `bmad-create-story` at dev-entry time. **No story spec file exists yet — Story 34.1 stays `backlog`.** Authoring these planning artifacts did NOT authorize dev-story execution / code implementation — that remains gated on an explicit operator dev-go (G-DEVGO). sprint-status `development_status` rows are seeded by `bmad-sprint-planning` after this landing (not yet present).
+
+### Overview
+
+Init 22 gives the operator a **read-only, admin-only worker/job console** over the three live ARQ pools (API `arq:api`, Render `arq:queue`, Slicer `arq:slicer`), so that after changing STL/render inputs or profile offers they can see whether a worker woke and whether jobs are **queued / running / succeeded / failed**. Today there is no such surface — `GET /api/health` (`apps/api/app/main.py:200-202`) returns only `{status,version}` and never touches arq. The console adds a backend snapshot endpoint **`GET /api/admin/queues`** (new `apps/api/app/modules/queue/` package, OD-4) + a frontend **`/admin/queues`** admin tab, built strictly by reusing the lifespan-owned `app.state` arq/Redis, the arq read surface, and the existing business-keyed status keys as a job-context layer. **Read-only and admin-only**: no retry/kill/purge/pause/resume; MVP is a raw-arq live snapshot (exact `zcard` queued + bounded `SCAN` in-progress + bounded hard-capped `SCAN` recent results — never unbounded `KEYS`); the durable job-activity ledger is deferred (G-LEDGER). API-read-only + FE ⇒ **SW-DEPLOY-1 overlay-rebuild gate NOT tripped**.
+
+### Requirements Inventory
+
+**FR ↔ Epic / Story matrix:**
+
+| FR | Epic | Story | Notes |
+|---|---|---|---|
+| FR22-QUEUE-SNAPSHOT-1 | E34 | 34.1 | `GET /api/admin/queues` read-only snapshot over `app.state` arq/Redis (zcard queued + bounded SCAN in-progress + bounded hard-capped SCAN recent, never KEYS; allowlisted fields). Anchors Decision AO. |
+| FR22-LIVENESS-1 | E34 | 34.1 | Tri-state worker liveness from `<queue>:health-check` presence+age; raw counters + `interval_s` surfaced verbatim. Anchors Decision AP. |
+| FR22-CONSOLE-UI-1 | E34 | 34.1 | `/admin/queues` admin tab — per-queue cards + running strip + recent ~1h list (retention label); fails-closed states; focus-gated polling. |
+
+**NFR ↔ Epic / Story matrix:**
+
+| NFR | Epic | Story | Notes |
+|---|---|---|---|
+| NFR22-LEAK-FENCE-1 | E34 | 34.1 | Field-allowlist DTO; never raw pickled `args`/`kwargs`/`result`; curated `error_class`/`context`; allowlist + negative path/secret tests. Anchors Decision AQ. |
+| NFR22-AUTH-1 | E34 | 34.1 | `current_admin`-gated, absent from `_PUBLIC_ROUTES`; route-enforcement gate green with no allowlist edit; 403/401 tests. |
+| NFR22-READONLY-1 | E34 | 34.1 | `GET` only; no enqueue/abort/purge/pause/resume; console cannot mutate queue state. |
+| NFR22-REDIS-LOAD-1 | E34 | 34.1 | No unbounded `KEYS`; bounded `SCAN` + `zcard`; focus-gated polling; magic-constant discipline on interval + `recent[]` cap. |
+| NFR22-RETENTION-HONESTY-1 | E34 | 34.1 | `recent[]` labelled "~last 1h, Redis-resident" so a vanished failure is not read as resolved. |
+| NFR22-I18N-PARITY-1 | E34 | 34.1 | `modules.admin.queues.*` keys in BOTH en.json + pl.json; queue ids/function names untranslated. |
+| NFR22-VISUAL-VERIFICATION-1 | E34 | 34.1 | Baselines for populated/empty/error × 4 projects; AdminTabs ripple from the new tab. |
+| NFR22-DETERMINISM-1 | E34 | 34.1 | 3× consecutive identical pytest + vitest pass counts before merge. |
+
+### Epic List
+
+| Epic | Name | Status | Stories |
+|---|---|---|---|
+| E34 | Admin Worker/Job Queue Console | 🚧 backlog | 34.1 (single read-only MVP slice) |
+
+#### Epic E34 — Admin Worker/Job Queue Console
+
+**Goal:** ship the admin worker/job console — a single read-only MVP slice (backend snapshot endpoint + FE admin tab + tests + visual baselines) — so the operator can observe the three ARQ pools (queued/running/liveness/recent) in-product, answering UC1 ("did my change wake the backend?"), UC2 ("is something running ahead of mine?"), and UC3 ("what are these red jobs?"). Backend (new `queue` admin module) + frontend (admin tab + route). **Read-first / visibility-first** (mirrors the proven 33.1 read-only-deploy-clean slice): a raw-arq live snapshot now, with the durable ledger + operator-action controls as later epic stories. The story carries NFR22-DETERMINISM-1; the FE work carries NFR22-I18N-PARITY-1 + NFR22-VISUAL-VERIFICATION-1; the whole slice carries the NFR22-LEAK-FENCE-1 safety contract.
+
+##### Story 34.1 — Read-only admin ARQ queue console (ADMIN-JOBS-1; FR22-QUEUE-SNAPSHOT-1, FR22-LIVENESS-1, FR22-CONSOLE-UI-1, NFR22-LEAK-FENCE-1, NFR22-AUTH-1, NFR22-READONLY-1, NFR22-REDIS-LOAD-1, NFR22-RETENTION-HONESTY-1, NFR22-I18N-PARITY-1, NFR22-VISUAL-VERIFICATION-1, NFR22-DETERMINISM-1; Decisions AO + AP + AQ)
+
+**Realizes:** the entire Init 22 MVP — FR22-QUEUE-SNAPSHOT-1 + FR22-LIVENESS-1 + FR22-CONSOLE-UI-1. Anchors Decisions AO + AP + AQ. **Single read-only, deploy-clean slice.**
+
+**Sketch:** **Backend (additive, read-only):** `GET /api/admin/queues` in a new `apps/api/app/modules/queue/admin_router.py` (mounted in `apps/api/app/router.py`; `current_admin` default-value dep; absent from `_PUBLIC_ROUTES`), computing the snapshot DTO entirely from `request.app.state.arq` / `.redis` — per-pool `queued` = `redis.zcard(queue_name)`; `worker` liveness + counters from the `<queue>:health-check` string; `running_jobs` from a bounded `SCAN MATCH arq:in-progress:*` (function name + curated context only); `recent` from a bounded, hard-capped `SCAN MATCH arq:result:*` (**never** `all_job_results()`'s unbounded `KEYS`), projected to allowlisted fields + grouped by `JobResult.queue_name`; `context` derived from the existing `render:status:{model_id}` / slicer `EstimateStatus` keys and/or the job id — never from raw `args`/`kwargs`/`result`; plus a `retention_note`. **Frontend:** new `"queues"` tab in `AdminTabs.tsx` + `routes/admin/queues.tsx`, gated on `isAdmin` (AuthGate discipline: defer to shell for anonymous; role-tier redirect only for authenticated-non-admin), rendering per-queue cards (queued/running headline + tri-state liveness chip with age + interval + raw counters, failed-count weighted) + a "running now" strip + a "recent (~last hour)" list with the retention caveat label; loading skeleton / empty ("no jobs queued") / error states that **fail closed/visible**; focus-gated polling (pause when the tab/document is hidden). en+pl i18n parity.
+
+**Depends on:** the live arq pools + `app.state` arq/Redis (shipped). **No UX-design blocker** — the console mirrors the existing admin-tab pattern; no new UX work item is required for the MVP.
+
+**Acceptance boundaries (sketched; finalized by bmad-create-story):**
+- Non-admin → 403; anonymous → 401; route authenticated + absent from `_PUBLIC_ROUTES` (Init 6 route-enforcement gate passes with **no** allowlist edit).
+- **Leak fence:** the serialized response matches the field allowlist and contains **no** `args`/`kwargs`/`result` keys; `error_class` is a curated category, `context.ref` an id/hash-prefix; a negative test asserts no path-like substrings (`/`, drive letters, `..`) and no secret-looking material.
+- **Bounded-SCAN-not-KEYS:** no unbounded `KEYS` in the snapshot path; in-progress + recent use bounded `SCAN`, `recent[]` is hard-capped; depth via `zcard`.
+- **Liveness tri-state:** `alive` / `idle-stale` / `unknown-down` derived from `<queue>:health-check` presence + age; `interval_s` reflects the worker's actual `health_check_interval` (not a hardcoded number); coarse ~1h granularity is shown honestly.
+- **Retention honesty:** the recent panel is labelled "~last 1h, Redis-resident."
+- **Fails-closed UX:** on a failed read the console renders an error panel + Retry, never a fabricated green/empty state.
+- **Read-only:** `GET` only — no enqueue/abort/purge/pause/resume surface; a test asserts the queue module exposes only the read endpoint.
+- **Deploy-clean:** API-read-only + FE; no worker image change → SW-DEPLOY-1 overlay rebuild NOT triggered.
+
+**Test targets (sketched):** pytest (fakeredis) seeding `arq:*` keys (queued zsets, in-progress keys, result keys, health strings) → assert the snapshot DTO; 403-non-admin + 401-anonymous; route-enforcement gate green with no `_PUBLIC_ROUTES` edit; leak-fence allowlist + negative path/secret/args/kwargs/result assertions; bounded-SCAN-not-`KEYS` assertion; liveness tri-state mapping over varied health-key age/presence. vitest on the card/strip/list states + loading/empty/error (fails-closed) + focus-gated polling start/stop + i18n key parity (en/pl). Playwright baselines for populated (mixed liveness + a failed job) / empty / error across the 4 projects + AdminTabs ripple. Determinism: 3× consecutive identical pytest + vitest counts.
+
+**Out of scope (deferred with named gates):** durable job-activity ledger (G-LEDGER); retry/kill/purge/pause/resume operator-action controls (G-ACTIONS); worker `health_check_interval` lowering for near-real-time liveness (G-LIVENESS); WebSocket/SSE push; multi-instance / historical charts / alerting; the member-facing print `/queue` module slot (unrelated v2 surface).
+
+**Gates:** **G-DEVGO** (explicit operator dev-go — implementation BLOCKED, spec authoring only until `bmad-create-story` + dev-go); **G-PUBLISH-before** (ADMIN-JOBS-1 is sequenced BEFORE the Init 21 PROFILE-OFFER-1 real-resolver-publication / live-slicing step so the operator can observe slice/recompute/render queues before publishing effects); **G-LEDGER** (durable job-activity ledger — DB-backed append-only event model surviving past Redis TTL; worker instrumentation + Alembic — deferred named slice, closes UC3 long-term); **G-LIVENESS** (worker `health_check_interval` lowering for near-real-time liveness — worker-config + redeploy — deferred; running/queued stay exact without it); **G-ACTIONS** (destructive operator-action controls retry/kill/purge/pause/resume — deferred until visibility is proven).
+
+#### Standalone stories — none for Init 22
+
+(No standalone stories outside Epic E34 in Init 22 scope. No `bmad-ux` work item is required for the read-only MVP — the console mirrors the existing admin-tab pattern.)
