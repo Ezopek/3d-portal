@@ -1,7 +1,20 @@
 ---
 title: "Sprint Change Proposal — Initiative 21 (Admin-Managed Orca Process Profiles + User-Facing Selector Options)"
 type: sprint-change-proposal
-status: approved                       # operator go 2026-06-04 ("Ok, możemy ruszać z pracami"); approval scoped to planning-artifact appends (PRD/arch/epics/sprint-status), NOT to code implementation — dev-story execution remains BLOCKED per § 7
+status: approved-but-corrected         # operator go 2026-06-04 ("Ok, możemy ruszać z pracami"); approval scoped to planning-artifact appends (PRD/arch/epics/sprint-status), NOT to code implementation. DOMAIN-MODEL FRAMING CORRECTED 2026-06-06 — see corrected_by below.
+corrected_by: _bmad-output/planning-artifacts/sprint-change-proposal-2026-06-06-epic33-profile-model-correction.md
+correction_summary: |
+  This SCP's central framing — that the fixed `printer_ref × material_class × quality_tier` resolver slot grid
+  and the uploaded intent triple are the PRIMARY/canonical admin & profile model — is product-model-wrong and
+  was corrected by the 2026-06-06 profile-model-correction SCP. The fixed slot grid is reclassified as a
+  TRANSITIONAL compiled-intent / resolver projection (MVP compatibility surface), NOT the canonical model. The
+  canonical model is separate Orca-like building blocks (MachineProfile / ProcessProfile / FilamentProfile) plus
+  product-facing offers/chains (PrintProfileOffer / ProfileChain). Shipped Stories 33.1 (read-only inventory)
+  and 33.2 (validated import/publish) are PRESERVED, not reverted; their safety foundations carry forward. Story
+  33.3 (grid lifecycle) is FROZEN/BLOCKED pending the correction; the next slice is re-pointed to a small
+  profile-library inventory CRUD (process profiles first) → PrintProfileOffer/ProfileChain. Read § 5/§ 6/§ 9 of
+  the 2026-06-06 SCP. The OD-7 "compatibility map over the grid" below is reclassified as an interim expression
+  of block/chain compatibility, kept as the live gate behind the projection.
 proposed_by: Claude (BMAD correct-course discovery, repo-local author of record, 2026-06-04)
 proposed_at: 2026-06-04
 approved_by: operator (Michał / Ezop, ITCM controller/Laura)   # OD-1 resolved: fixed grid + material/process compatibility mapping; UX-PROFILE-1 required
@@ -49,6 +62,17 @@ runtime_dependency_note: |
 ---
 
 # Sprint Change Proposal — Initiative 21 (Admin-Managed Orca Process Profiles)
+
+> ⚠️ **DOMAIN-MODEL FRAMING CORRECTED (2026-06-06).** This SCP treats the fixed
+> `printer_ref × material_class × quality_tier` slot grid + uploaded intent triple as the **primary/canonical**
+> admin & profile model. That framing is **product-model-wrong** and has been corrected by
+> **`sprint-change-proposal-2026-06-06-epic33-profile-model-correction.md`**. Read that SCP first. In short: the
+> fixed slot grid is **transitional compiled-intent / resolver projection** (kept as MVP compatibility, not the
+> canonical model); the canonical model is **separate Orca-like blocks** (MachineProfile / ProcessProfile /
+> FilamentProfile) **+ offers/chains** (PrintProfileOffer / ProfileChain). Shipped 33.1/33.2 are **preserved,
+> not reverted**; **Story 33.3 is FROZEN/BLOCKED**; the next slice is re-pointed to a small profile-library
+> inventory CRUD (process profiles first) → PrintProfileOffer/ProfileChain. The § 5 OD-7 "compatibility map
+> over the grid" is reclassified as an interim expression of block/chain compatibility (kept as the live gate).
 
 **Date:** 2026-06-04
 **Skill:** `bmad-correct-course` (phase-1 discovery → phase-2 PRD on operator go)
