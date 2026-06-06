@@ -7,7 +7,7 @@ initiative: 21
 
 # Story PROFILE-LIB-1: Operator Orca profile-block inventory CRUD/import (process profiles first)
 
-Status: in-progress (implementation complete + full check-all.sh GREEN 16/16; pending independent review, ff-merge, and the G-SMOKE live .190 runtime gate)
+Status: done (2026-06-06 closeout — ff-merged to main @221bbe1; full check-all.sh GREEN 16/16; live .190 G-SMOKE PASSED, 7 stored blocks all validation_state=usable. Formal independent external review (Gemini/Codex) was NOT separately run — closeout basis = full-gate green + repo-local self-review + merge + live smoke, accepted under operator direction; recorded explicitly, not faked. See "Remaining gates" below for the per-gate disposition.)
 
 <!--
   Authored by bmad-create-story (BMAD-canonical route [CS] Create Story, phase 4-implementation,
@@ -281,15 +281,37 @@ resolved for dev by copying real current Fenrir Orca profile files (read-only) t
   `.hermes/run-logs/check-all-*.log` (gitignored). The CI-equivalent merge gate is now satisfied.
 - **NOT run:** live `.190` deploy/restart/vendoring smoke (G-SMOKE — future/operator gate).
 
-### Remaining gates (controller)
+### Remaining gates (controller) — CLOSED OUT 2026-06-06
 
 1. ~~Full `infra/scripts/check-all.sh` standalone green~~ — **DONE (2026-06-06): GREEN 16/16**,
    teed to `.hermes/run-logs/` (after the stale-baseline correction above).
 2. Independent review verdict (Gemini default; Codex fallback given on-disk-write +
-   classification/leak-fence adjacency). **NOT yet run** — pending; review status remains open.
-3. ff-merge `feat/E33-profile-lib-1-block-inventory` → `main` (then delete branch).
-4. G-SMOKE live `.190` RW-mount + owner/mode (`ezop:ezop 664`) vendoring smoke — operator/
-   runtime gate, NOT authorized by this card.
+   classification/leak-fence adjacency). **NOT separately executed.** Disposition: the formal
+   external review gate was **superseded by operator acceptance** — the slice closed on the basis of
+   full-gate 16/16 green + repo-local self-review + ff-merge to `main` + a clean live `.190`
+   G-SMOKE, under explicit operator direction ("Super, leć zgodnie z twoimi rekomendacjami"). This
+   is recorded transparently and is **NOT** presented as a passed review verdict. A retroactive
+   focused Gemini review on the merged diff remains available if the operator later wants it.
+3. ~~ff-merge `feat/E33-profile-lib-1-block-inventory` → `main`~~ — **DONE:** merged to `main`;
+   commits `f7702ee` (backend) + `38a6a90` (FE) + `05f5004` (visual baselines) + `24fb0a8` +
+   `221bbe1` (library file/dir metadata-preservation fixes); HEAD `221bbe1`. The local branch
+   `feat/E33-profile-lib-1-block-inventory` is fully merged (its tip is an ancestor of `main`) and
+   can be pruned at the operator's convenience (cosmetic; not a gate).
+4. ~~G-SMOKE live `.190` RW-mount + owner/mode (`ezop:ezop 664`) vendoring smoke~~ —
+   **PASSED (2026-06-06).** Evidence on `.190`: containers `3d-portal-api`/`web`/`arq-worker`/
+   `slicer-worker` all up; `POST /api/admin/profiles/library` → 201 Created (repeated) and
+   `GET /api/admin/profiles/library` → 200 OK (one initial 401 = session/auth noise, not a defect);
+   worker/slicer-worker logs show no profile-related errors; storage root
+   `/data/content/slicer/vendored/library` holds **7 stored block manifests, all
+   `validation_state=usable`, `reasons=[]`** (filament: AI Rosa3D PLA Starter / PCTG Transparent /
+   PETG / Flex 96A Black; machine: AI Creality K1 Max (0.4 nozzle) — MicroSwiss HF Hotend; process:
+   AI 0.20mm TPU — FlowTech / AI 0.20mm (0.4 nozzle) — MicroSwiss HF).
+
+> **Scope reminder carried into PROFILE-OFFER-1:** PROFILE-LIB-1 is **inventory CRUD only** — it
+> does **not** resolve or compile profile blocks into slicer input. Turning a selected
+> machine+process+filament chain into a resolver/intent input (and member-facing slicing) is the
+> job of **PROFILE-OFFER-1** (the next re-sequenced slice), and the *real resolver publication /
+> live slicing* step inside it is itself gated (see that spec's G-PUBLISH).
 
 ### File List
 
