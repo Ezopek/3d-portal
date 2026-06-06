@@ -8,6 +8,7 @@ publish (byte-identical tree on injected failure, no temp leftover), server-deri
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from pathlib import Path
 
@@ -109,7 +110,11 @@ def test_fresh_library_subtree_inherits_operator_friendly_metadata(tmp_path: Pat
     # created as root-owned/executable files when the API container writes into the bind mount.
     # In tmpfs we can assert the mode half directly; production root also preserves uid/gid.
     tmp_path.chmod(0o775)
-    bid = _store(tmp_path, "process", "Metadata", body={"name": "Metadata"})
+    old_umask = os.umask(0o022)
+    try:
+        bid = _store(tmp_path, "process", "Metadata", body={"name": "Metadata"})
+    finally:
+        os.umask(old_umask)
     body_p = block_path(tmp_path, "process", bid)
     sidecar_p = manifest_path(body_p)
     assert (library_root(tmp_path).stat().st_mode & 0o777) == 0o775

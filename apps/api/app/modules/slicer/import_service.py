@@ -425,7 +425,7 @@ def publish_pair(
     sidecar manifest) and the PROFILE-LIB-1 library block store (block body + curated
     manifest) — one implementation of the rollback contract, no re-implementation (AC-8).
     """
-    primary_path.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_parent_dir(primary_path)
 
     # Snapshot the prior primary state so a mid-publish failure can roll it back exactly.
     prev_primary = primary_path.read_bytes() if primary_path.exists() else None
