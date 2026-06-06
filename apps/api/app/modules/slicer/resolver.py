@@ -16,7 +16,7 @@ import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 from app.core.config import get_settings
 from app.modules.slicer.attribution_store import AttributionSink, AttributionStore
@@ -28,6 +28,7 @@ from app.modules.slicer.merge import (
     resolve_inheritance,
 )
 from app.modules.slicer.models import (
+    MaterialClass,
     PrintIntentPreset,
     ResolvedTriple,
     ResolveFailure,
@@ -231,48 +232,25 @@ def _record_attribution(
     attribution_sink.record(intent.spoolman_filament_ref, intent, bundle_hash)
 
 
-def resolve(
-    intent: PrintIntentPreset,
+def _resolve_partials(
+    partials: dict,
     *,
     source: VendoredProfileSource,
     store: BundleStore,
-    override_provider: OverrideProvider,
     validator: CliValidator,
     orca_version: str,
-    attribution_sink: AttributionSink | None = None,
+    material_class: MaterialClass,
+    overrides=None,
 ) -> ResolveOutcome:
-    """Resolve ``intent`` to a persisted bundle, or a classified failure (AC-7).
+    """Resolve an already-loaded partial triple through the single resolver tail.
 
-    Precedence (load-bearing contract): ``exact bundle > custom override >
-    material-class default > unsupported``. Implemented as:
-
-    1. **unsupported** — no vendored intent for the material class ⇒
-       ``unsupported_material_class`` (no file written).
-    2. build the triple from the **material-class default** partials (inheritance
-       merge + CLI normalize), then apply the **custom override** layer onto the
-       filament before hashing.
-    3. **exact bundle** — if a bundle already exists at the computed content hash,
-       return it directly (idempotent; skips re-validation + re-persist).
-    4. otherwise validate (required-key schema ⇒ ``invalid_partial``; CLI smoke ⇒
-       ``cli_validation_failed``) then persist append-only and return success.
-
-    ``attribution_sink`` (SPOOL-PREQ-1) is an OPTIONAL reverse-index write seam mirroring
-    ``override_provider``: on a SUCCESSFUL resolve whose intent pins a
-    ``spoolman_filament_ref`` it records ``(ref, intent, bundle_hash)``. ``None`` (the
-    default) ⇒ byte-identical no-op, so every existing caller is unaffected.
+    This helper owns the load-bearing tail shared by the grid intent resolver and the
+    PROFILE-PUBLISH-1 chain-addressed resolver: inheritance merge, CLI normalization,
+    required-key check, CLI smoke validation, deterministic hash, provenance snapshot,
+    and append-only bundle persistence. It deliberately knows nothing about where the
+    partials came from (``intents/`` grid file vs. offer library block bodies).
     """
-    # (1) unsupported material class — fail loud, before any hashing/writing.
-    partials = source.intent_partials(intent)
-    if partials is None:
-        return ResolveFailure(
-            reason=ResolveReason.unsupported_material_class,
-            message=(
-                f"no vendored profile for material_class={intent.material_class!r} "
-                f"printer_ref={intent.printer_ref!r} quality_tier={intent.quality_tier!r}"
-            ),
-        )
-
-    # (1b) malformed-partial shape gate (review fix #2): a vendored intent file must
+    # malformed-partial shape gate (review fix #2): a partial triple must
     # be an object carrying a dict {machine, process, filament}. A missing entry or a
     # non-dict entry classifies as ``invalid_partial`` — never a bare
     # KeyError/TypeError/AttributeError leaking out of the merge below.
@@ -288,7 +266,7 @@ def resolve(
             ),
         )
 
-    # (2) material-class default resolve: inheritance merge + CLI normalize.
+    # Material-class default / chain resolve: inheritance merge + CLI normalize.
     system_tree = source.system_tree()
     try:
         machine = normalize_for_cli(
@@ -307,7 +285,6 @@ def resolve(
 
     # (2b) custom-override layer onto the filament BEFORE hashing (AC-8); folded
     # into the bundle via spoolman_overrides_ref so a mapped-field change re-hashes.
-    overrides = override_provider.overrides_for(intent)
     overrides_ref: str | None = None
     if overrides is not None:
         filament = apply_filament_overrides(filament, overrides)
@@ -321,11 +298,10 @@ def resolve(
     # (3) exact bundle precedence — content hit short-circuits before validation.
     existing = store.load_bundle(bundle_hash)
     if existing is not None:
-        _record_attribution(attribution_sink, intent, existing.bundle_hash)
         return ResolveSuccess(bundle=existing, triple=triple, from_cache=True)
 
     # (4a) required-key schema assertion ⇒ invalid_partial.
-    key_check = check_required_keys(triple, intent.material_class)
+    key_check = check_required_keys(triple, material_class)
     if not key_check.ok:
         return ResolveFailure(
             reason=ResolveReason.invalid_partial, message=key_check.reason or "invalid partial"
@@ -371,8 +347,114 @@ def resolve(
         created_at=_now_iso(),
     )
     store.write_bundle(bundle)
-    _record_attribution(attribution_sink, intent, bundle.bundle_hash)
     return ResolveSuccess(bundle=bundle, triple=triple, from_cache=False)
+
+
+def resolve(
+    intent: PrintIntentPreset,
+    *,
+    source: VendoredProfileSource,
+    store: BundleStore,
+    override_provider: OverrideProvider,
+    validator: CliValidator,
+    orca_version: str,
+    attribution_sink: AttributionSink | None = None,
+) -> ResolveOutcome:
+    """Resolve ``intent`` to a persisted bundle, or a classified failure (AC-7).
+
+    Precedence (load-bearing contract): ``exact bundle > custom override >
+    material-class default > unsupported``. Implemented as:
+
+    1. **unsupported** — no vendored intent for the material class ⇒
+       ``unsupported_material_class`` (no file written).
+    2. build the triple from the **material-class default** partials (inheritance
+       merge + CLI normalize), then apply the **custom override** layer onto the
+       filament before hashing.
+    3. **exact bundle** — if a bundle already exists at the computed content hash,
+       return it directly (idempotent; skips re-validation + re-persist).
+    4. otherwise validate (required-key schema ⇒ ``invalid_partial``; CLI smoke ⇒
+       ``cli_validation_failed``) then persist append-only and return success.
+
+    ``attribution_sink`` (SPOOL-PREQ-1) is an OPTIONAL reverse-index write seam mirroring
+    ``override_provider``: on a SUCCESSFUL resolve whose intent pins a
+    ``spoolman_filament_ref`` it records ``(ref, intent, bundle_hash)``. ``None`` (the
+    default) ⇒ byte-identical no-op, so every existing caller is unaffected.
+    """
+    # (1) unsupported material class — fail loud, before any hashing/writing.
+    partials = source.intent_partials(intent)
+    if partials is None:
+        return ResolveFailure(
+            reason=ResolveReason.unsupported_material_class,
+            message=(
+                f"no vendored profile for material_class={intent.material_class!r} "
+                f"printer_ref={intent.printer_ref!r} quality_tier={intent.quality_tier!r}"
+            ),
+        )
+
+    outcome = _resolve_partials(
+        partials,
+        source=source,
+        store=store,
+        validator=validator,
+        orca_version=orca_version,
+        material_class=intent.material_class,
+        overrides=override_provider.overrides_for(intent),
+    )
+    if isinstance(outcome, ResolveSuccess):
+        _record_attribution(attribution_sink, intent, outcome.bundle.bundle_hash)
+    return outcome
+
+
+def _read_chain_body(
+    source: VendoredProfileSource, profile_type: str, block_id: str
+) -> dict | None:
+    from app.modules.slicer.profile_library import block_path
+
+    path = block_path(source.root, profile_type, block_id)  # type: ignore[arg-type]
+    if not path.exists():
+        return None
+    try:
+        body = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    return body if isinstance(body, dict) else None
+
+
+def resolve_chain(
+    chain: Any,
+    *,
+    source: VendoredProfileSource,
+    store: BundleStore,
+    validator: CliValidator,
+    orca_version: str,
+    material_class: MaterialClass,
+) -> ResolveOutcome:
+    """Resolve a ProfileChain directly from library block bodies (Decision AR option b).
+
+    PROFILE-PUBLISH-1 is intentionally disjoint from the grid: it reads
+    ``library/{machine,process,filament}/{block_id}.json`` bodies and delegates to the same
+    resolver tail as :func:`resolve`, without reading/writing ``intents/`` or minting a
+    synthetic ``PrintIntentPreset`` coordinate.
+    """
+    partials = {
+        "machine": _read_chain_body(source, "machine", chain.machine_block_id),
+        "process": _read_chain_body(source, "process", chain.process_block_id),
+        "filament": _read_chain_body(source, "filament", chain.filament_block_id),
+    }
+    if any(value is None for value in partials.values()):
+        return ResolveFailure(
+            reason=ResolveReason.invalid_partial,
+            message="profile chain references a missing or unreadable library block body",
+        )
+    return _resolve_partials(
+        partials,  # type: ignore[arg-type]
+        source=source,
+        store=store,
+        validator=validator,
+        orca_version=orca_version,
+        material_class=material_class,
+        overrides=None,
+    )
 
 
 def resolve_intent(

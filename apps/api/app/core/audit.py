@@ -29,7 +29,9 @@ from app.core.db.models import AuditLog
 #                          slicer_profile.library_import / .library_delete (PROFILE-LIB-1
 #                          separate-block import/delete; entity_id = deterministic block UUID);
 #                          slicer_profile.offer_create / .offer_update / .offer_delete
-#                          (PROFILE-OFFER-1 PrintProfileOffer CRUD; entity_id = offer_id UUID)
+#                          (PROFILE-OFFER-1 PrintProfileOffer CRUD; entity_id = offer_id UUID);
+#                          slicer_profile.offer_publish / .offer_unpublish
+#                          (PROFILE-PUBLISH-1 publish-state bridge; entity_id = offer_id UUID)
 #   tag                  — future tag CRUD (Slice 2C.x)
 #   thumbnail_override   — admin.thumbnail.set/unset (entity_id None: legacy str model_id)
 #   user                 — auth.login.success/fail; auth.totp.enrolled (Story 7.2);

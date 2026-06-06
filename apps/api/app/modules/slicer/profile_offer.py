@@ -39,10 +39,9 @@ from app.modules.slicer.profile_library import read_block
 Visibility = Literal["hidden", "visible"]
 OfferValidationState = Literal["usable", "requires_attention", "invalid"]
 
-# Offer-sidecar schema version — points to the PROFILE-OFFER-1 offer-sidecar contract v1, a
-# NEW schema distinct from the library-manifest v1 and the intent-manifest v1 (AC-3). Bumping
-# it is a future migration.
-OFFER_MANIFEST_VERSION: Final = "1"
+# Offer-sidecar schema version — v2 is the additive PROFILE-PUBLISH-1 publish-state bump.
+# v1 sidecars (without publish_state fields) read forward as unpublished.
+OFFER_MANIFEST_VERSION: Final = "2"
 
 # An offer is stored as a single curated JSON sidecar (no body/manifest split — an offer has
 # no raw Orca body, only curated refs).
@@ -347,6 +346,12 @@ def build_offer_record(
         "created_at": created_at,
         "created_by": str(created_by),
         "updated_at": updated_at,
+        "publish_state": "unpublished",
+        "published_bundle_hash": None,
+        "published_at": None,
+        "published_by": None,
+        "source_snapshot_ref": None,
+        "published_stl_hash": None,
     }
 
 

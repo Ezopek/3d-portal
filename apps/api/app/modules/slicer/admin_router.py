@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated, Protocol, runtime_checkable
+from typing import Annotated, Any, Protocol, runtime_checkable
 
 from fastapi import (
     APIRouter,
@@ -35,12 +35,14 @@ from fastapi import (
     status,
 )
 from pydantic import ValidationError
+from sqlmodel import Session
 
 from app.core.audit import record_event
 from app.core.auth.dependencies import current_admin
 from app.core.config import get_settings
-from app.core.db.session import get_engine
-from app.modules.slicer import profile_library, profile_offer
+from app.core.db.session import get_engine, get_session
+from app.modules.slicer import profile_library, profile_offer, profile_publish
+from app.modules.slicer.bundle_store import BundleStore
 from app.modules.slicer.compatibility import INCOMPATIBLE_REASON, is_compatible
 from app.modules.slicer.estimate_read import (
     EstimateResolver,
@@ -71,6 +73,8 @@ from app.modules.slicer.schemas import (
     AdminProfileProvenance,
     AdminProfileSlot,
     AdminProfileStatus,
+    OfferPublishRequest,
+    OfferPublishResult,
     OfferVisibility,
     PrintProfileOffer,
     PrintProfileOfferCreate,
@@ -82,6 +86,8 @@ from app.modules.slicer.schemas import (
     ProfileLibraryListResponse,
     ProfileLibraryType,
 )
+from app.modules.slicer.stl_cache import StlCache
+from app.modules.slicer.validation import NullCliValidator
 
 # Upload cap for an imported intent triple (AC-4). An intent triple is a small JSON object
 # ({machine, process, filament} merged Orca key/values) — orders of magnitude below the
@@ -241,6 +247,23 @@ def get_import_profile_source() -> VendoredProfileSource:
     """
     settings = get_settings()
     return VendoredProfileSource(settings.slicer_vendored_profiles_dir)
+
+
+def get_publish_bundle_store() -> BundleStore:
+    settings = get_settings()
+    return BundleStore(settings.slicer_bundle_store_dir)
+
+
+def get_publish_stl_cache() -> StlCache:
+    settings = get_settings()
+    return StlCache(settings.slicer_stl_cache_dir)
+
+
+def get_publish_arq_pool(request: Request) -> Any:
+    arq_pool = getattr(request.app.state, "arq", None)
+    if arq_pool is None:
+        raise HTTPException(status_code=503, detail="slicer queue unavailable")
+    return arq_pool
 
 
 def _reject(status_code: int, reason_category: str, message: str) -> HTTPException:
@@ -751,6 +774,7 @@ def _offer_dto(resolved: profile_offer.ResolvedOffer) -> PrintProfileOffer:
     """
     sidecar = resolved.sidecar
     chain = sidecar.get("chain") or {}
+    publish_state = profile_publish.publish_state_of(sidecar)
     return PrintProfileOffer(
         offer_id=sidecar["offer_id"],
         label=sidecar["label"],
@@ -769,6 +793,12 @@ def _offer_dto(resolved: profile_offer.ResolvedOffer) -> PrintProfileOffer:
         created_at=sidecar["created_at"],
         created_by=sidecar["created_by"],
         updated_at=sidecar["updated_at"],
+        publish_state=publish_state.publish_state,
+        published_bundle_hash=publish_state.published_bundle_hash,
+        published_at=publish_state.published_at,
+        published_by=publish_state.published_by,
+        source_snapshot_ref=publish_state.source_snapshot_ref,
+        published_stl_hash=publish_state.published_stl_hash,
     )
 
 
@@ -1063,3 +1093,113 @@ async def delete_profile_offer(
         after={"offer_id": offer_id},
         request_id=request.headers.get("x-request-id"),
     )
+
+
+# === PROFILE-PUBLISH-1 (Decision AR) — offer chain publish / rollback =========
+#
+# Two additive admin-gated POST routes. They are the first E33 routes that legitimately
+# touch the resolve/bundle/slice path: publish resolves the offer's chain directly from
+# library block bodies, persists the bundle append-only, enqueues one slicer job, and records
+# v2 publish state on the offer sidecar. Unpublish flips only that marker; it never deletes
+# append-only bundles/snapshots/estimates.
+
+
+@router.post(
+    "/profiles/offers/{offer_id}/publish",
+    response_model=OfferPublishResult,
+    summary="Publish a usable PrintProfileOffer chain to a real resolver bundle (admin only)",
+    description=(
+        "PROFILE-PUBLISH-1 (Decision AR option b). Re-validates the offer at publish time, "
+        "resolves its ProfileChain directly from library block bodies through the shared "
+        "resolver tail, persists the content-addressed bundle/snapshot append-only, enqueues "
+        "one slicer estimate for the requested or operator-selected catalog STL hash, writes "
+        "additive v2 publish-state on the offer sidecar, and audits. It never reads/writes the "
+        "grid intents/system trees and does not change the member selector."
+    ),
+    responses={
+        200: {"description": "Offer published and one estimate slice enqueued"},
+        404: {"description": "No offer with that id"},
+        409: {"description": "Offer is not usable or requires attention"},
+        422: {"description": "Publish rejected: STL hash/resolve failure"},
+    },
+)
+async def publish_profile_offer(
+    request: Request,
+    offer_id: str,
+    source: Annotated[VendoredProfileSource, Depends(get_import_profile_source)],
+    bundle_store: Annotated[BundleStore, Depends(get_publish_bundle_store)],
+    stl_cache: Annotated[StlCache, Depends(get_publish_stl_cache)],
+    db_session: Annotated[Session, Depends(get_session)],
+    arq_pool: Annotated[Any, Depends(get_publish_arq_pool)],
+    _user_id: uuid.UUID = current_admin,
+) -> OfferPublishResult:
+    parsed = await _read_json_body(request)
+    try:
+        body = OfferPublishRequest.model_validate(parsed or {})
+    except ValidationError:
+        raise _reject(422, "invalid_publish_request", "publish body failed validation") from None
+
+    settings = get_settings()
+    try:
+        outcome = await profile_publish.publish_offer(
+            offer_id=offer_id,
+            root=source.root,
+            source=source,
+            bundle_store=bundle_store,
+            validator=NullCliValidator(),
+            orca_version=settings.orca_version,
+            stl_hash=body.stl_hash,
+            content_dir=settings.portal_content_dir,
+            stl_cache=stl_cache,
+            db_session=db_session,
+            arq_pool=arq_pool,
+            actor_user_id=_user_id,
+            engine=get_engine(),
+            request_id=request.headers.get("x-request-id"),
+        )
+    except profile_publish.PublishError as exc:
+        raise _reject(exc.status_code, exc.reason_category, exc.message) from exc
+
+    return OfferPublishResult(
+        offer_id=outcome.offer_id,
+        published_bundle_hash=outcome.published_bundle_hash,
+        publish_state=profile_publish.PUBLISH_STATE_PUBLISHED,
+        published_at=outcome.published_at,
+        estimate_job_id=outcome.estimate_job_id,
+        estimate=None,
+    )
+
+
+@router.post(
+    "/profiles/offers/{offer_id}/unpublish",
+    response_model=PrintProfileOffer,
+    summary="Mark a PrintProfileOffer unpublished without deleting append-only artifacts",
+    description=(
+        "PROFILE-PUBLISH-1 rollback primitive. Flips the offer sidecar publish_state to "
+        "unpublished, clears active publish refs, and audits. The persisted bundle/snapshot/"
+        "estimate artifacts are append-only and are never deleted."
+    ),
+    responses={
+        200: {"description": "Offer is unpublished (idempotent)"},
+        404: {"description": "No offer with that id"},
+    },
+)
+async def unpublish_profile_offer(
+    request: Request,
+    offer_id: str,
+    source: Annotated[VendoredProfileSource, Depends(get_import_profile_source)],
+    _user_id: uuid.UUID = current_admin,
+) -> PrintProfileOffer:
+    try:
+        updated = profile_publish.unpublish_offer(
+            offer_id=offer_id,
+            root=source.root,
+            actor_user_id=_user_id,
+            engine=get_engine(),
+            request_id=request.headers.get("x-request-id"),
+        )
+    except profile_publish.PublishError as exc:
+        raise _reject(exc.status_code, exc.reason_category, exc.message) from exc
+    peers = profile_offer.list_offers(source.root)
+    resolved = profile_offer.revalidate_offer(source.root, updated, peers=peers)
+    return _offer_dto(resolved)

@@ -781,17 +781,15 @@ def test_slicer_module_mounts_only_narrow_estimates_read_router():
     # Story 33.1 (PROFILE-ADMIN-1) added the read-only admin inventory GET; Story 33.2
     # (PROFILE-ADMIN-2) added the grid import POST /profiles/import; PROFILE-LIB-1
     # (Decision AM) added the FOUR separate-block library routes; PROFILE-OFFER-1
-    # (Decision AN) adds the FIVE sanctioned PrintProfileOffer routes — POST /profiles/offers
-    # (create) + GET /profiles/offers (list) + GET /profiles/offers/{offer_id} (detail) +
-    # PATCH /profiles/offers/{offer_id} (edit label/visibility/default/categories — chain
-    # immutable) + DELETE /profiles/offers/{offer_id} (delete). Fence the surface with equal
+    # (Decision AN) added the FIVE PrintProfileOffer CRUD routes; PROFILE-PUBLISH-1
+    # (Decision AR) adds exactly TWO publish-state POSTs:
+    # /profiles/offers/{offer_id}/publish and .../unpublish. Fence the surface with equal
     # rigor: exactly FIVE GETs (grid inventory + library list + library detail + offer list +
-    # offer detail), THREE POSTs (grid import + library import + offer create), EXACTLY ONE
-    # PATCH (the offer edit — the first sanctioned partial-update surface; the chain is NOT
-    # patchable), and EXACTLY TWO DELETEs (library delete + offer delete). NO put lifecycle
-    # surface. Every write reuses the atomic-publish foundation; NONE mutate the append-only
-    # bundle/snapshot store, write an estimate record, or enqueue a re-slice / publish a chain
-    # into the resolver intent path (NFR21-PROVENANCE-1 + scope fence AC-1/AC-22, G-PUBLISH).
+    # offer detail), FIVE POSTs (grid import + library import + offer create + offer publish +
+    # offer unpublish), EXACTLY ONE PATCH (offer edit; chain not patchable), and EXACTLY TWO
+    # DELETEs (library delete + offer delete). NO put lifecycle surface. The publish POST is
+    # the sanctioned first admin route that reaches the append-only bundle/slice path; the
+    # grid intents/system tree remains untouched.
     admin_router_path = module / "admin_router.py"
     assert admin_router_path.exists()
     admin_text = admin_router_path.read_text(encoding="utf-8")
@@ -802,20 +800,19 @@ def test_slicer_module_mounts_only_narrow_estimates_read_router():
     assert '"/profiles/library/{block_id}"' in admin_text
     assert '"/profiles/offers"' in admin_text
     assert '"/profiles/offers/{offer_id}"' in admin_text
-    # The grid import + the library import + the offer create are the only POSTs.
-    assert admin_text.count("@router.post") == 3
+    # The grid import + library import + offer create + publish + unpublish are the only POSTs.
+    assert admin_text.count("@router.post") == 5
     assert '"/profiles/import"' in admin_text
+    assert '"/profiles/offers/{offer_id}/publish"' in admin_text
+    assert '"/profiles/offers/{offer_id}/unpublish"' in admin_text
     # Exactly ONE patch (the sanctioned offer edit); the chain is immutable (delete + recreate).
     assert admin_text.count("@router.patch") == 1
     # Exactly TWO deletes (library block delete + offer delete); no rename/disable put surface.
     assert admin_text.count("@router.delete") == 2
     assert "@router.put" not in admin_text
-    # Admin-gated (not public); the writes never edit the append-only bundle/snapshot store,
-    # never write an estimate record, and never enqueue a slice (no re-slice on import).
+    # Admin-gated (not public); direct router code does not re-derive queue plumbing or write
+    # estimates. Publish delegates to profile_publish instead of hiding a second route path.
     assert "current_admin" in admin_text
-    assert "store.write" not in admin_text
-    assert "write_bundle" not in admin_text
-    assert "write_snapshot" not in admin_text
     assert ".enqueue_job(" not in admin_text
     assert "enqueue_render" not in admin_text
     assert "enqueue_recompute" not in admin_text

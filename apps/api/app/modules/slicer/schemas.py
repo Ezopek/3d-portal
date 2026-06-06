@@ -263,6 +263,7 @@ class ProfileLibraryListResponse(BaseModel):
 # PROFILE-LIB-1 library DTOs and never replaces them.
 
 OfferVisibility = Literal["hidden", "visible"]
+OfferPublishState = Literal["published", "unpublished"]
 
 # The per-offer validation state (AC-4): a stored offer is at worst ``invalid`` (a referenced
 # block went missing / wrong-typed); ``requires_attention`` is stored + listed + flagged.
@@ -318,6 +319,12 @@ class PrintProfileOffer(BaseModel):
     created_at: str
     created_by: str
     updated_at: str
+    publish_state: OfferPublishState = "unpublished"
+    published_bundle_hash: str | None = None
+    published_at: str | None = None
+    published_by: str | None = None
+    source_snapshot_ref: str | None = None
+    published_stl_hash: str | None = None
 
 
 class PrintProfileOfferListResponse(BaseModel):
@@ -365,6 +372,34 @@ class PrintProfileOfferUpdate(BaseModel):
     visibility: OfferVisibility | None = None
     is_default: bool | None = None
     compatible_material_categories: list[str] | None = None
+
+
+class OfferPublishRequest(BaseModel):
+    """PROFILE-PUBLISH-1 publish request.
+
+    ``stl_hash`` is optional; absent means the operator-selected G-DATA default for this
+    slice. It is validated at the service boundary before any path is built.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    stl_hash: str | None = None
+
+
+class OfferPublishResult(BaseModel):
+    """The curated result of publishing one offer chain to a real bundle.
+
+    Carries the bundle hash + queue job id needed by the admin surface, and never carries
+    raw Orca body, filesystem path, queue payload internals beyond the deterministic job id,
+    or g-code.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    offer_id: str
+    published_bundle_hash: str
+    publish_state: OfferPublishState
+    published_at: str
+    estimate_job_id: str
+    estimate: EstimateView | None = None
 
 
 class AdminProfileInventoryResponse(BaseModel):
