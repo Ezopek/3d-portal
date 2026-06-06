@@ -780,29 +780,36 @@ def test_slicer_module_mounts_only_narrow_estimates_read_router():
 
     # Story 33.1 (PROFILE-ADMIN-1) added the read-only admin inventory GET; Story 33.2
     # (PROFILE-ADMIN-2) added the grid import POST /profiles/import; PROFILE-LIB-1
-    # (Decision AM) adds the FOUR sanctioned separate-block library routes — POST
-    # /profiles/library (import) + GET /profiles/library (list) + GET /profiles/library/{id}
-    # (detail) + DELETE /profiles/library/{id} (delete). Fence the surface with equal rigor:
-    # exactly THREE GETs (grid inventory + library list + library detail), TWO POSTs (grid
-    # import + library import), and EXACTLY ONE DELETE (library delete — the first sanctioned
-    # delete; NO put/patch lifecycle surface). Every write reuses the atomic-publish
-    # foundation; NONE mutate the append-only bundle/snapshot store, write an estimate record,
-    # or enqueue a re-slice (NFR21-PROVENANCE-1 + scope fence AC-1/AC-21).
+    # (Decision AM) added the FOUR separate-block library routes; PROFILE-OFFER-1
+    # (Decision AN) adds the FIVE sanctioned PrintProfileOffer routes — POST /profiles/offers
+    # (create) + GET /profiles/offers (list) + GET /profiles/offers/{offer_id} (detail) +
+    # PATCH /profiles/offers/{offer_id} (edit label/visibility/default/categories — chain
+    # immutable) + DELETE /profiles/offers/{offer_id} (delete). Fence the surface with equal
+    # rigor: exactly FIVE GETs (grid inventory + library list + library detail + offer list +
+    # offer detail), THREE POSTs (grid import + library import + offer create), EXACTLY ONE
+    # PATCH (the offer edit — the first sanctioned partial-update surface; the chain is NOT
+    # patchable), and EXACTLY TWO DELETEs (library delete + offer delete). NO put lifecycle
+    # surface. Every write reuses the atomic-publish foundation; NONE mutate the append-only
+    # bundle/snapshot store, write an estimate record, or enqueue a re-slice / publish a chain
+    # into the resolver intent path (NFR21-PROVENANCE-1 + scope fence AC-1/AC-22, G-PUBLISH).
     admin_router_path = module / "admin_router.py"
     assert admin_router_path.exists()
     admin_text = admin_router_path.read_text(encoding="utf-8")
     assert 'APIRouter(prefix="/api/admin"' in admin_text
-    assert admin_text.count("@router.get") == 3
+    assert admin_text.count("@router.get") == 5
     assert '"/profiles"' in admin_text
     assert '"/profiles/library"' in admin_text
     assert '"/profiles/library/{block_id}"' in admin_text
-    # The grid import + the library import are the only POSTs (no bulk/unbounded variant).
-    assert admin_text.count("@router.post") == 2
+    assert '"/profiles/offers"' in admin_text
+    assert '"/profiles/offers/{offer_id}"' in admin_text
+    # The grid import + the library import + the offer create are the only POSTs.
+    assert admin_text.count("@router.post") == 3
     assert '"/profiles/import"' in admin_text
-    # Exactly ONE delete (the sanctioned library block delete); no rename/disable put/patch.
-    assert admin_text.count("@router.delete") == 1
-    for write_method in ("@router.put", "@router.patch"):
-        assert write_method not in admin_text
+    # Exactly ONE patch (the sanctioned offer edit); the chain is immutable (delete + recreate).
+    assert admin_text.count("@router.patch") == 1
+    # Exactly TWO deletes (library block delete + offer delete); no rename/disable put surface.
+    assert admin_text.count("@router.delete") == 2
+    assert "@router.put" not in admin_text
     # Admin-gated (not public); the writes never edit the append-only bundle/snapshot store,
     # never write an estimate record, and never enqueue a slice (no re-slice on import).
     assert "current_admin" in admin_text

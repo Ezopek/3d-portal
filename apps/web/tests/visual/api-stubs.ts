@@ -334,3 +334,67 @@ export async function stubProfileLibrary(
     return route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
   });
 }
+
+/**
+ * PROFILE-OFFER-1 (AC-20) — stub the admin profile-offer + library-picker endpoints.
+ *
+ * Registers the offers list GET (curated offer DTOs, no raw Orca JSON), a POST whose status is
+ * controlled by `postRejection` (the create-rejection state), PATCH → 200, DELETE → 204, plus
+ * the library list GET so the compose pickers populate deterministically. The four projects
+ * (desktop-light/dark, mobile-light/dark) are pixel-stable — no real validate/disk runs.
+ */
+export async function stubProfileOffers(
+  page: Page,
+  opts: {
+    offers?: unknown[];
+    library?: unknown[];
+    postRejection?: { status: number; reason_category: string };
+  } = {},
+) {
+  const offers = opts.offers ?? [];
+  const library = opts.library ?? [];
+  await page.route("**/api/admin/profiles/library**", (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ blocks: library }),
+    }),
+  );
+  await page.route("**/api/admin/profiles/offers**", (route: Route) => {
+    const method = route.request().method();
+    if (method === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ offers }),
+      });
+    }
+    if (method === "POST") {
+      if (opts.postRejection) {
+        return route.fulfill({
+          status: opts.postRejection.status,
+          contentType: "application/json",
+          body: JSON.stringify({
+            detail: { reason_category: opts.postRejection.reason_category, message: "rejected" },
+          }),
+        });
+      }
+      return route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify(offers[0] ?? {}),
+      });
+    }
+    if (method === "PATCH") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(offers[0] ?? {}),
+      });
+    }
+    if (method === "DELETE") {
+      return route.fulfill({ status: 204, contentType: "application/json", body: "" });
+    }
+    return route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+  });
+}

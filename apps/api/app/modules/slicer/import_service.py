@@ -456,6 +456,26 @@ def publish_pair(
         raise
 
 
+def publish_single(*, path: Path, content: bytes) -> None:
+    """Atomic single-file publish (PROFILE-OFFER-1, AC-7) — reuses the proven write primitive.
+
+    A POSIX ``rename`` of a fully-written + fsynced temp sibling is inherently all-or-nothing,
+    so a single curated file (an offer sidecar has no body/manifest split) needs no two-phase
+    rollback. This shares the SAME :func:`_stage_temp` heart as :func:`publish_pair` — fsync,
+    owner/mode preservation (a fresh ``offers/`` subtree inherits the bind-mount's
+    ``ezop:ezop 664`` instead of a root-owned ``0600`` artifact), and temp cleanup on a write
+    failure. On a ``rename`` failure the staged temp is removed so no temp is left behind, and
+    the live file is untouched (the upsert lands atomically or not at all).
+    """
+    _ensure_parent_dir(path)
+    tmp_path = _stage_temp(path, content)
+    try:
+        os.rename(tmp_path, path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
 def publish_intent(partials: dict, *, intent_path: Path, manifest: dict) -> None:
     """Rollback-safe publish of the validated ``partials`` + sidecar ``manifest`` (AC-8, AC-9).
 

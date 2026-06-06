@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.modules.slicer.models import EstimateFailureReason, MaterialClass, QualityTier
 
@@ -251,6 +251,120 @@ class ProfileLibraryListResponse(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     blocks: list[ProfileLibraryBlock]
+
+
+# --- PROFILE-OFFER-1 (Decision AN) — PrintProfileOffer / ProfileChain DTOs ----
+#
+# The curated offer/chain projection over the separate-block library. Like every DTO in this
+# module it is ``extra="forbid"`` and carries ONLY curated offer config + the embedded chain
+# refs + validation state + a leak-fenced ``chain_blocks`` echo of the referenced blocks'
+# curated metadata — NO raw Orca key body, NO filesystem path, NO g-code (the AC-8 leak fence,
+# mirrored by a negative-assertion test). It coexists with the 33.1/33.2 grid DTOs and the
+# PROFILE-LIB-1 library DTOs and never replaces them.
+
+OfferVisibility = Literal["hidden", "visible"]
+
+# The per-offer validation state (AC-4): a stored offer is at worst ``invalid`` (a referenced
+# block went missing / wrong-typed); ``requires_attention`` is stored + listed + flagged.
+OfferValidationState = Literal["usable", "requires_attention", "invalid"]
+
+
+class ProfileChainRef(BaseModel):
+    """The embedded triple of library block references (AC-2, AC-8).
+
+    Each id is validated as a 32-char lowercase hex ``block_id`` (the same structural
+    path-safe property the library mints) so a malformed ref is a 422 ``invalid_offer`` before
+    it ever reaches the storage path. Carries no raw Orca body — only the three refs.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    machine_block_id: str
+    process_block_id: str
+    filament_block_id: str
+
+    @field_validator("machine_block_id", "process_block_id", "filament_block_id")
+    @classmethod
+    def _hex_block_id(cls, value: str) -> str:
+        from app.modules.slicer.profile_library import is_valid_block_id
+
+        if not is_valid_block_id(value):
+            raise ValueError("block_id must be a 32-char lowercase hex string")
+        return value
+
+
+class PrintProfileOffer(BaseModel):
+    """One ``PrintProfileOffer`` with its embedded chain + read-time validation (AC-8).
+
+    The single shape the offer list/get/create/patch endpoints return. ``validation_state`` +
+    ``reasons`` are RECOMPUTED at read time against the current library (AC-10) — a stale
+    ``usable`` is never served after a referenced block changes. ``chain_blocks`` echoes the
+    referenced blocks' curated metadata (reusing :class:`ProfileLibraryBlock`) so the FE can
+    render the selected blocks WITHOUT a second round-trip and WITHOUT any raw Orca body; a
+    missing referenced block is omitted from the echo (surfaced via the ``unknown_block``
+    reason). ``label`` / block names / material types render as DATA (untranslated).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    offer_id: str
+    label: str
+    description: str | None = None
+    chain: ProfileChainRef
+    visibility: OfferVisibility
+    is_default: bool
+    compatible_material_categories: list[str] = Field(default_factory=list)
+    validation_state: OfferValidationState
+    reasons: list[str] = Field(default_factory=list)
+    chain_blocks: list[ProfileLibraryBlock] = Field(default_factory=list)
+    created_at: str
+    created_by: str
+    updated_at: str
+
+
+class PrintProfileOfferListResponse(BaseModel):
+    """The offer inventory (PROFILE-OFFER-1, AC-10).
+
+    Deterministically ordered (by ``created_at`` then ``offer_id``). A missing/empty
+    ``offers/`` tree ⇒ an empty ``offers`` list.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    offers: list[PrintProfileOffer]
+
+
+class PrintProfileOfferCreate(BaseModel):
+    """The create-offer request body (AC-9).
+
+    ``visibility`` defaults ``hidden`` and ``is_default`` defaults ``false`` (a new offer is
+    not published by default). ``compatible_material_categories`` is a plain ``list[str]`` here
+    (NOT a ``Literal``) so an out-of-table category yields the structured
+    ``422 unsupported_material_category`` from the handler's material gate rather than an opaque
+    Pydantic enum error. ``extra="forbid"`` so an unexpected field is a 422 ``invalid_offer``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    label: str
+    description: str | None = None
+    chain: ProfileChainRef
+    visibility: OfferVisibility = "hidden"
+    is_default: bool = False
+    compatible_material_categories: list[str] = Field(default_factory=list)
+
+
+class PrintProfileOfferUpdate(BaseModel):
+    """The patch-offer request body (AC-12) — label/visibility/default/categories ONLY.
+
+    The chain (block refs) is IMMUTABLE on PATCH: changing the selected blocks means deleting
+    the offer and creating a new one (keeps ``offer_id`` ↔ chain identity simple; chain
+    mutation/versioning is deferred, SCP § 9). Every field is optional (partial update);
+    ``extra="forbid"`` so an attempt to PATCH ``chain`` (or any unknown field) is a 422.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    label: str | None = None
+    description: str | None = None
+    visibility: OfferVisibility | None = None
+    is_default: bool | None = None
+    compatible_material_categories: list[str] | None = None
 
 
 class AdminProfileInventoryResponse(BaseModel):

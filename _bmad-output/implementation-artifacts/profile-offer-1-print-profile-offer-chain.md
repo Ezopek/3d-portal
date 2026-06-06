@@ -7,9 +7,23 @@ initiative: 21
 
 # Story PROFILE-OFFER-1: Minimal PrintProfileOffer / ProfileChain layer over the profile-block library
 
-Status: ready-for-dev (context complete; dev-story execution BLOCKED pending G-DEVGO operator dev-go.
-The FE offer-composition surface is additionally gated on G-UXGATE; real resolver publication / live
-slicing is OUT of this slice and gated as G-PUBLISH. Spec authoring ONLY — NO code, NO deploy, NO commit.)
+Status: done (code-side) — backend (T1–T3) AND frontend (T5–T6) dev-complete + verified; **controller full
+aggregate gate PASSED + external review APPROVE** (see Controller closeout below). Remaining merge/deploy/G-SMOKE
+are controller-owned and NOT yet executed. **T4 (G-UXGATE) SATISFIED
+2026-06-06** by the `bmad-ux`/Sally checkpoint `_bmad-output/ux/ux-profile-offer-1-admin-offer-composition-ux-2026-06-06.md`;
+**T5/T6 BUILT 2026-06-06** against that checkpoint by the controller-resumed `bmad-dev-story` flow: the minimal admin
+offer surface (`ProfileOffersPage` — 3 single-select pickers, list + validation badges, curated detail, edit,
+delete-confirm, fails-closed), the four CRUD hooks, en/pl i18n parity, and the 4 Playwright baselines × 4 projects.
+All story ACs except the **controller-owned** closeout gates are met: focused vitest (offers 8 + i18n 4) + full web
+vitest (607) green, `npm run typecheck` + `npm run lint` clean, 16 visual baselines generated + stable on re-run +
+visually reviewed, `git diff --check` clean. **Controller closeout (2026-06-06):** full `infra/scripts/check-all.sh`
+PASSED — RC=0, 16/16 stages green (incl. apps/web visual regression 444 passed / 24 skipped), log
+`.hermes/run-logs/profile-offer-1-controller-check-all-20260606_145028.log`; external review **Gemini CLI 0.45.2 →
+APPROVE** (no blockers / no important / no nits), log `.hermes/run-logs/profile-offer-1-gemini-review-20260606_145933.log`.
+G-DEVGO satisfied (operator dev-go 2026-06-06). **G-PUBLISH remains explicitly deferred** (no resolver publication /
+live slicing / member-selector change). **Remaining controller-owned post-code steps NOT yet executed:** ff-merge to
+`main`, `infra/scripts/deploy.sh`, and the runtime **G-SMOKE** on `.190`. No commit/merge/deploy/live-smoke has
+happened yet. See Dev Agent Record for the exact slice.
 
 <!--
   Authored by the repo-local BMAD author of record (Claude Opus 4.8, 2026-06-06) following the
@@ -292,57 +306,82 @@ a compiled chain into the resolver intent path or run live slicing (G-PUBLISH, d
 
 ## Tasks / Subtasks
 
-- [ ] **T1 — Offer/chain data model + dry validation engine (AC-2,3,4)** — new `slicer/profile_offer.py`
-      + `tests/test_profile_offer_validate.py`
-  - [ ] RED first: `validate_chain` over library fixtures — a fully-`usable` chain; an `unknown_block`;
+- [x] **T1 — Offer/chain data model + dry validation engine (AC-2,3,4)** — new `slicer/profile_offer.py`
+      + `tests/test_profile_offer_validate.py` ✅
+  - [x] RED first: `validate_chain` over library fixtures — a fully-`usable` chain; an `unknown_block`;
         a `wrong_block_type`; a `requires_attention` propagation; a `filament_machine_incompatible`; a
         `material_category_mismatch`; a `default_but_hidden`; a `duplicate_default` across two offers.
-  - [ ] Assert the engine reads ONLY curated manifests (`read_block`) — never raw bodies, never
+        (RED confirmed via ImportError, then GREEN — 14 tests.)
+  - [x] Assert the engine reads ONLY curated manifests (`read_block`) — never raw bodies, never
         `resolve()`; leak-fence negative test (no raw Orca key / g-code / path in any DTO/manifest/audit).
-- [ ] **T2 — Offer storage layer (AC-5,6,7)** — in `slicer/profile_offer.py` +
-      `tests/test_profile_offer_store.py`
-  - [ ] `offer_path` single-SoT layout; `offer_id = uuid4().hex` server-minted; hex validator for
-        GET/PATCH/DELETE; `<root>/offers` containment assert (reuse/extend `_assert_within`).
-  - [ ] `store_offer` / `list_offers` / `read_offer` / `delete_offer` — reuse `publish_pair` +
-        owner/mode preservation (incl. fresh-directory metadata inheritance, the `221bbe1` fix); read-time
-        revalidation in list/read.
-  - [ ] Tests: atomic store leaves byte-identical tree on injected failure + no temp; owner/mode preserved
-        (skip chown assert in non-root dev per the existing `suppress(PermissionError)` pattern); delete
-        idempotency/404; list recomputes validation after a referenced block is removed.
-- [ ] **T3 — CRUD endpoints (AC-8..AC-15)** — extend `slicer/admin_router.py` + `slicer/schemas.py` +
-      `tests/test_admin_profile_offers.py`
-  - [ ] DTOs (`extra="forbid"`, no raw body; reuse `ProfileLibraryBlock` for `chain_blocks`).
-  - [ ] Five routes on the existing router object (POST/GET-list/GET-one/PATCH/DELETE
+        (Additive-fence test: no import of resolver/compatibility/bundle_store, no call-form grid symbols.)
+- [x] **T2 — Offer storage layer (AC-5,6,7)** — in `slicer/profile_offer.py` +
+      `tests/test_profile_offer_store.py` ✅ (22 tests)
+  - [x] `offer_path` single-SoT layout; `offer_id = uuid4().hex` server-minted; hex validator for
+        GET/PATCH/DELETE; `<root>/offers` containment assert (new behavior-preserving `_assert_within`).
+  - [x] `store_offer` / `list_offers` / `read_offer` / `delete_offer` — reuse the shared atomic write +
+        owner/mode preservation via NEW `import_service.publish_single` (single-file variant reusing
+        `_stage_temp`'s fsync + metadata source, incl. the `221bbe1` fresh-dir fix); read-time
+        revalidation in `revalidate_offers`/`revalidate_offer`.
+  - [x] Tests: atomic store leaves byte-identical tree on injected `os.rename` failure + no temp; owner/mode
+        preserved (mode asserted in tmpfs; chown best-effort via the shared `suppress(PermissionError)`);
+        delete idempotency/404; list recomputes validation after a referenced block is removed.
+- [x] **T3 — CRUD endpoints (AC-8..AC-15)** — extend `slicer/admin_router.py` + `slicer/schemas.py` +
+      `tests/test_admin_profile_offers.py` ✅ (25 tests)
+  - [x] DTOs (`extra="forbid"`, no raw body; reuse `ProfileLibraryBlock` for `chain_blocks`; hex
+        field-validators on `ProfileChainRef`).
+  - [x] Five routes on the existing router object (POST/GET-list/GET-one/PATCH/DELETE
         `/api/admin/profiles/offers[/{offer_id}]`); `current_admin`; no `_PUBLIC_ROUTES` edit; CSRF
-        automatic.
-  - [ ] Create gate order (413 → 422 invalid_json/invalid_offer → 422 unsupported_material_category →
+        automatic. Route-enforcement gate passes WITHOUT allowlist edit.
+  - [x] Create gate order (413 → 422 invalid_json/invalid_offer → 422 unsupported_material_category →
         422 invalid_chain → store → audit → 201); list/get (filters + read-time revalidation + 404);
-        PATCH (chain immutable, re-validate, audit); delete (204/404, audited; library untouched).
-  - [ ] Audit `slicer_profile.offer_create`/`.offer_update`/`.offer_delete` (reuse `slicer_profile`
+        PATCH (chain immutable via `extra="forbid"`, re-validate, audit); delete (204/404, audited; library
+        untouched).
+  - [x] Audit `slicer_profile.offer_create`/`.offer_update`/`.offer_delete` (reuse `slicer_profile`
         entity_type + comment-only audit.py extension).
-  - [ ] Tests: 403 non-admin / 401 anon / 413 over-cap / 422 invalid_chain (not stored) / 422
+  - [x] Tests: 403 non-admin / 401 anon / 413 over-cap / 422 invalid_chain (not stored) / 422
         unsupported_material_category; successful create ⇒ 201 + DTO + sidecar + audit;
         requires_attention case stored+flagged; list/get/patch/delete round-trip; deleting a referenced
-        block flips the offer to `invalid` on next list; leak-fence negative assertion; extend
-        `test_slicer_worker.py` route-surface fence (AC-15).
-- [ ] **T4 — UX checkpoint (AC-16; G-UXGATE)** — `bmad-ux` / Sally design pass for the offer-composition
-      surface (extends UX-PROFILE-1). **BLOCKS T5/T6.** Produces `ux-profile-offer-1-*` artifact +
-      sprint-status row. Until signed off, NO FE composition code is written.
-- [ ] **T5 — FE offer surface (AC-17,18,19)** *(gated on T4)* — `apps/web/src/modules/admin/` +
-      `routes/admin/`
-  - [ ] `useProfileOffers` / `useCreateProfileOffer` / `useUpdateProfileOffer` / `useDeleteProfileOffer`
-        hooks (cache topology per the table); compose pickers read `useProfileLibrary`.
-  - [ ] Offer surface: compose (3 single-select slot pickers + label/visibility/default/category-multi),
-        list + validation-state badges, detail expander (curated only, NO raw JSON), edit, delete +
-        ConfirmDialog; fails closed/visible.
-  - [ ] i18n `modules.admin.profileOffers.*` en+pl parity + diacritics; zero inline hex; data fields
-        untranslated. Wire into `AdminTabs` / route shell with the existing auth gate.
-- [ ] **T6 — FE + visual tests (AC-17,18,19,20,21)** *(gated on T4)* — colocated vitest
-      (`afterEach(cleanup)`) + Playwright baselines for the 4 states × 4 projects; `baseline-reviewed:`
-      per PNG; `api-stubs.ts` offer + library stubs. Intercept at `fetch`, do not mock `api()`.
-- [ ] **T7 — Determinism + self-review (AC-21)**
-  - [ ] pytest 3× + vitest 3× identical; ruff/format/typecheck/lint/diff --check; full `check-all.sh`
-        green before ff-merge.
+        block flips the offer to `invalid` on next list; leak-fence negative assertion; extended
+        `test_slicer_worker.py` route-surface fence (GETs 3→5, POSTs 2→3, +1 PATCH, DELETEs 1→2) (AC-15).
+- [x] **T4 — UX checkpoint (AC-16; G-UXGATE)** — ✅ **DONE 2026-06-06** (`bmad-ux`/Sally checkpoint).
+      Artifact: `_bmad-output/ux/ux-profile-offer-1-admin-offer-composition-ux-2026-06-06.md` (extends
+      UX-PROFILE-1 per SCP § 8) + sprint-status row `ux-profile-offer-1-admin-offer-composition-ux-design`.
+      Signs off the minimal admin offer-composition layout (list + compose/detail panel, single-select-per-slot,
+      NO N×M / NO Orca-GUI clone / NO raw-Orca JSON), the validation-badge + reason surfacing (all 8 backend
+      reason categories + endpoint rejections mapped to admin copy), fails-closed/read-time-revalidation
+      honesty, a11y/i18n/visual-state guidance, and the AC-16..AC-20 → T5/T6 mapping. **G-UXGATE SATISFIED →
+      T5/T6 UNBLOCKED.** Design-only: no app/test/config/code, no deploy/live-smoke/commit by this pass.
+      G-PUBLISH NOT authorized by this checkpoint.
+- [x] **T5 — FE offer surface (AC-17,18,19)** ✅ *(built 2026-06-06 against the G-UXGATE checkpoint)*
+  - [x] `useProfileOffers` / `useCreateProfileOffer` / `useUpdateProfileOffer` / `useDeleteProfileOffer`
+        hooks (cache topology per the table — key `["admin","profile-offers", filters ?? "all"]`,
+        `staleTime:0`+`refetchOnMount:"always"`, `retry:false`, invalidate-on-write); compose pickers read
+        `useProfileLibrary` read-only (no cross-invalidation); `offerRejectionCategory` reuses the rejection shape.
+  - [x] Offer surface (`ProfileOffersPage.tsx`): compose/edit panel (3 single-select native `<select>` slot
+        pickers + label/description/visibility/default/category-multi), list + validation-state badges (icon+text
+        +color, never color alone), detail expander (curated chain blocks + reasons, NO raw JSON), edit (chain
+        read-only — immutable hint), delete + `ConfirmDialog`; empty/loading/error states; fails closed/visible.
+        Material + visibility filter chips wired to the server query.
+  - [x] i18n `modules.admin.profileOffers.*` (60 keys) en+pl full parity + diacritics; zero inline hex (reuses
+        success/warning/destructive tokens); data fields (label/block name/material) untranslated. Wired into
+        `AdminTabs` (`profile-offers` tab) + sibling route `routes/admin/profile-offers.tsx` (AuthGate discipline:
+        defer to shell for anon, role-redirect authenticated-non-admin). `routeTree.gen.ts` regenerated.
+- [x] **T6 — FE + visual tests (AC-17,18,19,20,21)** ✅ *(built 2026-06-06)*
+  - [x] colocated vitest `ProfileOffersPage.test.tsx` (8 tests, `afterEach(cleanup)`, intercept at `fetch`) +
+        `profile-offers-i18n.test.ts` (4 parity tests) — all green. Playwright `admin-profile-offers.spec.ts`:
+        the 4 states (list-mixed / compose-open / create-rejected / detail-expanded) × 4 projects = 16 baselines,
+        `baseline-reviewed:` per screenshot, stable on re-run; `stubProfileOffers` added to `api-stubs.ts`.
+- [x] **T7 — Determinism + self-review (AC-21)** — backend + FE portions DONE; full aggregate gate PASSED by the controller (check-all RC=0, 16/16 green).
+  - [x] Backend determinism: full `pytest` suite green (1610 passed, 3 skipped); new offer suite 3×
+        identical (61 passed each run); `ruff format --check` + `ruff check` clean on all touched files.
+  - [x] FE determinism: full web `vitest` green (119 files / 607 tests, incl. the global i18n parity test +
+        the 12 new offer tests); `npm run typecheck` clean; `npm run lint --max-warnings=0` clean; 16 offer
+        visual baselines stable on a clean re-run; `git diff --check` clean.
+  - [x] Full `infra/scripts/check-all.sh` green before ff-merge — the controller's CI-equivalent aggregate
+        merge gate. **PASSED 2026-06-06** (RC=0, 16/16 stages green incl. apps/web visual regression 444 passed /
+        24 skipped), log `.hermes/run-logs/profile-offer-1-controller-check-all-20260606_145028.log`. No merge in
+        this bookkeeping run (ff-merge/deploy/G-SMOKE remain controller-owned, not yet executed).
 
 ## Dev Notes
 
@@ -522,5 +561,188 @@ writes** (pointed to the one-audit-event + fail-closed contracts).
 
 ## Dev Agent Record
 
-(Empty — dev-story not started. Execution BLOCKED pending G-DEVGO; FE additionally gated on G-UXGATE;
-real resolver publication / live slicing is OUT of scope, gated as G-PUBLISH.)
+### Agent
+
+Repo-local BMAD developer of record (Claude Opus 4.8, 1M ctx), `bmad-dev-story` workflow, 2026-06-06.
+Operator dev-go ("Ok, lećmy 🙂 Niech bmad ogarnia 🙂") satisfied G-DEVGO. Branch
+`feat/E33-profile-offer-1-print-profile-offer-chain` from `main @4e798ab`. No commit/merge/deploy by
+the dev agent (left for the controller). `baseline_commit: 221bbe1` preserved from the spec frontmatter.
+
+### Implementation Plan / approach
+
+TDD red→green per task. Backend implemented as a purely-additive layer over PROFILE-LIB-1:
+
+- **T1 — engine** (`profile_offer.py`): `ProfileChain` value object + `validate_chain` (chain-intrinsic:
+  `unknown_block` / `wrong_block_type` / `block_unusable` → invalid; `block_requires_attention` /
+  `filament_machine_incompatible` → requires_attention) + `evaluate_offer` (layers the offer-scoped
+  `material_category_mismatch` / `default_but_hidden` / `duplicate_default`). Reads ONLY curated manifests
+  via `profile_library.read_block` — no `resolve()`, no raw bodies, no `intents/` write, no slicing.
+- **Filament↔machine identity pin (AC-4 / G-DATA open question):** resolved against the real library
+  fixtures, NOT guessed. A filament's `compatible_printers` references the SYSTEM machine name; a USER
+  machine block customizes its own `name` but inherits that system name. So the machine identity set =
+  `{name} ∪ {inherit} ∪ inherit_chain`; the user block matches via its inherited system name, the system
+  block via its own name. Verified against `user_machine_k1max_microswiss` ↔ `user_filament_rosa_flex`.
+- **T2 — storage** (`profile_offer.py`): `offer_id = uuid4().hex` (path-safe + edit-stable, deliberately
+  UNLIKE `block_id = uuid5(type:name)`); `<root>/offers/<offer_id>.json` single-SoT layout via
+  `offer_path`; new behavior-preserving `_assert_within(root, subdir, target)` containment helper;
+  read-time revalidation in `revalidate_offers` (recomputes state + cross-offer `duplicate_default` from
+  the current library — a deleted referenced block flips to `invalid unknown_block`, the offer is NOT
+  eagerly deleted). Atomic writes reuse a NEW `import_service.publish_single` (single-file variant that
+  shares `_stage_temp`'s fsync + `ezop:ezop 664` metadata source, incl. the `221bbe1` fresh-dir fix) —
+  no re-implemented unsafe write.
+- **T3 — endpoints** (`admin_router.py` + `schemas.py`): five admin-gated routes
+  (POST/GET-list/GET-one/PATCH/DELETE `/api/admin/profiles/offers[/{offer_id}]`) on the existing router;
+  `extra="forbid"` DTOs (`ProfileChainRef` with hex field-validators; `chain_blocks` reuses
+  `ProfileLibraryBlock`); create gate order 413 → 422 invalid_json → 422 invalid_offer → 422
+  unsupported_material_category → 422 invalid_chain → store → audit → 201; PATCH keeps the chain immutable
+  (it's forbidden on the update DTO → 422); audit-failure rollback mirrors the library import.
+  `slicer_profile.offer_create/.offer_update/.offer_delete` reuse the `slicer_profile` entity_type
+  (comment-only `audit.py` extension). No `_PUBLIC_ROUTES` edit; route-enforcement gate green.
+
+### Completion Notes
+
+- **Backend (T1–T3) dev-complete and green.** New offer suite: `test_profile_offer_validate.py` (14) +
+  `test_profile_offer_store.py` (22) + `test_admin_profile_offers.py` (25) = 61 tests, 3× deterministic.
+  Full backend suite **1610 passed, 3 skipped** (no regressions). `ruff format --check` + `ruff check`
+  clean on every touched file.
+- **Route-surface fence extended (AC-15):** `test_slicer_worker.py` now asserts 5 GETs / 3 POSTs / 1 PATCH
+  / 2 DELETEs on `admin_router.py` (was 3/2/0/1) — the one sanctioned mechanical fence update.
+- **Leak fence verified:** offer DTO, sidecar, `chain_blocks` echo, and audit payload carry no raw Orca
+  key / g-code / filesystem path (negative assertions in both the engine and endpoint tests).
+- **Scope fences honoured (AC-22):** no `resolve()`/`compatibility.py`/grid/`bundle_hash`/append-only/
+  `intents/`/`system/`/library-WRITE change; no Alembic/DB; no Spoolman; no member-selector change; no raw
+  Orca viewer; no N×M editor; no standalone chain registry; SW-DEPLOY-1 not triggered. G-PUBLISH not
+  touched (no compile into the resolver intent path, no slicing).
+- **T4 / G-UXGATE — SATISFIED 2026-06-06 (`bmad-ux`/Sally checkpoint).** Artifact authored:
+  `_bmad-output/ux/ux-profile-offer-1-admin-offer-composition-ux-2026-06-06.md` (extends UX-PROFILE-1 per
+  SCP § 8), + sprint-status row `ux-profile-offer-1-admin-offer-composition-ux-design=done`, + this story's
+  Status/T4/T5/T6 updated. It signs off the minimal admin offer-composition layout (list + compose/detail
+  panel, single-select-per-slot, NO N×M / NO Orca-GUI clone / NO raw-Orca JSON), maps all 8 backend reason
+  categories + the endpoint rejections to admin copy, specifies fails-closed + read-time-revalidation honesty,
+  a11y/i18n/visual-state guidance, and the AC-16..AC-20 → T5/T6 mapping. **Design-only**: no app/test/config/
+  code touched, no deploy/live-smoke/commit by the UX pass. **G-PUBLISH is NOT satisfied/NOT authorized** by
+  this checkpoint (resolver publication / live slicing / member projection remain a separate later slice).
+- **FE (T5–T6) BUILT + GREEN 2026-06-06 (controller-resumed `bmad-dev-story`).** Implemented against the
+  G-UXGATE checkpoint, consuming the existing backend contract verbatim (no backend change required — the DTOs,
+  gate order, reason categories, and read-time revalidation were all already in place):
+  - **Hooks (AC-18):** `useProfileOffers(filters?)` (key `["admin","profile-offers", filters ?? "all"]`,
+    `staleTime:0`+`refetchOnMount:"always"`); `useCreateProfileOffer` / `useUpdateProfileOffer` /
+    `useDeleteProfileOffer` (`retry:false`, `invalidateQueries(["admin","profile-offers"])` on success, no
+    optimistic insert/remove); `offerRejectionCategory` extracts the structured `reason_category`. Compose pickers
+    read `useProfileLibrary()` read-only — no cross-invalidation of the library cache.
+  - **Surface (AC-17):** `ProfileOffersPage.tsx` — compose/edit panel with 3 single-select native `<select>`
+    pickers (machine/process/filament, the UX-endorsed floor — NOT an N×M matrix), label/description, visibility
+    toggle, default toggle + the attention-rule helper, `{PLA,PETG,PCTG,TPU}` category multi-select; a list with
+    one validation badge per offer (precedence `invalid`>`requires_attention`>`usable`, icon+text+color), the first
+    reason inline on `invalid` rows; a curated detail expander (chain blocks + full reason list, NO raw Orca JSON);
+    edit (chain read-only + "delete + re-create" hint, mirrors PATCH AC-12); delete behind `ConfirmDialog` with the
+    honest blast-radius copy; empty/loading/error states; fails closed/visible (error panel + Retry). Material +
+    visibility filter chips drive the server query.
+  - **i18n (AC-19):** 60 keys under `modules.admin.profileOffers.*` + `admin.tabs.profileOffers`, en/pl full
+    parity + Polish diacritics; all 8 reason categories + endpoint rejections localized; data fields untranslated;
+    zero inline hex (reuses the shipped success/warning/destructive token set).
+  - **Wiring:** `AdminTabs` gains the `profile-offers` tab; sibling route `routes/admin/profile-offers.tsx`
+    (AuthGate discipline — defers to the shell for anon, role-redirects authenticated-non-admin only);
+    `routeTree.gen.ts` regenerated (additions only).
+  - **Tests (AC-20/21):** `ProfileOffersPage.test.tsx` (8 vitest, fetch-intercept, `afterEach(cleanup)`) +
+    `profile-offers-i18n.test.ts` (4 parity) green; `admin-profile-offers.spec.ts` 4 states × 4 projects = 16
+    Playwright baselines (`baseline-reviewed:` per PNG, stable on re-run); `stubProfileOffers` added to `api-stubs.ts`.
+- **Verification run by the dev agent (FE):** full web `vitest` 607 passed (no regressions); `npm run typecheck`
+  clean; `npm run lint --max-warnings=0` clean; 16 visual baselines generated + re-run stable + visually reviewed
+  (list/compose/rejection/detail render correctly); `git diff --check` clean. Backend untouched, so the prior
+  backend determinism (1610 pytest / ruff) stands.
+- **Honest status:** moved to `review`. All story ACs except the controller-owned closeout gates are satisfied;
+  the FE acceptance criteria (AC-17..AC-20) are now built + verified, not just designed.
+
+### Controller next step (not a dev-agent call)
+
+**T5/T6 are built + verified** (FE offer surface + hooks + i18n + the 4 Playwright baselines × 4 projects), so the
+whole card is dev-complete. The closeout gate + external review are now done; the remaining steps are controller-owned:
+
+1. ✅ **DONE 2026-06-06** — Full `infra/scripts/check-all.sh` green (the CI-equivalent aggregate gate — build +
+   vitest + pytest + visual regression in one run): **RC=0, 16/16 stages green** (incl. apps/web visual regression
+   444 passed / 24 skipped), log `.hermes/run-logs/profile-offer-1-controller-check-all-20260606_145028.log`.
+2. ✅ **DONE 2026-06-06** — External review per AGENTS.md: **Gemini CLI 0.45.2** read-only review → verdict
+   **APPROVE** (no blockers / no important / no nits), log
+   `.hermes/run-logs/profile-offer-1-gemini-review-20260606_145933.log`. Note: Gemini initially attempted an
+   unavailable shell tool but still produced a read-only code-review verdict; the controller had already verified
+   the target state + gates separately, so the APPROVE stands on inspected code, not faked. No Codex countersign was
+   required (Gemini surfaced no atomicity/leak/validation doubt).
+3. ⏳ **NOT yet executed (controller-owned)** — ff-merge of `feat/E33-profile-offer-1-print-profile-offer-chain` to
+   `main`, then `infra/scripts/deploy.sh`.
+4. ⏳ **NOT yet executed (controller-owned)** — Runtime **G-SMOKE** on `.190` (offer create/list/delete against the
+   live `portal-content` volume + `ezop:ezop 664` owner/mode assertion).
+
+This bookkeeping pass moved the card `review → done` on the **code side only** (gate green + review APPROVE); steps 3
+and 4 have **not** happened and remain the controller's next actions.
+
+**G-PUBLISH stays explicitly deferred** — this slice does not compile an offer's chain into the resolver intent
+path, does not slice, and does not change the member selector (still on the 33.1/33.2 grid projection).
+
+### File List
+
+**New (backend):**
+- `apps/api/app/modules/slicer/profile_offer.py` — engine (chain/offer model + dry validation) + storage
+- `apps/api/tests/test_profile_offer_validate.py` — T1 validation-engine tests (14)
+- `apps/api/tests/test_profile_offer_store.py` — T2 storage-layer tests (22)
+- `apps/api/tests/test_admin_profile_offers.py` — T3 CRUD endpoint tests (25)
+
+**Modified (backend):**
+- `apps/api/app/modules/slicer/import_service.py` — added `publish_single` (single-file atomic publish,
+  reuses `_stage_temp`); no change to `publish_pair` / `publish_intent` behavior
+- `apps/api/app/modules/slicer/admin_router.py` — 5 offer routes + `_offer_dto` / gate / audit helpers
+- `apps/api/app/modules/slicer/schemas.py` — offer DTOs (`ProfileChainRef`, `PrintProfileOffer`,
+  list/create/update, `OfferVisibility`, `OfferValidationState`) + `field_validator` import
+- `apps/api/app/core/audit.py` — comment-only: name the 3 `slicer_profile.offer_*` actions
+- `apps/api/tests/test_slicer_worker.py` — route-surface fence extended for the 5 offer routes (AC-15)
+
+**New (UX checkpoint — T4 / G-UXGATE):**
+- `_bmad-output/ux/ux-profile-offer-1-admin-offer-composition-ux-2026-06-06.md` — the `bmad-ux`/Sally
+  admin offer-composition UX design checkpoint that satisfies G-UXGATE (AC-16)
+
+**Modified (process):**
+- `_bmad-output/implementation-artifacts/profile-offer-1-print-profile-offer-chain.md` — this record
+  (Status + T4 done + T5/T6 unblocked + Dev Agent Record G-UXGATE disposition)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — offer row G-UXGATE note + new
+  `ux-profile-offer-1-admin-offer-composition-ux-design: done` row
+
+**New (FE — T5/T6, 2026-06-06):**
+- `apps/web/src/modules/admin/ProfileOffersPage.tsx` — the admin offer composition surface
+- `apps/web/src/modules/admin/hooks/useProfileOffers.ts` — list query (filters + cache topology)
+- `apps/web/src/modules/admin/hooks/useCreateProfileOffer.ts` — create mutation + `offerRejectionCategory`
+- `apps/web/src/modules/admin/hooks/useUpdateProfileOffer.ts` — patch mutation
+- `apps/web/src/modules/admin/hooks/useDeleteProfileOffer.ts` — delete mutation
+- `apps/web/src/routes/admin/profile-offers.tsx` — auth-gated sibling route
+- `apps/web/src/modules/admin/ProfileOffersPage.test.tsx` — 8 vitest (fetch-intercept)
+- `apps/web/src/modules/admin/profile-offers-i18n.test.ts` — 4 i18n parity tests
+- `apps/web/tests/visual/admin-profile-offers.spec.ts` — 4 states × 4 projects Playwright spec
+- `apps/web/tests/visual/__snapshots__/admin-profile-offers.spec.ts/*.png` — 16 baselines (baseline-reviewed)
+
+**Modified (FE — T5/T6, 2026-06-06):**
+- `apps/web/src/lib/api-types.ts` — offer TS types (`PrintProfileOffer`, `ProfileChainRef`, list/create/update,
+  `OfferVisibility`, `OfferValidationState`, `ProfileOffersFilters`)
+- `apps/web/src/modules/admin/AdminTabs.tsx` — `profile-offers` tab
+- `apps/web/src/locales/en.json` + `pl.json` — `modules.admin.profileOffers.*` + `admin.tabs.profileOffers` (60 keys, parity)
+- `apps/web/src/routeTree.gen.ts` — regenerated for the new route (additions only)
+- `apps/web/tests/visual/api-stubs.ts` — added `stubProfileOffers`
+- `apps/web/tests/visual/__snapshots__/{admin-users,admin-invites,admin-profiles,admin-profile-library,admin-dropdowns-tooltip-open}.spec.ts/*.png`
+  — **collateral regen (44 PNGs):** adding the `profile-offers` tab to the shared `AdminTabs` shifts the tab bar on
+  every admin page. Triaged per AGENTS.md "visual baseline triage before regen": the diff is **exclusively** the
+  new tab (verified against the `admin-users-empty` diff — every other pixel identical), i.e. `stale-baseline`, NOT
+  a deterministic regression. Regenerated + re-run stable (108 admin baselines green).
+
+**NOT touched by the FE run:** `apps/api/**` (the FE consumes the existing T1–T3 backend contract verbatim — no
+DTO/type/route change was required), `resolver.py` / `compatibility.py` / grid / library-write, Alembic, member
+selector. G-PUBLISH not touched.
+
+### Change Log
+
+| Date | Change |
+|---|---|
+| 2026-06-06 | dev-story started; branch from `main @4e798ab`; sprint-status → in-progress. |
+| 2026-06-06 | T1 engine + tests (RED→GREEN, 14). T2 storage + tests (22). T3 DTOs + 5 routes + tests (25). `publish_single` added; audit comment + route-surface fence extended. |
+| 2026-06-06 | Backend determinism: full suite 1610 passed / 3 skipped; new suite 3× identical (61); ruff clean. |
+| 2026-06-06 | FE (T4–T6) left BLOCKED on G-UXGATE (no UX checkpoint artifact); story kept in-progress, not "review". |
+| 2026-06-06 | **T4 / G-UXGATE SATISFIED** — `bmad-ux`/Sally checkpoint `_bmad-output/ux/ux-profile-offer-1-admin-offer-composition-ux-2026-06-06.md` authored (extends UX-PROFILE-1, SCP § 8). FE T5/T6 unblocked (AC-16 met; AC-17..20 designed). Sprint-status: offer-row G-UXGATE note + new `ux-profile-offer-1-admin-offer-composition-ux-design=done` row. Design-only; G-PUBLISH NOT authorized; no code/deploy/commit by the UX pass. |
+| 2026-06-06 | **T5/T6 BUILT** (controller-resumed `bmad-dev-story`) — FE offer surface (`ProfileOffersPage`) + 4 CRUD hooks + `api-types` + en/pl i18n (60 keys, parity) + `AdminTabs` tab + `routes/admin/profile-offers.tsx` (+ `routeTree.gen.ts` regen) + vitest (8 + 4) + Playwright 16 baselines (4 states × 4 projects) + `stubProfileOffers`. Consumes the existing backend contract verbatim (no `apps/api/**` change). Verified: web vitest 607 / typecheck / lint / git diff --check clean; baselines stable + reviewed. Collateral: the shared `AdminTabs` gained the offer tab, so 44 admin baselines (users/invites/profiles/profile-library/dropdowns × 4 projects) were regenerated — triaged `stale-baseline` (diff is exclusively the new tab; re-run 108 green). **Status → review.** Remaining = controller-owned (check-all.sh, external review, ff-merge, G-SMOKE). G-PUBLISH still deferred; no commit/merge/deploy/live-smoke by the dev agent. |
+| 2026-06-06 | **CONTROLLER CLOSEOUT (review → done, code-side).** Full `infra/scripts/check-all.sh` PASSED — RC=0, 16/16 stages green (apps/api ruff format+check, workers/render ruff format+check, apps/web typecheck + production build + lint + vitest, apps/api pytest, workers/render pytest, infra/scripts pytest, apps/web visual regression 444 passed / 24 skipped, settings-env-compose-diff, uv-lock-check ×2, local-env-secrets), log `.hermes/run-logs/profile-offer-1-controller-check-all-20260606_145028.log`. External review **Gemini CLI 0.45.2 → APPROVE** (no blockers / no important / no nits), log `.hermes/run-logs/profile-offer-1-gemini-review-20260606_145933.log` (Gemini initially tried an unavailable shell tool but still produced a read-only verdict; controller verified target state + gates separately — recorded honestly, not faked). G-PUBLISH still explicitly deferred. **Remaining controller-owned + NOT yet executed:** ff-merge → `main`, `infra/scripts/deploy.sh`, runtime G-SMOKE on `.190`. No commit/merge/deploy/live-smoke at this bookkeeping pass. |

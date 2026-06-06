@@ -549,3 +549,72 @@ export interface ProfileLibraryBlock {
 export interface ProfileLibraryListResponse {
   blocks: ProfileLibraryBlock[];
 }
+
+// --- PROFILE-OFFER-1 (Decision AN) — PrintProfileOffer / ProfileChain ---
+// Mirror `slicer/schemas.py` PrintProfileOffer*. Curated offer config + embedded chain refs
+// + read-time validation + a leak-fenced `chain_blocks` echo of the referenced blocks — NO
+// raw Orca key body / path / g-code (the AC-8 leak fence, mirrored on the FE). Coexists with
+// the grid (33.1/33.2) and library (PROFILE-LIB-1) DTOs above and never replaces them.
+
+export type OfferVisibility = "hidden" | "visible";
+
+// The per-offer validation state (AC-4): a stored offer is at worst `invalid` (a referenced
+// block went missing / wrong-typed); `requires_attention` is stored + listed + flagged.
+export type OfferValidationState = "usable" | "requires_attention" | "invalid";
+
+export interface ProfileChainRef {
+  machine_block_id: string;
+  process_block_id: string;
+  filament_block_id: string;
+}
+
+export interface PrintProfileOffer {
+  offer_id: string;
+  // `label` / block names / material types render as DATA (untranslated).
+  label: string;
+  description: string | null;
+  chain: ProfileChainRef;
+  visibility: OfferVisibility;
+  is_default: boolean;
+  // Constrained to the generic set {PLA,PETG,PCTG,TPU} (server-validated; out-of-table ⇒ 422).
+  compatible_material_categories: string[];
+  // RECOMPUTED at read time against the current library (a stale `usable` is never served).
+  validation_state: OfferValidationState;
+  // Machine-readable reason categories (the FE localizes them); empty when usable.
+  reasons: string[];
+  // Curated metadata of the referenced blocks (no raw Orca body); a missing block is omitted.
+  chain_blocks: ProfileLibraryBlock[];
+  created_at: string;
+  created_by: string;
+  updated_at: string;
+}
+
+export interface PrintProfileOfferListResponse {
+  offers: PrintProfileOffer[];
+}
+
+// The create body — `visibility` defaults `hidden` and `is_default` `false` server-side.
+export interface PrintProfileOfferCreate {
+  label: string;
+  description?: string | null;
+  chain: ProfileChainRef;
+  visibility?: OfferVisibility;
+  is_default?: boolean;
+  compatible_material_categories?: string[];
+}
+
+// The patch body — label/visibility/default/categories ONLY; the chain is immutable on PATCH.
+export interface PrintProfileOfferUpdate {
+  label?: string;
+  description?: string | null;
+  visibility?: OfferVisibility;
+  is_default?: boolean;
+  compatible_material_categories?: string[];
+}
+
+// Optional server-side filters for the offer list (AC-10). `material_category` reuses the
+// generic material table (= MaterialClass); both narrow the listing, not the validation.
+export interface ProfileOffersFilters {
+  material_category?: MaterialClass;
+  visibility?: OfferVisibility;
+}

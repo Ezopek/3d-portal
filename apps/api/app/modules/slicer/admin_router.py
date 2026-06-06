@@ -34,12 +34,13 @@ from fastapi import (
     UploadFile,
     status,
 )
+from pydantic import ValidationError
 
 from app.core.audit import record_event
 from app.core.auth.dependencies import current_admin
 from app.core.config import get_settings
 from app.core.db.session import get_engine
-from app.modules.slicer import profile_library
+from app.modules.slicer import profile_library, profile_offer
 from app.modules.slicer.compatibility import INCOMPATIBLE_REASON, is_compatible
 from app.modules.slicer.estimate_read import (
     EstimateResolver,
@@ -70,6 +71,12 @@ from app.modules.slicer.schemas import (
     AdminProfileProvenance,
     AdminProfileSlot,
     AdminProfileStatus,
+    OfferVisibility,
+    PrintProfileOffer,
+    PrintProfileOfferCreate,
+    PrintProfileOfferListResponse,
+    PrintProfileOfferUpdate,
+    ProfileChainRef,
     ProfileImportRejection,
     ProfileLibraryBlock,
     ProfileLibraryListResponse,
@@ -718,5 +725,341 @@ async def delete_profile_block(
         entity_id=uuid.UUID(block_id),
         actor_user_id=_user_id,
         after={"block_id": block_id},
+        request_id=request.headers.get("x-request-id"),
+    )
+
+
+# === PROFILE-OFFER-1 (Decision AN) — PrintProfileOffer / ProfileChain CRUD =====
+#
+# Five additive admin-gated routes on the SAME router object — the offer/chain layer that
+# CONSUMES the PROFILE-LIB-1 block library. Purely additive (AC-1): they do NOT call resolve(),
+# read raw Orca bodies, write the intents/ grid, touch the append-only bundle/snapshot store,
+# bundle_hash, compatibility.py, or the library WRITE path. Each write reuses the shared atomic
+# single-file publish + ezop:ezop-664 metadata preservation via profile_offer (which delegates
+# to import_service.publish_single). Real resolver publication / live slicing is OUT of scope
+# (G-PUBLISH, deferred). The offer routes carry current_admin, so the route-enforcement gate
+# recognises them WITHOUT any _PUBLIC_ROUTES edit (AC-15).
+
+
+def _offer_dto(resolved: profile_offer.ResolvedOffer) -> PrintProfileOffer:
+    """Project a stored offer sidecar + its read-time validation onto the leak-fenced DTO.
+
+    ``validation_state`` / ``reasons`` come from the READ-TIME recomputation (AC-10), never the
+    stored snapshot; ``chain_blocks`` echoes the referenced blocks' curated metadata (reusing
+    ``_block_dto`` — the same leak-fenced projection the library list/get use), omitting any
+    missing referenced block.
+    """
+    sidecar = resolved.sidecar
+    chain = sidecar.get("chain") or {}
+    return PrintProfileOffer(
+        offer_id=sidecar["offer_id"],
+        label=sidecar["label"],
+        description=sidecar.get("description"),
+        chain=ProfileChainRef(
+            machine_block_id=chain["machine_block_id"],
+            process_block_id=chain["process_block_id"],
+            filament_block_id=chain["filament_block_id"],
+        ),
+        visibility=sidecar["visibility"],
+        is_default=sidecar.get("is_default", False),
+        compatible_material_categories=sidecar.get("compatible_material_categories", []),
+        validation_state=resolved.state,
+        reasons=resolved.reasons,
+        chain_blocks=[_block_dto(m) for m in resolved.chain_block_manifests],
+        created_at=sidecar["created_at"],
+        created_by=sidecar["created_by"],
+        updated_at=sidecar["updated_at"],
+    )
+
+
+def _gate_material_categories(categories: list[str]) -> None:
+    """AC-9 material-category gate: an out-of-table category ⇒ 422 unsupported_material_category."""
+    for category in categories:
+        if category not in profile_offer.OFFER_MATERIAL_CATEGORIES:
+            raise _reject(
+                422,
+                "unsupported_material_category",
+                f"material category {category!r} is not in the supported set",
+            )
+
+
+async def _read_json_body(request: Request) -> object:
+    """Read + size-cap (413) + JSON-parse (422 invalid_json) a request body (AC-9 gate order)."""
+    raw = await request.body()
+    if len(raw) > _MAX_PROFILE_BYTES:
+        raise _reject(413, "too_large", f"offer body exceeds the {_MAX_PROFILE_BYTES}-byte cap")
+    try:
+        return json.loads(raw.decode("utf-8")) if raw else None
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise _reject(422, "invalid_json", "offer body is not valid JSON") from None
+
+
+def _offer_audit_payload(record: dict) -> dict:
+    """The leak-fenced audit ``after`` payload for an offer mutation (AC-14)."""
+    chain = record.get("chain") or {}
+    return {
+        "label": record.get("label"),
+        "visibility": record.get("visibility"),
+        "is_default": record.get("is_default"),
+        "compatible_material_categories": record.get("compatible_material_categories"),
+        "machine_block_id": chain.get("machine_block_id"),
+        "process_block_id": chain.get("process_block_id"),
+        "filament_block_id": chain.get("filament_block_id"),
+        "validation_state": record.get("validation_state"),
+    }
+
+
+@router.post(
+    "/profiles/offers",
+    response_model=PrintProfileOffer,
+    status_code=status.HTTP_201_CREATED,
+    summary="Compose + validate a PrintProfileOffer over the block library (admin only)",
+    description=(
+        "PROFILE-OFFER-1 (Decision AN). Accepts a JSON body selecting one machine + one process "
+        "+ one filament library block (an embedded ProfileChain) plus label/visibility/default/"
+        "compatible-material-categories, validates the chain by reading ONLY the referenced "
+        "blocks' curated manifests (NO resolve(), NO slicing), and stores the offer as an "
+        "on-disk sidecar. Gate order: size (413) → parse/shape (422 invalid_json / invalid_offer) "
+        "→ material category (422 unsupported_material_category) → hard chain gate (422 "
+        "invalid_chain for a structural reason — nothing stored) → derive validation "
+        "(requires_attention does NOT block) → atomic store → audit → 201. Admin-gated; not "
+        "public; CSRF enforced by middleware. No raw Orca JSON crosses the wire; no publish/slice."
+    ),
+    responses={
+        201: {"description": "Offer created (usable or requires_attention)"},
+        413: {"description": "Body exceeds the size cap"},
+        422: {"description": "Rejected: malformed / unsupported category / invalid chain"},
+    },
+)
+async def create_profile_offer(
+    request: Request,
+    source: Annotated[VendoredProfileSource, Depends(get_import_profile_source)],
+    _user_id: uuid.UUID = current_admin,
+) -> PrintProfileOffer:
+    # (1) size (413) + (2a) parse (422 invalid_json).
+    parsed = await _read_json_body(request)
+    # (2b) shape (422 invalid_offer) — extra="forbid" + the hex block_id field validators.
+    try:
+        body = PrintProfileOfferCreate.model_validate(parsed)
+    except ValidationError:
+        raise _reject(422, "invalid_offer", "offer body failed validation") from None
+
+    # (3) material category gate (422 unsupported_material_category).
+    _gate_material_categories(body.compatible_material_categories)
+
+    # (4) hard chain gate (422 invalid_chain) — a structural invalid (unknown_block /
+    # wrong_block_type / block_unusable) is rejected, NOTHING stored.
+    chain = profile_offer.ProfileChain(
+        machine_block_id=body.chain.machine_block_id,
+        process_block_id=body.chain.process_block_id,
+        filament_block_id=body.chain.filament_block_id,
+    )
+    if profile_offer.validate_chain(chain, root=source.root).state == "invalid":
+        raise _reject(422, "invalid_chain", "the selected blocks do not form a valid chain")
+
+    # (5) derive validation across the existing offer set + this offer, then atomic store.
+    offer_id = profile_offer.mint_offer_id()
+    now = datetime.now(UTC).isoformat()
+    peers = profile_offer.list_offers(source.root)
+    record = profile_offer.build_offer_record(
+        offer_id=offer_id,
+        label=body.label,
+        description=body.description,
+        chain=chain,
+        visibility=body.visibility,
+        is_default=body.is_default,
+        compatible_material_categories=body.compatible_material_categories,
+        validation_state="usable",
+        reasons=[],
+        created_at=now,
+        created_by=_user_id,
+        updated_at=now,
+    )
+    resolved = profile_offer.revalidate_offer(source.root, record, peers=peers)
+    record["validation_state"] = resolved.state
+    record["reasons"] = resolved.reasons
+
+    prev = profile_offer.snapshot_offer(source.root, offer_id)
+    profile_offer.store_offer(source.root, record)
+
+    # (6) audit (NFR21-OBS-1) — leak-fenced. Roll the store back if the audit write fails.
+    try:
+        record_event(
+            get_engine(),
+            action="slicer_profile.offer_create",
+            entity_type="slicer_profile",
+            entity_id=uuid.UUID(offer_id),
+            actor_user_id=_user_id,
+            after=_offer_audit_payload(record),
+            request_id=request.headers.get("x-request-id"),
+        )
+    except BaseException:
+        profile_offer.restore_offer(source.root, offer_id, prev)
+        raise
+
+    return _offer_dto(resolved)
+
+
+@router.get(
+    "/profiles/offers",
+    response_model=PrintProfileOfferListResponse,
+    summary="List PrintProfileOffers with read-time revalidation (admin only)",
+    description=(
+        "PROFILE-OFFER-1 (AC-10). Lists every offer's curated DTO (read from the on-disk "
+        "sidecars), optionally filtered by ?material_category= and/or ?visibility=. Each offer's "
+        "validation_state + reasons are RECOMPUTED at read time against the current library, so a "
+        "stale 'usable' is never served after a referenced block was deleted (it surfaces as "
+        "invalid unknown_block; the offer remains, flagged — no eager cross-deletion). "
+        "Deterministically ordered (created_at then offer_id). Admin-gated; no raw Orca JSON."
+    ),
+)
+async def list_profile_offers(
+    source: Annotated[VendoredProfileSource, Depends(get_import_profile_source)],
+    material_category: Annotated[str | None, Query()] = None,
+    visibility: Annotated[OfferVisibility | None, Query()] = None,
+    _user_id: uuid.UUID = current_admin,
+) -> PrintProfileOfferListResponse:
+    sidecars = profile_offer.list_offers(source.root)
+    offers: list[PrintProfileOffer] = []
+    for resolved in profile_offer.revalidate_offers(source.root, sidecars):
+        sidecar = resolved.sidecar
+        if material_category is not None and material_category not in (
+            sidecar.get("compatible_material_categories") or []
+        ):
+            continue
+        if visibility is not None and sidecar.get("visibility") != visibility:
+            continue
+        offers.append(_offer_dto(resolved))
+    return PrintProfileOfferListResponse(offers=offers)
+
+
+@router.get(
+    "/profiles/offers/{offer_id}",
+    response_model=PrintProfileOffer,
+    summary="Get one PrintProfileOffer's curated detail (admin only)",
+    description=(
+        "PROFILE-OFFER-1 (AC-11). Returns the single offer DTO with read-time revalidation + the "
+        "chain_blocks echo (404 not_found when absent). Curated metadata + validation state ONLY "
+        "— NO raw Orca JSON body. The offer_id path param is validated as 32-char hex."
+    ),
+    responses={404: {"description": "No offer with that id"}},
+)
+async def get_profile_offer(
+    offer_id: str,
+    source: Annotated[VendoredProfileSource, Depends(get_import_profile_source)],
+    _user_id: uuid.UUID = current_admin,
+) -> PrintProfileOffer:
+    if not profile_offer.is_valid_offer_id(offer_id):
+        raise _reject(404, "not_found", "no such profile offer")
+    sidecar = profile_offer.read_offer(source.root, offer_id)
+    if sidecar is None:
+        raise _reject(404, "not_found", "no such profile offer")
+    peers = profile_offer.list_offers(source.root)
+    resolved = profile_offer.revalidate_offer(source.root, sidecar, peers=peers)
+    return _offer_dto(resolved)
+
+
+@router.patch(
+    "/profiles/offers/{offer_id}",
+    response_model=PrintProfileOffer,
+    summary="Edit a PrintProfileOffer's label/visibility/default/categories (audited, admin only)",
+    description=(
+        "PROFILE-OFFER-1 (AC-12). Partial update of label/description/visibility/is_default/"
+        "compatible_material_categories ONLY — the chain (block refs) is IMMUTABLE on PATCH "
+        "(changing blocks = delete + recreate). Re-runs the material-category gate (422 "
+        "unsupported_material_category), re-derives validation, atomic re-write, bumps "
+        "updated_at, audits. 404 not_found when absent. Admin-gated; CSRF enforced by middleware."
+    ),
+    responses={
+        404: {"description": "No offer with that id"},
+        422: {"description": "Rejected: malformed body / unsupported category"},
+    },
+)
+async def update_profile_offer(
+    request: Request,
+    offer_id: str,
+    source: Annotated[VendoredProfileSource, Depends(get_import_profile_source)],
+    _user_id: uuid.UUID = current_admin,
+) -> PrintProfileOffer:
+    if not profile_offer.is_valid_offer_id(offer_id):
+        raise _reject(404, "not_found", "no such profile offer")
+
+    parsed = await _read_json_body(request)
+    try:
+        body = PrintProfileOfferUpdate.model_validate(parsed)
+    except ValidationError:
+        raise _reject(422, "invalid_offer", "offer body failed validation") from None
+
+    sidecar = profile_offer.read_offer(source.root, offer_id)
+    if sidecar is None:
+        raise _reject(404, "not_found", "no such profile offer")
+
+    # Apply only the fields actually provided (partial PATCH) — exclude_unset distinguishes
+    # "set to null" from "absent". The chain key is never in this body (forbidden on the DTO).
+    changes = body.model_dump(exclude_unset=True)
+    if "compatible_material_categories" in changes:
+        _gate_material_categories(changes["compatible_material_categories"] or [])
+
+    updated = dict(sidecar)
+    updated.update(changes)
+    updated["updated_at"] = datetime.now(UTC).isoformat()
+
+    # Re-derive validation across the OTHER offers + this updated offer.
+    peers = [s for s in profile_offer.list_offers(source.root) if s.get("offer_id") != offer_id]
+    resolved = profile_offer.revalidate_offer(source.root, updated, peers=peers)
+    updated["validation_state"] = resolved.state
+    updated["reasons"] = resolved.reasons
+
+    prev = profile_offer.snapshot_offer(source.root, offer_id)
+    profile_offer.store_offer(source.root, updated)
+    try:
+        record_event(
+            get_engine(),
+            action="slicer_profile.offer_update",
+            entity_type="slicer_profile",
+            entity_id=uuid.UUID(offer_id),
+            actor_user_id=_user_id,
+            after=_offer_audit_payload(updated),
+            request_id=request.headers.get("x-request-id"),
+        )
+    except BaseException:
+        profile_offer.restore_offer(source.root, offer_id, prev)
+        raise
+
+    return _offer_dto(resolved)
+
+
+@router.delete(
+    "/profiles/offers/{offer_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a PrintProfileOffer (audited, admin only)",
+    description=(
+        "PROFILE-OFFER-1 (AC-13). Removes the offer sidecar (404 not_found when absent, 204 on "
+        "success, audited). Deleting an offer does NOT touch the referenced library blocks "
+        "(offers reference, they do not own). Re-deleting an absent offer is an idempotent-safe "
+        "404, not a 500. Admin-gated; CSRF enforced by middleware."
+    ),
+    responses={
+        204: {"description": "Offer deleted"},
+        404: {"description": "No offer with that id"},
+    },
+)
+async def delete_profile_offer(
+    request: Request,
+    offer_id: str,
+    source: Annotated[VendoredProfileSource, Depends(get_import_profile_source)],
+    _user_id: uuid.UUID = current_admin,
+) -> None:
+    if not profile_offer.is_valid_offer_id(offer_id):
+        raise _reject(404, "not_found", "no such profile offer")
+    if not profile_offer.delete_offer(source.root, offer_id):
+        raise _reject(404, "not_found", "no such profile offer")
+    record_event(
+        get_engine(),
+        action="slicer_profile.offer_delete",
+        entity_type="slicer_profile",
+        entity_id=uuid.UUID(offer_id),
+        actor_user_id=_user_id,
+        after={"offer_id": offer_id},
         request_id=request.headers.get("x-request-id"),
     )

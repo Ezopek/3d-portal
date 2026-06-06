@@ -29,6 +29,7 @@ import { Route as DevComponentsRouteImport } from './routes/dev/components'
 import { Route as CatalogIdRouteImport } from './routes/catalog/$id'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
 import { Route as AdminProfilesRouteImport } from './routes/admin/profiles'
+import { Route as AdminProfileOffersRouteImport } from './routes/admin/profile-offers'
 import { Route as AdminProfileLibraryRouteImport } from './routes/admin/profile-library'
 import { Route as AdminInvitesRouteImport } from './routes/admin/invites'
 import { Route as AdminModelsNewRouteImport } from './routes/admin/models/new'
@@ -133,6 +134,11 @@ const AdminProfilesRoute = AdminProfilesRouteImport.update({
   path: '/admin/profiles',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminProfileOffersRoute = AdminProfileOffersRouteImport.update({
+  id: '/admin/profile-offers',
+  path: '/admin/profile-offers',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminProfileLibraryRoute = AdminProfileLibraryRouteImport.update({
   id: '/admin/profile-library',
   path: '/admin/profile-library',
@@ -156,6 +162,7 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/admin/invites': typeof AdminInvitesRoute
   '/admin/profile-library': typeof AdminProfileLibraryRoute
+  '/admin/profile-offers': typeof AdminProfileOffersRoute
   '/admin/profiles': typeof AdminProfilesRoute
   '/admin/users': typeof AdminUsersRoute
   '/catalog/$id': typeof CatalogIdRoute
@@ -181,6 +188,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/admin/invites': typeof AdminInvitesRoute
   '/admin/profile-library': typeof AdminProfileLibraryRoute
+  '/admin/profile-offers': typeof AdminProfileOffersRoute
   '/admin/profiles': typeof AdminProfilesRoute
   '/admin/users': typeof AdminUsersRoute
   '/catalog/$id': typeof CatalogIdRoute
@@ -207,6 +215,7 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/admin/invites': typeof AdminInvitesRoute
   '/admin/profile-library': typeof AdminProfileLibraryRoute
+  '/admin/profile-offers': typeof AdminProfileOffersRoute
   '/admin/profiles': typeof AdminProfilesRoute
   '/admin/users': typeof AdminUsersRoute
   '/catalog/$id': typeof CatalogIdRoute
@@ -234,6 +243,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/admin/invites'
     | '/admin/profile-library'
+    | '/admin/profile-offers'
     | '/admin/profiles'
     | '/admin/users'
     | '/catalog/$id'
@@ -259,6 +269,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/admin/invites'
     | '/admin/profile-library'
+    | '/admin/profile-offers'
     | '/admin/profiles'
     | '/admin/users'
     | '/catalog/$id'
@@ -284,6 +295,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/admin/invites'
     | '/admin/profile-library'
+    | '/admin/profile-offers'
     | '/admin/profiles'
     | '/admin/users'
     | '/catalog/$id'
@@ -310,6 +322,7 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   AdminInvitesRoute: typeof AdminInvitesRoute
   AdminProfileLibraryRoute: typeof AdminProfileLibraryRoute
+  AdminProfileOffersRoute: typeof AdminProfileOffersRoute
   AdminProfilesRoute: typeof AdminProfilesRoute
   AdminUsersRoute: typeof AdminUsersRoute
   CatalogIdRoute: typeof CatalogIdRoute
@@ -471,6 +484,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminProfilesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/profile-offers': {
+      id: '/admin/profile-offers'
+      path: '/admin/profile-offers'
+      fullPath: '/admin/profile-offers'
+      preLoaderRoute: typeof AdminProfileOffersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/profile-library': {
       id: '/admin/profile-library'
       path: '/admin/profile-library'
@@ -502,6 +522,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   AdminInvitesRoute: AdminInvitesRoute,
   AdminProfileLibraryRoute: AdminProfileLibraryRoute,
+  AdminProfileOffersRoute: AdminProfileOffersRoute,
   AdminProfilesRoute: AdminProfilesRoute,
   AdminUsersRoute: AdminUsersRoute,
   CatalogIdRoute: CatalogIdRoute,
