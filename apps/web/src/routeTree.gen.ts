@@ -29,6 +29,7 @@ import { Route as DevComponentsRouteImport } from './routes/dev/components'
 import { Route as CatalogIdRouteImport } from './routes/catalog/$id'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
 import { Route as AdminProfilesRouteImport } from './routes/admin/profiles'
+import { Route as AdminProfileLibraryRouteImport } from './routes/admin/profile-library'
 import { Route as AdminInvitesRouteImport } from './routes/admin/invites'
 import { Route as AdminModelsNewRouteImport } from './routes/admin/models/new'
 
@@ -132,6 +133,11 @@ const AdminProfilesRoute = AdminProfilesRouteImport.update({
   path: '/admin/profiles',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminProfileLibraryRoute = AdminProfileLibraryRouteImport.update({
+  id: '/admin/profile-library',
+  path: '/admin/profile-library',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminInvitesRoute = AdminInvitesRouteImport.update({
   id: '/admin/invites',
   path: '/admin/invites',
@@ -149,6 +155,7 @@ export interface FileRoutesByFullPath {
   '/register': typeof RegisterRoute
   '/reset-password': typeof ResetPasswordRoute
   '/admin/invites': typeof AdminInvitesRoute
+  '/admin/profile-library': typeof AdminProfileLibraryRoute
   '/admin/profiles': typeof AdminProfilesRoute
   '/admin/users': typeof AdminUsersRoute
   '/catalog/$id': typeof CatalogIdRoute
@@ -173,6 +180,7 @@ export interface FileRoutesByTo {
   '/register': typeof RegisterRoute
   '/reset-password': typeof ResetPasswordRoute
   '/admin/invites': typeof AdminInvitesRoute
+  '/admin/profile-library': typeof AdminProfileLibraryRoute
   '/admin/profiles': typeof AdminProfilesRoute
   '/admin/users': typeof AdminUsersRoute
   '/catalog/$id': typeof CatalogIdRoute
@@ -198,6 +206,7 @@ export interface FileRoutesById {
   '/register': typeof RegisterRoute
   '/reset-password': typeof ResetPasswordRoute
   '/admin/invites': typeof AdminInvitesRoute
+  '/admin/profile-library': typeof AdminProfileLibraryRoute
   '/admin/profiles': typeof AdminProfilesRoute
   '/admin/users': typeof AdminUsersRoute
   '/catalog/$id': typeof CatalogIdRoute
@@ -224,6 +233,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/reset-password'
     | '/admin/invites'
+    | '/admin/profile-library'
     | '/admin/profiles'
     | '/admin/users'
     | '/catalog/$id'
@@ -248,6 +258,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/reset-password'
     | '/admin/invites'
+    | '/admin/profile-library'
     | '/admin/profiles'
     | '/admin/users'
     | '/catalog/$id'
@@ -272,6 +283,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/reset-password'
     | '/admin/invites'
+    | '/admin/profile-library'
     | '/admin/profiles'
     | '/admin/users'
     | '/catalog/$id'
@@ -297,6 +309,7 @@ export interface RootRouteChildren {
   RegisterRoute: typeof RegisterRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   AdminInvitesRoute: typeof AdminInvitesRoute
+  AdminProfileLibraryRoute: typeof AdminProfileLibraryRoute
   AdminProfilesRoute: typeof AdminProfilesRoute
   AdminUsersRoute: typeof AdminUsersRoute
   CatalogIdRoute: typeof CatalogIdRoute
@@ -458,6 +471,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminProfilesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/profile-library': {
+      id: '/admin/profile-library'
+      path: '/admin/profile-library'
+      fullPath: '/admin/profile-library'
+      preLoaderRoute: typeof AdminProfileLibraryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/invites': {
       id: '/admin/invites'
       path: '/admin/invites'
@@ -481,6 +501,7 @@ const rootRouteChildren: RootRouteChildren = {
   RegisterRoute: RegisterRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   AdminInvitesRoute: AdminInvitesRoute,
+  AdminProfileLibraryRoute: AdminProfileLibraryRoute,
   AdminProfilesRoute: AdminProfilesRoute,
   AdminUsersRoute: AdminUsersRoute,
   CatalogIdRoute: CatalogIdRoute,

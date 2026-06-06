@@ -516,3 +516,36 @@ export interface ProfileImportRejection {
   reason_category: string;
   message: string;
 }
+
+// --- PROFILE-LIB-1 (Decision AM) — separate-block profile library ---
+// Mirror `slicer/schemas.py` ProfileLibraryBlock. Curated metadata ONLY — NO raw Orca key
+// body / path / g-code (the AC-13 leak fence, mirrored on the FE). Coexists with the grid
+// (33.1/33.2) DTOs above and never replaces them.
+
+export type ProfileType = "machine" | "process" | "filament";
+
+export type ProfileValidationState = "usable" | "requires_attention" | "error";
+
+export interface ProfileLibraryBlock {
+  block_id: string;
+  profile_type: ProfileType;
+  name: string;
+  source: string | null;
+  is_system: boolean;
+  inherit: string | null;
+  inherit_chain: string[];
+  settings_id: string | null;
+  // Normalized generic material category (PLA/PETG/PCTG/TPU), null when absent/out-of-table.
+  material_type: string | null;
+  compatible_printers: string[];
+  validation_state: ProfileValidationState;
+  // Machine-readable reason categories (the FE localizes them); empty when usable.
+  reasons: string[];
+  portal_label: string | null;
+  imported_at: string;
+  imported_by: string;
+}
+
+export interface ProfileLibraryListResponse {
+  blocks: ProfileLibraryBlock[];
+}

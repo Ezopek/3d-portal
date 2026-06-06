@@ -286,3 +286,51 @@ export async function stubSotDetail(page: Page) {
     }),
   );
 }
+
+/**
+ * PROFILE-LIB-1 (AC-19) — stub the operator profile-library list/import/delete endpoints.
+ *
+ * The shared `_test.ts` fixture already authenticates as admin + 404s unstubbed `/api/*`;
+ * this registers the library GET (curated blocks) so the inventory renders deterministically,
+ * plus a POST handler whose status is controlled by `postRejection` (for the rejection state)
+ * and a DELETE → 204. Curated metadata only — no raw Orca JSON.
+ */
+export async function stubProfileLibrary(
+  page: Page,
+  opts: {
+    blocks?: unknown[];
+    postRejection?: { status: number; reason_category: string };
+  } = {},
+) {
+  const blocks = opts.blocks ?? [];
+  await page.route("**/api/admin/profiles/library**", (route: Route) => {
+    const method = route.request().method();
+    if (method === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ blocks }),
+      });
+    }
+    if (method === "POST") {
+      if (opts.postRejection) {
+        return route.fulfill({
+          status: opts.postRejection.status,
+          contentType: "application/json",
+          body: JSON.stringify({
+            detail: { reason_category: opts.postRejection.reason_category, message: "rejected" },
+          }),
+        });
+      }
+      return route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify(blocks[0] ?? {}),
+      });
+    }
+    if (method === "DELETE") {
+      return route.fulfill({ status: 204, contentType: "application/json", body: "" });
+    }
+    return route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+  });
+}
