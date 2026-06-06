@@ -779,27 +779,32 @@ def test_slicer_module_mounts_only_narrow_estimates_read_router():
     assert "store.write" not in router_text
 
     # Story 33.1 (PROFILE-ADMIN-1) added the read-only admin inventory GET; Story 33.2
-    # (PROFILE-ADMIN-2) adds EXACTLY ONE sanctioned write to admin_router.py: POST
-    # /profiles/import — validated import → atomic in-place vendored-tree publish + sidecar
-    # manifest + audit. Fence it with equal rigor: exactly ONE GET + ONE POST, both
-    # admin-gated; NO lifecycle surface (rename/disable/delete — Story 33.3); the import
-    # writes ONLY the vendored intent_path + manifest — it does NOT mutate the append-only
-    # bundle/snapshot store, does NOT write an estimate record, and does NOT enqueue a
-    # re-slice (OD-6 deferred; NFR21-PROVENANCE-1 + scope fence AC-23).
+    # (PROFILE-ADMIN-2) added the grid import POST /profiles/import; PROFILE-LIB-1
+    # (Decision AM) adds the FOUR sanctioned separate-block library routes — POST
+    # /profiles/library (import) + GET /profiles/library (list) + GET /profiles/library/{id}
+    # (detail) + DELETE /profiles/library/{id} (delete). Fence the surface with equal rigor:
+    # exactly THREE GETs (grid inventory + library list + library detail), TWO POSTs (grid
+    # import + library import), and EXACTLY ONE DELETE (library delete — the first sanctioned
+    # delete; NO put/patch lifecycle surface). Every write reuses the atomic-publish
+    # foundation; NONE mutate the append-only bundle/snapshot store, write an estimate record,
+    # or enqueue a re-slice (NFR21-PROVENANCE-1 + scope fence AC-1/AC-21).
     admin_router_path = module / "admin_router.py"
     assert admin_router_path.exists()
     admin_text = admin_router_path.read_text(encoding="utf-8")
     assert 'APIRouter(prefix="/api/admin"' in admin_text
-    assert admin_text.count("@router.get") == 1
+    assert admin_text.count("@router.get") == 3
     assert '"/profiles"' in admin_text
-    # Exactly ONE write, and it is the narrow validated-import path (no bulk/unbounded variant).
-    assert admin_text.count("@router.post") == 1
+    assert '"/profiles/library"' in admin_text
+    assert '"/profiles/library/{block_id}"' in admin_text
+    # The grid import + the library import are the only POSTs (no bulk/unbounded variant).
+    assert admin_text.count("@router.post") == 2
     assert '"/profiles/import"' in admin_text
-    # No lifecycle (rename/disable/delete) surface yet — Story 33.3.
-    for write_method in ("@router.put", "@router.delete", "@router.patch"):
+    # Exactly ONE delete (the sanctioned library block delete); no rename/disable put/patch.
+    assert admin_text.count("@router.delete") == 1
+    for write_method in ("@router.put", "@router.patch"):
         assert write_method not in admin_text
-    # Admin-gated (not public); the import never edits the append-only bundle/snapshot store,
-    # never writes an estimate record, and never enqueues a slice (no re-slice on import).
+    # Admin-gated (not public); the writes never edit the append-only bundle/snapshot store,
+    # never write an estimate record, and never enqueue a slice (no re-slice on import).
     assert "current_admin" in admin_text
     assert "store.write" not in admin_text
     assert "write_bundle" not in admin_text

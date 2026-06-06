@@ -1,0 +1,9 @@
+{
+  "from": "User",
+  "inherits": "AI 0.20mm Custom Base - NotSystem",
+  "name": "AI 0.20mm PCTG (0.4 nozzle) - MicroSwiss HF",
+  "outer_wall_speed": "120",
+  "print_settings_id": "AI 0.20mm PCTG (0.4 nozzle) - MicroSwiss HF",
+  "sparse_infill_speed": "200",
+  "version": "2.3.2.40"
+}

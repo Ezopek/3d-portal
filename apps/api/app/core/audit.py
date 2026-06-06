@@ -25,7 +25,9 @@ from app.core.db.models import AuditLog
 #   share_token          — admin.share.create/delete (entity_id None: keyed by token string)
 #   slicer_profile       — slicer_profile.import (Story 33.2 admin profile import;
 #                          entity_id = deterministic (printer_ref, material_class,
-#                          quality_tier) slot UUID); slicer_profile.delete reserved for 33.3
+#                          quality_tier) slot UUID); slicer_profile.delete reserved for 33.3;
+#                          slicer_profile.library_import / .library_delete (PROFILE-LIB-1
+#                          separate-block import/delete; entity_id = deterministic block UUID)
 #   tag                  — future tag CRUD (Slice 2C.x)
 #   thumbnail_override   — admin.thumbnail.set/unset (entity_id None: legacy str model_id)
 #   user                 — auth.login.success/fail; auth.totp.enrolled (Story 7.2);

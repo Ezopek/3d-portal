@@ -39,6 +39,7 @@ from app.core.audit import record_event
 from app.core.auth.dependencies import current_admin
 from app.core.config import get_settings
 from app.core.db.session import get_engine
+from app.modules.slicer import profile_library
 from app.modules.slicer.compatibility import INCOMPATIBLE_REASON, is_compatible
 from app.modules.slicer.estimate_read import (
     EstimateResolver,
@@ -70,6 +71,9 @@ from app.modules.slicer.schemas import (
     AdminProfileSlot,
     AdminProfileStatus,
     ProfileImportRejection,
+    ProfileLibraryBlock,
+    ProfileLibraryListResponse,
+    ProfileLibraryType,
 )
 
 # Upload cap for an imported intent triple (AC-4). An intent triple is a small JSON object
@@ -485,3 +489,234 @@ async def read_admin_profile_inventory(
             )
 
     return AdminProfileInventoryResponse(printer_ref=printer_ref, slots=slots)
+
+
+# === PROFILE-LIB-1 (Decision AM) — separate-block profile library CRUD =========
+#
+# Four additive admin-gated routes on the SAME router object — the operator inventory of
+# SEPARATE Orca profile blocks (machine / process / filament). Purely additive: they do NOT
+# touch resolve(), the intents/ grid, the 33.1 inventory read, the 33.2 grid import, the
+# append-only bundle/snapshot store, bundle_hash, or compatibility.py (AC-1/AC-21). Writes
+# reuse the 33.2 atomic-publish + metadata-preservation foundations via profile_library
+# (which delegates to import_service.publish_pair) — no re-implemented unsafe writes (AC-8).
+
+
+def _block_dto(manifest: dict) -> ProfileLibraryBlock:
+    """Project a curated library manifest onto the leak-fenced ``ProfileLibraryBlock`` DTO.
+
+    Selects ONLY the DTO fields (drops the internal ``manifest_version`` / ``original_filename``
+    sidecar bookkeeping) so ``extra="forbid"`` holds and no raw Orca key can cross the wire.
+    """
+    return ProfileLibraryBlock(
+        block_id=manifest["block_id"],
+        profile_type=manifest["profile_type"],
+        name=manifest["name"],
+        source=manifest.get("source"),
+        is_system=manifest.get("is_system", False),
+        inherit=manifest.get("inherit"),
+        inherit_chain=manifest.get("inherit_chain", []),
+        settings_id=manifest.get("settings_id"),
+        material_type=manifest.get("material_type"),
+        compatible_printers=manifest.get("compatible_printers", []),
+        validation_state=manifest["validation_state"],
+        reasons=manifest.get("reasons", []),
+        portal_label=manifest.get("portal_label"),
+        imported_at=manifest["imported_at"],
+        imported_by=manifest["imported_by"],
+    )
+
+
+@router.post(
+    "/profiles/library",
+    response_model=ProfileLibraryBlock,
+    status_code=status.HTTP_201_CREATED,
+    summary="Import/upload a single Orca profile BLOCK into the library (admin only)",
+    description=(
+        "PROFILE-LIB-1 (Decision AM). Accepts a multipart upload of ONE Orca profile-block "
+        "JSON (process / filament / machine; no slot fields — the target tree is derived from "
+        "the classified type). Gate order: size (413 too_large) → parse (422 invalid_json) → "
+        "classify (422 unsupported_profile when ambiguous) → extract curated metadata → derive "
+        "validation state (requires_attention does NOT block storage) → atomic store (body + "
+        "curated manifest sidecar) → audit → 201 with the curated block DTO. Admin-gated; not "
+        "public; CSRF enforced by middleware. The curated surface never exposes raw Orca JSON."
+    ),
+    responses={
+        201: {"description": "Block imported (usable or requires_attention)"},
+        413: {"description": "Upload exceeds the profile size cap"},
+        422: {"description": "Rejected: invalid JSON / unsupported (unclassifiable) profile"},
+    },
+)
+async def import_profile_block(
+    request: Request,
+    file: Annotated[UploadFile, File(description="A single Orca profile-block JSON")],
+    source: Annotated[VendoredProfileSource, Depends(get_import_profile_source)],
+    portal_label: Annotated[str | None, Form()] = None,
+    _user_id: uuid.UUID = current_admin,
+) -> ProfileLibraryBlock:
+    # (1) size cap (413) — bounded read so a non-profile payload cannot exhaust memory. A single
+    # Orca block is a small JSON object (same 1 MiB contract as the 33.2 intent triple).
+    data = b""
+    while True:
+        chunk = await file.read(64 * 1024)
+        if not chunk:
+            break
+        data += chunk
+        if len(data) > _MAX_PROFILE_BYTES:
+            raise _reject(
+                413, "too_large", f"profile upload exceeds the {_MAX_PROFILE_BYTES}-byte cap"
+            )
+
+    # (2) parse (422 invalid_json).
+    try:
+        body = json.loads(data.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise _reject(422, "invalid_json", "uploaded profile is not valid JSON") from None
+
+    # (3) classify (422 unsupported_profile) — an ambiguous/unclassifiable block is the AC-2
+    # error path: rejected, NOTHING stored. A nameless block cannot mint a stable block_id, so
+    # it is unsupported too.
+    profile_type = profile_library.classify_profile(body)
+    if profile_type is None:
+        raise _reject(
+            422, "unsupported_profile", "could not classify the uploaded Orca profile block"
+        )
+    name = body.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise _reject(
+            422, "unsupported_profile", "the uploaded Orca profile block has no usable name"
+        )
+
+    # (4) extract curated metadata + derive validation state (requires_attention is stored).
+    system_tree = source.system_tree()
+    curated = profile_library.extract_curated_metadata(
+        body, profile_type=profile_type, system_tree=system_tree
+    )
+    validation_state, reasons = profile_library.derive_validation_state(
+        curated, system_tree=system_tree
+    )
+
+    # (5) atomic store (body + curated manifest sidecar). block_id is server-derived + path-safe.
+    block_id = profile_library.derive_block_id(profile_type, curated.name)
+    original_filename = profile_library.sanitize_original_filename(file.filename)
+    imported_at = datetime.now(UTC).isoformat()
+    manifest = profile_library.build_block_manifest(
+        curated,
+        block_id=block_id,
+        validation_state=validation_state,
+        reasons=reasons,
+        portal_label=portal_label,
+        imported_by=_user_id,
+        imported_at=imported_at,
+        original_filename=original_filename,
+    )
+    prev_body, prev_manifest = profile_library.snapshot_block(source.root, profile_type, block_id)
+    profile_library.store_block(
+        source.root, profile_type=profile_type, block_id=block_id, body=body, manifest=manifest
+    )
+
+    # (6) audit (NFR21-OBS-1) — leak-fenced: NO Orca body / g-code / path in the payload. If the
+    # audit write fails after the store, roll the block back to its prior state before re-raising.
+    try:
+        record_event(
+            get_engine(),
+            action="slicer_profile.library_import",
+            entity_type="slicer_profile",
+            entity_id=uuid.UUID(block_id),
+            actor_user_id=_user_id,
+            after={
+                "profile_type": profile_type,
+                "name": curated.name,
+                "source": curated.source,
+                "settings_id": curated.settings_id,
+                "material_type": curated.material_type,
+                "validation_state": validation_state,
+                "portal_label": portal_label,
+                "original_filename": original_filename,
+            },
+            request_id=request.headers.get("x-request-id"),
+        )
+    except BaseException:
+        profile_library.restore_block(source.root, profile_type, block_id, prev_body, prev_manifest)
+        raise
+
+    return _block_dto(manifest)
+
+
+@router.get(
+    "/profiles/library",
+    response_model=ProfileLibraryListResponse,
+    summary="List imported Orca profile blocks (curated metadata only, admin only)",
+    description=(
+        "PROFILE-LIB-1 (AC-10). Lists every imported block's curated metadata (read from the "
+        "on-disk manifest sidecars, never the raw bodies), optionally filtered by profile_type "
+        "(?profile_type=process etc.). Deterministically ordered (process first, then name). A "
+        "missing/empty library tree returns an empty list. Admin-gated; no Orca internals leak."
+    ),
+)
+async def list_profile_blocks(
+    source: Annotated[VendoredProfileSource, Depends(get_import_profile_source)],
+    profile_type: Annotated[ProfileLibraryType | None, Query()] = None,
+    _user_id: uuid.UUID = current_admin,
+) -> ProfileLibraryListResponse:
+    manifests = profile_library.list_blocks(source.root, profile_type=profile_type)
+    return ProfileLibraryListResponse(blocks=[_block_dto(m) for m in manifests])
+
+
+@router.get(
+    "/profiles/library/{block_id}",
+    response_model=ProfileLibraryBlock,
+    summary="Get one imported block's curated detail (admin only)",
+    description=(
+        "PROFILE-LIB-1 (AC-11). Returns the curated metadata + validation state for one block "
+        "(404 not_found when absent). It returns curated metadata ONLY — there is NO raw Orca "
+        "JSON preview/detail in this story. The block_id path param is validated as 32-char hex."
+    ),
+    responses={404: {"description": "No block with that id"}},
+)
+async def get_profile_block(
+    block_id: str,
+    source: Annotated[VendoredProfileSource, Depends(get_import_profile_source)],
+    _user_id: uuid.UUID = current_admin,
+) -> ProfileLibraryBlock:
+    if not profile_library.is_valid_block_id(block_id):
+        raise _reject(404, "not_found", "no such profile block")
+    manifest = profile_library.read_block(source.root, block_id)
+    if manifest is None:
+        raise _reject(404, "not_found", "no such profile block")
+    return _block_dto(manifest)
+
+
+@router.delete(
+    "/profiles/library/{block_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an imported block (audited, admin only)",
+    description=(
+        "PROFILE-LIB-1 (AC-12). Removes a block's body + curated manifest (manifest first so a "
+        "torn delete never leaves a manifest pointing at a gone body), 404 not_found when "
+        "absent, 204 on success, audited. Admin-gated; CSRF enforced by middleware."
+    ),
+    responses={
+        204: {"description": "Block deleted"},
+        404: {"description": "No block with that id"},
+    },
+)
+async def delete_profile_block(
+    request: Request,
+    block_id: str,
+    source: Annotated[VendoredProfileSource, Depends(get_import_profile_source)],
+    _user_id: uuid.UUID = current_admin,
+) -> None:
+    if not profile_library.is_valid_block_id(block_id):
+        raise _reject(404, "not_found", "no such profile block")
+    removed = profile_library.delete_block(source.root, block_id)
+    if not removed:
+        raise _reject(404, "not_found", "no such profile block")
+    record_event(
+        get_engine(),
+        action="slicer_profile.library_delete",
+        entity_type="slicer_profile",
+        entity_id=uuid.UUID(block_id),
+        actor_user_id=_user_id,
+        after={"block_id": block_id},
+        request_id=request.headers.get("x-request-id"),
+    )

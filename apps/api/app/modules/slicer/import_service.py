@@ -352,50 +352,77 @@ def _restore_or_remove(path: Path, previous: bytes | None) -> None:
     os.rename(_stage_temp(path, previous), path)
 
 
+def publish_pair(
+    *,
+    primary_path: Path,
+    primary_content: bytes,
+    sidecar_path: Path,
+    sidecar_content: bytes,
+) -> None:
+    """Rollback-safe atomic publish of a (primary, sidecar) byte pair as one unit.
+
+    POSIX cannot rename two files in one atomic step, so a naive "write primary, then write
+    sidecar" leaves a live primary paired with a stale/missing sidecar if the sidecar write
+    fails. Instead this stages BOTH files to fsynced temp siblings first, then commits the
+    primary then the sidecar; if the sidecar commit fails the just-committed primary is rolled
+    back to its PRIOR state (restored bytes on an upsert, removed on a fresh write). So the
+    pair is published as a unit: on ANY failure the directory is byte-identical to before the
+    call and no temp file is left behind (fallback-review High fix). The sidecar inherits the
+    primary's owner/mode (``_metadata_source_for`` template) so a fresh bind-mount pair never
+    becomes a root-owned ``0600`` artifact.
+
+    The single two-phase commit shared by the Story 33.2 ``publish_intent`` (grid intent +
+    sidecar manifest) and the PROFILE-LIB-1 library block store (block body + curated
+    manifest) — one implementation of the rollback contract, no re-implementation (AC-8).
+    """
+    primary_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Snapshot the prior primary state so a mid-publish failure can roll it back exactly.
+    prev_primary = primary_path.read_bytes() if primary_path.exists() else None
+
+    # Stage both payloads to temp siblings BEFORE committing either (no live file touched yet).
+    primary_tmp = _stage_temp(primary_path, primary_content)
+    try:
+        sidecar_tmp = _stage_temp(sidecar_path, sidecar_content, template=primary_path)
+    except BaseException:
+        primary_tmp.unlink(missing_ok=True)
+        raise
+
+    # Commit the primary. On failure here nothing was published — clean both temps.
+    try:
+        os.rename(primary_tmp, primary_path)
+    except BaseException:
+        primary_tmp.unlink(missing_ok=True)
+        sidecar_tmp.unlink(missing_ok=True)
+        raise
+
+    # Commit the sidecar. On failure the primary IS already committed → roll it back to the
+    # prior state so the pair stays consistent, and drop the sidecar temp.
+    try:
+        os.rename(sidecar_tmp, sidecar_path)
+    except BaseException:
+        sidecar_tmp.unlink(missing_ok=True)
+        _restore_or_remove(primary_path, prev_primary)
+        raise
+
+
 def publish_intent(partials: dict, *, intent_path: Path, manifest: dict) -> None:
     """Rollback-safe publish of the validated ``partials`` + sidecar ``manifest`` (AC-8, AC-9).
 
-    POSIX cannot rename two files in one atomic step, so a naive "write intent, then write
-    manifest" leaves a live intent paired with a stale/missing manifest if the manifest write
-    fails. Instead this stages BOTH files to fsynced temp siblings first, then commits intent
-    then manifest; if the manifest commit fails the just-committed intent is rolled back to its
-    PRIOR state (restored bytes on a re-import, removed on a fresh import). So the (intent,
-    manifest) pair is published as a unit: on ANY failure the vendored tree is byte-identical
-    to before the call and no temp file is left behind (fallback-review High fix).
+    Delegates to :func:`publish_pair` (the shared two-phase commit): the intent triple is the
+    primary, the sidecar manifest is the sidecar. So the (intent, manifest) pair is published
+    as a unit — on ANY failure the vendored tree is byte-identical to before the call and no
+    temp file is left behind.
 
     MUST be called only AFTER ``validate_import`` succeeded — a rejected import never reaches
     here, so the tree stays byte-identical on a rejection too.
     """
-    manifest_path = manifest_path_for(intent_path)
-    intent_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Snapshot the prior intent state so a mid-publish failure can roll it back exactly.
-    prev_intent = intent_path.read_bytes() if intent_path.exists() else None
-
-    # Stage both payloads to temp siblings BEFORE committing either (no live file touched yet).
-    intent_tmp = _stage_temp(intent_path, _json_bytes(partials))
-    try:
-        manifest_tmp = _stage_temp(manifest_path, _json_bytes(manifest), template=intent_path)
-    except BaseException:
-        intent_tmp.unlink(missing_ok=True)
-        raise
-
-    # Commit the intent. On failure here nothing was published — clean both temps.
-    try:
-        os.rename(intent_tmp, intent_path)
-    except BaseException:
-        intent_tmp.unlink(missing_ok=True)
-        manifest_tmp.unlink(missing_ok=True)
-        raise
-
-    # Commit the manifest. On failure the intent IS already committed → roll it back to the
-    # prior state so the pair stays consistent, and drop the manifest temp.
-    try:
-        os.rename(manifest_tmp, manifest_path)
-    except BaseException:
-        manifest_tmp.unlink(missing_ok=True)
-        _restore_or_remove(intent_path, prev_intent)
-        raise
+    publish_pair(
+        primary_path=intent_path,
+        primary_content=_json_bytes(partials),
+        sidecar_path=manifest_path_for(intent_path),
+        sidecar_content=_json_bytes(manifest),
+    )
 
 
 def read_manifest_label(intent_path: Path) -> str | None:

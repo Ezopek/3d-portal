@@ -1,0 +1,15 @@
+{
+  "compatible_printers": ["Creality K1 Max (0.4 nozzle)"],
+  "filament_cost": ["169.90"],
+  "filament_density": ["1.22"],
+  "filament_flow_ratio": ["1.02"],
+  "filament_max_volumetric_speed": ["2.8"],
+  "filament_settings_id": ["AI Rosa3D Flex 96A Black"],
+  "filament_type": ["TPU"],
+  "filament_vendor": ["Rosa3D"],
+  "from": "User",
+  "inherits": "Generic TPU @System",
+  "name": "AI Rosa3D Flex 96A Black",
+  "nozzle_temperature": ["230"],
+  "version": "2.3.2.50"
+}

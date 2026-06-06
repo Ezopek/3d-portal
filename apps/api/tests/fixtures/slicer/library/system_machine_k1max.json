@@ -1,0 +1,12 @@
+{
+  "type": "machine",
+  "name": "Creality K1 Max (0.4 nozzle)",
+  "inherits": "fdm_creality_common",
+  "from": "system",
+  "setting_id": "GM001",
+  "instantiation": "true",
+  "printer_model": "Creality K1 Max",
+  "gcode_flavor": "klipper",
+  "nozzle_diameter": ["0.4"],
+  "printable_height": "300"
+}

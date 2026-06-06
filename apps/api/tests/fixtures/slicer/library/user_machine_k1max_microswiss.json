@@ -1,0 +1,14 @@
+{
+  "change_filament_gcode": "M600",
+  "emit_machine_limits_to_gcode": "0",
+  "from": "User",
+  "inherits": "Creality K1 Max (0.4 nozzle)",
+  "machine_max_acceleration_x": ["12000", "20000"],
+  "machine_max_speed_x": ["500", "800"],
+  "max_layer_height": ["0.32"],
+  "name": "AI Creality K1 Max (0.4 nozzle) - MicroSwiss HF Hotend Speed",
+  "printer_extruder_id": ["1"],
+  "printer_settings_id": "AI Creality K1 Max (0.4 nozzle) - MicroSwiss HF Hotend Speed",
+  "version": "2.3.2.40",
+  "z_offset": "-0.05"
+}

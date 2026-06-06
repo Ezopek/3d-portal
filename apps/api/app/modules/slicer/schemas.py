@@ -198,6 +198,61 @@ class ProfileImportRejection(BaseModel):
     message: str
 
 
+# --- PROFILE-LIB-1 (Decision AM) — separate-block profile library DTOs --------
+#
+# The operator-facing curated projection over ONE imported Orca profile BLOCK (machine /
+# process / filament). Like every DTO in this module it is ``extra="forbid"`` and carries
+# ONLY curated metadata + validation state — NO raw Orca key body, NO filesystem path, NO
+# g-code (the AC-13 leak fence, mirrored by a negative-assertion test). It coexists with the
+# 33.1/33.2 grid DTOs (the compiled-intent projection) and never replaces them.
+
+# The classified block type (SCP § 3 separate-block model).
+ProfileLibraryType = Literal["machine", "process", "filament"]
+
+# The per-block validation state (AC-4): classified+stored is at worst ``requires_attention``;
+# ``error`` is the AC-2 unclassifiable reject path (never stored, surfaced only as a rejection).
+ProfileLibraryValidationState = Literal["usable", "requires_attention", "error"]
+
+
+class ProfileLibraryBlock(BaseModel):
+    """One imported Orca profile block's curated metadata (AC-13).
+
+    The single shape the list/get endpoints return, read from the on-disk curated manifest
+    sidecar — NEVER from the raw Orca body (there is no raw-body read path in this story).
+    ``reasons`` carries machine-readable categories the FE localizes (no display text from the
+    backend). Carries no raw layer-height / temps / volumetric-speed / density / g-code / full
+    Orca key set (FR20-PRESET-1 / NFR21-OBS-1 fence).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    block_id: str
+    profile_type: ProfileLibraryType
+    name: str
+    source: str | None = None
+    is_system: bool = False
+    inherit: str | None = None
+    inherit_chain: list[str] = Field(default_factory=list)
+    settings_id: str | None = None
+    material_type: str | None = None
+    compatible_printers: list[str] = Field(default_factory=list)
+    validation_state: ProfileLibraryValidationState
+    reasons: list[str] = Field(default_factory=list)
+    portal_label: str | None = None
+    imported_at: str
+    imported_by: str
+
+
+class ProfileLibraryListResponse(BaseModel):
+    """The imported-block inventory (PROFILE-LIB-1, AC-10).
+
+    Deterministically ordered (process first, then name). A missing/empty ``library/`` tree ⇒
+    an empty ``blocks`` list — the empty state IS an empty inventory.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    blocks: list[ProfileLibraryBlock]
+
+
 class AdminProfileInventoryResponse(BaseModel):
     """The full per-slot inventory for one printer (Story 33.1, FR21-PROFILE-INVENTORY-1).
 

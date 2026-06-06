@@ -1,0 +1,11 @@
+{
+  "from": "User",
+  "inherits": "0.20mm Standard @Creality K1Max (0.4 nozzle)",
+  "name": "AI 0.20mm TPU - FlowTech",
+  "outer_wall_speed": "25",
+  "print_extruder_id": ["1"],
+  "print_settings_id": "AI 0.20mm TPU - FlowTech",
+  "sparse_infill_speed": "40",
+  "support_style": "tree_slim",
+  "version": "2.3.2.40"
+}
