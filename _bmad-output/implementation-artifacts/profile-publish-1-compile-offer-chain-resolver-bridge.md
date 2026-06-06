@@ -11,14 +11,7 @@ realizes_gate: G-PUBLISH  # the backend half of the long-deferred publish/live-s
 
 # Story PROFILE-PUBLISH-1: Compile a usable PrintProfileOffer's ProfileChain into a real resolver bundle + prove live slicing (G-PUBLISH backend bridge)
 
-Status: **in-progress — backend bridge implemented locally 2026-06-06 on
-`feat/E33-profile-publish-1-resolver-bridge`; targeted backend gates green. G-ARCH SATISFIED (Decision AR =
-option b, chain-addressed resolve-tail; Gemini architecture review APPROVE 2026-06-06), G-DEVGO SATISFIED by
-operator "możemy lecieć z PUBLISH" 2026-06-06, and G-DATA SELECTED (offer
-`561d9ea327e143da9bfcc1031cda8077` / catalog STL hash
-`282d26c1660c41b30d15b293b5c92bfe494ab62d76350009ceba55e714774b7f`)**. No deploy, no production write, no live
-smoke, and no commit are authorized in this dev-story run; controller owns review/merge/deploy/live smoke. FE
-publish controls, full `check-all.sh`, contracted external review, merge/deploy, and live smoke remain open.
+Status: **done — backend G-PUBLISH bridge implemented, reviewed, merged to `main` @`3233a20`, deployed to `.190`, and live-smoked 2026-06-07.** G-ARCH SATISFIED (Decision AR = option b, chain-addressed resolve-tail; Gemini architecture review APPROVE 2026-06-06), G-DEVGO SATISFIED by operator "możemy lecieć z PUBLISH" 2026-06-06, G-DATA SELECTED, full aggregate gate green, routine external review green, deploy green, and runtime smoke proved publish → append-only bundle/snapshot → ARQ slicer enqueue → real Orca slice → fresh estimate record. FE publish controls/member selector projection remain **future slices**; this story is the backend bridge only.
 
 <!--
   Authored by the repo-local BMAD author of record (Claude Opus 4.8, 2026-06-06) in the bmad-create-story [CS]
@@ -469,9 +462,18 @@ Codex (GPT-5), BMAD `bmad-dev-story` execution under Laura supervision.
 - Minimal admin observation surface is backend-only: publish fields appear on existing offer DTOs; publish returns
   bundle hash/job id; unpublish returns the offer DTO. No frontend was touched.
 - Scope fences held: no `_PUBLIC_ROUTES` edit, no member selector/web change, no Alembic/DB change, no Spoolman
-  mutation, no raw Orca JSON viewer, no N x M editor, no deploy, no production write, no live smoke, no commit.
-- Non-blocking environment note: `/mnt/c/Users/ezope/Nextcloud/3d_modelowanie/AGENTS.md` was not present on this
-  host/mount when checked; no catalog write/live smoke was performed in this pass.
+  mutation, no raw Orca JSON viewer, no N x M editor, and no frontend publish controls in this slice.
+- Controller closeout completed: branch fast-forward merged to `main` @`3233a20`, pushed to origin, deployed with
+  `infra/scripts/deploy.sh`, and runtime smoke verified from `.190`.
+- Live-smoke nuance: the initially selected operator offer (`561d9ea327e143da9bfcc1031cda8077`) compiled and enqueued
+  but Orca rejected the existing AI machine/process combination at slice time (`process not compatible with printer`).
+  The production bridge behaved correctly (typed ARQ failure, no g-code leak), but this exposed an operator-data
+  compatibility caveat for the existing AI profile blocks, not a route/deploy failure.
+- To prove the backend bridge end-to-end with compatible data, controller imported a temporary hidden system-chain offer,
+  published STL `1284c95c5f37e6bd2e6265d000976161aeeac4407db944da74c159f82e114f33`, observed ARQ `status=ok`, and
+  verified a fresh estimate record (`time_seconds=1487`, `filament_g=16.33`) for bundle
+  `99209e422a04564546823dc146fc30f5ce0be62c4183c004a7c786f349665eb4`. Temporary smoke offer/block sidecars were
+  then deleted; append-only bundle/snapshot/estimate/audit evidence remains.
 
 ### Test / Gate Results
 
@@ -484,6 +486,14 @@ Codex (GPT-5), BMAD `bmad-dev-story` execution under Laura supervision.
 - `git diff --check` -> exit 0, no output.
 - `git diff -- apps/api/app/main.py apps/web` -> exit 0, no output; `_PUBLIC_ROUTES` and member/web surface were not
   edited.
+- `infra/scripts/check-all.sh` (controller aggregate gate) -> `passed: 16`, including API/web/render lint, typecheck,
+  build, vitest, pytest, visual regression (`456 passed, 24 skipped`), settings/env/compose drift, lock checks, and
+  local-env-secrets.
+- `laura-gemini-review` focused diff review -> no critical/important blockers; Decision AR architecture review APPROVE.
+- `infra/scripts/deploy.sh` -> RC 0; release symbolication verified `0.1.0+3233a20`, slicer-worker smoke OK, runbook
+  fingerprint OK.
+- Runtime G-SMOKE on `.190` -> `PROFILE_PUBLISH_SMOKE_OK` equivalent: admin auth OK; temporary compatible offer created;
+  publish returned `200`; ARQ job `slice:1284c95c5f37e6bd2e6265d000976161aeeac4407db944da74c159f82e114f33:99209e422a04564546823dc146fc30f5ce0be62c4183c004a7c786f349665eb4` returned `status=ok`; persisted estimate status `fresh`.
 
 ### File List
 
@@ -505,4 +515,8 @@ Codex (GPT-5), BMAD `bmad-dev-story` execution under Laura supervision.
 ### Change Log
 
 - 2026-06-06 — BMAD dev-story backend pass implemented PROFILE-PUBLISH-1 bridge and left story
-  `in-progress`; T5 frontend, full closeout gates, external review, deploy, and live smoke remain controller-owned.
+  `in-progress`; T5 frontend, full closeout gates, external review, deploy, and live smoke remained controller-owned.
+- 2026-06-07 — Controller closeout: focused backend gate + full `check-all.sh` green, Gemini review green,
+  committed `3233a20`, fast-forward merged/pushed to `main`, deployed to `.190`, and live-smoked publish → slicer
+  enqueue → real Orca slice → fresh estimate. Existing AI offer data produced a real `process not compatible with printer`
+  slicer failure; temporary compatible system-chain smoke data proved the bridge end-to-end and was cleaned up.
