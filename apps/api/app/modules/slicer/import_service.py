@@ -288,30 +288,80 @@ def _json_bytes(payload: dict) -> bytes:
     return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
 
 
+def _nearest_existing_ancestor(path: Path) -> Path | None:
+    current = path
+    while not current.exists():
+        parent = current.parent
+        if parent == current:
+            return None
+        current = parent
+    return current
+
+
 def _metadata_source_for(target: Path, template: Path | None = None) -> Path | None:
     """Choose a live path whose owner/mode the temp publish should inherit.
 
     ``mkstemp`` creates ``0600`` files owned by the container user (root in production). If we
     rename that straight into the host-mounted vendored tree, operator/host tooling loses read
-    access. Preserve an existing target's metadata, or for a new sidecar manifest inherit from
-    the intent file template; otherwise fall back to the parent directory's owner and group.
+    access. Preserve an existing target's metadata, or inherit from a staged/committed template
+    (for sidecars). Otherwise use the nearest existing ancestor so a fresh ``library/<type>``
+    subtree inherits the bind-mounted vendored tree's operator-friendly owner/group instead of
+    the container root user that created the new directories.
     """
     if target.exists():
         return target
     if template is not None and template.exists():
         return template
-    return target.parent if target.parent.exists() else None
+    return _nearest_existing_ancestor(target.parent)
+
+
+def _file_mode_from_source(source: Path) -> int:
+    mode = source.stat().st_mode & 0o777
+    if source.is_dir():
+        # A directory's execute bits mean traversal, not file executability. For fresh files,
+        # inherit read/write bits only: e.g. vendored dir 0775 -> file 0664.
+        mode &= 0o666
+        return mode or 0o644
+    return mode
 
 
 def _apply_metadata(tmp_path: Path, source: Path | None) -> None:
     if source is None:
         return
     stat = source.stat()
-    os.chmod(tmp_path, stat.st_mode & 0o777)
+    os.chmod(tmp_path, _file_mode_from_source(source))
     # Non-root dev/test environments may not be allowed to chown. The chmod still avoids
     # mkstemp's 0600 default; production containers run as root and preserve ownership too.
     with suppress(PermissionError):
         os.chown(tmp_path, stat.st_uid, stat.st_gid)
+
+
+def _apply_dir_metadata(path: Path, source: Path | None) -> None:
+    if source is None:
+        return
+    stat = source.stat()
+    mode = stat.st_mode & 0o777
+    if not source.is_dir():
+        # File -> directory fallback: add traversal bits for every readable class.
+        mode = (mode | ((mode & 0o444) >> 2)) & 0o777
+    os.chmod(path, mode)
+    with suppress(PermissionError):
+        os.chown(path, stat.st_uid, stat.st_gid)
+
+
+def _ensure_parent_dir(target: Path) -> None:
+    parent = target.parent
+    if parent.exists():
+        return
+    missing: list[Path] = []
+    current = parent
+    while not current.exists():
+        missing.append(current)
+        current = current.parent
+    source = current
+    parent.mkdir(parents=True, exist_ok=True)
+    for directory in reversed(missing):
+        _apply_dir_metadata(directory, source)
 
 
 def _stage_temp(target: Path, content: bytes, *, template: Path | None = None) -> Path:
@@ -323,7 +373,7 @@ def _stage_temp(target: Path, content: bytes, *, template: Path | None = None) -
     owner/mode is normalized before rename so production bind-mount files do not become
     root-owned ``0600`` artifacts after import.
     """
-    target.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_parent_dir(target)
     fd, tmp_name = tempfile.mkstemp(
         dir=str(target.parent), prefix=f".{target.name}.", suffix=".tmp"
     )
@@ -383,7 +433,7 @@ def publish_pair(
     # Stage both payloads to temp siblings BEFORE committing either (no live file touched yet).
     primary_tmp = _stage_temp(primary_path, primary_content)
     try:
-        sidecar_tmp = _stage_temp(sidecar_path, sidecar_content, template=primary_path)
+        sidecar_tmp = _stage_temp(sidecar_path, sidecar_content, template=primary_tmp)
     except BaseException:
         primary_tmp.unlink(missing_ok=True)
         raise

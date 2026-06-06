@@ -104,6 +104,20 @@ def test_store_writes_body_and_manifest(tmp_path: Path) -> None:
     assert json.loads(manifest_path(body_p).read_text())["block_id"] == bid
 
 
+def test_fresh_library_subtree_inherits_operator_friendly_metadata(tmp_path: Path) -> None:
+    # Regression for live PROFILE-LIB-1 smoke: a fresh library/process subtree must not be
+    # created as root-owned/executable files when the API container writes into the bind mount.
+    # In tmpfs we can assert the mode half directly; production root also preserves uid/gid.
+    tmp_path.chmod(0o775)
+    bid = _store(tmp_path, "process", "Metadata", body={"name": "Metadata"})
+    body_p = block_path(tmp_path, "process", bid)
+    sidecar_p = manifest_path(body_p)
+    assert (library_root(tmp_path).stat().st_mode & 0o777) == 0o775
+    assert (body_p.parent.stat().st_mode & 0o777) == 0o775
+    assert (body_p.stat().st_mode & 0o777) == 0o664
+    assert (sidecar_p.stat().st_mode & 0o777) == 0o664
+
+
 def test_reimport_same_type_name_is_upsert_not_duplicate(tmp_path: Path) -> None:
     bid1 = _store(tmp_path, "process", "Same", body={"name": "Same", "v": 1})
     bid2 = _store(tmp_path, "process", "Same", body={"name": "Same", "v": 2})
