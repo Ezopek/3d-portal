@@ -7,7 +7,7 @@ initiative: 21
 
 # Story PROFILE-LIB-1: Operator Orca profile-block inventory CRUD/import (process profiles first)
 
-Status: ready-for-dev
+Status: in-progress (implementation complete + full check-all.sh GREEN 16/16; pending independent review, ff-merge, and the G-SMOKE live .190 runtime gate)
 
 <!--
   Authored by bmad-create-story (BMAD-canonical route [CS] Create Story, phase 4-implementation,
@@ -198,4 +198,121 @@ All rows AGREE or use a deliberately-disjoint key namespace (`["admin","profile-
 
 ## Dev Agent Record
 
-(empty — populated by bmad-dev-story after operator dev-go.)
+Implemented by bmad-dev-story (Claude Opus 4.8) on 2026-06-06 under the Kanban card
+`t_a0ce06d1` operator/controller dev-go (G-DEVGO satisfied within stated boundaries). G-DATA
+resolved for dev by copying real current Fenrir Orca profile files (read-only) to
+`/tmp/profile_lib1_fenrir_samples`; sanitized minimal samples (no `print_host` / `printer_agent`
+/ g-code / Windows paths) committed as `apps/api/tests/fixtures/slicer/library/*.json`. Live
+`.190` deploy/restart/smoke (G-SMOKE) NOT authorized and NOT run.
+
+### Branch / commits
+
+- Branch: `feat/E33-profile-lib-1-block-inventory` (from `main` @ `3c2b8b7`).
+- `28c7a71` docs(bmad): baseline story + epic33 SCP + planning artifacts.
+- `f7702ee` feat(slicer): backend engine + CRUD + tests.
+- `38a6a90` feat(web): FE inventory CRUD surface + tests + 16 visual baselines.
+- (this) fix(web): regenerate admin-invites/profiles/users visual baselines for the new
+  `AdminTabs` "Biblioteka profili" tab (stale-baseline correction) + docs(bmad): Dev Agent
+  Record + sprint-status.
+
+### What was built (AC traceability)
+
+- **AC-1** purely-additive engine — new `slicer/profile_library.py`; `git diff` shows no body
+  change to `resolver.py`/`compatibility.py`/`intents` layout/append-only stores. Module-level
+  additive fence test asserts the engine never calls the grid/resolve/bundle symbols.
+- **AC-2** `classify_profile` — explicit Orca `type` (G-DATA-confirmed system vocabulary
+  {machine,process,filament} + printer/print synonyms) → structural heuristics → `None`.
+- **AC-3** `extract_curated_metadata` — minimized curated fields only; cycle-safe inherit-chain
+  walk that never raises; `inherits`(plural)/`inherit`(singular) both handled.
+- **AC-4/AC-5** `derive_validation_state` — usable/requires_attention/error + the user-process
+  must-inherit-system-process governance flag (supersedes generic unknown-parent).
+- **AC-6/7/8** `library/<type>/<block_id>{.json,.manifest.json}` subtree; server-derived
+  path-safe `uuid5(type:name)` block_id (upsert); atomic store reuses the **shared**
+  `import_service.publish_pair` two-phase rollback-safe commit (extracted from `publish_intent`,
+  behaviour-preserving) + `_apply_metadata` owner/mode preservation; `<root>/library`
+  containment assert.
+- **AC-9..AC-15** four admin-gated routes on the existing `admin_router.py` (POST/GET/GET/DELETE
+  `/profiles/library[/{block_id}]`), `ProfileLibraryBlock`/`ProfileLibraryListResponse` DTOs
+  (`extra="forbid"`, no raw body), audit `slicer_profile.library_import`/`.library_delete`
+  (reused `slicer_profile` entity_type, comment-only audit.py extension), no `_PUBLIC_ROUTES`
+  edit, route-surface fence extended (3 GET / 2 POST / 1 DELETE).
+- **AC-16/17/18** FE `/admin/profile-library` route + `ProfileLibraryPage` (upload, type-filtered
+  process-first list, validation-state badges, curated detail expander — NO raw JSON, delete +
+  ConfirmDialog, fails closed/visible) + `useProfileLibrary`/`useImportProfileBlock`/
+  `useDeleteProfileBlock` hooks (disjoint `["admin","profile-library"]` key, staleTime 0 +
+  refetchOnMount always, retry:false, invalidate on write); i18n en+pl parity + diacritics.
+- **AC-19** 16 Playwright baselines (4 states × 4 projects) generated + verified; `api-stubs.ts`
+  gains `stubProfileLibrary`; `baseline-reviewed:` markers per screenshot.
+- **AC-21** scope fence held: no offer/chain, no N×M editor, no raw-JSON viewer, no Spoolman,
+  no DB/Alembic, no grid/resolver/compatibility/bundle_hash change, SW-DEPLOY-1 not triggered.
+
+### Tests / gates (evidence)
+
+- New backend tests: `test_profile_library_classify.py` (27), `test_profile_library_store.py`
+  (22 incl. additive fence + injected-failure rollback), `test_admin_profile_library.py` (21).
+- Focused backend run (new + 33.1/33.2 + route-enforcement + worker fence + import_service):
+  **192 passed** (`uv run pytest tests/test_profile_library_*.py tests/test_admin_profile_library.py
+  tests/test_slicer_worker.py tests/test_route_enforcement_gate.py tests/test_slicer_import_service.py
+  tests/test_admin_profiles_import.py tests/test_admin_profiles_inventory.py`).
+- Full backend suite: `uv run pytest` — green (see closeout log).
+- `ruff check` + `ruff format --check` clean on the slicer module + new tests.
+- FE: `npm run typecheck` clean; `npm run lint -- --max-warnings=0` clean; `npx vitest run`
+  **595 passed (117 files)** incl. the new `ProfileLibraryPage.test.tsx` (6, fetch-intercepted)
+  + `profile-library-i18n.test.ts` (4).
+- Visual: `npx playwright test admin-profile-library` **16 passed** (clean non-update verify).
+- **Controller full-gate finding (2026-06-06):** controller reran standalone `infra/scripts/check-all.sh`
+  after the dev pass → **15/16 green, ONLY `apps/web visual regression` failed**. The failures were
+  the pre-existing admin baselines (`admin-invites`, `admin-profiles`, `admin-users`) across
+  desktop/mobile × light/dark — **not** the new profile-library spec (which passed).
+- **Root cause (classified `stale-baseline`, NOT a UI bug — AGENTS.md §"Visual baseline triage"):**
+  the new `AdminTabs` "Biblioteka profili" tab is the sole visual delta. Diff-artifact inspection
+  confirmed: on **desktop** the only changed pixels are the appended 4th tab (rest pixel-identical);
+  on **mobile** the longer label wraps the tab strip to a second line (no `flex-wrap`/`overflow`
+  handling in `AdminTabs`), shifting all content below down by one row — a vertical shift of
+  otherwise-identical content, all 4 tabs visible/tappable, no clip/overlap. This matches the
+  already-approved profile-library mobile baseline, so the wrapped chrome is accepted; `AdminTabs`
+  was **not** modified (out of scope + would invalidate the approved profile-library baseline).
+- **Fix:** regenerated the 28 stale admin baselines via
+  `npm run test:visual -- admin-profiles.spec.ts admin-users.spec.ts admin-invites.spec.ts --update-snapshots`
+  (admin-invites 12, admin-profiles 4, admin-users 12 PNGs — all `M`, no new files; scope confined
+  to the three affected specs). Assert-mode reverify incl. profile-library: **76 passed**.
+- **Full gate rerun (this pass):** `infra/scripts/check-all.sh` standalone → **GREEN, 16/16**
+  (incl. `apps/web visual regression` **428 passed / 24 skipped, 1.9m**), teed to
+  `.hermes/run-logs/check-all-*.log` (gitignored). The CI-equivalent merge gate is now satisfied.
+- **NOT run:** live `.190` deploy/restart/vendoring smoke (G-SMOKE — future/operator gate).
+
+### Remaining gates (controller)
+
+1. ~~Full `infra/scripts/check-all.sh` standalone green~~ — **DONE (2026-06-06): GREEN 16/16**,
+   teed to `.hermes/run-logs/` (after the stale-baseline correction above).
+2. Independent review verdict (Gemini default; Codex fallback given on-disk-write +
+   classification/leak-fence adjacency). **NOT yet run** — pending; review status remains open.
+3. ff-merge `feat/E33-profile-lib-1-block-inventory` → `main` (then delete branch).
+4. G-SMOKE live `.190` RW-mount + owner/mode (`ezop:ezop 664`) vendoring smoke — operator/
+   runtime gate, NOT authorized by this card.
+
+### File List
+
+- **Added (backend):** `apps/api/app/modules/slicer/profile_library.py`;
+  `apps/api/tests/test_profile_library_classify.py`,
+  `apps/api/tests/test_profile_library_store.py`,
+  `apps/api/tests/test_admin_profile_library.py`;
+  `apps/api/tests/fixtures/slicer/library/*.json` (7 sanitized real-derived fixtures).
+- **Edited (backend):** `apps/api/app/modules/slicer/import_service.py` (extracted
+  `publish_pair`; `publish_intent` delegates),
+  `apps/api/app/modules/slicer/admin_router.py` (4 routes + DTO mapper),
+  `apps/api/app/modules/slicer/schemas.py` (library DTOs),
+  `apps/api/app/core/audit.py` (comment-only), `apps/api/tests/test_slicer_worker.py`
+  (route-surface fence extended).
+- **Added (FE):** `apps/web/src/modules/admin/ProfileLibraryPage.tsx` (+ `.test.tsx`),
+  `apps/web/src/modules/admin/hooks/{useProfileLibrary,useImportProfileBlock,useDeleteProfileBlock}.ts`,
+  `apps/web/src/modules/admin/profile-library-i18n.test.ts`,
+  `apps/web/src/routes/admin/profile-library.tsx`,
+  `apps/web/tests/visual/admin-profile-library.spec.ts` + 16 `__snapshots__` PNGs.
+- **Edited (FE):** `apps/web/src/lib/api-types.ts`, `apps/web/src/locales/{en,pl}.json`,
+  `apps/web/src/modules/admin/AdminTabs.tsx`, `apps/web/src/routeTree.gen.ts` (regenerated,
+  additive), `apps/web/tests/visual/api-stubs.ts` (`stubProfileLibrary`).
+- **Regenerated baselines (FE, stale-baseline correction for the new AdminTabs tab):** 28 PNGs under
+  `apps/web/tests/visual/__snapshots__/{admin-invites,admin-profiles,admin-users}.spec.ts/`
+  (admin-invites 12, admin-profiles 4, admin-users 12; all 4 projects). No spec/code change in
+  these three suites — image-only regen.
