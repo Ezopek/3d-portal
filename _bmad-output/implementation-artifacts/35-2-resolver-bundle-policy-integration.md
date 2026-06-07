@@ -1,6 +1,6 @@
 # Story 35.2: Resolve Orca filament profile by policy before bundle materialization
 
-Status: review
+Status: done
 
 <!--
   Authored by the repo-local BMAD author (Laura/Hermes delegated). Source planning artifacts:
@@ -117,10 +117,15 @@ claude-opus-4-8 (1M) — repo-local BMAD author/dev (Laura/Hermes delegated).
     Important / 1 Minor (defensive plural-`inherits` substitution path untested). Minor incorporated:
     added `test_selection_replaces_plural_inherits_real_orca` (20th case) asserting the plural recipe
     key is dropped and the policy-selected base wins; re-ran 3× green + ruff clean.
-- **Remaining close-out gate (before review→done + ff-merge):** full `infra/scripts/check-all.sh`
-  16-stage aggregate gate. Deferred in this run (backend-only resolver slice; no UI/visual surface;
-  SW-DEPLOY-1 NOT triggered — no Alembic, no on-disk worker contract change → no deploy needed).
-  Estimate API/DTO wiring of the new seam is Story 35.3.
+- **Close-out gate (review → done): CLEARED.** External Gemini review (`laura-gemini-review`,
+  gemini-2.5-pro) recorded **APPROVE** — 0 Critical / 0 Important / 1 Minor (plural-`inherits` path
+  untested), Minor incorporated as the 20th test (above). Controller then ran the full repo merge gate
+  `infra/scripts/check-all.sh` — **all green, 16 passed / 0 failed** (apps/api + workers/render
+  `ruff format`/`check`, apps/web typecheck + build + lint + vitest, apps/api + workers/render +
+  infra/scripts pytest, apps/web visual regression, settings↔env↔compose diff, uv-lock checks ×2;
+  local-env-secrets skipped OK — no `infra/.env`). Deploy-clean backend resolver-only slice —
+  SW-DEPLOY-1 NOT triggered (no Alembic, no on-disk worker contract change), no deploy needed.
+  Estimate API/DTO wiring of the new seam remains Story 35.3 (future/backlog).
 
 ### File List
 
@@ -136,3 +141,4 @@ extending the large `test_slicer_resolver.py`. The legacy resolver tests are unc
 ## Change Log
 
 - 2026-06-07 — story authored (G-ARCH satisfied first); implemented + Gemini-reviewed + review-fixed in the same run (operator-delegated 35.2 dev-go). Status backlog → in-progress → review.
+- 2026-06-07 — controller closeout: Gemini APPROVE (Minor incorporated) on record + full `check-all.sh` 16/16 green; status review → done.

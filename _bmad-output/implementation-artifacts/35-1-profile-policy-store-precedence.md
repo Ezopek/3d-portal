@@ -1,6 +1,6 @@
 # Story 35.1: Profile-selection policy model + store + precedence resolver
 
-Status: review
+Status: done
 
 <!--
   Authored by the repo-local BMAD author (Laura/Hermes delegated). Source planning artifacts:
@@ -97,10 +97,14 @@ claude-opus-4-8 (1M) — repo-local BMAD author/dev (Laura/Hermes delegated).
     related slicer suites (resolver + estimate + spoolman_overrides) **191 passed, 1 skipped** (no
     regression); settings↔env↔compose drift gate **OK** (54/52/42 aligned); `ruff format --check` +
     `ruff check` **clean** on all touched files; import sanity (`load_profile_policy` + settings) OK.
-- **Remaining close-out gate (before review→done + ff-merge):** full `infra/scripts/check-all.sh`
-  16-stage aggregate gate + external Gemini review (`laura-gemini-review`) on the diff. Deferred in
-  this run (deploy-clean backend-only slice; no UI/visual surface). No deploy needed — pure additive
-  module + config defaults, SW-DEPLOY-1 NOT triggered.
+- **Close-out gate (review → done): CLEARED.** External Gemini review (`laura-gemini-review`,
+  gemini-2.5-pro) recorded **APPROVE** — 0 Critical / 0 Important / 0 Minor. Controller then ran the
+  full repo merge gate `infra/scripts/check-all.sh` — **all green, 16 passed / 0 failed** (apps/api +
+  workers/render `ruff format`/`check`, apps/web typecheck + build + lint + vitest, apps/api +
+  workers/render + infra/scripts pytest, apps/web visual regression, settings↔env↔compose diff,
+  uv-lock checks ×2; local-env-secrets skipped OK — no `infra/.env`). Deploy-clean backend-only
+  foundation slice — pure additive module + config defaults, SW-DEPLOY-1 NOT triggered, no deploy
+  needed.
 
 ### File List
 
@@ -111,3 +115,4 @@ claude-opus-4-8 (1M) — repo-local BMAD author/dev (Laura/Hermes delegated).
 ## Change Log
 
 - 2026-06-07 — story authored + implemented (same run, operator-delegated 35.1 dev-go).
+- 2026-06-07 — controller closeout: Gemini APPROVE on record + full `check-all.sh` 16/16 green; status review → done.
