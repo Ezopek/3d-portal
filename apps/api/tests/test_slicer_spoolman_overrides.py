@@ -849,8 +849,11 @@ def test_only_overrides_ref_persisted_not_raw_spoolman_fields(tmp_path):
     # The persisted bundle model has no raw-Spoolman fields.
     fields = set(SlicerProfileBundle.model_fields)
     assert "price" not in fields and "extra" not in fields and "spool_price" not in fields
-    # The raw spool price (24.0) is nowhere in the persisted bundle JSON.
-    assert "24.0" not in out.bundle.model_dump_json()
+    # The raw spool price (24.0) is nowhere in deterministic persisted bundle payload fields.
+    # (Do not scan `computed_at`: wall-clock timestamps can legitimately contain "24.0".)
+    payload = out.bundle.model_dump(mode="json")
+    payload.pop("computed_at", None)
+    assert "24.0" not in json.dumps(payload, sort_keys=True)
 
 
 def test_no_new_inventory_table_or_cache_key():

@@ -19,7 +19,6 @@ injected fakes (no real Orca, no real Spoolman), mirroring test_slicer_resolver.
 from __future__ import annotations
 
 import json
-import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -95,23 +94,53 @@ def test_build_filaments_by_ref_none_snapshot_is_empty_map_soft_fail():
 # --- AC-13: NFR23-OBS-1 — counts/reason only, never filament bodies --------------
 
 
-def test_build_filaments_by_ref_logs_counts_only_not_bodies(caplog):
+def test_build_filaments_by_ref_logs_counts_only_not_bodies(monkeypatch):
     f1 = _filament(1, "Galaxy Black", "Rosa3D", "PLA")
-    with caplog.at_level(logging.INFO, logger="app.modules.slicer.profile_selection"):
-        build_filaments_by_ref(_snapshot(f1))
-    record = next(r for r in caplog.records if r.name == "app.modules.slicer.profile_selection")
-    assert getattr(record, "labels.filament_count", None) == 1
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def capture_info(message: str, *, extra: dict[str, object]) -> None:
+        calls.append((message, extra))
+
+    monkeypatch.setattr("app.modules.slicer.profile_selection.logger.info", capture_info)
+
+    build_filaments_by_ref(_snapshot(f1))
+
+    assert calls == [
+        (
+            "slicer.profile_selection.snapshot",
+            {
+                "labels.external_service": "spoolman",
+                "labels.snapshot": "ok",
+                "labels.filament_count": 1,
+            },
+        )
+    ]
     # The filament's descriptive fields must never appear in the log payload.
-    assert "Galaxy Black" not in caplog.text
-    assert "Rosa3D" not in caplog.text
+    assert "Galaxy Black" not in repr(calls)
+    assert "Rosa3D" not in repr(calls)
 
 
-def test_build_filaments_by_ref_none_logs_degraded_reason(caplog):
-    with caplog.at_level(logging.WARNING, logger="app.modules.slicer.profile_selection"):
-        build_filaments_by_ref(None)
-    record = next(r for r in caplog.records if r.name == "app.modules.slicer.profile_selection")
-    assert getattr(record, "labels.reason", None) == "spoolman_unavailable"
-    assert getattr(record, "labels.filament_count", None) == 0
+def test_build_filaments_by_ref_none_logs_degraded_reason(monkeypatch):
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def capture_warning(message: str, *, extra: dict[str, object]) -> None:
+        calls.append((message, extra))
+
+    monkeypatch.setattr("app.modules.slicer.profile_selection.logger.warning", capture_warning)
+
+    build_filaments_by_ref(None)
+
+    assert calls == [
+        (
+            "slicer.profile_selection.snapshot",
+            {
+                "labels.external_service": "spoolman",
+                "labels.snapshot": "degraded",
+                "labels.reason": "spoolman_unavailable",
+                "labels.filament_count": 0,
+            },
+        )
+    ]
 
 
 # --- AC-10 / AC-11: select_profile precedence, snapshot material, soft-fail ------
