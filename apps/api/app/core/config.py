@@ -130,6 +130,14 @@ class Settings(BaseSettings):
     # ``…/slicer/estimates``, which would nest to ``…/estimates/estimates/…`` — the Story
     # 32.1 review-fix-5 double-nest trap). Container-internal path, never an external-host one.
     slicer_estimate_store_dir: Path = Path("/data/content/slicer")
+    # Portal-owned profile-selection policy store ROOT (Story 35.1, Init 23 / Decision AS).
+    # A single ``profile_policy.json`` (material defaults + per-Spoolman-filament Orca
+    # filament-profile overrides) on the portal-content volume — NOT an Alembic table (SCP
+    # 2026-06-07: "portal-owned small JSON store first, not a DB migration"). ProfilePolicyStore
+    # adds the ``profile_policy.json`` filename itself, so the default is the ``/data/content/slicer``
+    # root. Container-internal path, never an external-host one; read on demand (mtime-cached),
+    # so a policy edit needs no restart.
+    slicer_profile_policy_dir: Path = Path("/data/content/slicer")
 
     # Slicer worker (Initiative 20, Story 32.2, Decision AI) — headless Orca CLI
     # invoke + classify slots. Production runtime home for these is the configs-side
