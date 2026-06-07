@@ -272,6 +272,18 @@ def _resolve_partials(
         machine = normalize_for_cli(
             resolve_inheritance(system_tree, partials["machine"]), profile_kind="machine"
         )
+        # Real Orca USER machine profiles may carry plural `inherits` plus their own
+        # display `name`/`from=User`. The GUI can reconcile that against its profile
+        # registry, but headless `--load-settings` treats a renamed/User machine as a
+        # distinct printer identity and rejects otherwise-compatible process profiles
+        # with RC -17 (`process not compatible with printer`). For the plural real-Orca
+        # path only, keep the materialized machine settings/overrides but restore the
+        # inherited system printer identity in the CLI-bound bundle. Singular `inherit`
+        # bench/legacy fixtures remain byte-stable.
+        machine_parent_name = partials["machine"].get("inherits")
+        if isinstance(machine_parent_name, str):
+            machine["name"] = machine_parent_name
+            machine["from"] = "system"
         process = normalize_for_cli(
             resolve_inheritance(system_tree, partials["process"]), profile_kind="process"
         )

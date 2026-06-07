@@ -172,6 +172,13 @@ def test_resolve_chain_materializes_plural_inherits_and_strips_recipe_keys(
     assert bundle.process["outer_wall_speed"] == "25"
     assert bundle.machine["z_offset"] == "-0.05"
 
+    # Headless Orca compatibility: real-Orca plural-inherits USER machine profiles
+    # keep their materialized overrides, but the CLI-bound printer identity must match
+    # the inherited system profile. A renamed/from=User machine is rejected by Orca as
+    # `process not compatible with printer` even when the process is otherwise valid.
+    assert bundle.machine["name"] == "Creality K1 Max MicroSwiss HF"
+    assert bundle.machine["from"] == "system"
+
 
 def test_resolve_chain_persists_bundle_without_grid_intents(tmp_path: Path) -> None:
     _copy_system_tree(tmp_path)
