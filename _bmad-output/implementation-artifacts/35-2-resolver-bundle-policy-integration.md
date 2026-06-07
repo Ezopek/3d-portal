@@ -1,6 +1,6 @@
 # Story 35.2: Resolve Orca filament profile by policy before bundle materialization
 
-Status: in-progress
+Status: review
 
 <!--
   Authored by the repo-local BMAD author (Laura/Hermes delegated). Source planning artifacts:
@@ -97,16 +97,42 @@ claude-opus-4-8 (1M) — repo-local BMAD author/dev (Laura/Hermes delegated).
 
 ### Completion Notes List
 
-- _pending implementation in this run._
+- 2026-06-07 (repo-local BMAD author): G-ARCH → RED → GREEN → external review → review-fix complete on
+  `feat/spoolman-filament-profile-estimates`.
+  - **G-ARCH:** appended architecture.md § Initiative 23 Decision AS (portal-owned profile-selection
+    policy + classified `EstimateProfileSource` + opt-in resolver integration; pre-enumeration reuse
+    table) BEFORE any resolver code; verified by readback. Commit `8251513`.
+  - **RED:** `tests/test_slicer_profile_selection.py` failed on the absent `profile_selection` module
+    (confirmed).
+  - **GREEN:** `ResolveReason.unavailable_no_profile` + `ResolveSuccess.profile_selection` (models.py);
+    `resolve()`/`resolve_intent()` opt-in `profile_selection` param + `_apply_profile_selection`
+    (filament `inherit` re-target) + unavailable short-circuit before any write + success-metadata
+    attach on fresh+cache (resolver.py); new `profile_selection.py` (`build_filaments_by_ref` +
+    `select_profile`, snapshot soft-fail, counts-only obs). Commit `74e4ffd`.
+  - **Gates (scope-targeted):** `test_slicer_profile_selection.py` **20 passed ×3** (NFR23-DETERMINISM-1);
+    resolver+policy+estimate+ingest+spoolman_overrides regression **249 passed / 1 skipped**; full
+    `-k slicer` suite **503 passed / 2 skipped** (no regression); `ruff format --check` + `ruff check`
+    **clean** on all touched files.
+  - **External review:** Gemini (`laura-gemini-review`, gemini-2.5-pro) **APPROVE** — 0 Critical / 0
+    Important / 1 Minor (defensive plural-`inherits` substitution path untested). Minor incorporated:
+    added `test_selection_replaces_plural_inherits_real_orca` (20th case) asserting the plural recipe
+    key is dropped and the policy-selected base wins; re-ran 3× green + ruff clean.
+- **Remaining close-out gate (before review→done + ff-merge):** full `infra/scripts/check-all.sh`
+  16-stage aggregate gate. Deferred in this run (backend-only resolver slice; no UI/visual surface;
+  SW-DEPLOY-1 NOT triggered — no Alembic, no on-disk worker contract change → no deploy needed).
+  Estimate API/DTO wiring of the new seam is Story 35.3.
 
 ### File List
 
-- `apps/api/app/modules/slicer/models.py` (modify — `ResolveReason.unavailable_no_profile` + `ResolveSuccess.profile_selection`)
-- `apps/api/app/modules/slicer/resolver.py` (modify — `profile_selection` param + `_apply_profile_selection` + unavailable short-circuit + success metadata)
-- `apps/api/app/modules/slicer/profile_selection.py` (new — snapshot map + `select_profile` + obs)
-- `apps/api/tests/test_slicer_profile_selection.py` (new)
-- `apps/api/tests/test_slicer_resolver.py` (modify — resolver policy integration cases)
+- `apps/api/app/modules/slicer/models.py` (modified — `ResolveReason.unavailable_no_profile` + `ResolveSuccess.profile_selection` + `ProfileSelection` import)
+- `apps/api/app/modules/slicer/resolver.py` (modified — `profile_selection` param + `_apply_profile_selection` + unavailable short-circuit + success metadata + `resolve_intent` passthrough)
+- `apps/api/app/modules/slicer/profile_selection.py` (new — snapshot map + `select_profile` + counts-only obs)
+- `apps/api/tests/test_slicer_profile_selection.py` (new — 20 cases, AC-1..AC-14 + Gemini Minor)
+
+**File List deviation from the spec:** all 35.2 resolver-policy + selection-helper tests live in the
+single new `test_slicer_profile_selection.py` (cohesive for the story + a cleaner diff) rather than
+extending the large `test_slicer_resolver.py`. The legacy resolver tests are unchanged/untouched.
 
 ## Change Log
 
-- 2026-06-07 — story authored (G-ARCH satisfied first); implementation in same run (operator-delegated 35.2 dev-go).
+- 2026-06-07 — story authored (G-ARCH satisfied first); implemented + Gemini-reviewed + review-fixed in the same run (operator-delegated 35.2 dev-go). Status backlog → in-progress → review.

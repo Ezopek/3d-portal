@@ -343,6 +343,35 @@ def test_selection_retargets_filament_inherit(tmp_path):
     assert out.triple.filament["nozzle_temperature"] == ["210"]
 
 
+def test_selection_replaces_plural_inherits_real_orca(tmp_path):
+    # Real Orca user exports carry the PLURAL `inherits` recipe key. The substitution
+    # must drop it (not leave a stale parent alongside the new singular `inherit`) so the
+    # policy-selected profile still wins and no `inherits` leaks into the resolved bundle
+    # (Decision AS clause 2 — covers the defensive plural-key path; Gemini review Minor #1).
+    root = tmp_path / "vend"
+    _write_policy_tree(root)
+    intent_file = root / "intents" / PRINTER / "PLA" / "standard.json"
+    intent_file.write_text(
+        json.dumps(
+            {
+                "machine": {"inherit": "M"},
+                "process": {"inherit": "P"},
+                "filament": {"inherits": "PLA Matt"},  # PLURAL — real Orca user export
+            }
+        )
+    )
+    out = _resolve(
+        _intent(ref="c"),
+        VendoredProfileSource(root),
+        BundleStore(tmp_path / "s"),
+        selection=_default_sel("c"),
+    )
+    assert isinstance(out, ResolveSuccess)
+    assert out.triple.filament["name"] == "Generic PLA"  # policy-selected base wins
+    assert out.triple.filament["nozzle_temperature"] == ["210"]
+    assert "inherits" not in out.triple.filament  # stale plural recipe key dropped
+
+
 def test_selection_non_dict_filament_partial_still_classifies_invalid(tmp_path):
     root = tmp_path / "vend"
     _write_policy_tree(root)
