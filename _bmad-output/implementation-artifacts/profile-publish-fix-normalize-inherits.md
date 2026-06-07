@@ -12,13 +12,14 @@ realizes_gate: G-PUBLISH  # closes the real-Orca-offer half left failing by PROF
 
 # Fix PROFILE-PUBLISH-FIX: normalize Orca plural `inherits` for offer slicing
 
-Status: **code complete on branch `fix/E33-profile-publish-normalize-inherits` — local gates green, NOT merged / NOT deployed / live-smoke pending (controller-owned).**
+Status: **DONE — merged to `main`, deployed to `.190`, and live-smoked with fresh slicer-worker estimates for both affected real offers.**
 
 This is a **bug fix to PROFILE-PUBLISH-1 / offer slicing**, not a frontend change and not a
-new model. It touches exactly one production file — the pure inheritance-merge transform
-`apps/api/app/modules/slicer/merge.py` — plus regression tests. No resolver orchestration,
-no `bundle_hash` formula, no append-only store, no admin/library/offer/frontend code is
-changed.
+new model. The first fix touched the pure inheritance-merge transform
+`apps/api/app/modules/slicer/merge.py`; closeout live smoke then exposed a second headless-Orca
+identity issue for real plural-`inherits` USER machine profiles, fixed narrowly in
+`apps/api/app/modules/slicer/resolver.py`. No `bundle_hash` formula, append-only store,
+admin/library/offer/frontend, DTO, route, Alembic, or infra code is changed.
 
 ## Symptom (from PROFILE-PUBLISH-1 live smoke, sprint-status row 522)
 
@@ -181,3 +182,50 @@ the code fix, which is correct and necessary either way.
   test_bootstrap_agent_can_call_admin_endpoints` fails under broad `-k` selections (state bleed
   from a sibling test) but passes in isolation and on clean `main`. Pre-existing, unrelated to
   PROFILE-PUBLISH-FIX. Candidate for the determinism backlog ([[feedback_scp_pre_enumeration_phase]]).
+
+
+## Closeout update — deployed/live-smoked 2026-06-07
+
+Controller closeout found one more real-Orca/headless-Orca mismatch after the plural
+inheritance materialization fix was deployed: the generated machine profile was now fully
+materialized, but for plural-`inherits` USER machine profiles it still kept the user-facing
+`name` and `from=User`. Direct `.190` runtime reproduction showed headless Orca treats that as
+a distinct printer identity and rejects otherwise-compatible process profiles with the same
+`process not compatible with printer` / RC -17. Setting the CLI-bound machine identity back to
+the inherited system printer (`name=<plural inherits parent>`, `from=system`) while keeping all
+materialized settings and user overrides made real slicing succeed.
+
+Additional narrow fix:
+
+- `apps/api/app/modules/slicer/resolver.py` — after resolving/normalizing the machine, only for
+  real-Orca plural `inherits`, restore the CLI-bound machine identity to the inherited system
+  profile name and `from=system`. Singular `inherit`/bench fixtures remain byte-stable.
+- `apps/api/tests/test_profile_publish_resolve.py` — integration assertions that the plural
+  machine bundle keeps overrides but uses the inherited system identity expected by Orca CLI.
+
+Final gate evidence:
+
+- Focused affected tests: `51 passed, 1 skipped` (`test_slicer_resolver.py`,
+  `test_profile_publish_resolve.py`, `test_admin_profile_publish.py`).
+- Full `infra/scripts/check-all.sh`: **16/16 passed** (`.hermes/run-logs/profile-publish-machine-identity-fix-check-all-20260607_033146.log`).
+- Commit `bb5eb8e fix(slicer): preserve inherited machine identity for Orca CLI` pushed to
+  `origin/main`.
+- Deploy to `.190`: `infra/scripts/deploy.sh` OK, release `0.1.0+bb5eb8e`, slicer-worker
+  overlay rebuilt and in-container smoke OK, post-deploy symbolication/runbook verification OK
+  (`.hermes/run-logs/profile-publish-machine-identity-fix-deploy-20260607_034043.log`).
+
+Live smoke on `.190` re-published/re-resolved both affected offers and proved fresh
+slicer-worker estimates over STL `282d26c1660c41b30d15b293b5c92bfe494ab62d76350009ceba55e714774b7f`:
+
+- Standard offer `561d9ea327e143da9bfcc1031cda8077` → bundle
+  `b5a844da61f2a6394b16c91ce960580202367d711bf873488a26e1961a5ee520`, estimate `fresh`,
+  `time_seconds=599`, `filament_g=3.28`, `filament_mm=1100.41`, `filament_cm3=2.65`,
+  `warnings_count=0`.
+- Estetyczna offer `ac3fdec436224a73be7845a90878c046` → bundle
+  `72d4e21da84422db4633489f6c83fc389f760d1edaf7e12806797e49f9ab1258`, estimate `fresh`,
+  `time_seconds=1080`, `filament_g=3.02`, `filament_mm=1014.22`, `filament_cm3=2.44`,
+  `warnings_count=0`.
+
+This closes G-FULLGATE, G-DEPLOY, G-SYSTEM-TREE-PRESENT, and G-LIVE-SMOKE. The original live
+failure signature (`process not compatible with printer` / RC -17) is no longer reproduced for
+the two affected real offers.
