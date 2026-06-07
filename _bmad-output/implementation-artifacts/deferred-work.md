@@ -307,6 +307,77 @@ Source: operator/controller product decision after runtime verification of the E
 
 ---
 
+## Deferred from: operator discussion — profile library delete/update lifecycle (2026-06-07)
+
+Source: operator request after reviewing current PROFILE-LIB-1 / PROFILE-OFFER-1 behavior: hard-deleting a profile block that is already referenced by a `PrintProfileOffer` currently succeeds, and the next offer read revalidates the offer as `invalid` with `unknown_block`. That is technically safe but too easy to do accidentally.
+
+### PROFILE-LIB-GUARD-1 — block deleting profile blocks that are referenced by offers
+
+**Source:** Operator request, "Opcja A" from the delete-behavior discussion (2026-06-07).
+
+**Where:**
+- Backend: `apps/api/app/modules/slicer/admin_router.py` `DELETE /api/admin/profiles/library/{block_id}`.
+- Engine helpers: `apps/api/app/modules/slicer/profile_offer.py` / `profile_library.py`.
+- Tests: `apps/api/tests/test_admin_profile_library.py`, `apps/api/tests/test_admin_profile_offers.py`.
+
+**Problem:** `profile_library.delete_block(root, block_id)` removes the block body + manifest without checking whether any offer sidecar references that `block_id` in its embedded `chain`. Read-time offer revalidation then marks affected offers `invalid unknown_block`; the offer is not eagerly deleted. This is a good fail-safe after accidental external filesystem loss, but it is a poor admin UX for an intentional in-product delete.
+
+**Desired behavior:** The admin delete endpoint should fail closed when the block is referenced by one or more offers:
+
+- `DELETE /api/admin/profiles/library/{block_id}` returns **409 `profile_block_in_use`** when any offer chain references the block.
+- Response includes a leak-fenced list of affected offers, e.g. `{offer_id, label, publish_state}` only; no raw Orca body, no filesystem path.
+- No block files are deleted and no `slicer_profile.library_delete` audit is emitted on the refused delete.
+- Non-referenced block delete keeps existing semantics: 204 on first delete, 404 on re-delete, audited.
+- Keep current read-time `invalid unknown_block` behavior as a resilience fallback for out-of-band filesystem deletion or corrupted state; do not remove that test/contract.
+
+**Fix sketch:** Add a pure helper like `profile_offer.offers_referencing_block(root, block_id) -> list[dict]` that scans `list_offers(root)` and checks `sidecar["chain"].values()`. Call it in `delete_profile_block` before `profile_library.delete_block`. If non-empty, raise `_reject(409, "profile_block_in_use", ...)` with a structured, leak-fenced payload. Add tests for: referenced block delete returns 409 and leaves block intact; unreferenced block delete still 204/audited; out-of-band delete still causes offer list/get to show `invalid unknown_block`.
+
+**Trigger / priority:** Should-fix soon before heavier operator use of the profile library. This is a small safety story and can be bundled with the offer freshness/resync UX below if that story is promoted.
+
+### PROFILE-OFFER-SYNC-1 — detect stale published offers after profile-block upsert and offer one-click republish/reslice
+
+**Source:** Operator request (2026-06-07): after a profile block upsert/update, show that affected offers require republish/reslice and allow doing it now or later; on the offers screen, show a status badge that the offer is not current plus an adjacent resync/reslice/re-estimate action.
+
+**Where:**
+- Backend import/upsert: `POST /api/admin/profiles/library` in `apps/api/app/modules/slicer/admin_router.py`.
+- Offer publish state: `apps/api/app/modules/slicer/profile_publish.py` and `profile_offer.py` sidecars under `<root>/offers/*.json`.
+- Offer DTOs: `apps/api/app/modules/slicer/schemas.py` `PrintProfileOffer`.
+- Frontend: `apps/web/src/modules/admin/ProfileLibraryPage.tsx`, `ProfileOffersPage.tsx`, hooks under `apps/web/src/modules/admin/hooks/`.
+- Tests: backend offer/library tests; frontend ProfileOffersPage/ProfileLibraryPage tests; visual baseline for the stale badge/action.
+
+**Problem:** Re-importing a library block with the same `(profile_type, name)` is an atomic upsert with the same `block_id`, so existing offers keep referencing it. However, if that block affects slicing, any already-published offer still carries its old `published_bundle_hash` / estimate until the operator republishes. Today there is no explicit stale/sync state in the offer DTO and no UI prompt after upsert, so an operator can believe the offer reflects the new profile when the published bundle still reflects the old one.
+
+**Desired behavior:**
+
+1. **On profile block upsert/update:** if the imported block overwrote an existing block and that block is referenced by any published offer, the UI shows a modal/banner: "Affected offers require republish/reslice" with affected offer labels and two choices:
+   - **Republish/reslice now** — call the existing publish path for each affected offer, using each offer's existing `published_stl_hash` when present.
+   - **Later** — leave offers marked stale.
+2. **On the offers screen:** each offer shows a sync badge derived from read-time state, e.g. `current`, `stale`, `unpublished`, `invalid`, `queued/recomputing` if available. Stale offers get an adjacent `Republish / reslice` action.
+3. **Backend contract:** expose enough data for the frontend without raw Orca bodies or internal paths. A candidate DTO addition: `sync_state`, `sync_reasons`, and `affected_by_block_update` / `needs_republish` metadata. Keep `publish_state` as the existing persisted state; add sync as a derived/read-time projection.
+4. **No automatic silent reslice.** The operator must explicitly choose "now"; otherwise the system only marks/surfaces stale. This avoids surprise CPU/queue spikes.
+
+**Implementation notes / design options:**
+
+- Staleness detection must be deterministic and cheap enough for list view. Prefer a sidecar fingerprint over re-running full Orca resolve on every list:
+  - At publish time, store a `published_chain_fingerprint` derived from the referenced block manifests/bodies or manifest `imported_at`/content hash.
+  - At read time, recompute the current chain fingerprint from referenced blocks; mismatch + `publish_state=published` ⇒ `sync_state=stale`.
+  - If a referenced block is missing, `validation_state=invalid` still wins.
+- If exact bundle freshness is required, a later stronger variant can dry-resolve the chain and compare to `published_bundle_hash`, but do not make offer-list rendering mutate bundle stores or enqueue jobs.
+- Reuse existing `POST /api/admin/profiles/offers/{offer_id}/publish`; if `published_stl_hash` is present, the FE can republish with that hash. If absent, require operator to choose an STL before resync.
+- The profile-import response may need an additive envelope or a sibling endpoint to report `affected_offers`. Avoid breaking the existing `ProfileLibraryBlock` response unless the API-types and FE callers are migrated in the same story.
+
+**Acceptance sketch:**
+
+- Given an offer is published and references process block P, when P is upserted with the same name/type but changed content, then the offer list returns `sync_state="stale"` and the FE shows a stale badge plus resync action.
+- Given the operator clicks resync, then the existing publish path is called with the offer's previous `published_stl_hash`, a new publish state is written, and the stale badge clears after refetch.
+- Given the operator chooses later after import, then no slice is enqueued and the stale badge remains visible.
+- Given an unpublished offer references the updated block, then import may show it as affected but the offer is not `stale`; it is simply `unpublished` / not-current by definition.
+- Given an invalid offer with a missing block, `invalid` wins over `stale`.
+
+**Trigger / priority:** Product/ops should-fix. Promote after or with PROFILE-LIB-GUARD-1; highest value once profile updates become routine and offers are actually member-facing / relied on for production estimates.
+
+---
+
 ## Declined / done
 
 _(none yet)_
