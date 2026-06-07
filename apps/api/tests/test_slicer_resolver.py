@@ -23,6 +23,7 @@ import pytest
 
 from app.modules.slicer.bundle_store import BundleStore
 from app.modules.slicer.merge import (
+    InvalidPartialError,
     MissingSystemProfileError,
     normalize_for_cli,
     resolve_inheritance,
@@ -129,6 +130,59 @@ def test_resolve_inheritance_missing_parent_raises():
         resolve_inheritance(tree, {"inherit": "no-such-system-profile"})
 
 
+# --- PROFILE-PUBLISH-FIX: plural `inherits` (real Orca) == singular `inherit` ----
+#
+# Imported real Orca USER profiles carry the PLURAL key ``inherits``; the bench/
+# legacy exports carry singular ``inherit``. The merge path historically resolved
+# only the singular key, so a published offer chain built from real Orca blocks
+# merged NOTHING from its system parent and leaked an unresolved ``inherits`` key
+# into the bundle — headless Orca then rejected it (``process not compatible with
+# printer`` / RC -17) while the Windows GUI silently resolved it from its registry.
+
+
+def test_resolve_inheritance_resolves_plural_inherits_like_singular():
+    # The system child uses singular ``inherit`` (bench-exported tree); the user
+    # partial uses plural ``inherits`` (real Orca) — exactly the live mixed chain.
+    tree = {
+        "0.20mm Standard @Creality": {
+            "name": "0.20mm Standard @Creality",
+            "inherit": "fdm_process_common",
+            "from": "system",
+            "layer_height": "0.2",
+        },
+        "fdm_process_common": {
+            "name": "fdm_process_common",
+            "from": "system",
+            "wall_loops": "2",
+            "sparse_infill_density": "15%",
+        },
+    }
+    user_partial = {
+        "name": "AI 0.20mm TPU - FlowTech",
+        "from": "User",
+        "inherits": "0.20mm Standard @Creality",  # PLURAL — real Orca user export
+        "wall_loops": "3",  # user override must win
+    }
+    merged = resolve_inheritance(tree, user_partial)
+    assert merged["wall_loops"] == "3"  # user partial wins over inherited "2"
+    assert merged["layer_height"] == "0.2"  # materialized from the system child
+    assert merged["sparse_infill_density"] == "15%"  # materialized from the grandparent
+    assert "inherits" not in merged  # plural recipe key resolved away
+    assert "inherit" not in merged  # singular recipe key resolved away
+
+
+def test_resolve_inheritance_plural_inherits_missing_parent_raises():
+    with pytest.raises(MissingSystemProfileError):
+        resolve_inheritance({}, {"inherits": "no-such-system-profile"})
+
+
+def test_resolve_inheritance_rejects_non_string_plural_inherits():
+    # A malformed plural ``inherits`` (list/number) must classify as invalid_partial,
+    # never leak a bare TypeError — mirroring the singular-key guard.
+    with pytest.raises(InvalidPartialError):
+        resolve_inheritance({}, {"inherits": ["A", "B"]})
+
+
 # --- AC-4: normalize — inject type, drop instantiation --------------------------
 
 
@@ -151,6 +205,16 @@ def test_normalize_does_not_mutate_input():
     snapshot = dict(src)
     normalize_for_cli(src, profile_kind="process")
     assert src == snapshot
+
+
+def test_normalize_drops_plural_inherits_key():
+    # Defensive: even if a plural ``inherits`` survived to normalization, it must
+    # never reach the CLI-bound bundle (PROFILE-PUBLISH-FIX).
+    out = normalize_for_cli(
+        {"inherits": "Some Parent", "layer_height": "0.2"}, profile_kind="process"
+    )
+    assert "inherits" not in out
+    assert out["layer_height"] == "0.2"
 
 
 # --- AC-5 / AC-10: canonicalized bundle hash ------------------------------------

@@ -18,9 +18,14 @@ from typing import Any
 
 from app.modules.slicer.models import ProfileKind
 
-# The Orca key naming the parent a profile derives from. Resolved away in the
-# merged output (it is a recipe input, not a slicing setting).
-_INHERIT_KEY = "inherit"
+# The Orca keys naming the parent a profile derives from. Resolved away in the
+# merged output (a recipe input, not a slicing setting). Real Orca USER profiles
+# carry the PLURAL ``inherits``; the bench/legacy exports carry singular
+# ``inherit``. Both are resolved equivalently — a published offer chain built from
+# real Orca blocks must merge its system parent, not leak an unresolved key into
+# the headless-CLI bundle (PROFILE-PUBLISH-FIX; mirrors ``profile_library.declared_inherit``).
+# Plural is checked first so a profile carrying both keys prefers the real-Orca one.
+_INHERIT_KEYS = ("inherits", "inherit")
 
 # The Orca key that resolved-system profiles carry and that the CLI ``--load-*``
 # path rejects; dropped during normalization (proven by the bench PoC — AC-4).
@@ -49,6 +54,26 @@ class InvalidPartialError(Exception):
     """
 
 
+def _inherit_ref(body: dict) -> tuple[str | None, object]:
+    """Return ``(key, raw_value)`` for whichever inherit key is present, else ``(None, None)``.
+
+    Preference order is :data:`_INHERIT_KEYS` (plural ``inherits`` first), so a profile
+    carrying both keys resolves against the real-Orca one. The raw value is returned
+    unvalidated so the caller can classify a non-string parent as ``invalid_partial``
+    rather than silently treating it as "no parent".
+    """
+    for key in _INHERIT_KEYS:
+        if key in body:
+            return key, body[key]
+    return None, None
+
+
+def _drop_inherit_keys(body: dict) -> None:
+    """Strip every inherit recipe key (plural and singular) from ``body`` in place."""
+    for key in _INHERIT_KEYS:
+        body.pop(key, None)
+
+
 def _deep_merge(parent: dict, child: dict) -> dict:
     """Return ``parent`` deep-merged with ``child``; child wins on every conflict.
 
@@ -66,32 +91,36 @@ def _deep_merge(parent: dict, child: dict) -> dict:
 
 
 def resolve_inheritance(system_tree: dict[str, dict], user_partial: dict) -> dict:
-    """Recursively resolve the Orca ``inherit`` chain; the user partial wins (AC-3).
+    """Recursively resolve the Orca inherit chain; the user partial wins (AC-3).
 
     ``system_tree`` maps a system profile ``name`` → its raw JSON dict. The
-    ``user_partial`` ``inherit``s a system profile, which may itself ``inherit`` a
-    parent (a ≥2-level chain). Profiles are merged from the most-base ancestor up
-    to the user partial, deep-merging child-over-parent, so the user partial is the
-    most-derived layer and wins on every conflict. The ``inherit`` key is resolved
-    away from the result.
+    ``user_partial`` inherits a system profile (via plural ``inherits`` for real Orca
+    user exports, or singular ``inherit`` for the bench/legacy shape — both handled
+    equivalently), which may itself inherit a parent (a ≥2-level chain). Profiles are
+    merged from the most-base ancestor up to the user partial, deep-merging
+    child-over-parent, so the user partial is the most-derived layer and wins on every
+    conflict. Every inherit recipe key is resolved away from the result.
 
-    Raises :class:`MissingSystemProfileError` if any ``inherit`` reference is
-    absent from ``system_tree`` (no silent partial merge).
+    Raises :class:`MissingSystemProfileError` if any inherit reference is absent from
+    ``system_tree`` (no silent partial merge — the failure that previously hid behind
+    a plural ``inherits`` leak and surfaced only as Orca RC -17).
     """
     # Walk the chain from the user partial down to the base ancestor, collecting
     # each layer most-derived-first; guard against inherit cycles.
     chain: list[dict] = [user_partial]
     seen: set[str] = set()
     current = user_partial
-    while _INHERIT_KEY in current:
-        parent_name = current[_INHERIT_KEY]
-        # ``inherit`` must name a single system profile; anything else (list, dict,
+    while True:
+        key, parent_name = _inherit_ref(current)
+        if key is None:
+            break
+        # An inherit key must name a single system profile; anything else (list, dict,
         # number, …) is a malformed partial, not a missing/cyclic reference. Reject
         # it here so it classifies as ``invalid_partial`` rather than leaking a bare
         # ``TypeError: unhashable type`` from the cycle/lookup checks below.
         if not isinstance(parent_name, str):
             raise InvalidPartialError(
-                f"{_INHERIT_KEY!r} must be a system-profile name string, "
+                f"{key!r} must be a system-profile name string, "
                 f"got {type(parent_name).__name__}: {parent_name!r}"
             )
         if parent_name in seen:
@@ -107,7 +136,7 @@ def resolve_inheritance(system_tree: dict[str, dict], user_partial: dict) -> dic
     merged: dict[str, Any] = {}
     for layer in reversed(chain):
         merged = _deep_merge(merged, layer)
-    merged.pop(_INHERIT_KEY, None)
+    _drop_inherit_keys(merged)
     return merged
 
 
@@ -123,6 +152,9 @@ def normalize_for_cli(merged: dict, *, profile_kind: ProfileKind) -> dict:
     """
     normalized = dict(merged)
     normalized.pop(_INSTANTIATION_KEY, None)
-    normalized.pop(_INHERIT_KEY, None)  # defensive — resolve_inheritance already drops it
+    # Defensive — resolve_inheritance already drops every inherit key; strip both the
+    # plural ``inherits`` and singular ``inherit`` so neither can ever reach the
+    # headless-CLI bundle even on a normalize-only path (PROFILE-PUBLISH-FIX).
+    _drop_inherit_keys(normalized)
     normalized["type"] = profile_kind
     return normalized

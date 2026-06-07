@@ -99,6 +99,80 @@ def _seed_tpu_chain(root: Path) -> ProfileChain:
     )
 
 
+def _seed_plural_inherits_chain(root: Path) -> ProfileChain:
+    """Seed an offer chain whose block bodies carry the PLURAL real-Orca ``inherits``
+    key (the live PROFILE-PUBLISH-FIX shape), each inheriting a vendored system parent.
+
+    This is the exact shape that previously compiled to a sparse bundle that leaked an
+    unresolved ``inherits`` key and failed headless Orca with RC -17 — the singular
+    ``inherit`` bench shape (used by :func:`_seed_tpu_chain`) masked the bug.
+    """
+    machine_body = {
+        "name": "AI Creality K1 Max - MicroSwiss HF",
+        "from": "User",
+        "inherits": "Creality K1 Max MicroSwiss HF",
+        "z_offset": "-0.05",
+    }
+    process_body = {
+        "name": "AI 0.20mm TPU - FlowTech",
+        "from": "User",
+        "inherits": "0.20mm Standard",
+        "outer_wall_speed": "25",
+    }
+    filament_body = {
+        "name": "AI Rosa3D Flex 96A Black",
+        "from": "User",
+        "inherits": "Rosa3D Flex 96A",
+        "filament_type": ["TPU"],
+    }
+    machine = _store_chain_block(root, "machine", "offer-machine", machine_body)
+    process = _store_chain_block(root, "process", "offer-process", process_body)
+    filament = _store_chain_block(
+        root, "filament", "offer-filament", filament_body, material_type="TPU"
+    )
+    return ProfileChain(
+        machine_block_id=machine,
+        process_block_id=process,
+        filament_block_id=filament,
+    )
+
+
+def test_resolve_chain_materializes_plural_inherits_and_strips_recipe_keys(
+    tmp_path: Path,
+) -> None:
+    _copy_system_tree(tmp_path)
+    chain = _seed_plural_inherits_chain(tmp_path)
+    store = BundleStore(tmp_path / "bundle-store")
+
+    outcome = resolve_chain(
+        chain,
+        source=VendoredProfileSource(tmp_path),
+        store=store,
+        validator=_CountingValidator(),
+        orca_version="2.3.2",
+        material_class="TPU",
+    )
+
+    assert isinstance(outcome, ResolveSuccess)
+    bundle = outcome.bundle
+
+    # No recipe key (plural OR singular) may leak into the CLI-bound bundle.
+    for profile in (bundle.machine, bundle.process, bundle.filament):
+        assert "inherits" not in profile
+        assert "inherit" not in profile
+
+    # Fully materialized: inherited system settings are present, not just the sparse
+    # user overrides — this is the difference between RC -17 and a sliceable bundle.
+    assert bundle.machine["printer_model"] == "Creality K1 Max"  # from system child
+    assert bundle.machine["gcode_flavor"] == "marlin"  # from the grandparent
+    assert bundle.process["sparse_infill_density"] == "15%"  # from the system parent
+    assert bundle.filament["filament_max_volumetric_speed"] == ["3.5"]  # from system parent
+
+    # User overrides survive the merge.
+    assert bundle.process["outer_wall_speed"] == "25"
+    assert bundle.machine["z_offset"] == "-0.05"
+
+
 def test_resolve_chain_persists_bundle_without_grid_intents(tmp_path: Path) -> None:
     _copy_system_tree(tmp_path)
     chain = _seed_tpu_chain(tmp_path)
