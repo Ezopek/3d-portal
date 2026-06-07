@@ -16,6 +16,10 @@ from typing import ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+# ProfileSelection is the pure Story 35.1 policy result; importing it here is
+# cycle-free because profile_policy imports neither models nor overrides.
+from app.modules.slicer.profile_policy import ProfileSelection
+
 # Material classes the resolver knows about (PRD § Initiative 20). An intent
 # outside this set has no material-class default and resolves to a classified
 # ``unsupported_material_class`` failure (AC-7), never a silent wrong default.
@@ -131,6 +135,11 @@ class ResolveReason(StrEnum):
     missing_system_profile = "missing_system_profile"
     cli_validation_failed = "cli_validation_failed"
     invalid_partial = "invalid_partial"
+    # Story 35.2 (Decision AS): the profile-selection policy resolved no Orca filament
+    # profile for the selected (material, filament) — a CLASSIFIED no-estimate absence,
+    # NOT a malformed profile. No bundle is written and the ingest/enqueue path declines
+    # to slice (no silent wrong fallback). Mirrors EstimateProfileSource.unavailable_no_profile.
+    unavailable_no_profile = "unavailable_no_profile"
 
 
 class ResolveFailure(BaseModel):
@@ -145,11 +154,20 @@ class ResolveSuccess(BaseModel):
 
     ``from_cache`` is True when an exact pre-resolved bundle already existed for
     this content (the exact-bundle precedence branch short-circuited).
+
+    ``profile_selection`` (Story 35.2, Decision AS) carries the classified
+    :class:`~app.modules.slicer.profile_policy.ProfileSelection` when a policy
+    selection drove the resolve — populated on BOTH the fresh-persist and the
+    ``from_cache`` branches so the 35.3 estimate read API can surface the
+    ``EstimateProfileSource`` + selected material/ref/profile WITHOUT re-resolving.
+    ``None`` for a legacy (no-selection) resolve. It is METADATA only — never folded
+    into ``bundle_hash`` (the bundle stays content-addressed; NFR23-CACHE-INVARIANT-1).
     """
 
     bundle: SlicerProfileBundle
     triple: ResolvedTriple
     from_cache: bool = Field(default=False)
+    profile_selection: ProfileSelection | None = None
 
 
 # A resolve outcome is exactly one of success or classified failure.

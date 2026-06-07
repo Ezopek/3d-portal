@@ -44,6 +44,7 @@ from app.modules.slicer.overrides import (
     apply_filament_overrides,
     overrides_fingerprint,
 )
+from app.modules.slicer.profile_policy import EstimateProfileSource, ProfileSelection
 from app.modules.slicer.validation import (
     CliValidator,
     NullCliValidator,
@@ -362,6 +363,26 @@ def _resolve_partials(
     return ResolveSuccess(bundle=bundle, triple=triple, from_cache=False)
 
 
+def _apply_profile_selection(partials: dict, selection: ProfileSelection) -> dict:
+    """Re-target the filament partial's ``inherit`` to the policy-selected profile (35.2).
+
+    An ``orca_filament_profile_ref`` IS a system filament profile NAME, so swapping the
+    filament partial's parent before :func:`resolve_inheritance` materializes the chosen
+    profile into the resolved filament JSON — and the EXISTING :func:`compute_bundle_hash`
+    separates exact/default/variant bundles with NO new hash input (NFR23-CACHE-INVARIANT-1).
+    Both the singular ``inherit`` (bench/legacy) and the plural ``inherits`` (real Orca)
+    recipe keys are replaced so no stale parent survives. A non-dict / missing filament
+    partial is left UNTOUCHED so the ``_resolve_partials`` shape gate still classifies it as
+    ``invalid_partial`` (no ``KeyError``/``TypeError`` leak). Returns a NEW dict; no mutation.
+    """
+    if not isinstance(partials, dict) or not isinstance(partials.get("filament"), dict):
+        return partials
+    filament = dict(partials["filament"])
+    filament.pop("inherits", None)
+    filament["inherit"] = selection.orca_filament_profile_ref
+    return {**partials, "filament": filament}
+
+
 def resolve(
     intent: PrintIntentPreset,
     *,
@@ -371,6 +392,7 @@ def resolve(
     validator: CliValidator,
     orca_version: str,
     attribution_sink: AttributionSink | None = None,
+    profile_selection: ProfileSelection | None = None,
 ) -> ResolveOutcome:
     """Resolve ``intent`` to a persisted bundle, or a classified failure (AC-7).
 
@@ -391,6 +413,20 @@ def resolve(
     ``override_provider``: on a SUCCESSFUL resolve whose intent pins a
     ``spoolman_filament_ref`` it records ``(ref, intent, bundle_hash)``. ``None`` (the
     default) ⇒ byte-identical no-op, so every existing caller is unaffected.
+
+    ``profile_selection`` (Story 35.2, Decision AS) is the OPT-IN policy seam:
+
+    - ``None`` (every existing caller's default) ⇒ the resolve is BYTE-IDENTICAL to the
+      material-class-default path above (NFR23-CACHE-INVARIANT-1).
+    - an ``unavailable_no_profile`` selection ⇒ a classified
+      ``ResolveFailure(unavailable_no_profile)`` returned BEFORE any hashing/writing, so a
+      missing profile never slices a guessed fallback (the ingest/enqueue path declines on
+      ``not isinstance(_, ResolveSuccess)``).
+    - an ``exact_filament_mapping`` / ``default_material_profile`` selection ⇒ the chosen
+      Orca filament profile is folded in by re-targeting the filament partial's ``inherit``
+      BEFORE the merge (clause 2 above), so the ``filament.extra`` numeric override layer
+      still applies AFTER the policy-selected base profile. The supplied selection is
+      attached to the ``ResolveSuccess`` (fresh + cache branches) as read-only metadata.
     """
     # (1) unsupported material class — fail loud, before any hashing/writing.
     partials = source.intent_partials(intent)
@@ -403,6 +439,20 @@ def resolve(
             ),
         )
 
+    # (1b) profile-selection policy (opt-in). A classified absence short-circuits before
+    # any write; a usable selection re-targets the filament base profile before the merge.
+    if profile_selection is not None:
+        if profile_selection.source is EstimateProfileSource.unavailable_no_profile:
+            return ResolveFailure(
+                reason=ResolveReason.unavailable_no_profile,
+                message=(
+                    "no Orca filament profile configured for selected "
+                    f"material={profile_selection.selected_material!r} "
+                    f"filament_ref={intent.spoolman_filament_ref!r}"
+                ),
+            )
+        partials = _apply_profile_selection(partials, profile_selection)
+
     outcome = _resolve_partials(
         partials,
         source=source,
@@ -414,6 +464,8 @@ def resolve(
     )
     if isinstance(outcome, ResolveSuccess):
         _record_attribution(attribution_sink, intent, outcome.bundle.bundle_hash)
+        if profile_selection is not None:
+            outcome = outcome.model_copy(update={"profile_selection": profile_selection})
     return outcome
 
 
@@ -475,6 +527,7 @@ def resolve_intent(
     override_provider: OverrideProvider | None = None,
     validator: CliValidator | None = None,
     attribution_sink: AttributionSink | None = None,
+    profile_selection: ProfileSelection | None = None,
 ) -> ResolveOutcome:
     """Settings-wired convenience entry point (AC-12).
 
@@ -498,4 +551,5 @@ def resolve_intent(
         validator=validator or NullCliValidator(),
         orca_version=settings.orca_version,
         attribution_sink=attribution_sink or AttributionStore(settings.slicer_bundle_store_dir),
+        profile_selection=profile_selection,
     )
