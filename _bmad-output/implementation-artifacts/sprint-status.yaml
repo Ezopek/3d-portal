@@ -1,5 +1,5 @@
 generated: 2026-05-09
-last_updated: 2026-06-07
+last_updated: 2026-06-08
 project: 3d-portal
 project_key: NOKEY
 tracking_system: file-system
@@ -231,17 +231,16 @@ development_status:
   sw-deploy-1-slicer-worker-overlay-deploy: done
   est-display-1-filestab-estimate-chip: done
   spool-evt-1-spoolman-change-source: done
-  epic-33: in-progress
+  epic-33: done
   ux-profile-1-admin-selector-ux-design: done
   33-1-readonly-admin-profile-inventory: done
   33-2-validated-profile-import-publish: done
-  33-3-profile-lifecycle-manage: backlog
   profile-lib-1-operator-profile-block-inventory: done
   profile-offer-1-print-profile-offer-chain: done
   ux-profile-offer-1-admin-offer-composition-ux-design: done
   profile-publish-1-compile-offer-chain-resolver-bridge: done
   profile-publish-fix-normalize-inherits: done
-  epic-33-retrospective: backlog
+  epic-33-retrospective: done
   epic-34: in-progress
   34-1-admin-queues-console: done
   epic-34-retrospective: backlog
