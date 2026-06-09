@@ -1,5 +1,5 @@
 generated: 2026-05-09
-last_updated: 2026-06-08
+last_updated: 2026-06-09
 project: 3d-portal
 project_key: NOKEY
 tracking_system: file-system
@@ -241,9 +241,9 @@ development_status:
   profile-publish-1-compile-offer-chain-resolver-bridge: done
   profile-publish-fix-normalize-inherits: done
   epic-33-retrospective: done
-  epic-34: in-progress
+  epic-34: done
   34-1-admin-queues-console: done
-  epic-34-retrospective: backlog
+  epic-34-retrospective: done
   epic-35: in-progress
   35-1-profile-policy-store-precedence: done
   35-2-resolver-bundle-policy-integration: done
