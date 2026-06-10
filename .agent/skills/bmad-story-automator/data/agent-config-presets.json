@@ -1,4 +1,33 @@
 {
   "version": "1.0.0",
-  "presets": []
+  "presets": [
+    {
+      "name": "claude-dev-gemini-review",
+      "createdAt": "2026-06-10T00:47:38Z",
+      "config": {
+        "perTask": {
+          "create": {
+            "primary": "claude",
+            "fallback": false
+          },
+          "dev": {
+            "primary": "claude",
+            "fallback": false
+          },
+          "auto": {
+            "primary": "claude",
+            "fallback": false
+          },
+          "review": {
+            "primary": "gemini",
+            "fallback": "claude"
+          },
+          "retro": {
+            "primary": "gemini",
+            "fallback": "claude"
+          }
+        }
+      }
+    }
+  ]
 }

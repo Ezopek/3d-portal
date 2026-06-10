@@ -19,6 +19,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.modules.slicer.models import EstimateFailureReason, MaterialClass, QualityTier
+from app.modules.slicer.profile_policy import EstimateProfileSource
 
 # The UI estimate status = the Decision AJ ``EstimateStatus`` lifecycle
 # ``{fresh, stale, queued, failed}`` PLUS ``absent`` — a 200 store miss the read
@@ -108,6 +109,23 @@ class QualityTierAvailabilityResponse(BaseModel):
     tiers: list[QualityTierAvailability]
 
 
+class ProfileSelectionContextView(BaseModel):
+    """Policy-selection provenance surfaced alongside an estimate (Story 35.3, FR23-ESTIMATE-API-1).
+
+    Carries ONLY the five DTO-fence fields (AC-2): no ``bundle_hash``, no ``settings_ids``,
+    no raw Orca profile body, no filesystem path, no g-code (FR20-PRESET-1 extended to the
+    policy-source context). ``extra="forbid"`` so an unknown field is caught by the negative-
+    assertion test (AC-2 contract).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    estimate_profile_source: EstimateProfileSource
+    selected_material: str | None = None
+    selected_spoolman_filament_ref: str | None = None
+    selected_filament_name: str | None = None
+    orca_filament_profile_name: str | None = None
+
+
 class EstimateView(BaseModel):
     """The UI-safe estimate the read endpoint returns (AC-1).
 
@@ -115,6 +133,9 @@ class EstimateView(BaseModel):
     ``status="failed"`` + ``failure_reason`` + every numeric ``None`` (NEVER ``0`` — the
     no-silent-zero contract carries through to the wire). ``filament_cost`` is
     INFORMATIONAL only (AC-9 — no quote/checkout).
+
+    ``profile_selection_context`` is additive (Story 35.3, AC-3): ``None`` on the no-filament
+    path (AC-1 backward-compat) and populated when a filament profile is selected or absent.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -129,6 +150,7 @@ class EstimateView(BaseModel):
     warnings: list[WarningView] = Field(default_factory=list)
     failure_reason: EstimateFailureReason | None = None
     override_context: OverrideContextView
+    profile_selection_context: ProfileSelectionContextView | None = None
 
 
 # --- Story 33.1 (Decision AK, OD-7) — read-only admin profile inventory DTOs --------

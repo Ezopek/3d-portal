@@ -51,6 +51,7 @@ from app.modules.slicer.models import (
     SliceWarning,
 )
 from app.modules.slicer.overrides import NoopOverrideProvider
+from app.modules.slicer.profile_policy import EstimateProfileSource, ProfileSelection
 from app.modules.slicer.resolver import VendoredProfileSource, resolve
 from app.modules.slicer.router import (
     get_arq_pool,
@@ -129,14 +130,30 @@ class _FakeResolver:
         # recompute test exercise the unresolvable-preset branch without a second resolver type.
         self.fail_reason: str | None = None
         self.fail_tiers: set[str] = set()
+        # Story 35.3: when set, raises UnavailableProfileError (the 200-absent path, AC-4/AC-5).
+        self.fail_unavailable: ProfileSelection | None = None
+        # Story 35.3: when set, returned in ResolvedPreset.profile_selection (AC-7/AC-8/AC-9).
+        # Wired into the return statement in GREEN once ResolvedPreset has the field.
+        self.resolved_profile_selection: ProfileSelection | None = None
         self.seen_intents: list[PrintIntentPreset] = []
 
     async def resolve_preset(self, intent: PrintIntentPreset) -> ResolvedPreset:
         self.called = True
         self.seen_intents.append(intent)
+        if self.fail_unavailable is not None:
+            from app.modules.slicer.estimate_read import UnavailableProfileError
+
+            raise UnavailableProfileError(
+                profile_selection=self.fail_unavailable, selected_filament_name="Test Filament"
+            )
         if self.fail_reason is not None or intent.quality_tier in self.fail_tiers:
             raise PresetResolveError(self.fail_reason or "unsupported_material_class")
-        return ResolvedPreset(bundle_hash=BUNDLE_HASH, pinned_filament=self.pinned)
+        return ResolvedPreset(
+            bundle_hash=BUNDLE_HASH,
+            pinned_filament=self.pinned,
+            profile_selection=self.resolved_profile_selection,
+            selected_filament_name="Test Filament" if self.resolved_profile_selection else None,
+        )
 
 
 # === fixture =================================================================
@@ -750,3 +767,138 @@ async def test_recompute_response_carries_no_internal_field_names(recompute_seam
         "gcode",
     ):
         assert internal not in raw, f"internal field {internal!r} leaked into the response body"
+
+
+# === Story 35.3 — profile_selection_context on the estimate API ================
+#
+# Tests for AC-1 regression, AC-4, AC-5, AC-6 unchanged, AC-7, AC-8, AC-9.
+# The _FakeResolver is extended above with fail_unavailable / resolved_profile_selection.
+
+_UNAVAILABLE_SELECTION = ProfileSelection(
+    source=EstimateProfileSource.unavailable_no_profile,
+    orca_filament_profile_ref=None,
+    selected_material=None,
+    selected_spoolman_filament_ref=None,
+)
+_EXACT_SELECTION = ProfileSelection(
+    source=EstimateProfileSource.exact_filament_mapping,
+    orca_filament_profile_ref="Bambu PLA Basic @BBL A1M 0.4 nozzle",
+    selected_material="PLA",
+    selected_spoolman_filament_ref="Bambu Lab\x1fPLA\x1fSpeed White",
+)
+_DEFAULT_SELECTION = ProfileSelection(
+    source=EstimateProfileSource.default_material_profile,
+    orca_filament_profile_ref="Generic PLA @BBL A1M 0.4 nozzle",
+    selected_material="PLA",
+    selected_spoolman_filament_ref=None,
+)
+
+
+@pytest.mark.asyncio
+async def test_35_3_read_no_filament_profile_selection_context_null(seam):
+    """GET without spoolman_filament_ref → profile_selection_context=null (AC-1 regression)."""
+    ac, _store, _resolver = seam
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.get(_read_url())  # no spoolman_filament_ref
+    assert r.status_code == 200
+    body = r.json()
+    assert body["profile_selection_context"] is None
+
+
+@pytest.mark.asyncio
+async def test_35_3_read_unavailable_no_profile_returns_200_absent_never_422(seam):
+    """GET unavailable_no_profile filament → 200 absent + context, NEVER 422 (AC-4)."""
+    ac, _store, resolver = seam
+    resolver.fail_unavailable = _UNAVAILABLE_SELECTION
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.get(_read_url(spoolman_filament_ref="Vendor\x1fPLA\x1fUnknown"))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "absent"
+    ctx = body["profile_selection_context"]
+    assert ctx is not None
+    assert ctx["estimate_profile_source"] == "unavailable_no_profile"
+    assert body["time_seconds"] is None
+    assert body["filament_g"] is None
+
+
+@pytest.mark.asyncio
+async def test_35_3_read_exact_filament_mapping_profile_selection_context(seam):
+    """GET exact_filament_mapping → profile_selection_context fully populated (AC-7)."""
+    ac, _store, resolver = seam
+    resolver.resolved_profile_selection = _EXACT_SELECTION
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.get(_read_url(spoolman_filament_ref="Bambu Lab\x1fPLA\x1fSpeed White"))
+    assert r.status_code == 200
+    body = r.json()
+    ctx = body["profile_selection_context"]
+    assert ctx is not None
+    assert ctx["estimate_profile_source"] == "exact_filament_mapping"
+    assert ctx["selected_material"] == "PLA"
+    assert ctx["selected_spoolman_filament_ref"] == "Bambu Lab\x1fPLA\x1fSpeed White"
+    assert ctx["orca_filament_profile_name"] == "Bambu PLA Basic @BBL A1M 0.4 nozzle"
+
+
+@pytest.mark.asyncio
+async def test_35_3_read_default_material_profile_context(seam):
+    """GET default_material_profile → selected_spoolman_filament_ref=null (AC-8)."""
+    ac, _store, resolver = seam
+    resolver.resolved_profile_selection = _DEFAULT_SELECTION
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.get(_read_url(spoolman_filament_ref="Vendor\x1fPLA\x1fSomePLA"))
+    assert r.status_code == 200
+    body = r.json()
+    ctx = body["profile_selection_context"]
+    assert ctx is not None
+    assert ctx["estimate_profile_source"] == "default_material_profile"
+    assert ctx["selected_spoolman_filament_ref"] is None
+    assert ctx["selected_material"] == "PLA"
+    assert ctx["orca_filament_profile_name"] == "Generic PLA @BBL A1M 0.4 nozzle"
+
+
+@pytest.mark.asyncio
+async def test_35_3_recompute_unavailable_no_profile_200_not_enqueued(recompute_seam):
+    """POST recompute unavailable_no_profile → 200, enqueued=False, no job (AC-5)."""
+    ac, _store, resolver, arq_pool = recompute_seam
+    resolver.fail_unavailable = _UNAVAILABLE_SELECTION
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.post(
+        "/api/estimates/recompute",
+        json=_recompute_body(spoolman_filament_ref="Vendor\x1fPLA\x1fUnknown"),
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["enqueued"] is False
+    est = body["estimate"]
+    assert est["status"] == "absent"
+    ctx = est["profile_selection_context"]
+    assert ctx is not None
+    assert ctx["estimate_profile_source"] == "unavailable_no_profile"
+    assert arq_pool.calls == []
+
+
+@pytest.mark.asyncio
+async def test_35_3_recompute_resolvable_carries_profile_selection_context(recompute_seam):
+    """POST recompute resolvable filament → profile_selection_context in response (AC-9)."""
+    ac, _store, resolver, _arq_pool = recompute_seam
+    resolver.resolved_profile_selection = _EXACT_SELECTION
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.post(
+        "/api/estimates/recompute",
+        json=_recompute_body(spoolman_filament_ref="Bambu Lab\x1fPLA\x1fSpeed White"),
+    )
+    assert r.status_code == 200
+    body = r.json()
+    ctx = body["estimate"]["profile_selection_context"]
+    assert ctx is not None
+    assert ctx["estimate_profile_source"] == "exact_filament_mapping"
+
+
+@pytest.mark.asyncio
+async def test_35_3_non_unavailable_resolve_failure_still_422(seam):
+    """Non-unavailable profile errors (missing_system_profile etc.) still 422 (AC-6)."""
+    ac, _store, resolver = seam
+    resolver.fail_reason = "missing_system_profile"
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.get(_read_url(spoolman_filament_ref="Vendor\x1fPLA\x1fSome"))
+    assert r.status_code == 422

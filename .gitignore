@@ -128,3 +128,4 @@ infra/.last-deploy-sha
 # for closeout evidence (see AGENTS.md § "Pre-push hook policy & gate evidence");
 # the logs reference internal hosts/paths and must not enter history.
 .hermes/
+.claude/.story-automator-active

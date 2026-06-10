@@ -247,7 +247,7 @@ development_status:
   epic-35: in-progress
   35-1-profile-policy-store-precedence: done
   35-2-resolver-bundle-policy-integration: done
-  35-3-estimate-api-source-metadata: backlog
+  35-3-estimate-api-source-metadata: done
   35-4-admin-policy-management: backlog
   35-5-estimate-ui-source-labels: backlog
   35-6-bounded-default-matrix-backfill: backlog

@@ -20,6 +20,7 @@ slicer-worker overlay out of the deploy path (SW-DEPLOY-1).
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Annotated, Any
 
@@ -31,7 +32,9 @@ from app.modules.slicer.estimate_read import (
     EstimateResolver,
     PresetResolveError,
     SettingsEstimateResolver,
+    UnavailableProfileError,
     build_override_context,
+    build_profile_selection_context,
     project_estimate,
 )
 from app.modules.slicer.estimate_store import EstimateStore
@@ -45,6 +48,8 @@ from app.modules.slicer.schemas import (
     RecomputeResponse,
 )
 from app.modules.slicer.stl_cache import validate_content_hash
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/estimates", tags=["estimates"])
 
@@ -181,9 +186,26 @@ async def read_estimate(
         printer_ref=printer_ref,
         spoolman_filament_ref=spoolman_filament_ref,
     )
+    # override_context for the unavailable path uses no pinned filament (profile absent).
+    override_context_no_filament = build_override_context(intent, None)
 
     try:
         resolved = await resolver.resolve_preset(intent)
+    except UnavailableProfileError as exc:
+        # Story 35.3 (AC-4): no profile configured → 200 absent, NOT 422.
+        # The order/request path stays open (NFR23-NO-BLOCK-1).
+        # AC-14: log source label only — no filament names, no bodies.
+        logger.info(
+            "slicer.estimate.unavailable_profile",
+            extra={
+                "labels.estimate_profile_source": exc.profile_selection.source.value,
+                "labels.reason": "unconfigured",
+            },
+        )
+        ctx = build_profile_selection_context(exc.profile_selection, exc.selected_filament_name)
+        return project_estimate(
+            None, override_context=override_context_no_filament, profile_selection_context=ctx
+        )
     except PresetResolveError as exc:
         # The preset does not resolve to a bundle (e.g. a vendored profile is absent for
         # this printer/class/tier). A classified, no-internal-leak 422.
@@ -191,7 +213,13 @@ async def read_estimate(
 
     record = store.read(stl_hash, resolved.bundle_hash)
     override_context = build_override_context(intent, resolved.pinned_filament)
-    return project_estimate(record, override_context=override_context)
+    return project_estimate(
+        record,
+        override_context=override_context,
+        profile_selection_context=build_profile_selection_context(
+            resolved.profile_selection, resolved.selected_filament_name
+        ),
+    )
 
 
 @router.post(
@@ -229,15 +257,36 @@ async def recompute_estimate(
         printer_ref=body.printer_ref,
         spoolman_filament_ref=body.spoolman_filament_ref,
     )
+    override_context_no_filament = build_override_context(intent, None)
 
     try:
         resolved = await resolver.resolve_preset(intent)
+    except UnavailableProfileError as exc:
+        # Story 35.3 (AC-5): no profile configured → 200, enqueued=False, no job (NFR23-NO-BLOCK-1).
+        # AC-14: log source label only — no filament names, no bodies.
+        logger.info(
+            "slicer.estimate.unavailable_profile",
+            extra={
+                "labels.estimate_profile_source": exc.profile_selection.source.value,
+                "labels.reason": "unconfigured",
+            },
+        )
+        ctx = build_profile_selection_context(exc.profile_selection, exc.selected_filament_name)
+        return RecomputeResponse(
+            enqueued=False,
+            estimate=project_estimate(
+                None, override_context=override_context_no_filament, profile_selection_context=ctx
+            ),
+        )
     except PresetResolveError as exc:
         # Same classified, no-internal-leak 422 the read endpoint returns for an unresolvable
         # preset — and the enqueue is short-circuited (no job for a preset that has no bundle).
         raise HTTPException(status_code=422, detail="preset not resolvable") from exc
 
     override_context = build_override_context(intent, resolved.pinned_filament)
+    profile_selection_context = build_profile_selection_context(
+        resolved.profile_selection, resolved.selected_filament_name
+    )
     record = store.read(body.stl_hash, resolved.bundle_hash)
 
     # Idempotency / self-DoS guard (R1): a recompute already in flight ('queued') must NOT
@@ -247,7 +296,11 @@ async def recompute_estimate(
     if record is not None and record.status == EstimateStatus.queued:
         return RecomputeResponse(
             enqueued=False,
-            estimate=project_estimate(record, override_context=override_context),
+            estimate=project_estimate(
+                record,
+                override_context=override_context,
+                profile_selection_context=profile_selection_context,
+            ),
         )
 
     # fresh / stale / failed / absent ⇒ enqueue an idempotent by-hash re-slice. Reuse the Story
@@ -263,5 +316,9 @@ async def recompute_estimate(
     result_record = queued if queued is not None else record
     return RecomputeResponse(
         enqueued=True,
-        estimate=project_estimate(result_record, override_context=override_context),
+        estimate=project_estimate(
+            result_record,
+            override_context=override_context,
+            profile_selection_context=profile_selection_context,
+        ),
     )
