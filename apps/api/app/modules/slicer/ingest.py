@@ -217,7 +217,7 @@ async def ingest_stl_part(
 async def ingest_stl_for_default_matrix(
     model_file: ModelFile,
     *,
-    resolved_cells: "list[Any]",
+    resolved_cells: list[Any],
     arq_pool: Any,
     stl_cache: StlCache,
     estimate_store: EstimateStore,
@@ -232,9 +232,9 @@ async def ingest_stl_for_default_matrix(
     A classified failure on one cell does NOT stop the others.
     """
     from app.modules.slicer.models import (
+        ResolvedTriple,
         ResolveSuccess,
         SlicerProfileBundle,
-        ResolvedTriple,
     )
 
     results: list[IngestResult] = []
@@ -251,9 +251,7 @@ async def ingest_stl_for_default_matrix(
 
         _bh = rc.bundle_hash
 
-        def _preset_resolver(
-            _intent: PrintIntentPreset, _bundle_hash: str = _bh
-        ) -> ResolveSuccess:
+        def _preset_resolver(_intent: PrintIntentPreset, _bundle_hash: str = _bh) -> ResolveSuccess:
             return ResolveSuccess(
                 bundle=SlicerProfileBundle(
                     bundle_hash=_bundle_hash,

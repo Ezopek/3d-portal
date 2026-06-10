@@ -518,7 +518,7 @@ def resolve_chain(
             reason=ResolveReason.invalid_partial,
             message="profile chain references a missing or unreadable library block body",
         )
-    # 35.6 — mirrors resolve() lines 444–454
+    # 35.6 - mirrors resolve() lines 444-454
     if profile_selection is not None:
         if profile_selection.source is EstimateProfileSource.unavailable_no_profile:
             return ResolveFailure(
@@ -538,7 +538,7 @@ def resolve_chain(
         material_class=material_class,
         overrides=None,
     )
-    # Propagate profile_selection to ResolveSuccess (mirrors resolve() lines 467–468)
+    # Propagate profile_selection to ResolveSuccess (mirrors resolve() lines 467-468)
     if profile_selection is not None and isinstance(outcome, ResolveSuccess):
         outcome = outcome.model_copy(update={"profile_selection": profile_selection})
     return outcome

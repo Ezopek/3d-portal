@@ -201,13 +201,13 @@ def test_unavailable_profile_error_none_filament_name():
     exc = UnavailableProfileError(profile_selection=selection, selected_filament_name=None)
     assert exc.selected_filament_name is None
 
+
 # === SettingsEstimateResolver fallback integration ==============================
 
 
 @pytest.mark.asyncio
 async def test_35_3_settings_resolver_uses_fallback_material_when_spoolman_down(monkeypatch):
     """SettingsEstimateResolver uses intent.material_class as fallback when Spoolman is down."""
-    from unittest.mock import MagicMock
     from app.modules.slicer.estimate_read import SettingsEstimateResolver
     from app.modules.slicer.models import (
         PrintIntentPreset,
@@ -215,23 +215,25 @@ async def test_35_3_settings_resolver_uses_fallback_material_when_spoolman_down(
         ResolveSuccess,
         SlicerProfileBundle,
     )
-    from app.modules.slicer.profile_policy import ProfilePolicy, MaterialDefault, EstimateProfileSource
+    from app.modules.slicer.profile_policy import (
+        EstimateProfileSource,
+        MaterialDefault,
+        ProfilePolicy,
+    )
 
     # Mock policy with a default for PLA
     policy = ProfilePolicy(
         material_defaults={"PLA": MaterialDefault(orca_filament_profile_ref="Generic PLA")}
     )
     monkeypatch.setattr(
-        "app.modules.slicer.profile_policy.ProfilePolicyStore.load",
-        lambda self: policy
+        "app.modules.slicer.profile_policy.ProfilePolicyStore.load", lambda self: policy
     )
 
     # Mock _filaments_by_ref to simulate Spoolman down/empty snapshot
     async def mock_filaments_by_ref(self):
         return {}
-    monkeypatch.setattr(
-        SettingsEstimateResolver, "_filaments_by_ref", mock_filaments_by_ref
-    )
+
+    monkeypatch.setattr(SettingsEstimateResolver, "_filaments_by_ref", mock_filaments_by_ref)
 
     # Mock resolve to avoid filesystem hits for vendored profiles
     mock_bundle = SlicerProfileBundle.model_construct(bundle_hash="fake-hash")
@@ -242,8 +244,8 @@ async def test_35_3_settings_resolver_uses_fallback_material_when_spoolman_down(
             bundle=mock_bundle,
             triple=mock_triple,
             from_cache=False,
-            profile_selection=kwargs.get("profile_selection")
-        )
+            profile_selection=kwargs.get("profile_selection"),
+        ),
     )
 
     resolver = SettingsEstimateResolver(redis_factory=None)
@@ -252,7 +254,7 @@ async def test_35_3_settings_resolver_uses_fallback_material_when_spoolman_down(
         material_class="PLA",
         quality_tier="standard",
         printer_ref="p1s",
-        spoolman_filament_ref="some-ref"
+        spoolman_filament_ref="some-ref",
     )
 
     resolved = await resolver.resolve_preset(intent)

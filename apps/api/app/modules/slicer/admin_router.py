@@ -1179,10 +1179,11 @@ async def publish_profile_offer(
         raise _reject(exc.status_code, exc.reason_category, exc.message) from exc
 
     # Story 35.6 — offer-publish matrix hook (AC-9).
-    # Enqueue estimates for all catalog STLs × this offer's compatible material defaults.
+    # Enqueue estimates for all catalog STLs x this offer's compatible material defaults.
     # Never re-raises: a backfill failure must NOT roll back the publish.
     try:
         from app.modules.slicer.matrix_backfill import enumerate_matrix_cells, resolve_matrix_cells
+
         _settings = get_settings()
         _sidecar = profile_offer.read_offer(source.root, offer_id)
         if _sidecar is not None:
@@ -1196,10 +1197,11 @@ async def publish_profile_offer(
                     orca_version=_settings.orca_version,
                     validator=NullCliValidator(),
                 )
-                from app.modules.slicer.matrix_backfill import enqueue_matrix_for_all_stls
-                from app.modules.slicer.estimate_store import EstimateStore
-                from app.core.db.session import get_session
                 from sqlmodel import Session as _Session
+
+                from app.modules.slicer.estimate_store import EstimateStore
+                from app.modules.slicer.matrix_backfill import enqueue_matrix_for_all_stls
+
                 _counters: dict[str, int] = {}
                 with _Session(get_engine()) as _sess:
                     _counters = await enqueue_matrix_for_all_stls(
@@ -1502,27 +1504,31 @@ async def upsert_material_default(
     )
     if _profile_ref_changed:
         try:
+            from sqlmodel import Session as _Session
+
             from app.modules.slicer.bundle_store import BundleStore
             from app.modules.slicer.estimate_store import EstimateStore
             from app.modules.slicer.matrix_backfill import (
-                enumerate_matrix_cells,
                 enqueue_matrix_for_all_stls,
+                enumerate_matrix_cells,
                 resolve_matrix_cells,
             )
             from app.modules.slicer.profile_offer import list_offers
             from app.modules.slicer.stl_cache import StlCache
             from app.modules.slicer.validation import NullCliValidator
-            from sqlmodel import Session as _Session
 
             _settings = get_settings()
             _arq_pool = getattr(request.app.state, "arq", None)
             if _arq_pool is not None:
                 _all_sidecars = list_offers(source.root)
                 _compatible_sidecars = [
-                    s for s in _all_sidecars
+                    s
+                    for s in _all_sidecars
                     if norm in (s.get("compatible_material_categories") or [])
                 ]
-                _cells = enumerate_matrix_cells(_compatible_sidecars, candidate, material_filter=norm)
+                _cells = enumerate_matrix_cells(
+                    _compatible_sidecars, candidate, material_filter=norm
+                )
                 if _cells:
                     _resolved = resolve_matrix_cells(
                         _cells,

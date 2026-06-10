@@ -1,6 +1,6 @@
 """Default-matrix backfill — operator-supervised one-shot script (Story 35.6).
 
-Pre-computes the bounded default-matrix estimates: for each (published offer ×
+Pre-computes the bounded default-matrix estimates: for each (published offer x
 enabled material_default) pair, walks all catalog ``kind=stl`` ModelFile rows and
 idempotently enqueues the ``(stl_hash, bundle_hash)`` slice job.
 
@@ -35,7 +35,7 @@ import argparse
 import asyncio
 import logging
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -51,12 +51,12 @@ from app.modules.slicer.estimate_store import EstimateStore
 from app.modules.slicer.matrix_backfill import (
     ResolvedMatrixCell,
     enumerate_matrix_cells,
-    load_active_matrix,
     resolve_matrix_cells,
 )
 from app.modules.slicer.models import EstimateStatus
 from app.modules.slicer.profile_offer import list_offers
 from app.modules.slicer.profile_policy import ProfilePolicyStore
+from app.modules.slicer.profile_publish import PUBLISH_STATE_PUBLISHED, publish_state_of
 from app.modules.slicer.resolver import VendoredProfileSource
 from app.modules.slicer.stl_cache import StlCache, is_content_hash
 from app.modules.slicer.validation import NullCliValidator
@@ -68,9 +68,9 @@ _LOG = logging.getLogger("scripts.enqueue_default_matrix_backfill")
 class MatrixBackfillStats:
     """Classified counters for the default-matrix backfill run (AC-5)."""
 
-    inspected: int = 0          # total STL rows inspected
-    cells_total: int = 0        # total matrix cells enumerated
-    cells_resolved: int = 0     # cells with a resolved bundle_hash
+    inspected: int = 0  # total STL rows inspected
+    cells_total: int = 0  # total matrix cells enumerated
+    cells_resolved: int = 0  # cells with a resolved bundle_hash
     cells_resolve_failed: int = 0  # cells that failed to resolve
     enqueued: int = 0
     already_fresh: int = 0
@@ -96,7 +96,12 @@ def _inventory_stl(
         _LOG.warning("missing STL for ModelFile %s (%s)", row.id, row.storage_path)
         return
     stats.would_enqueue += cells_resolved
-    _LOG.info("dry-run would-enqueue ModelFile %s (%s) × %d cells", row.id, row.storage_path, cells_resolved)
+    _LOG.info(
+        "dry-run would-enqueue ModelFile %s (%s) x %d cells",
+        row.id,
+        row.storage_path,
+        cells_resolved,
+    )
 
 
 async def run(
@@ -137,7 +142,9 @@ async def run(
     for row in rows:
         stats.inspected += 1
         if dry_run:
-            _inventory_stl(row, content_root=content_root, stats=stats, cells_resolved=len(active_cells))
+            _inventory_stl(
+                row, content_root=content_root, stats=stats, cells_resolved=len(active_cells)
+            )
             continue
 
         abs_path = (content_root / row.storage_path).resolve()
@@ -323,7 +330,9 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        stats = asyncio.run(_run_production(dry_run=args.dry_run, include_overrides=args.include_overrides))
+        stats = asyncio.run(
+            _run_production(dry_run=args.dry_run, include_overrides=args.include_overrides)
+        )
     except Exception:
         _LOG.exception("default-matrix backfill failed")
         return 1

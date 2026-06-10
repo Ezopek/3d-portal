@@ -3,7 +3,7 @@
 This module implements the default-matrix backfill pipeline:
 
 1. :func:`enumerate_matrix_cells` — pure function; builds the cross-product of
-   published offers × enabled material_defaults (G-BACKFILL-OPT-IN: filament_overrides
+   published offers x enabled material_defaults (G-BACKFILL-OPT-IN: filament_overrides
    are NEVER enumerated here; they are opt-in only via ``--include-overrides`` flag).
 2. :func:`resolve_matrix_cells` — resolves each cell to a bundle_hash via
    ``resolve_chain``; a failure classifies as ``resolve_failed`` and is logged.
@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -51,8 +51,8 @@ class MatrixCell:
 
     offer_id: str
     offer_label: str
-    material: str            # normalized (uppercase from policy key)
-    orca_profile_ref: str    # from policy.material_defaults[material].orca_filament_profile_ref
+    material: str  # normalized (uppercase from policy key)
+    orca_profile_ref: str  # from policy.material_defaults[material].orca_filament_profile_ref
 
 
 @dataclass(frozen=True)
@@ -94,7 +94,9 @@ def enumerate_matrix_cells(
         compatible = set(sidecar.get("compatible_material_categories") or [])
 
         # filter to the requested material only, or all enabled ones
-        target_keys = [material_filter] if material_filter else list(policy.material_defaults.keys())
+        target_keys = (
+            [material_filter] if material_filter else list(policy.material_defaults.keys())
+        )
 
         for material_key in target_keys:
             if not material_key:
@@ -262,11 +264,12 @@ async def enqueue_matrix_for_all_stls(
     Returns summary counters: ``enqueued``, ``already_fresh``, ``missing_stl``, ``errors``.
     Used by both the backfill script and the event-driven hooks.
     """
+    from sqlmodel import select
+
     from app.core.db.models import ModelFile, ModelFileKind
     from app.modules.slicer.enqueue import enqueue_slice_estimate
     from app.modules.slicer.models import EstimateStatus
     from app.modules.slicer.stl_cache import is_content_hash
-    from sqlmodel import select
 
     counters: dict[str, int] = {
         "enqueued": 0,
@@ -312,7 +315,10 @@ async def enqueue_matrix_for_all_stls(
             except Exception:
                 _LOG.exception(
                     "slicer.matrix_backfill.enqueue_error",
-                    extra={"labels.offer_id": rc.cell.offer_id, "labels.material": rc.cell.material},
+                    extra={
+                        "labels.offer_id": rc.cell.offer_id,
+                        "labels.material": rc.cell.material,
+                    },
                 )
                 counters["errors"] += 1
 

@@ -651,7 +651,9 @@ def test_delete_filament_override_emits_audit_event(client_with_policy):
 # === Story 35.6 — material-default change matrix hook (AC-10) ================
 
 
-def test_put_material_default_matrix_hook_fires_on_new_entry(client_with_policy, monkeypatch, tmp_path):
+def test_put_material_default_matrix_hook_fires_on_new_entry(
+    client_with_policy, monkeypatch, tmp_path
+):
     """AC-10 (35.6): adding a brand-new enabled material default triggers enumerate_matrix_cells."""
     enumerate_calls: list = []
 
@@ -662,7 +664,9 @@ def test_put_material_default_matrix_hook_fires_on_new_entry(client_with_policy,
     # _FakeSource has no `root` — add it temporarily so source.root works in the hook
     monkeypatch.setattr(_FakeSource, "root", tmp_path, raising=False)
     monkeypatch.setattr("app.modules.slicer.profile_offer.list_offers", lambda root: [])
-    monkeypatch.setattr("app.modules.slicer.matrix_backfill.enumerate_matrix_cells", _fake_enumerate)
+    monkeypatch.setattr(
+        "app.modules.slicer.matrix_backfill.enumerate_matrix_cells", _fake_enumerate
+    )
 
     c, _ = client_with_policy
     r = c.put(
@@ -671,10 +675,14 @@ def test_put_material_default_matrix_hook_fires_on_new_entry(client_with_policy,
         cookies=_admin_cookie(),
     )
     assert r.status_code == 200, r.text
-    assert len(enumerate_calls) == 1, "enumerate_matrix_cells must be called for a new enabled default"
+    assert len(enumerate_calls) == 1, (
+        "enumerate_matrix_cells must be called for a new enabled default"
+    )
 
 
-def test_put_material_default_matrix_hook_not_fired_when_ref_unchanged(client_with_policy, monkeypatch):
+def test_put_material_default_matrix_hook_not_fired_when_ref_unchanged(
+    client_with_policy, monkeypatch
+):
     """AC-10 (35.6): if the orca_filament_profile_ref is unchanged, hook does NOT fire."""
     enumerate_calls: list = []
 
@@ -683,13 +691,17 @@ def test_put_material_default_matrix_hook_not_fired_when_ref_unchanged(client_wi
         return []
 
     monkeypatch.setattr("app.modules.slicer.profile_offer.list_offers", lambda root: [])
-    monkeypatch.setattr("app.modules.slicer.matrix_backfill.enumerate_matrix_cells", _fake_enumerate)
+    monkeypatch.setattr(
+        "app.modules.slicer.matrix_backfill.enumerate_matrix_cells", _fake_enumerate
+    )
 
     c, store = client_with_policy
     # Pre-seed the default so the first PUT below has the same ref
-    store.save(ProfilePolicy(
-        material_defaults={"PETG": MaterialDefault(orca_filament_profile_ref="Generic PETG")},
-    ))
+    store.save(
+        ProfilePolicy(
+            material_defaults={"PETG": MaterialDefault(orca_filament_profile_ref="Generic PETG")},
+        )
+    )
 
     # PUT with the same ref — ref is unchanged, hook must NOT fire
     r = c.put(
@@ -710,7 +722,9 @@ def test_put_material_default_matrix_hook_not_fired_when_disabled(client_with_po
         return []
 
     monkeypatch.setattr("app.modules.slicer.profile_offer.list_offers", lambda root: [])
-    monkeypatch.setattr("app.modules.slicer.matrix_backfill.enumerate_matrix_cells", _fake_enumerate)
+    monkeypatch.setattr(
+        "app.modules.slicer.matrix_backfill.enumerate_matrix_cells", _fake_enumerate
+    )
 
     c, _ = client_with_policy
     r = c.put(
@@ -722,13 +736,18 @@ def test_put_material_default_matrix_hook_not_fired_when_disabled(client_with_po
     assert enumerate_calls == [], "enumerate_matrix_cells must NOT be called for a disabled default"
 
 
-def test_put_material_default_matrix_hook_exception_does_not_prevent_200(client_with_policy, monkeypatch):
+def test_put_material_default_matrix_hook_exception_does_not_prevent_200(
+    client_with_policy, monkeypatch
+):
     """AC-10 (35.6): a hook exception is swallowed — the policy save and 200 response succeed."""
+
     def _raise(*args, **kwargs):
         raise RuntimeError("matrix hook exploded")
 
     monkeypatch.setattr("app.modules.slicer.matrix_backfill.enumerate_matrix_cells", _raise)
-    monkeypatch.setattr("app.modules.slicer.profile_offer.list_offers", lambda root: [{"dummy": True}])
+    monkeypatch.setattr(
+        "app.modules.slicer.profile_offer.list_offers", lambda root: [{"dummy": True}]
+    )
 
     c, _ = client_with_policy
     r = c.put(

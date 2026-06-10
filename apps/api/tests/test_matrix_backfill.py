@@ -11,8 +11,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -72,7 +70,9 @@ def _policy(
     filament_overrides: dict | None = None,
 ) -> ProfilePolicy:
     return ProfilePolicy(
-        material_defaults={material: MaterialDefault(orca_filament_profile_ref=ref, enabled=enabled)},
+        material_defaults={
+            material: MaterialDefault(orca_filament_profile_ref=ref, enabled=enabled)
+        },
         filament_overrides=filament_overrides or {},
     )
 
@@ -118,9 +118,11 @@ def test_enumerate_filament_overrides_never_appear_in_cells():
     """G-BACKFILL-OPT-IN: filament_overrides are NEVER enumerated in the default matrix."""
     policy = ProfilePolicy(
         material_defaults={"PLA": MaterialDefault(orca_filament_profile_ref="Generic PLA")},
-        filament_overrides={"some-ref": __import__(
-            "app.modules.slicer.profile_policy", fromlist=["FilamentOverride"]
-        ).FilamentOverride(orca_filament_profile_ref="Exact PLA")},
+        filament_overrides={
+            "some-ref": __import__(
+                "app.modules.slicer.profile_policy", fromlist=["FilamentOverride"]
+            ).FilamentOverride(orca_filament_profile_ref="Exact PLA")
+        },
     )
     cells = enumerate_matrix_cells([_sidecar("offer-1", compatible=["PLA"])], policy)
     # Only 1 cell from the material_default, NOT the filament override
@@ -182,7 +184,9 @@ def _fake_success_resolver(bundle_hash: str = "abc123"):
         bundle = SlicerProfileBundle(
             bundle_hash=bundle_hash,
             orca_version="2.3.2",
-            machine={}, process={}, filament={},
+            machine={},
+            process={},
+            filament={},
             source_snapshot_ref="snap",
             created_at="2026-01-01T00:00:00",
         )
@@ -389,7 +393,6 @@ def test_run_dry_run_no_enqueue_correct_would_enqueue(tmp_path, fake_resolved_ce
 
 
 def test_run_already_fresh_skip(tmp_path, fake_resolved_cell):
-    from app.modules.slicer.estimate_store import EstimateRecord
     from app.modules.slicer.models import EstimateStatus
     from scripts.enqueue_default_matrix_backfill import run
 
@@ -424,9 +427,7 @@ def test_run_already_fresh_skip(tmp_path, fake_resolved_cell):
     assert stats.enqueued == 0
 
 
-def test_run_resolve_failed_cell_increments_counter_no_enqueue(
-    tmp_path, failed_resolved_cell
-):
+def test_run_resolve_failed_cell_increments_counter_no_enqueue(tmp_path, failed_resolved_cell):
     from scripts.enqueue_default_matrix_backfill import run
 
     stl_file = tmp_path / "test.stl"

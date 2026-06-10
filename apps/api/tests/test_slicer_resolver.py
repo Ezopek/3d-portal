@@ -40,8 +40,6 @@ from app.modules.slicer.overrides import NoopOverrideProvider
 from app.modules.slicer.profile_offer import ProfileChain
 from app.modules.slicer.profile_policy import (
     EstimateProfileSource,
-    MaterialDefault,
-    ProfilePolicy,
     ProfileSelection,
 )
 from app.modules.slicer.resolver import (
@@ -615,14 +613,30 @@ def _write_chain_tree(root: Path) -> tuple[Path, ProfileChain]:
     sysd = root / "system"
     sysd.mkdir(parents=True, exist_ok=True)
     for body in [
-        {"name": "fdm_filament_common", "from": "system", "instantiation": "false",
-         "filament_flow_ratio": ["0.98"]},
+        {
+            "name": "fdm_filament_common",
+            "from": "system",
+            "instantiation": "false",
+            "filament_flow_ratio": ["0.98"],
+        },
         {"name": "M", "from": "system", "instantiation": "true"},
         {"name": "P", "from": "system", "instantiation": "true", "layer_height": "0.2"},
-        {"name": "Generic PLA", "inherit": "fdm_filament_common", "from": "system",
-         "instantiation": "true", "filament_type": ["PLA"], "nozzle_temperature": ["210"]},
-        {"name": "PLA Matt", "inherit": "fdm_filament_common", "from": "system",
-         "instantiation": "true", "filament_type": ["PLA"], "nozzle_temperature": ["215"]},
+        {
+            "name": "Generic PLA",
+            "inherit": "fdm_filament_common",
+            "from": "system",
+            "instantiation": "true",
+            "filament_type": ["PLA"],
+            "nozzle_temperature": ["210"],
+        },
+        {
+            "name": "PLA Matt",
+            "inherit": "fdm_filament_common",
+            "from": "system",
+            "instantiation": "true",
+            "filament_type": ["PLA"],
+            "nozzle_temperature": ["215"],
+        },
     ]:
         (sysd / f"{body['name'].lower().replace(' ', '_')}.json").write_text(json.dumps(body))
     # Write machine/process/filament blocks under library/
@@ -633,15 +647,9 @@ def _write_chain_tree(root: Path) -> tuple[Path, ProfileChain]:
     (lib / "machine").mkdir(parents=True, exist_ok=True)
     (lib / "process").mkdir(parents=True, exist_ok=True)
     (lib / "filament").mkdir(parents=True, exist_ok=True)
-    (lib / "machine" / f"{machine_id}.json").write_text(
-        json.dumps({"inherit": "M"})
-    )
-    (lib / "process" / f"{process_id}.json").write_text(
-        json.dumps({"inherit": "P"})
-    )
-    (lib / "filament" / f"{filament_id}.json").write_text(
-        json.dumps({"inherit": "Generic PLA"})
-    )
+    (lib / "machine" / f"{machine_id}.json").write_text(json.dumps({"inherit": "M"}))
+    (lib / "process" / f"{process_id}.json").write_text(json.dumps({"inherit": "P"}))
+    (lib / "filament" / f"{filament_id}.json").write_text(json.dumps({"inherit": "Generic PLA"}))
     chain = ProfileChain(
         machine_block_id=machine_id,
         process_block_id=process_id,
@@ -718,7 +726,7 @@ def test_resolve_chain_default_material_profile_selection_succeeds(tmp_path):
 
 
 def test_resolve_chain_unavailable_no_profile_returns_failure_early(tmp_path):
-    """resolve_chain with unavailable_no_profile must return ResolveFailure without writing (AC-12)."""
+    """resolve_chain with unavailable_no_profile must return ResolveFailure without writing (AC-12)."""  # noqa: E501
     root, chain = _write_chain_tree(tmp_path / "vend")
     src = VendoredProfileSource(root)
     store = BundleStore(tmp_path / "store")

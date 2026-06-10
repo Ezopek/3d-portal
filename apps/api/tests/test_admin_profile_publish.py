@@ -409,13 +409,16 @@ async def test_publish_matrix_hook_calls_enumerate_matrix_cells(seam, monkeypatc
     r = await ac.post(f"/api/admin/profiles/offers/{offer_id}/publish", json={"stl_hash": STL_HASH})
 
     assert r.status_code == 200, r.text
-    assert len(enumerate_calls) >= 1, "enumerate_matrix_cells must receive the published offer's sidecar"
+    assert len(enumerate_calls) >= 1, (
+        "enumerate_matrix_cells must receive the published offer's sidecar"
+    )
     assert enumerate_calls[0].get("offer_id") == offer_id
 
 
 @pytest.mark.asyncio
 async def test_publish_matrix_hook_exception_does_not_roll_back_publish(seam, monkeypatch) -> None:
     """AC-9 (35.6): a hook exception is swallowed — publish response must still be 200."""
+
     def _raise(*args, **kwargs):
         raise RuntimeError("matrix hook exploded")
 

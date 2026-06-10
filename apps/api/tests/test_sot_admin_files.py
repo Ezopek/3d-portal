@@ -703,7 +703,9 @@ def test_stl_upload_calls_matrix_load_active_matrix(client, monkeypatch):
         called.append(True)
         return []
 
-    monkeypatch.setattr("app.modules.slicer.matrix_backfill.load_active_matrix", _fake_load_active_matrix)
+    monkeypatch.setattr(
+        "app.modules.slicer.matrix_backfill.load_active_matrix", _fake_load_active_matrix
+    )
 
     engine = get_engine()
     with Session(engine) as s:
@@ -721,6 +723,7 @@ def test_stl_upload_calls_matrix_load_active_matrix(client, monkeypatch):
 
 def test_stl_upload_matrix_hook_exception_does_not_500(client, monkeypatch):
     """AC-8 (35.6): a hook exception is swallowed — STL upload must still return 201."""
+
     def _raise(*args, **kwargs):
         raise RuntimeError("matrix hook exploded")
 
@@ -747,7 +750,9 @@ def test_non_stl_upload_does_not_call_matrix_hook(client, monkeypatch):
         called.append(True)
         return []
 
-    monkeypatch.setattr("app.modules.slicer.matrix_backfill.load_active_matrix", _fake_load_active_matrix)
+    monkeypatch.setattr(
+        "app.modules.slicer.matrix_backfill.load_active_matrix", _fake_load_active_matrix
+    )
 
     engine = get_engine()
     with Session(engine) as s:
