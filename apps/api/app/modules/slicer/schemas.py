@@ -19,7 +19,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.modules.slicer.models import EstimateFailureReason, MaterialClass, QualityTier
-from app.modules.slicer.profile_policy import EstimateProfileSource
+from app.modules.slicer.profile_policy import EstimateProfileSource, FilamentOverride, ProfilePolicy
 
 # The UI estimate status = the Decision AJ ``EstimateStatus`` lifecycle
 # ``{fresh, stale, queued, failed}`` PLUS ``absent`` — a 200 store miss the read
@@ -454,3 +454,86 @@ class RecomputeResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enqueued: bool
     estimate: EstimateView
+
+
+# === POLICY-ADMIN-1 (FR23-ADMIN-1) — admin policy management surface DTOs ====
+#
+# Six additive DTOs for the GET /api/admin/policy read and the four write mutations.
+# All are ``extra="forbid"`` (AC-11 no-leak contract). No raw Orca profile body,
+# no g-code, no bundle_hash, no filesystem path crosses the wire (AC-11).
+
+
+class SpoolmanMaterialInfo(BaseModel):
+    """Per-normalized-material projection from the live Spoolman snapshot (AC-1).
+
+    ``configured`` is True iff a matching ENABLED entry exists in
+    ``policy.material_defaults``. ``enabled`` is the stored flag or None when the
+    material has no entry yet.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    material: str
+    configured: bool
+    enabled: bool | None = None
+    orca_filament_profile_ref: str | None = None
+
+
+class SpoolmanFilamentPolicyInfo(BaseModel):
+    """Per-filament projection from the Spoolman snapshot + override store (AC-1).
+
+    ``ref`` is the churn-stable ``vendor∥material∥name`` key. ``override`` is the
+    stored ``FilamentOverride`` if one exists, else ``None``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    ref: str
+    name: str
+    vendor_name: str | None = None
+    material: str | None = None
+    has_override: bool
+    override: FilamentOverride | None = None
+
+
+class PolicyAdminView(BaseModel):
+    """Full policy admin read response (AC-1). Leak-fenced: no Orca internals.
+
+    ``orca_filament_profile_names`` carries names only (string list, AC-11).
+    ``spoolman_materials`` and ``spoolman_filaments`` are empty when the snapshot
+    is unavailable (AC-2 soft-fail path).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    policy: ProfilePolicy
+    spoolman_materials: list[SpoolmanMaterialInfo]
+    spoolman_filaments: list[SpoolmanFilamentPolicyInfo]
+    orca_filament_profile_names: list[str]
+
+
+class MaterialDefaultUpsert(BaseModel):
+    """Body for PUT /api/admin/policy/material-defaults/{material} (AC-4)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    orca_filament_profile_ref: str
+    enabled: bool = True
+
+
+class FilamentOverrideUpsert(BaseModel):
+    """Body for POST /api/admin/policy/filament-overrides (AC-7)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    spoolman_filament_ref: str
+    orca_filament_profile_ref: str
+    enabled: bool = True
+
+
+class FilamentOverrideDeleteRequest(BaseModel):
+    """Body for DELETE /api/admin/policy/filament-overrides (AC-8)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    spoolman_filament_ref: str

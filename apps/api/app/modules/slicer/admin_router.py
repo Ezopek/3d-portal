@@ -19,6 +19,7 @@ The route carries ``current_admin`` (a default-value ``Depends``), so the Init 6
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any, Protocol, runtime_checkable
@@ -66,6 +67,15 @@ from app.modules.slicer.models import (
     QualityTier,
     ResolveFailure,
 )
+from app.modules.slicer.overrides import spoolman_filament_ref as _spoolman_filament_ref
+from app.modules.slicer.profile_policy import (
+    FilamentOverride,
+    MaterialDefault,
+    ProfilePolicy,
+    ProfilePolicyStore,
+    normalize_material,
+    unknown_profile_refs,
+)
 from app.modules.slicer.resolver import VendoredProfileSource
 from app.modules.slicer.router import QUALITY_TIER_ORDER
 from app.modules.slicer.schemas import (
@@ -73,9 +83,13 @@ from app.modules.slicer.schemas import (
     AdminProfileProvenance,
     AdminProfileSlot,
     AdminProfileStatus,
+    FilamentOverrideDeleteRequest,
+    FilamentOverrideUpsert,
+    MaterialDefaultUpsert,
     OfferPublishRequest,
     OfferPublishResult,
     OfferVisibility,
+    PolicyAdminView,
     PrintProfileOffer,
     PrintProfileOfferCreate,
     PrintProfileOfferListResponse,
@@ -85,9 +99,13 @@ from app.modules.slicer.schemas import (
     ProfileLibraryBlock,
     ProfileLibraryListResponse,
     ProfileLibraryType,
+    SpoolmanFilamentPolicyInfo,
+    SpoolmanMaterialInfo,
 )
 from app.modules.slicer.stl_cache import StlCache
 from app.modules.slicer.validation import NullCliValidator
+from app.modules.spools.models import SpoolmanSnapshot
+from app.modules.spools.service import SpoolsService
 
 # Upload cap for an imported intent triple (AC-4). An intent triple is a small JSON object
 # ({machine, process, filament} merged Orca key/values) — orders of magnitude below the
@@ -1203,3 +1221,384 @@ async def unpublish_profile_offer(
     peers = profile_offer.list_offers(source.root)
     resolved = profile_offer.revalidate_offer(source.root, updated, peers=peers)
     return _offer_dto(resolved)
+
+
+# === POLICY-ADMIN-1 (FR23-ADMIN-1) — filament-profile-selection policy admin ===
+#
+# Five additive admin-gated routes on the SAME router object (prefix="/api/admin").
+# Read + write surface for the portal's filament-profile-selection policy. Purely
+# additive: does NOT touch resolve(), the intents/grid, the library, the offer layer,
+# or the bundle/snapshot/estimate stores.
+#
+# All write routes carry ``current_admin`` (default-value Depends) so the Init 6
+# route-enforcement gate recognises them WITHOUT any _PUBLIC_ROUTES edit (AC-3).
+
+_POLICY_LOG = logging.getLogger("app.slicer.policy_admin")
+
+
+# --- DI seams (overridable in tests) ----------------------------------------
+
+
+def get_policy_store() -> ProfilePolicyStore:
+    """The filesystem-backed policy store, rooted at the configured policy dir."""
+    settings = get_settings()
+    return ProfilePolicyStore(settings.slicer_profile_policy_dir)
+
+
+async def get_snapshot(request: Request) -> SpoolmanSnapshot | None:
+    """The live Spoolman snapshot; soft-fails to None when unavailable (AC-2)."""
+    redis_factory = getattr(request.app.state, "redis", None)
+    service = SpoolsService(redis_factory=redis_factory, client=None)
+    try:
+        return await service.get_summary()
+    except Exception:
+        _POLICY_LOG.warning(
+            "Spoolman snapshot unavailable for policy admin read",
+            extra={"labels": {"reason": "snapshot_unavailable"}},
+        )
+        return None
+
+
+def get_policy_profile_source() -> VendoredProfileSource:
+    """The vendored profile source for filament name enumeration (AC-10)."""
+    settings = get_settings()
+    return VendoredProfileSource(settings.slicer_vendored_profiles_dir)
+
+
+# --- pure helpers -----------------------------------------------------------
+
+
+def _known_filament_profile_refs(source: VendoredProfileSource) -> set[str]:
+    """Vendored filament-type system profile names (AC-10 known_refs set).
+
+    Computed fresh per request — the system tree can change on deploy. NOT cached
+    across requests (AC-10 explicit prohibition).
+    """
+    return {
+        name
+        for name, body in source.system_tree().items()
+        if profile_library.classify_profile(body) == "filament"
+    }
+
+
+def _build_policy_admin_view(
+    policy: ProfilePolicy,
+    snapshot: SpoolmanSnapshot | None,
+    source: VendoredProfileSource,
+) -> PolicyAdminView:
+    """Project policy + snapshot + system_tree onto PolicyAdminView (AC-1/AC-2)."""
+    system_tree = source.system_tree()
+    orca_names = sorted(
+        name
+        for name, body in system_tree.items()
+        if profile_library.classify_profile(body) == "filament"
+    )
+
+    materials_info: list[SpoolmanMaterialInfo] = []
+    filaments_info: list[SpoolmanFilamentPolicyInfo] = []
+
+    if snapshot is not None:
+        seen: set[str] = set()
+        for f in snapshot.filaments:
+            norm = normalize_material(f.material)
+            if norm is None or norm in seen:
+                continue
+            seen.add(norm)
+            default = policy.material_defaults.get(norm)
+            materials_info.append(
+                SpoolmanMaterialInfo(
+                    material=norm,
+                    configured=default is not None and default.enabled,
+                    enabled=default.enabled if default is not None else None,
+                    orca_filament_profile_ref=(
+                        default.orca_filament_profile_ref if default else None
+                    ),
+                )
+            )
+
+        for f in snapshot.filaments:
+            ref = _spoolman_filament_ref(f)
+            override = policy.filament_overrides.get(ref)
+            filaments_info.append(
+                SpoolmanFilamentPolicyInfo(
+                    ref=ref,
+                    name=f.name,
+                    vendor_name=f.vendor_name,
+                    material=normalize_material(f.material),
+                    has_override=override is not None,
+                    override=override,
+                )
+            )
+
+    return PolicyAdminView(
+        policy=policy,
+        spoolman_materials=materials_info,
+        spoolman_filaments=filaments_info,
+        orca_filament_profile_names=orca_names,
+    )
+
+
+def _policy_entity_id(discriminator: str) -> uuid.UUID:
+    """Deterministic audit entity_id for a policy mutation (stable across re-saves)."""
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"slicer_policy:{discriminator}")
+
+
+# --- GET /api/admin/policy ---------------------------------------------------
+
+
+@router.get(
+    "/policy",
+    response_model=PolicyAdminView,
+    summary="Read the full filament-profile-selection policy + Spoolman context (admin only)",
+    description=(
+        "POLICY-ADMIN-1 (FR23-ADMIN-1, AC-1/AC-2/AC-3). Returns the current "
+        "ProfilePolicy plus Spoolman material/filament projections and the sorted list "
+        "of vendored filament-type profile names. When the Spoolman snapshot is "
+        "unavailable (cold Redis / service down), returns 200 with empty material and "
+        "filament lists — never 500. Admin-gated; no Orca internals leak."
+    ),
+)
+async def read_policy(
+    store: Annotated[ProfilePolicyStore, Depends(get_policy_store)],
+    snapshot: Annotated[SpoolmanSnapshot | None, Depends(get_snapshot)],
+    source: Annotated[VendoredProfileSource, Depends(get_policy_profile_source)],
+    _user_id: uuid.UUID = current_admin,
+) -> PolicyAdminView:
+    # get_snapshot() already logs when it soft-fails on an exception (AC-2 single warning).
+    policy = store.load()
+    return _build_policy_admin_view(policy, snapshot, source)
+
+
+# --- PUT /api/admin/policy/material-defaults/{material} ----------------------
+
+
+@router.put(
+    "/policy/material-defaults/{material}",
+    response_model=PolicyAdminView,
+    summary="Upsert a material-default entry in the policy (admin only)",
+    description=(
+        "POLICY-ADMIN-1 (AC-4/AC-6/AC-9/AC-10/AC-11/AC-12). Normalises the path "
+        "param, validates the orca_filament_profile_ref against the vendored filament "
+        "profile names (fresh per request — AC-10), saves atomically, and returns the "
+        "updated PolicyAdminView. 422 invalid_material on blank normalised key; "
+        "422 unknown_profile_ref when the ref is absent from the vendored tree. "
+        "No partial save on 422 (AC-9). Admin-gated; CSRF enforced by middleware."
+    ),
+    responses={
+        200: {"description": "Material default upserted"},
+        422: {"description": "Rejected: blank material or unknown profile ref"},
+    },
+)
+async def upsert_material_default(
+    material: str,
+    body: MaterialDefaultUpsert,
+    store: Annotated[ProfilePolicyStore, Depends(get_policy_store)],
+    snapshot: Annotated[SpoolmanSnapshot | None, Depends(get_snapshot)],
+    source: Annotated[VendoredProfileSource, Depends(get_policy_profile_source)],
+    request: Request,
+    _user_id: uuid.UUID = current_admin,
+) -> PolicyAdminView:
+    norm = normalize_material(material)
+    if not norm:
+        raise _reject(422, "invalid_material", "material key must be non-blank after normalisation")
+
+    policy = store.load()
+    candidate = ProfilePolicy(
+        material_defaults={
+            **policy.material_defaults,
+            norm: MaterialDefault(
+                orca_filament_profile_ref=body.orca_filament_profile_ref,
+                enabled=body.enabled,
+            ),
+        },
+        filament_overrides=policy.filament_overrides,
+    )
+
+    known_refs = _known_filament_profile_refs(source)
+    unknown = unknown_profile_refs(candidate, known_refs)
+    if unknown:
+        raise _reject(
+            422,
+            "unknown_profile_ref",
+            f"profile ref(s) not in vendored system tree: {sorted(unknown)}",
+        )
+
+    store.save(candidate)
+    record_event(
+        get_engine(),
+        action="slicer_policy.material_default_upsert",
+        entity_type="slicer_profile",
+        entity_id=_policy_entity_id(f"material_default:{norm}"),
+        actor_user_id=_user_id,
+        after={
+            "material_or_ref": norm,
+            "orca_filament_profile_ref": body.orca_filament_profile_ref,
+            "enabled": body.enabled,
+        },
+        request_id=request.headers.get("x-request-id"),
+    )
+    return _build_policy_admin_view(store.load(), snapshot, source)
+
+
+# --- DELETE /api/admin/policy/material-defaults/{material} -------------------
+
+
+@router.delete(
+    "/policy/material-defaults/{material}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a material-default entry from the policy (admin only)",
+    description=(
+        "POLICY-ADMIN-1 (AC-5/AC-12). Normalises the path param (PLA == pla), removes "
+        "the entry, and returns 204. 404 not_found when the normalised key was absent. "
+        "Admin-gated; CSRF enforced by middleware."
+    ),
+    responses={
+        204: {"description": "Material default removed"},
+        404: {"description": "Material key not found in policy"},
+    },
+)
+async def delete_material_default(
+    material: str,
+    store: Annotated[ProfilePolicyStore, Depends(get_policy_store)],
+    request: Request,
+    _user_id: uuid.UUID = current_admin,
+) -> None:
+    norm = normalize_material(material)
+    policy = store.load()
+
+    if norm is None or norm not in policy.material_defaults:
+        raise _reject(404, "not_found", f"material default {material!r} not found in policy")
+
+    updated = ProfilePolicy(
+        material_defaults={k: v for k, v in policy.material_defaults.items() if k != norm},
+        filament_overrides=policy.filament_overrides,
+    )
+    store.save(updated)
+    record_event(
+        get_engine(),
+        action="slicer_policy.material_default_delete",
+        entity_type="slicer_profile",
+        entity_id=_policy_entity_id(f"material_default:{norm}"),
+        actor_user_id=_user_id,
+        after={"material_or_ref": norm, "orca_filament_profile_ref": None, "enabled": None},
+        request_id=request.headers.get("x-request-id"),
+    )
+
+
+# --- POST /api/admin/policy/filament-overrides --------------------------------
+
+
+@router.post(
+    "/policy/filament-overrides",
+    response_model=PolicyAdminView,
+    summary="Upsert a per-filament override entry in the policy (admin only)",
+    description=(
+        "POLICY-ADMIN-1 (AC-7/AC-9/AC-10/AC-11/AC-12). Ref is in the body (not a path "
+        "param) because it contains the unit-separator (U+001F) that would need "
+        "percent-encoding in URLs. Validates orca_filament_profile_ref against vendored "
+        "filament profiles (fresh per request — AC-10); 422 unknown_profile_ref when "
+        "absent. No partial save on 422 (AC-9). Admin-gated; CSRF enforced by middleware."
+    ),
+    responses={
+        200: {"description": "Filament override upserted"},
+        422: {"description": "Rejected: unknown profile ref"},
+    },
+)
+async def upsert_filament_override(
+    body: FilamentOverrideUpsert,
+    store: Annotated[ProfilePolicyStore, Depends(get_policy_store)],
+    snapshot: Annotated[SpoolmanSnapshot | None, Depends(get_snapshot)],
+    source: Annotated[VendoredProfileSource, Depends(get_policy_profile_source)],
+    request: Request,
+    _user_id: uuid.UUID = current_admin,
+) -> PolicyAdminView:
+    policy = store.load()
+    candidate = ProfilePolicy(
+        material_defaults=policy.material_defaults,
+        filament_overrides={
+            **policy.filament_overrides,
+            body.spoolman_filament_ref: FilamentOverride(
+                orca_filament_profile_ref=body.orca_filament_profile_ref,
+                enabled=body.enabled,
+            ),
+        },
+    )
+
+    known_refs = _known_filament_profile_refs(source)
+    unknown = unknown_profile_refs(candidate, known_refs)
+    if unknown:
+        raise _reject(
+            422,
+            "unknown_profile_ref",
+            f"profile ref(s) not in vendored system tree: {sorted(unknown)}",
+        )
+
+    store.save(candidate)
+    record_event(
+        get_engine(),
+        action="slicer_policy.filament_override_upsert",
+        entity_type="slicer_profile",
+        entity_id=_policy_entity_id(f"filament_override:{body.spoolman_filament_ref}"),
+        actor_user_id=_user_id,
+        after={
+            "material_or_ref": body.spoolman_filament_ref,
+            "orca_filament_profile_ref": body.orca_filament_profile_ref,
+            "enabled": body.enabled,
+        },
+        request_id=request.headers.get("x-request-id"),
+    )
+    return _build_policy_admin_view(store.load(), snapshot, source)
+
+
+# --- DELETE /api/admin/policy/filament-overrides ------------------------------
+
+
+@router.delete(
+    "/policy/filament-overrides",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a per-filament override entry from the policy (admin only)",
+    description=(
+        "POLICY-ADMIN-1 (AC-8/AC-12). Body carries the spoolman_filament_ref (contains "
+        "U+001F — not suitable as path param). 204 on success; 404 not_found when the "
+        "ref was absent. Admin-gated; CSRF enforced by middleware."
+    ),
+    responses={
+        204: {"description": "Filament override removed"},
+        404: {"description": "Filament override ref not found in policy"},
+    },
+)
+async def delete_filament_override(
+    body: FilamentOverrideDeleteRequest,
+    store: Annotated[ProfilePolicyStore, Depends(get_policy_store)],
+    request: Request,
+    _user_id: uuid.UUID = current_admin,
+) -> None:
+    policy = store.load()
+
+    if body.spoolman_filament_ref not in policy.filament_overrides:
+        raise _reject(
+            404,
+            "not_found",
+            f"filament override {body.spoolman_filament_ref!r} not found in policy",
+        )
+
+    updated = ProfilePolicy(
+        material_defaults=policy.material_defaults,
+        filament_overrides={
+            k: v for k, v in policy.filament_overrides.items() if k != body.spoolman_filament_ref
+        },
+    )
+    store.save(updated)
+    record_event(
+        get_engine(),
+        action="slicer_policy.filament_override_delete",
+        entity_type="slicer_profile",
+        entity_id=_policy_entity_id(f"filament_override:{body.spoolman_filament_ref}"),
+        actor_user_id=_user_id,
+        after={
+            "material_or_ref": body.spoolman_filament_ref,
+            "orca_filament_profile_ref": None,
+            "enabled": None,
+        },
+        request_id=request.headers.get("x-request-id"),
+    )

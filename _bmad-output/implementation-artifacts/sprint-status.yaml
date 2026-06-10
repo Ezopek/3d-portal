@@ -1,5 +1,5 @@
 generated: 2026-05-09
-last_updated: 2026-06-09
+last_updated: 2026-06-10
 project: 3d-portal
 project_key: NOKEY
 tracking_system: file-system
@@ -248,7 +248,7 @@ development_status:
   35-1-profile-policy-store-precedence: done
   35-2-resolver-bundle-policy-integration: done
   35-3-estimate-api-source-metadata: done
-  35-4-admin-policy-management: backlog
+  35-4-admin-policy-management: done
   35-5-estimate-ui-source-labels: backlog
   35-6-bounded-default-matrix-backfill: backlog
   epic-35-retrospective: backlog
