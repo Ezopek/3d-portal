@@ -244,11 +244,11 @@ development_status:
   epic-34: done
   34-1-admin-queues-console: done
   epic-34-retrospective: done
-  epic-35: in-progress
+  epic-35: done
   35-1-profile-policy-store-precedence: done
   35-2-resolver-bundle-policy-integration: done
   35-3-estimate-api-source-metadata: done
   35-4-admin-policy-management: done
   35-5-estimate-ui-source-labels: done
   35-6-bounded-default-matrix-backfill: done
-  epic-35-retrospective: backlog
+  epic-35-retrospective: done

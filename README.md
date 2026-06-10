@@ -11,6 +11,12 @@ v1 in active implementation. See:
 - Architecture — [`docs/architecture.md`](docs/architecture.md)
 - Operations — [`docs/operations.md`](docs/operations.md)
 
+## Features
+
+- **Slicer Estimates**: Per-STL print time, mass, and cost estimates via headless OrcaSlicer.
+- **Filament Policy**: Admin-managed mapping from Spoolman materials to Orca profiles with exact-override vs material-default honesty labels.
+- **Spoolman**: Read-only inventory mirror (stock, filaments, vendors) with low-stock alerts.
+
 ## Quickstart (dev)
 
 ```bash

@@ -43,6 +43,7 @@ These are already in place for future expansion:
 | Print queue | `apps/api/app/modules/queue/`, `modules/queue/` in web; arq broker on Redis |
 | Moonraker integration | `modules/printer/` slot; existing OTel collector; env var `MOONRAKER_URL` |
 | Spoolman integration | `modules/spools/` slot; HTTP client to existing Spoolman compose |
+| Filament profile policy | `EstimateProfileSource` logic; portal-owned mapping from Spoolman material to Orca profiles |
 | Print requests | `modules/requests/` slot; `User.role = member` in schema |
 | Mobile photo upload | `POST /api/admin/models/{id}/prints` + new uploads volume + reverse rsync |
 | WebSocket / SSE live updates | nginx-180 already has WS upgrade headers; Redis pub/sub ready |

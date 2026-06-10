@@ -197,7 +197,19 @@ When deploying to a fresh content volume (no pre-rendered PNGs), enqueue render 
 bash infra/scripts/render-all.sh "<bearer-jwt>"
 ```
 
-The script lists `/api/models`, then `POST /api/admin/models/{uuid}/render` for each. arq processes jobs serially in the worker container; wall time depends on STL complexity (~5–30 s per model on .190). Watch progress with `docker compose logs -f worker` on the host.
+**Backfill default-matrix slicer estimates** — Story 35.6 / Initiative 23
+
+When material-default profiles are updated or new models added, backfill the bounded default matrix (Catalog STL × Active Offer × Compatible Material Default):
+
+```bash
+# 1. Inspect: list what would be enqueued (no write, no enqueue).
+docker compose exec api python3 apps/api/scripts/enqueue_default_matrix_backfill.py --dry-run
+
+# 2. Enqueue: distributes slicing work to the arq slicer-worker.
+docker compose exec api python3 apps/api/scripts/enqueue_default_matrix_backfill.py
+```
+
+The script is bounded: it only enqueues `default_material_profile` estimates, NEVER `exact_filament_mapping` unless explicitly requested. deduplication via `(stl_hash, bundle_hash)` prevents redundant slices.
 
 **Backfill WebP thumbnail variants (image-kind ModelFiles)** — Story 13.2 / Decision P
 

@@ -1501,13 +1501,43 @@ Items #6 (OTEL collector data-prepper backpressure) and #7 (401 scan-pattern sec
 - **NFR10-SCOPE-1: No production-code changes in Epic 15 stories EXCEPT where root-cause analysis pins a real prod-side bug (Story 15.1 decision boundary).** Carries Init 9 NFR9-SCOPE-1 with the explicit boundary-carve for the threading deadlock — if Phase 1 instrumentation reveals a real `create_pool` concurrency race, prod-side fix is in scope and Initiative 10 absorbs it (with appropriate Codex review per Story 15.1 AC).
 - **NFR10-SCHEMA-MIGRATION-1: Story 16.1 ModelNote bilingual migration is forward-only.** No rollback path defined; the prior Alembic revision tag is kept for emergency revert. Migration may run with <2-min downtime window (catalog is single-instance, acceptable). Backfill `body → body_en` is part of the migration script, not a separate manual step. Rollback path: down-migration to prior revision (drop body_pl + body_en, restore body NOT NULL); operator must accept data loss in body_pl values if rollback is needed.
 - **NFR10-VISUAL-VERIFICATION-1: Every UI-touching Init 10 story carries the pre-CR agent-browser visual-verification gate established in Init 7+8+9.** Forward contract per memory [[feedback_frontend_visual_verification]]. Applies to: 16.1 (DescriptionPanel render diff), 16.2 (Generate dialog UI), 16.3 (anonymous share viewer + member-side share UI + My share links page), 16.4 (admin model-add form), 16.5 (admin file-upload dialog + button), 16.6 (Download all CTA wiring), 17.1 (admin tables fluid width). Stories 15.1+15.2+15.3 are test-infrastructure-only (no UI surface) — gate does NOT apply per Init 9 precedent.
-- **NFR10-SHARE-SECURITY-1: Anonymous share viewer (FR10-SHARE-ANON-1) MUST NOT expose admin-mutating endpoints, MUST NOT leak `current_user` state, MUST NOT bypass existing share-token revoke semantics.** Frontend must NOT call `/api/auth/me` or any `current_user`-dependent endpoint inside `/share/$token` route. All asset fetches go through `/api/share/<token>/*` (anonymous-allowed per Init 6 Decision N + auth-boundary contract per Init 6 NFR6-SEC-1). Story 16.3 acceptance includes a Codex auth-boundary contract audit per memory [[auth-boundary-contract-audit]].
+## Initiative 23 — Spoolman Filament Profile Estimates (Material-Default + Exact-Override Policy)
+
+**Status:** ✅ shipped 2026-06-10. Source SCP: `sprint-change-proposal-2026-06-07-spoolman-filament-profile-estimates.md` (status `approved`). Single epic **E35**. Architecture: `architecture.md` § Initiative 23 (Decision AS).
+
+### Overview
+
+Init 23 makes print estimates pick the Orca **filament** profile from a portal-owned **profile-selection policy** rather than the single material-class default the Init 20 resolver hard-wires today. Spoolman remains the source of truth for filament inventory and the generic material type; the portal owns the mapping from that material — and optionally from a specific Spoolman filament — to a concrete Orca `FilamentProfile`. Resolution precedence is **exact filament override > material-type default > unavailable**. A material-default estimate is allowed but must be labelled **default/fallback**, never exact; a missing profile yields a classified **`unavailable_no_profile`** absence that does NOT block an order/request.
+
+### Functional Requirements
+
+- **FR23-POLICY-1**: Portal-owned profile-selection policy model + file-backed store (material defaults + per-filament overrides).
+- **FR23-PRECEDENCE-1**: Pure precedence resolver: exact override > material default > unavailable; disabled entries fall through.
+- **FR23-RESOLVER-1**: Resolve the Orca filament profile by policy before bundle materialization; preserve byte-identical default path when no filament selected.
+- **FR23-SNAPSHOT-MAP-1**: Map the Init 19 cached Spoolman snapshot → generic material + stable `spoolman_filament_ref`; soft-fail when snapshot unavailable.
+- **FR23-ESTIMATE-API-1**: Estimate ingest/read APIs accept/derive the selected filament; return source + selected material/ref/name + Orca profile name.
+- **FR23-ADMIN-1**: Admin policy management surface (list Spoolman materials + known Orca profiles; get/update material defaults + per-filament overrides).
+- **FR23-UI-LABEL-1**: User-facing estimate UI labels exact vs default-fallback vs unavailable distinctly.
+- **FR23-BACKFILL-1**: Bounded default-matrix enqueue/backfill hooks + guardrails; exclude concrete overrides unless explicitly requested.
+
+### Non-Functional Requirements
+
+- **NFR23-CACHE-INVARIANT-1**: Preserve Init 20 `(stl_hash, bundle_hash)` dedupe/cache semantics.
+- **NFR23-HONESTY-1**: Default/fallback estimates labelled distinctly from exact; `unavailable_no_profile` shows no time/grams/cost but keeps request path.
+- **NFR23-NO-BLOCK-1**: Missing material profile ⇒ estimate unavailable, never an order/request block.
+- **NFR23-STABLE-KEY-1**: Key exact overrides by `spoolman_filament_ref()`, never the integer id.
+- **NFR23-OBS-1**: Logs/breadcrumbs carry profile-source labels + counts/reason categories only.
 
 ### Decisions
 
-- **Decision L** (architecture): ModelNote bilingual schema migration shape (see `architecture.md` § Initiative 10 Decision L).
-- **Decision M** (architecture): Anonymous share-link frontend route shell (see `architecture.md` § Initiative 10 Decision M).
-- **Decision N** (architecture): Admin manual-add model + file upload write surface (see `architecture.md` § Initiative 10 Decision N).
+- **Decision AS** (architecture): Portal-owned profile-selection policy + classified `EstimateProfileSource` + opt-in resolver integration (see `architecture.md` § Initiative 23 Decision AS).
+
+### Cross-references
+
+- Source SCP: `sprint-change-proposal-2026-06-07-spoolman-filament-profile-estimates.md`.
+- Architecture: `architecture.md` § Initiative 23 (Decision AS).
+- Epics: `epics.md` § Initiative 23 (Epic 35 with stories 35.1-35.6).
+- Sprint status: `_bmad-output/implementation-artifacts/sprint-status.yaml` § epic-35.
 
 ### Out of scope (intentional)
 
