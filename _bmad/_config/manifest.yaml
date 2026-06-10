@@ -1,31 +1,43 @@
 installation:
   version: 6.8.0
   installDate: 2026-05-08T21:13:02.222Z
-  lastUpdated: 2026-05-31T13:16:15.491Z
+  lastUpdated: 2026-06-10T00:20:35.121Z
 modules:
   - name: core
     version: 6.8.0
     installDate: 2026-05-08T21:13:01.865Z
-    lastUpdated: 2026-05-31T13:16:15.488Z
+    lastUpdated: 2026-06-10T00:20:35.118Z
     source: built-in
     npmPackage: null
     repoUrl: null
   - name: bmm
     version: 6.8.0
     installDate: 2026-05-08T21:13:01.845Z
-    lastUpdated: 2026-05-31T13:16:15.489Z
+    lastUpdated: 2026-06-10T00:20:35.118Z
     source: built-in
     npmPackage: null
     repoUrl: null
   - name: tea
     version: v1.19.0
     installDate: 2026-05-08T21:13:02.121Z
-    lastUpdated: 2026-05-31T13:16:15.491Z
+    lastUpdated: 2026-06-10T00:20:35.120Z
     source: external
     npmPackage: bmad-method-test-architecture-enterprise
     repoUrl: https://github.com/bmad-code-org/bmad-method-test-architecture-enterprise
     channel: stable
     sha: 8734d51f24071ddbcb3617390b5fcddb4128ef77
+  - name: automator
+    version: main
+    installDate: 2026-06-10T00:20:35.076Z
+    lastUpdated: 2026-06-10T00:20:35.121Z
+    source: external
+    npmPackage: bmad-story-automator
+    repoUrl: https://github.com/bmad-code-org/bmad-automator
+    channel: next
+    sha: f332173a692ffbabb24734c31dedadfcf78b9ed1
+    localPath: /home/ezop/bmad-automator
 ides:
   - claude-code
   - codex
+  - antigravity
+  - gemini
