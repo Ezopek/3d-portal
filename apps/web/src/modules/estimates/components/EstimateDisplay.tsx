@@ -2,6 +2,7 @@ import { AlertTriangle, FileQuestion, Loader2, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type { EstimateView, UIEstimateStatus } from "@/lib/api-types";
+import { ProfileSourceBadge } from "@/modules/estimates/components/ProfileSourceBadge";
 import {
   formatCost,
   formatDuration,
@@ -102,11 +103,18 @@ export function EstimateDisplay({
 
   // 3) absent — explicit empty state, distinct from failed and from a transport error.
   if (data.status === "absent") {
+    const isUnavailable =
+      data.profile_selection_context?.estimate_profile_source ===
+      "unavailable_no_profile";
     return (
       <div className="flex flex-col gap-3">
         <div role="status" className="rounded-lg border p-2">
           <EmptyState
-            messageKey="modules.estimates.states.absent.body"
+            messageKey={
+              isUnavailable
+                ? "modules.estimates.states.absent.no_profile"
+                : "modules.estimates.states.absent.body"
+            }
             tone="muted"
             icon={<FileQuestion className="size-8" />}
           />
@@ -136,6 +144,9 @@ export function EstimateDisplay({
           )}
         </div>
         <OverrideContextPanel context={data.override_context} />
+        {data.profile_selection_context != null && (
+          <ProfileSourceBadge context={data.profile_selection_context} />
+        )}
         {recompute("failed")}
       </div>
     );
@@ -215,6 +226,9 @@ export function EstimateDisplay({
       )}
 
       <OverrideContextPanel context={data.override_context} />
+      {data.profile_selection_context != null && (
+        <ProfileSourceBadge context={data.profile_selection_context} />
+      )}
       {/* A stale estimate is the user-driven recompute case; a queued one is already in flight
           (no button), and a fresh one needs no recompute affordance. */}
       {isStale && recompute("stale")}

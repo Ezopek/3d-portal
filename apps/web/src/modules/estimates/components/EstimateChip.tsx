@@ -79,8 +79,18 @@ export function EstimateChip({ stlHash, preset, printerRef, enabled = true }: Pr
 
   // 4) absent — explicit "no estimate yet" store miss, distinct from failed/error.
   if (data.status === "absent") {
+    const isUnavailable =
+      data.profile_selection_context?.estimate_profile_source ===
+      "unavailable_no_profile";
     return (
-      <ChipShell title={t("modules.estimates.chip.absent")} className={base}>
+      <ChipShell
+        title={t(
+          isUnavailable
+            ? "modules.estimates.chip.absent_no_profile"
+            : "modules.estimates.chip.absent",
+        )}
+        className={base}
+      >
         <SpoolIcon className="size-3.5 text-muted-foreground/60" />
         <span className="text-muted-foreground">{EM_DASH}</span>
       </ChipShell>
@@ -99,11 +109,19 @@ export function EstimateChip({ stlHash, preset, printerRef, enabled = true }: Pr
 
   // 6) fresh / stale / queued — last-known grams + an honest accent/glyph.
   const mass = formatMass(data.filament_g);
+  const isDefault =
+    data.profile_selection_context?.estimate_profile_source ===
+    "default_material_profile";
 
   if (data.status === "stale") {
     return (
       <ChipShell
-        title={t("modules.estimates.chip.stale", { mass })}
+        title={t(
+          isDefault
+            ? "modules.estimates.chip.stale_default"
+            : "modules.estimates.chip.stale",
+          { mass },
+        )}
         className={base}
       >
         <SpoolIcon className="size-3.5 text-warning" />
@@ -123,8 +141,17 @@ export function EstimateChip({ stlHash, preset, printerRef, enabled = true }: Pr
       <ChipShell
         title={
           hasValue
-            ? t("modules.estimates.chip.queued", { mass })
-            : t("modules.estimates.chip.queued_no_value")
+            ? t(
+                isDefault
+                  ? "modules.estimates.chip.queued_default"
+                  : "modules.estimates.chip.queued",
+                { mass },
+              )
+            : t(
+                isDefault
+                  ? "modules.estimates.chip.queued_no_value_default"
+                  : "modules.estimates.chip.queued_no_value",
+              )
         }
         className={cn(base, "text-muted-foreground")}
       >
@@ -138,7 +165,12 @@ export function EstimateChip({ stlHash, preset, printerRef, enabled = true }: Pr
   // fresh
   return (
     <ChipShell
-      title={t("modules.estimates.chip.fresh", { mass })}
+      title={t(
+        isDefault
+          ? "modules.estimates.chip.fresh_default"
+          : "modules.estimates.chip.fresh",
+        { mass },
+      )}
       className={base}
     >
       <SpoolIcon className="size-3.5 text-muted-foreground" />

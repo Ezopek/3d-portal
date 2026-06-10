@@ -2,7 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import "@/locales/i18n";
-import type { EstimateView } from "@/lib/api-types";
+import type { EstimateView, ProfileSelectionContextView } from "@/lib/api-types";
 
 import { EstimateChip } from "./EstimateChip";
 import { defaultPreset } from "@/modules/estimates/lib/preset";
@@ -160,5 +160,90 @@ describe("EstimateChip", () => {
     render(chip());
     const el = screen.getByTitle("Recomputing estimate…");
     expect(el.textContent).toContain("—");
+  });
+});
+
+// AC-7 — absent chip title swaps for unavailable_no_profile
+describe("EstimateChip — AC-7 absent_no_profile title (35.5)", () => {
+  it("absent + unavailable_no_profile → distinct no-profile title, still em-dash", () => {
+    mockUseEstimate.mockReturnValue(
+      ok(
+        view({
+          status: "absent",
+          filament_g: null,
+          profile_selection_context: {
+            estimate_profile_source: "unavailable_no_profile",
+            selected_material: "PLA",
+            selected_spoolman_filament_ref: null,
+            selected_filament_name: null,
+            orca_filament_profile_name: null,
+          },
+        }),
+      ),
+    );
+    render(chip());
+    const el = screen.getByTitle("No filament profile — estimate unavailable.");
+    expect(el.textContent).toContain("—");
+  });
+});
+
+// AC-8 — _default i18n key variants for default_material_profile chip states
+describe("EstimateChip — AC-8 _default title variants (35.5)", () => {
+  function defaultCtx(): ProfileSelectionContextView {
+    return {
+      estimate_profile_source: "default_material_profile",
+      selected_material: "PLA",
+      selected_spoolman_filament_ref: null,
+      selected_filament_name: "Bambu PLA Basic",
+      orca_filament_profile_name: "Bambu PLA Basic @BBL X1C",
+    };
+  }
+
+  it("fresh + default_material_profile → fresh_default title with mass", () => {
+    mockUseEstimate.mockReturnValue(
+      ok(view({ status: "fresh", filament_g: 42, profile_selection_context: defaultCtx() })),
+    );
+    render(chip());
+    expect(
+      screen.getByTitle("Estimated filament 42 g (default profile)."),
+    ).toBeTruthy();
+  });
+
+  it("stale + default_material_profile → stale_default title with mass", () => {
+    mockUseEstimate.mockReturnValue(
+      ok(view({ status: "stale", filament_g: 42, profile_selection_context: defaultCtx() })),
+    );
+    render(chip());
+    expect(
+      screen.getByTitle(
+        "Estimated filament 42 g — may be out of date (default profile).",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("queued with value + default_material_profile → queued_default title", () => {
+    mockUseEstimate.mockReturnValue(
+      ok(view({ status: "queued", filament_g: 42, profile_selection_context: defaultCtx() })),
+    );
+    render(chip());
+    expect(
+      screen.getByTitle(
+        "Estimated filament 42 g — recomputing… (default profile).",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("queued with no value + default_material_profile → queued_no_value_default title", () => {
+    mockUseEstimate.mockReturnValue(
+      ok(
+        view({
+          status: "queued",
+          filament_g: null,
+          profile_selection_context: defaultCtx(),
+        }),
+      ),
+    );
+    render(chip());
+    expect(screen.getByTitle("Recomputing estimate (default profile)…")).toBeTruthy();
   });
 });

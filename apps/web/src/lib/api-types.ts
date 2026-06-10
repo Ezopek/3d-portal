@@ -446,6 +446,21 @@ export interface OverrideContextView {
   purchase_url: string | null;
 }
 
+// Story 35.5 — mirrors slicer/schemas.py ProfileSelectionContextView.
+// orca_filament_profile_name is admin-scoped — never render in user-facing UI.
+export type EstimateProfileSource =
+  | "exact_filament_mapping"
+  | "default_material_profile"
+  | "unavailable_no_profile";
+
+export interface ProfileSelectionContextView {
+  estimate_profile_source: EstimateProfileSource;
+  selected_material: string | null;
+  selected_spoolman_filament_ref: string | null;
+  selected_filament_name: string | null;
+  orca_filament_profile_name: string | null;
+}
+
 export interface EstimateView {
   status: UIEstimateStatus;
   time_seconds: number | null;
@@ -458,6 +473,7 @@ export interface EstimateView {
   warnings: EstimateWarningView[];
   failure_reason: EstimateFailureReason | null;
   override_context: OverrideContextView;
+  profile_selection_context?: ProfileSelectionContextView | null;
 }
 
 // EST-RECOMPUTE-1 — the guarded POST /api/estimates/recompute response. `enqueued` is the

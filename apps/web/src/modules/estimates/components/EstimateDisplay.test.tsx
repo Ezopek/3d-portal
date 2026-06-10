@@ -3,7 +3,11 @@ import "@/locales/i18n";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { EstimateView, OverrideContextView } from "@/lib/api-types";
+import type {
+  EstimateView,
+  OverrideContextView,
+  ProfileSelectionContextView,
+} from "@/lib/api-types";
 import { EstimateDisplay } from "./EstimateDisplay";
 
 afterEach(cleanup);
@@ -227,5 +231,107 @@ describe("EstimateDisplay — no internal labels leak into the DOM (AC-8)", () =
     ]) {
       expect(text).not.toContain(internal);
     }
+  });
+});
+
+// 35.5 AC-4 — absent + unavailable_no_profile copy distinction
+describe("EstimateDisplay — 35.5 AC-4 absent + unavailable_no_profile", () => {
+  function absentUnavailable(): EstimateView {
+    return view({
+      status: "absent",
+      profile_selection_context: {
+        estimate_profile_source: "unavailable_no_profile",
+        selected_material: "PLA",
+        selected_spoolman_filament_ref: null,
+        selected_filament_name: null,
+        orca_filament_profile_name: null,
+      },
+    });
+  }
+
+  it("shows 'no profile configured' copy, not the generic 'no estimate yet' copy", () => {
+    renderDisplay({ data: absentUnavailable() });
+    expect(
+      screen.getByText(/no filament profile configured for this material/i),
+    ).toBeTruthy();
+    expect(screen.queryByText(/no estimate yet/i)).toBeNull();
+  });
+
+  it("absent branch never renders a profile source badge (no badge for absent)", () => {
+    const { container } = renderDisplay({ data: absentUnavailable() });
+    expect(container.textContent).not.toMatch(
+      /exact filament profile|default.*profile/i,
+    );
+  });
+});
+
+// 35.5 AC-5 — ProfileSourceBadge integration in fresh/stale states
+describe("EstimateDisplay — 35.5 AC-5 ProfileSourceBadge integration", () => {
+  function exactCtx(): ProfileSelectionContextView {
+    return {
+      estimate_profile_source: "exact_filament_mapping",
+      selected_material: "PLA",
+      selected_spoolman_filament_ref: "Bambu\x1fPLA\x1fPLA Basic",
+      selected_filament_name: "Bambu PLA Basic",
+      orca_filament_profile_name: "Bambu PLA Basic @BBL X1C",
+    };
+  }
+
+  function defaultCtx(): ProfileSelectionContextView {
+    return {
+      estimate_profile_source: "default_material_profile",
+      selected_material: "PLA",
+      selected_spoolman_filament_ref: null,
+      selected_filament_name: "Bambu PLA Basic",
+      orca_filament_profile_name: "Bambu PLA Basic @BBL X1C",
+    };
+  }
+
+  it("fresh + exact_filament_mapping renders 'Exact filament profile' badge", () => {
+    renderDisplay({
+      data: view({ status: "fresh", profile_selection_context: exactCtx() }),
+    });
+    expect(screen.getByText(/exact filament profile/i)).toBeTruthy();
+  });
+
+  it("fresh + default_material_profile renders 'Default PLA profile' badge", () => {
+    renderDisplay({
+      data: view({ status: "fresh", profile_selection_context: defaultCtx() }),
+    });
+    expect(screen.getByText(/default pla profile/i)).toBeTruthy();
+  });
+
+  it("fresh + null profile_selection_context renders no badge (AC-6 regression)", () => {
+    const { container } = renderDisplay({
+      data: view({ status: "fresh", profile_selection_context: null }),
+    });
+    expect(container.textContent).not.toMatch(
+      /exact filament profile|default.*profile/i,
+    );
+  });
+
+  it("stale + default_material_profile renders badge", () => {
+    renderDisplay({
+      data: view({ status: "stale", profile_selection_context: defaultCtx() }),
+    });
+    expect(screen.getByText(/default pla profile/i)).toBeTruthy();
+  });
+
+  it("failed + exact_filament_mapping renders badge (AC-5)", () => {
+    renderDisplay({
+      data: view({
+        status: "failed",
+        failure_reason: "parse_failure",
+        profile_selection_context: exactCtx(),
+      }),
+    });
+    expect(screen.getByText(/exact filament profile/i)).toBeTruthy();
+  });
+
+  it("orca_filament_profile_name never leaks into the DOM even when context is set", () => {
+    const { container } = renderDisplay({
+      data: view({ status: "fresh", profile_selection_context: exactCtx() }),
+    });
+    expect(container.textContent).not.toContain("Bambu PLA Basic @BBL X1C");
   });
 });
