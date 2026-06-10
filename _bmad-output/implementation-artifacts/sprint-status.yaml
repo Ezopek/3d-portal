@@ -250,5 +250,5 @@ development_status:
   35-3-estimate-api-source-metadata: done
   35-4-admin-policy-management: done
   35-5-estimate-ui-source-labels: done
-  35-6-bounded-default-matrix-backfill: backlog
+  35-6-bounded-default-matrix-backfill: done
   epic-35-retrospective: backlog

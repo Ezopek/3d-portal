@@ -492,6 +492,7 @@ def resolve_chain(
     validator: CliValidator,
     orca_version: str,
     material_class: MaterialClass,
+    profile_selection: ProfileSelection | None = None,
 ) -> ResolveOutcome:
     """Resolve a ProfileChain directly from library block bodies (Decision AR option b).
 
@@ -499,6 +500,13 @@ def resolve_chain(
     ``library/{machine,process,filament}/{block_id}.json`` bodies and delegates to the same
     resolver tail as :func:`resolve`, without reading/writing ``intents/`` or minting a
     synthetic ``PrintIntentPreset`` coordinate.
+
+    ``profile_selection`` (Story 35.6) is the same opt-in seam as in :func:`resolve`:
+    - ``None`` → byte-identical to the pre-35.6 call (no regression).
+    - ``unavailable_no_profile`` → classified :class:`ResolveFailure` returned early.
+    - ``default_material_profile`` / ``exact_filament_mapping`` → filament partial
+      re-targeted via :func:`_apply_profile_selection` before :func:`_resolve_partials`.
+      The selection is propagated to :class:`ResolveSuccess` via ``model_copy``.
     """
     partials = {
         "machine": _read_chain_body(source, "machine", chain.machine_block_id),
@@ -510,7 +518,18 @@ def resolve_chain(
             reason=ResolveReason.invalid_partial,
             message="profile chain references a missing or unreadable library block body",
         )
-    return _resolve_partials(
+    # 35.6 — mirrors resolve() lines 444–454
+    if profile_selection is not None:
+        if profile_selection.source is EstimateProfileSource.unavailable_no_profile:
+            return ResolveFailure(
+                reason=ResolveReason.unavailable_no_profile,
+                message=(
+                    f"no filament profile configured for "
+                    f"material={profile_selection.selected_material!r}"
+                ),
+            )
+        partials = _apply_profile_selection(partials, profile_selection)
+    outcome = _resolve_partials(
         partials,  # type: ignore[arg-type]
         source=source,
         store=store,
@@ -519,6 +538,10 @@ def resolve_chain(
         material_class=material_class,
         overrides=None,
     )
+    # Propagate profile_selection to ResolveSuccess (mirrors resolve() lines 467–468)
+    if profile_selection is not None and isinstance(outcome, ResolveSuccess):
+        outcome = outcome.model_copy(update={"profile_selection": profile_selection})
+    return outcome
 
 
 def resolve_intent(

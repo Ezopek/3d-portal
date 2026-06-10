@@ -214,6 +214,78 @@ async def ingest_stl_part(
     )
 
 
+async def ingest_stl_for_default_matrix(
+    model_file: ModelFile,
+    *,
+    resolved_cells: "list[Any]",
+    arq_pool: Any,
+    stl_cache: StlCache,
+    estimate_store: EstimateStore,
+    content_dir: Path,
+) -> list[IngestResult]:
+    """Ingest one catalog STL for every resolved default-matrix cell (Story 35.6, AC-7).
+
+    For each ``ResolvedMatrixCell`` with ``bundle_hash is not None``, calls
+    :func:`ingest_stl_part` with a synthetic resolver that always returns the
+    pre-resolved bundle — so the freshness-check + enqueue path runs without
+    re-resolving. Cells with ``bundle_hash=None`` are logged and excluded.
+    A classified failure on one cell does NOT stop the others.
+    """
+    from app.modules.slicer.models import (
+        ResolveSuccess,
+        SlicerProfileBundle,
+        ResolvedTriple,
+    )
+
+    results: list[IngestResult] = []
+    for rc in resolved_cells:
+        if rc.bundle_hash is None:
+            _LOG.info(
+                "matrix_ingest.skip_unresolved",
+                extra={
+                    "labels.offer_id": rc.cell.offer_id,
+                    "labels.material": rc.cell.material,
+                },
+            )
+            continue
+
+        _bh = rc.bundle_hash
+
+        def _preset_resolver(
+            _intent: PrintIntentPreset, _bundle_hash: str = _bh
+        ) -> ResolveSuccess:
+            return ResolveSuccess(
+                bundle=SlicerProfileBundle(
+                    bundle_hash=_bundle_hash,
+                    orca_version="",
+                    machine={},
+                    process={},
+                    filament={},
+                    source_snapshot_ref=_bundle_hash,
+                    created_at="",
+                ),
+                triple=ResolvedTriple(machine={}, process={}, filament={}),
+                from_cache=True,
+            )
+
+        result = await ingest_stl_part(
+            model_file,
+            arq_pool=arq_pool,
+            stl_cache=stl_cache,
+            estimate_store=estimate_store,
+            resolve_fn=_preset_resolver,
+            default_preset=PrintIntentPreset(
+                name=f"{rc.cell.material} default",
+                material_class="PLA",
+                quality_tier="standard",
+                printer_ref="placeholder",
+            ),
+            content_dir=content_dir,
+        )
+        results.append(result)
+    return results
+
+
 async def ingest_model_estimates(
     model_files: Iterable[ModelFile],
     *,

@@ -1178,6 +1178,53 @@ async def publish_profile_offer(
     except profile_publish.PublishError as exc:
         raise _reject(exc.status_code, exc.reason_category, exc.message) from exc
 
+    # Story 35.6 — offer-publish matrix hook (AC-9).
+    # Enqueue estimates for all catalog STLs × this offer's compatible material defaults.
+    # Never re-raises: a backfill failure must NOT roll back the publish.
+    try:
+        from app.modules.slicer.matrix_backfill import enumerate_matrix_cells, resolve_matrix_cells
+        _settings = get_settings()
+        _sidecar = profile_offer.read_offer(source.root, offer_id)
+        if _sidecar is not None:
+            _policy = ProfilePolicyStore(_settings.slicer_profile_policy_dir).load()
+            _cells = enumerate_matrix_cells([_sidecar], _policy)
+            if _cells:
+                _resolved = resolve_matrix_cells(
+                    _cells,
+                    source=source,
+                    store=bundle_store,
+                    orca_version=_settings.orca_version,
+                    validator=NullCliValidator(),
+                )
+                from app.modules.slicer.matrix_backfill import enqueue_matrix_for_all_stls
+                from app.modules.slicer.estimate_store import EstimateStore
+                from app.core.db.session import get_session
+                from sqlmodel import Session as _Session
+                _counters: dict[str, int] = {}
+                with _Session(get_engine()) as _sess:
+                    _counters = await enqueue_matrix_for_all_stls(
+                        _resolved,
+                        arq_pool=arq_pool,
+                        stl_cache=stl_cache,
+                        estimate_store=EstimateStore(_settings.slicer_estimate_store_dir),
+                        content_dir=_settings.portal_content_dir.resolve(),
+                        db_session=_sess,
+                    )
+                _LOG.info(
+                    "slicer.offer_publish_matrix_hook",
+                    extra={
+                        "labels.offer_id": offer_id,
+                        "labels.cells_count": len(_cells),
+                        "labels.enqueued": _counters.get("enqueued", 0),
+                        "labels.already_fresh": _counters.get("already_fresh", 0),
+                    },
+                )
+    except Exception:
+        _LOG.exception(
+            "slicer.offer_publish_matrix_hook.error",
+            extra={"labels.offer_id": offer_id},
+        )
+
     return OfferPublishResult(
         offer_id=outcome.offer_id,
         published_bundle_hash=outcome.published_bundle_hash,
@@ -1234,6 +1281,7 @@ async def unpublish_profile_offer(
 # route-enforcement gate recognises them WITHOUT any _PUBLIC_ROUTES edit (AC-3).
 
 _POLICY_LOG = logging.getLogger("app.slicer.policy_admin")
+_LOG = logging.getLogger("app.modules.slicer.admin_router")
 
 
 # --- DI seams (overridable in tests) ----------------------------------------
@@ -1437,6 +1485,77 @@ async def upsert_material_default(
         },
         request_id=request.headers.get("x-request-id"),
     )
+
+    # Story 35.6 — material-default change matrix hook (AC-10).
+    # Re-enqueues all STLs for offers compatible with `norm` when the profile ref changes.
+    # Only fires when the ref changes (or a brand-new enabled default is added).
+    # Never re-raises: a backfill failure MUST NOT roll back the policy save.
+    old_default = policy.material_defaults.get(norm)
+    new_default = candidate.material_defaults.get(norm)
+    _profile_ref_changed = (
+        new_default is not None
+        and new_default.enabled
+        and (
+            old_default is None
+            or old_default.orca_filament_profile_ref != new_default.orca_filament_profile_ref
+        )
+    )
+    if _profile_ref_changed:
+        try:
+            from app.modules.slicer.bundle_store import BundleStore
+            from app.modules.slicer.estimate_store import EstimateStore
+            from app.modules.slicer.matrix_backfill import (
+                enumerate_matrix_cells,
+                enqueue_matrix_for_all_stls,
+                resolve_matrix_cells,
+            )
+            from app.modules.slicer.profile_offer import list_offers
+            from app.modules.slicer.stl_cache import StlCache
+            from app.modules.slicer.validation import NullCliValidator
+            from sqlmodel import Session as _Session
+
+            _settings = get_settings()
+            _arq_pool = getattr(request.app.state, "arq", None)
+            if _arq_pool is not None:
+                _all_sidecars = list_offers(source.root)
+                _compatible_sidecars = [
+                    s for s in _all_sidecars
+                    if norm in (s.get("compatible_material_categories") or [])
+                ]
+                _cells = enumerate_matrix_cells(_compatible_sidecars, candidate, material_filter=norm)
+                if _cells:
+                    _resolved = resolve_matrix_cells(
+                        _cells,
+                        source=source,
+                        store=BundleStore(_settings.slicer_bundle_store_dir),
+                        orca_version=_settings.orca_version,
+                        validator=NullCliValidator(),
+                    )
+                    _counters: dict[str, int] = {}
+                    with _Session(get_engine()) as _sess:
+                        _counters = await enqueue_matrix_for_all_stls(
+                            _resolved,
+                            arq_pool=_arq_pool,
+                            stl_cache=StlCache(_settings.slicer_stl_cache_dir),
+                            estimate_store=EstimateStore(_settings.slicer_estimate_store_dir),
+                            content_dir=_settings.portal_content_dir.resolve(),
+                            db_session=_sess,
+                        )
+                    _LOG.info(
+                        "slicer.policy_material_default_matrix_hook",
+                        extra={
+                            "labels.material": norm,
+                            "labels.cells_count": len(_cells),
+                            "labels.enqueued": _counters.get("enqueued", 0),
+                            "labels.already_fresh": _counters.get("already_fresh", 0),
+                        },
+                    )
+        except Exception:
+            _LOG.exception(
+                "slicer.policy_material_default_matrix_hook.error",
+                extra={"labels.material": norm},
+            )
+
     return _build_policy_admin_view(store.load(), snapshot, source)
 
 

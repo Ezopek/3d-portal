@@ -381,3 +381,54 @@ async def test_unpublish_is_idempotent_and_keeps_append_only_bundle(seam) -> Non
         ).all()
     assert len(events) == 2
     assert all(e.entity_id == uuid.UUID(offer_id) for e in events)
+
+
+# ---------------------------------------------------------------------------
+# Story 35.6 — offer-publish matrix hook (AC-9)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_publish_matrix_hook_calls_enumerate_matrix_cells(seam, monkeypatch) -> None:
+    """AC-9 (35.6): successful publish triggers enumerate_matrix_cells for the published offer."""
+    enumerate_calls: list = []
+
+    def _fake_enumerate(offers, policy):
+        enumerate_calls.extend(offers)
+        return []
+
+    monkeypatch.setattr(
+        "app.modules.slicer.matrix_backfill.enumerate_matrix_cells",
+        _fake_enumerate,
+    )
+
+    ac, root, _content_dir, admin_id, _pool = seam
+    await _login_admin(ac, admin_id)
+    offer_id = _seed_offer(root)
+
+    r = await ac.post(f"/api/admin/profiles/offers/{offer_id}/publish", json={"stl_hash": STL_HASH})
+
+    assert r.status_code == 200, r.text
+    assert len(enumerate_calls) >= 1, "enumerate_matrix_cells must receive the published offer's sidecar"
+    assert enumerate_calls[0].get("offer_id") == offer_id
+
+
+@pytest.mark.asyncio
+async def test_publish_matrix_hook_exception_does_not_roll_back_publish(seam, monkeypatch) -> None:
+    """AC-9 (35.6): a hook exception is swallowed — publish response must still be 200."""
+    def _raise(*args, **kwargs):
+        raise RuntimeError("matrix hook exploded")
+
+    monkeypatch.setattr(
+        "app.modules.slicer.matrix_backfill.enumerate_matrix_cells",
+        _raise,
+    )
+
+    ac, root, _content_dir, admin_id, _pool = seam
+    await _login_admin(ac, admin_id)
+    offer_id = _seed_offer(root)
+
+    r = await ac.post(f"/api/admin/profiles/offers/{offer_id}/publish", json={"stl_hash": STL_HASH})
+
+    assert r.status_code == 200, r.text
+    assert r.json()["publish_state"] == PUBLISH_STATE_PUBLISHED
