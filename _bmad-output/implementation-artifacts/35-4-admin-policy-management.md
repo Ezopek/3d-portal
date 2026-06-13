@@ -4,7 +4,7 @@ baseline_commit: 8373201
 
 # Story 35.4: Admin policy management surface
 
-Status: review
+Status: done
 
 <!--
   Authored by the repo-local BMAD author (Laura/Hermes delegated). Source planning artifacts:
