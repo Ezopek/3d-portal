@@ -9,7 +9,6 @@ Covers:
 from __future__ import annotations
 
 import asyncio
-import logging
 import uuid
 from typing import Any
 from unittest.mock import MagicMock
@@ -289,22 +288,26 @@ def test_resolve_matrix_cells_failure_path_does_not_stop_others(tmp_path):
     assert resolved[1].bundle_hash == "hash-ok"
 
 
-def test_resolve_matrix_cells_failure_emits_log(tmp_path, caplog):
+def test_resolve_matrix_cells_failure_emits_log(tmp_path, monkeypatch):
     cell = MatrixCell(offer_id="offer-1", offer_label="A", material="PLA", orca_profile_ref="ref")
     sidecar = _minimal_sidecar_for_chain("offer-1")
+    warning = MagicMock()
+    monkeypatch.setattr("app.modules.slicer.matrix_backfill._LOG.warning", warning)
 
-    with caplog.at_level(logging.WARNING, logger="app.modules.slicer.matrix_backfill"):
-        resolve_matrix_cells(
-            [cell],
-            source=MagicMock(),
-            store=MagicMock(),
-            orca_version="2.3.2",
-            validator=MagicMock(),
-            _resolve_chain_fn=_fake_failure_resolver(),
-            _read_offer_fn=lambda root, oid: sidecar,
-        )
+    resolve_matrix_cells(
+        [cell],
+        source=MagicMock(),
+        store=MagicMock(),
+        orca_version="2.3.2",
+        validator=MagicMock(),
+        _resolve_chain_fn=_fake_failure_resolver(),
+        _read_offer_fn=lambda root, oid: sidecar,
+    )
 
-    assert any("slicer.matrix_backfill.resolve_failed" in r.message for r in caplog.records)
+    assert any(
+        call.args and call.args[0] == "slicer.matrix_backfill.resolve_failed"
+        for call in warning.call_args_list
+    )
 
 
 # ---------------------------------------------------------------------------

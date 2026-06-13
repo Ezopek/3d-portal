@@ -657,7 +657,7 @@ def test_put_material_default_matrix_hook_fires_on_new_entry(
     """AC-10 (35.6): adding a brand-new enabled material default triggers enumerate_matrix_cells."""
     enumerate_calls: list = []
 
-    def _fake_enumerate(offers, policy):
+    def _fake_enumerate(offers, policy, **_kwargs):
         enumerate_calls.append((offers, policy))
         return []
 

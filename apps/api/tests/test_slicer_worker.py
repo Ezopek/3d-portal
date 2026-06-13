@@ -722,8 +722,8 @@ def test_no_bench_or_windows_path_literal_in_slicer_module():
     # prose that legitimately names the external boundary (".../external bench/Windows
     # host...", "FENRIR_EXPORT_PATH"), so it is checked for PATH/EXE LITERALS only.
     module = REPO_ROOT / "apps/api/app/modules/slicer"
-    full = re.compile(r"/mnt/c|fenrir|\.exe|[Ww]indows", re.IGNORECASE)
-    literal = re.compile(r"/mnt/c|\.exe", re.IGNORECASE)
+    full = re.compile(r"/mnt/c|fenrir|\.exe\b|[Ww]indows", re.IGNORECASE)
+    literal = re.compile(r"/mnt/c|\.exe\b", re.IGNORECASE)
     offenders: list[str] = []
     for path in sorted(module.rglob("*")):
         if not path.is_file() or "__pycache__" in path.parts:
@@ -784,32 +784,38 @@ def test_slicer_module_mounts_only_narrow_estimates_read_router():
     # (Decision AN) added the FIVE PrintProfileOffer CRUD routes; PROFILE-PUBLISH-1
     # (Decision AR) adds exactly TWO publish-state POSTs:
     # /profiles/offers/{offer_id}/publish and .../unpublish. Fence the surface with equal
-    # rigor: exactly FIVE GETs (grid inventory + library list + library detail + offer list +
-    # offer detail), FIVE POSTs (grid import + library import + offer create + offer publish +
-    # offer unpublish), EXACTLY ONE PATCH (offer edit; chain not patchable), and EXACTLY TWO
-    # DELETEs (library delete + offer delete). NO put lifecycle surface. The publish POST is
-    # the sanctioned first admin route that reaches the append-only bundle/slice path; the
-    # grid intents/system tree remains untouched.
+    # rigor: exactly SIX GETs (grid inventory + library list + library detail + offer list +
+    # offer detail + policy read), SIX POSTs (grid import + library import + offer create +
+    # offer publish + offer unpublish + filament override upsert), EXACTLY ONE PATCH
+    # (offer edit; chain not patchable), EXACTLY FOUR DELETEs (library delete +
+    # offer delete + two policy deletes), and EXACTLY ONE PUT (material-default upsert).
+    # The publish POST is the sanctioned first admin route that reaches the append-only
+    # bundle/slice path; the grid intents/system tree remains untouched.
     admin_router_path = module / "admin_router.py"
     assert admin_router_path.exists()
     admin_text = admin_router_path.read_text(encoding="utf-8")
     assert 'APIRouter(prefix="/api/admin"' in admin_text
-    assert admin_text.count("@router.get") == 5
+    assert admin_text.count("@router.get") == 6
     assert '"/profiles"' in admin_text
     assert '"/profiles/library"' in admin_text
     assert '"/profiles/library/{block_id}"' in admin_text
     assert '"/profiles/offers"' in admin_text
     assert '"/profiles/offers/{offer_id}"' in admin_text
-    # The grid import + library import + offer create + publish + unpublish are the only POSTs.
-    assert admin_text.count("@router.post") == 5
+    assert '"/policy"' in admin_text
+    # The sanctioned POSTs are grid import, library import, offer create, publish,
+    # unpublish, and filament override upsert.
+    assert admin_text.count("@router.post") == 6
     assert '"/profiles/import"' in admin_text
     assert '"/profiles/offers/{offer_id}/publish"' in admin_text
     assert '"/profiles/offers/{offer_id}/unpublish"' in admin_text
+    assert '"/policy/filament-overrides"' in admin_text
+    assert admin_text.count("@router.put") == 1
+    assert '"/policy/material-defaults/{material}"' in admin_text
     # Exactly ONE patch (the sanctioned offer edit); the chain is immutable (delete + recreate).
     assert admin_text.count("@router.patch") == 1
-    # Exactly TWO deletes (library block delete + offer delete); no rename/disable put surface.
-    assert admin_text.count("@router.delete") == 2
-    assert "@router.put" not in admin_text
+    # Exactly FOUR deletes (library block delete + offer delete + material default +
+    # filament override).
+    assert admin_text.count("@router.delete") == 4
     # Admin-gated (not public); direct router code does not re-derive queue plumbing or write
     # estimates. Publish delegates to profile_publish instead of hiding a second route path.
     assert "current_admin" in admin_text
@@ -818,9 +824,10 @@ def test_slicer_module_mounts_only_narrow_estimates_read_router():
     assert "enqueue_recompute" not in admin_text
 
     api_router = re.compile(r"\bAPIRouter\b")
-    # router.py (the estimates read seam) and admin_router.py (the Story 33.1 admin read
-    # surface, fenced above) are the only two sanctioned APIRouter-bearing modules.
-    sanctioned = {"router.py", "admin_router.py"}
+    # router.py (the estimates read seam), admin_router.py (admin surface), and
+    # member_router.py (Story 36.1 published-offer member read seam, fenced by
+    # test_member_profile_offers.py) are the sanctioned APIRouter-bearing modules.
+    sanctioned = {"router.py", "admin_router.py", "member_router.py"}
     offenders = []
     for path in module.glob("*.py"):
         if path.name in sanctioned:
