@@ -136,6 +136,8 @@ This is the living project PRD for **3d-portal**. It grows over time, one **Init
 | 20 | STL Slicer Estimates (Per-Part MVP) | 🚧 planning | — | Single epic E32 (6 stories 32.1-32.6): profile resolver (Orca system+user inheritance merge + normalize + validate + hash + provenance snapshot), containerized headless OrcaSlicer worker, g-code metadata parse + `(stl_hash, bundle_hash)` cache, hash-driven invalidation + cost-only arithmetic recompute, Spoolman-mapped custom filament overrides (esp. TPU volumetric speed), frontend `PrintIntentPreset` selector + estimate display + soft-fail states. Per-STL estimates only (time, filament mass/mm/cm³, informational cost); request totals are linear sums — NO whole-plate/basket slicing, NOT e-commerce. Spoolman stays inventory SoT; Fenrir is research/export bench only (no production dependency). Three architecture Decisions (AH resolver, AI slicer-worker container, AJ cache/invalidation). Source SCP: `sprint-change-proposal-2026-05-31-stl-slicer-estimates.md`. Discovery: `brainstorming-session-2026-05-31-1926.md`. See section "Initiative 20" below. |
 | 21 | Admin-Managed Orca Process Profiles + User-Facing Selector Options | 🚧 planning | — | Single epic E33 (3 stories 33.1-33.3, read-only first): admin panel to see/import/manage Orca **process/intent** profiles per `(printer_ref, material_class, quality_tier)` slot so the user-facing Files/STL selector exposes only **admin-approved + compatible** options. Builds on the Init 20 resolver + the EST-TIERS-1 availability bridge (which it supersedes: availability stops being derived purely from disk presence and becomes admin-managed). **OD-1 RESOLVED (operator 2026-06-04): fixed `{aesthetic,standard,strong} × {PLA,PETG,PCTG,TPU}` grid + an explicit material/filament-class ↔ process-profile compatibility map** — offerable = imported ∧ resolvable ∧ compatible (TPU only offers TPU-compatible process profiles). Read-only inventory ships first (zero write/deploy risk); validated import is the second slice (vendored-dir write posture + sidecar manifest, no DB). FR21-COMPAT-1 + NFR21-UX-1 (UX-PROFILE-1 — `bmad-ux` designs the admin grid + selector before/with FE work). Two architecture Decisions (AK admin inventory read + compatibility-map representation/enforcement, AL import write posture + sidecar metadata). Process/intent profiles only — NOT Spoolman inventory/cost. Source SCP: `sprint-change-proposal-2026-06-04-profile-admin.md`. Kanban: `t_ce1927cf`. See section "Initiative 21" below. |
 | 22 | Admin Operational Observability (Worker/Job Console) | 🚧 planning | — | Single epic E34 (1 read-only MVP story, ADMIN-JOBS-1): admin-only worker/job **console** over the three live ARQ pools (API `arq:api`, Render `arq:queue`, Slicer `arq:slicer`) — a backend snapshot endpoint `GET /api/admin/queues` + a frontend `/admin/queues` admin tab. Answers "did my change wake the backend? / is something running ahead of mine? / what are these red jobs?" (UC1-UC3). **Read-only, admin-only; NO retry/kill/purge/pause/resume.** MVP = raw-arq **live snapshot** over the lifespan-owned `app.state` arq/Redis (exact `zcard` queued + bounded `SCAN` in-progress; bounded `SCAN` recent results, **never** unbounded `KEYS`) + reuse of the existing business-keyed status keys (`render:status:{model_id}`, slicer `EstimateStatus`) as the job-context layer. **Durable job-activity ledger DEFERRED** (named later slice, G-LEDGER). Worker liveness is a tri-state derived from the coarse `<queue>:health-check` key (1h interval today) — **coarse liveness accepted for MVP** (running/queued stay exact), interval-lowering deferred (G-LIVENESS). Recent-history panel **labelled Redis-resident / ~last 1h**. Load-bearing **leak fence**: field-allowlist DTO, never raw pickled `args`/`kwargs`/`result`, curated `error_class`/`context`. Three architecture Decisions (AO read-model + location + ledger-deferred, AP coarse-health-key liveness, AQ leak fence / read-only privacy contract). **Sequenced BEFORE G-PUBLISH** (Init 21 PROFILE-OFFER-1 real-resolver publication) so the operator can observe slice/recompute/render queues before publishing effects. API-read-only + FE → SW-DEPLOY-1 NOT triggered. **Implementation BLOCKED until bmad-create-story + dev-go.** Discovery: `spec-admin-jobs-console.md` (commit dcb9df8). Source SCP: `sprint-change-proposal-2026-06-06-init22-admin-jobs-console.md`. See section "Initiative 22" below. |
+| 23 | Spoolman Filament Profile Estimates (Material-Default + Exact-Override Policy) | ✅ shipped | 2026-06-10 | Single epic **E35** (6 stories 35.1–35.6): portal-owned profile-selection policy (`exact filament override > material default > unavailable`), file-backed `ProfilePolicyStore`, resolver/bundle integration, estimate API source metadata (`EstimateProfileSource`), admin policy management surface, user-facing exact/default/unavailable labels, bounded default-matrix backfill guardrails. Architecture: Decision AS. Source SCP: `sprint-change-proposal-2026-06-07-spoolman-filament-profile-estimates.md`. See section "Initiative 23" below. |
+| 24 | Member-Facing Published Profile Offer Surface (PROFILE-PUBLISH-2) | 🚧 planning | — | Single epic **E36** (3 stories 36.1–36.3): member-accessible published-offer list endpoint + safe DTO (36.1), member estimate-by-offer resolution reusing E35 source labels (36.2), member offer picker UI (36.3; gated on G-UXGATE). Realizes the named PROFILE-PUBLISH-2 follow-on from Decision AR / PROFILE-PUBLISH-1. Admin API preserved unchanged; no Alembic/DB change; SW-DEPLOY-1 NOT triggered. Architecture: Decision AT. Source SCP: `sprint-change-proposal-2026-06-13-profile-publish-2-member-offer-surface.md`. See section "Initiative 24" below. |
 
 ## Initiative 0 — Product Foundation: Home 3D-Printing Catalog
 
@@ -2097,4 +2099,59 @@ The discovery spec surfaced OD-1..OD-5, each with a safe evidence-backed default
 - Architecture extension: `architecture.md` § Initiative 22 (Decisions AO + AP + AQ).
 - Epics extension: `epics.md` § Initiative 22 (Epic E34 + Story 34.1).
 - Sprint status: rows are seeded by `bmad-sprint-planning` after this landing (NOT yet present); the planned rows are `epic-34` / `34-1-admin-queues-console` / `epic-34-retrospective` (all `backlog`). Implementation BLOCKED until `bmad-create-story` + operator dev-go (G-DEVGO).
-- Memory entries: [[feedback_scp_pre_enumeration_phase]] (pre-enumeration + cache-topology + magic-constant contract discipline applied in the discovery §§ 2/9 and to every Init 22 story spec — esp. the polling interval + `recent[]` SCAN cap), [[reference_web_routetree_regen]] (routeTree regen + AdminTabs baseline ripple from the new tab).
+
+## Initiative 24 — Member-Facing Published Profile Offer Surface (PROFILE-PUBLISH-2)
+
+**Status:** 🚧 planning (started 2026-06-13). Source SCP: `sprint-change-proposal-2026-06-13-profile-publish-2-member-offer-surface.md` (status `proposed`). Single epic **E36**. Architecture: `architecture.md` § Initiative 24 (Decision AT). Realizes the named **PROFILE-PUBLISH-2** follow-on deferred by PROFILE-PUBLISH-1 (Decision AR, AC-16).
+
+### Overview
+
+Init 24 gives members the ability to see and choose from admin-published print profile offers in the model file/estimate view, with E35 honest labelling (exact filament / default material / unavailable) on the resulting estimate. Until this initiative ships, members see only the transitional 33.1/33.2 fixed-grid projection; PROFILE-PUBLISH-2 bridges the published offer/chain layer (from E33/PROFILE-PUBLISH-1) to the member-facing estimate surface (reusing E35's `EstimateProfileSource` metadata). Admin API for offers is preserved unchanged. No Alembic/DB migration. SW-DEPLOY-1 NOT triggered (all new endpoints are read-only over already-published bundles + existing estimate store).
+
+### Functional Requirements
+
+- **FR24-MEMBER-OFFER-LIST-1**: Member-accessible `GET /api/profiles/offers/published` endpoint — lists published offers with safe DTO (`offer_id`, `portal_label`, `quality_tier`, `compatible_material_categories`, `printer_name`; no raw Orca fields / bundle_hash / chain body).
+- **FR24-COMPAT-FILTER-1**: Optional `?material=PLA` param filters by `compatible_material_categories`; returns all published offers when absent.
+- **FR24-MEMBER-OFFER-RESOLVE-1**: Estimate-by-offer resolution — `offer_id` + `stl_hash` maps to the published `bundle_hash` → returns existing `EstimateView` (with E35 source labels) or `{status: "not_computed"}` if no estimate yet.
+- **FR24-MEMBER-OFFER-UI-1**: Member offer picker UI in the model file/estimate view — selection updates estimate display; E35 honesty labels shown; unavailability explained clearly.
+
+### Non-Functional Requirements
+
+- **NFR24-NO-422-1**: No member-reachable 422 from the offer → resolve path. Valid published offer + any filament/material context resolves to estimate / pending / unavailable — never a server error. (Realizes NFR21-NO-422-1 for the member surface.)
+- **NFR24-LEAKFENCE-1**: Member offer DTO must NOT include raw `bundle_hash`, Orca profile ref names, chain body, or internal sidecar paths. Verified by a negative DTO test.
+- **NFR24-HONESTY-1**: E35 `EstimateProfileSource` labels flow through: exact / default / unavailable shown distinctly. Fallback estimates must not appear as exact.
+- **NFR24-UNAVAIL-UX-1**: No compatible offer or estimate unavailable → clear non-misleading UI message (not an empty spinner or wrong green state).
+- **NFR24-AUTH-1**: Both new backend endpoints authenticated-member-accessible; anonymous → 401; unpublished offer → 404.
+- **NFR24-AUTHGATE-1**: Frontend offer picker defers to shell `AuthGate` for anonymous/unknown auth state (Init 10 authgate discipline).
+- **NFR24-I18N-1**: All new `modules.member.offers.*` keys present in both `en.json` and `pl.json`.
+- **NFR24-VISUAL-1**: Playwright visual baselines for offer picker populated / empty / unavailable × 4 projects.
+- **NFR24-DETERMINISM-1**: 3× consecutive identical pytest + vitest pass counts before merge of any story.
+
+### Decisions
+
+- **Decision AT** (architecture): Member-facing published-offer surface — separate member DTO endpoint with hard safety fence + estimate-by-offer read-only resolution over existing published bundles. See `architecture.md` § Initiative 24 Decision AT.
+
+### Open decisions (operator confirmation needed before 36.2 dev-story)
+
+- **OD-1**: Endpoint shape for estimate-by-offer — extend `GET /api/estimates?offer_id=...` vs. new endpoint. **Proposed default: extend existing.**
+- **OD-2**: Filament context param — optional `spoolman_filament_ref`; absent → material-default only. **Proposed default: accepted.**
+- **OD-3**: G-UXGATE for 36.3 FE — `ux-profile-publish-2-member-offer-picker` required before Story 36.3 dev-story. **Proposed default: YES, required.**
+- **OD-4**: On-demand enqueue trigger — when estimate is `not_computed`, show "Request estimate" button or just "Not yet available"? (On-demand enqueue is out of scope for this slice; answer determines whether a G-ENQUEUE gate is named for a follow-on story.)
+
+### Out of scope (intentional)
+
+- Admin offers API — unchanged.
+- 33.1/33.2 fixed-grid projection — unchanged.
+- `compatibility.py` grid — unchanged.
+- Member print request / order flow changes — none in this slice.
+- On-demand slicer enqueue from member UI — out of scope (SW-DEPLOY-1 NOT triggered); future G-ENQUEUE gate.
+- Alembic / DB migration — none.
+
+### Cross-references
+
+- Source SCP: `sprint-change-proposal-2026-06-13-profile-publish-2-member-offer-surface.md`.
+- Architecture: `architecture.md` § Initiative 24 (Decision AT).
+- Epics: `epics.md` § Initiative 24 (Epic E36, stories 36.1–36.3).
+- Sprint status: `_bmad-output/implementation-artifacts/sprint-status.yaml` § epic-36 (rows seeded 2026-06-13; Story 36.1 is `ready-for-dev`, the remaining rows are `backlog`).
+- Predecessor: Initiative 21 (E33 / PROFILE-PUBLISH-1 backend bridge, Decision AR) + Initiative 23 (E35 filament policy, Decision AS).
+- Process notes: apply [[feedback_scp_pre_enumeration_phase]] discipline to E36 story specs; apply [[reference_web_routetree_regen]] if Story 36.3 adds or changes frontend routes.

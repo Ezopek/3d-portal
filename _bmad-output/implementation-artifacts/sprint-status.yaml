@@ -1,5 +1,5 @@
 generated: 2026-05-09
-last_updated: 2026-06-10
+last_updated: 2026-06-13
 project: 3d-portal
 project_key: NOKEY
 tracking_system: file-system
@@ -252,3 +252,9 @@ development_status:
   35-5-estimate-ui-source-labels: done
   35-6-bounded-default-matrix-backfill: done
   epic-35-retrospective: done
+  epic-36: backlog
+  36-1-member-published-offer-list-endpoint: ready-for-dev
+  36-2-member-estimate-by-offer-resolution: backlog
+  ux-profile-publish-2-member-offer-picker: backlog
+  36-3-member-offer-picker-ui: backlog
+  epic-36-retrospective: backlog

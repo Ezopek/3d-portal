@@ -3083,3 +3083,50 @@ The auth-loading state (`auth.isLoading === true`) continues to render the spinn
 - Shipped grounding: `apps/api/app/modules/slicer/profile_policy.py` (35.1); `resolver.py` (`resolve`, `_resolve_partials`, `compute_bundle_hash`); `merge.py` (`resolve_inheritance` name lookup); `overrides.py` (`spoolman_filament_ref`, `apply_filament_overrides`, `build_spoolman_override_provider`); `spools/models.py` (`SpoolmanSnapshot.filaments`); `ingest.py` (the `not isinstance(_, ResolveSuccess)` no-enqueue branch).
 - Decision lineage: extends Decision AH (Init 20 — content-addressed `(stl_hash, bundle_hash)` resolve/cache) + Decision AJ (Init 20 — typed estimate record / override fingerprint); reuses Init 19 Decision AF (Spoolman snapshot mirror).
 - Gates: **G-ARCH** (this section — appended before the 35.2 resolver integration); **G-DEVGO** (35.2–35.6 per-story `bmad-create-story` + dev-go; 35.2 delegated in this run); **G-UXGATE** (`bmad-ux` before/with 35.4 + 35.5 FE); **G-BACKFILL-OPT-IN** (35.6).
+
+## Initiative 24 — Member-Facing Published Profile Offer Surface (PROFILE-PUBLISH-2)
+
+**Status:** 🚧 planning (started 2026-06-13). Source SCP: `sprint-change-proposal-2026-06-13-profile-publish-2-member-offer-surface.md` (status `proposed`). Single epic E36. Realizes the named PROFILE-PUBLISH-2 follow-on deferred by Decision AR (PROFILE-PUBLISH-1, AC-16).
+
+### Overview
+
+Init 24 bridges the published offer/chain layer (Decision AR — `bundle_hash` in append-only store, proven by PROFILE-PUBLISH-1) to the member-facing estimate surface, reusing E35's `EstimateProfileSource` metadata. The design goal is **read-only over already-published bundles**: no new slicer worker path, no Alembic/DB change, no SW-DEPLOY-1 trigger. The admin offer API is preserved unchanged; a separate member-accessible endpoint provides a hard DTO safety fence.
+
+### Decision AT — Member-facing published-offer surface: separate safe DTO endpoint + estimate-by-offer read-only resolution
+
+**Accepted (proposed)** 2026-06-13 for Initiative 24, per `sprint-change-proposal-2026-06-13-profile-publish-2-member-offer-surface.md` § 4 and § 3 (scope boundary). Pending operator OD-1/OD-2/OD-3 confirmation before 36.2 dev-story.
+
+**The three load-bearing choices:**
+
+**Choice 1 — Separate member endpoint vs. extending the admin endpoint.**
+The admin `GET /api/admin/profiles/offers/` returns the full sidecar DTO (including internal fields needed by admin). Extending it to be member-accessible would require hiding fields at the serializer layer and risks future leakage as the admin DTO grows. **Decision: a new, separate `GET /api/profiles/offers/published` endpoint** with a purpose-built `MemberPublishedOfferView` DTO that includes only: `offer_id`, `portal_label`, `quality_tier`, `compatible_material_categories`, `printer_name`. Explicitly **excluded** from this DTO: `bundle_hash`, raw Orca profile ref names, chain block bodies, `sidecar` internals, `profile_chain`, `publish_state` (implied by the endpoint — only published offers are returned). NFR24-LEAKFENCE-1 is verified by a negative DTO test that asserts none of the excluded field names appear in the serialized response.
+
+**Choice 2 — Estimate-by-offer resolution: read-only over existing published bundles.**
+PROFILE-PUBLISH-1 proved that a published offer has a real `bundle_hash` in the append-only bundle store and at least one estimate in `EstimateStore`. Init 24's estimate-by-offer path **reads** that existing estimate rather than triggering a new resolve/slice. The resolution is: `offer_id` → sidecar read → `publish_state.bundle_hash` → `EstimateStore.read(stl_hash, bundle_hash)` → `EstimateView` (with E35 `estimate_profile_source` metadata passthrough). If the estimate does not exist yet (not yet computed for this STL): return `{status: "not_computed", offer_id: ...}` — **no on-demand enqueue in this slice** (SW-DEPLOY-1 NOT triggered; future G-ENQUEUE gate named). If the offer is not published or not found: 404. NFR24-NO-422-1: the resolve path has no branch that can produce a 422 (no live Orca call, no `resolve()` call).
+**OD-1 (endpoint shape):** Proposed default: extend existing `GET /api/estimates` with an optional `offer_id` query param (backward-compatible; callers without `offer_id` use the existing resolve path unchanged). Alternative: new `GET /api/estimates/by-offer`. **To be confirmed by operator before 36.2 dev-story.**
+**OD-2 (filament context):** An optional `spoolman_filament_ref` query param; when absent, the E35 policy resolver uses material-default only. This lets the frontend pass the member's currently selected spool ref to disambiguate exact vs default resolution. **To be confirmed by operator before 36.2 dev-story.**
+
+**Choice 3 — G-UXGATE for 36.3 FE (consistent with Init 21 PROFILE-OFFER-1 precedent).**
+The member offer picker is a new member-facing UI surface. Consistent with Init 21's `UX-PROFILE-OFFER-1` gate before the FE composition UI, **G-UXGATE is required before Story 36.3 dev-story** — a `ux-profile-publish-2-member-offer-picker` `bmad-ux` work item must produce a UX spec (layout, selection mechanic, honesty label placement, unavailability states) before 36.3 FE implementation begins. 36.1 + 36.2 backend stories may proceed in parallel with the UX work item.
+**OD-3:** Does the operator want to schedule the UX gate now (parallel with backend) or defer 36.3 until after 36.2 is on `main`? **Proposed default: G-UXGATE required; schedule as parallel work item.**
+
+**AuthGate discipline (NFR24-AUTHGATE-1, carry-forward from Init 10):** the offer picker component must NOT redirect when auth state is unknown or anonymous. Defer to shell `AuthGate` for the unauthenticated case; only block for `authenticated-but-unauthorized` (which is impossible here since offer picker is member-accessible, so only anonymous → `AuthGate` handles). Pattern: same as Init 12 / share-view components.
+
+**Invariants preserved:**
+- Admin offers API (`/api/admin/profiles/offers/*`) — unchanged, no new param, no new auth shape.
+- 33.1/33.2 fixed-grid projection — unchanged; members who do not interact with the offer picker continue to see the existing estimate display.
+- `bundle_hash` input order + append-only store layout — not touched (read-only consumption).
+- E35 `EstimateProfileSource` — consumed from existing `EstimateView` DTO; no modification.
+- `compatibility.py` grid — not touched.
+- Alembic / DB — no migration.
+- SW-DEPLOY-1 — NOT triggered (all new code is read-only over the existing offer sidecars + bundle store + estimate store; no new slicer worker path).
+
+**Named deferred gate:**
+- **G-ENQUEUE**: member-triggered on-demand estimate enqueue (when `not_computed`). Deferred to a follow-on story. Naming it here prevents it from silently bleeding into 36.2's scope.
+
+### Cross-references
+
+- PRD/Epics: `prd.md` § Initiative 24; `epics.md` § Initiative 24 / Epic E36 (FR24-* → 36.1–36.3; NFR24-* link back to this Decision AT).
+- SCP: `sprint-change-proposal-2026-06-13-profile-publish-2-member-offer-surface.md` (§ 3 scope, § 4 architecture, § 5–6 FR/NFR, § 7 story breakdown).
+- Decision lineage: consumes Decision AR (PROFILE-PUBLISH-1 — published bundle_hash in append-only store) + Decision AS (E35 `EstimateProfileSource` metadata); reuses Decision AK (compatibility map, not modified) + Decision AJ (estimate store + `EstimateView` shape).
+- Gates: **G-DEVGO** (36.1 implementation BLOCKED until create-story + dev-go); **G-UXGATE** (`ux-profile-publish-2-member-offer-picker` required before 36.3 FE); **G-ENQUEUE** (on-demand member-triggered enqueue — named deferred, not in this slice); **OD-1/OD-2/OD-3** (operator confirmation before 36.2 dev-story).
