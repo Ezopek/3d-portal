@@ -253,7 +253,7 @@ development_status:
   35-6-bounded-default-matrix-backfill: done
   epic-35-retrospective: done
   epic-36: backlog
-  36-1-member-published-offer-list-endpoint: ready-for-dev
+  36-1-member-published-offer-list-endpoint: review
   36-2-member-estimate-by-offer-resolution: backlog
   ux-profile-publish-2-member-offer-picker: backlog
   36-3-member-offer-picker-ui: backlog

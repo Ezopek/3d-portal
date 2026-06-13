@@ -360,6 +360,39 @@ class PrintProfileOfferListResponse(BaseModel):
     offers: list[PrintProfileOffer]
 
 
+# --- Story 36.1 — safe member DTO for published print profile offers ----------
+#
+# Purposefully narrow: only the five fields the member picker needs. ``extra="forbid"``
+# ensures any accidental extra field is caught at construction time. Every sensitive
+# internal (bundle_hash, chain block IDs, sidecar paths, publish-state internals, raw
+# Orca refs) is deliberately absent — the negative leak-fence test asserts their absence.
+
+
+class MemberPublishedOfferView(BaseModel):
+    """Safe member projection of one published print profile offer (Story 36.1, AC-10/11).
+
+    Exposes ONLY the five fields needed by the member picker. ``quality_tier`` and
+    ``printer_name`` are nullable because they are derived from library block manifests
+    that may be unavailable (chain validation failure does not block the member surface
+    — the offer was already published). Fields absent from this DTO: bundle_hash,
+    chain block IDs, sidecar paths/internals, publish-state internals, raw Orca refs.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    offer_id: str
+    portal_label: str
+    quality_tier: str | None = None
+    compatible_material_categories: list[str] = Field(default_factory=list)
+    printer_name: str | None = None
+
+
+class MemberPublishedOfferListResponse(BaseModel):
+    """Published offer list for authenticated members (Story 36.1)."""
+
+    model_config = ConfigDict(extra="forbid")
+    offers: list[MemberPublishedOfferView]
+
+
 class PrintProfileOfferCreate(BaseModel):
     """The create-offer request body (AC-9).
 

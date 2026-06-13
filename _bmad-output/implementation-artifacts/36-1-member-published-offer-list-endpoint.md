@@ -1,6 +1,10 @@
 # Story 36.1: Member-accessible published-offer list endpoint + safe DTO
 
-Status: ready-for-dev
+---
+baseline_commit: 181e238432f670a3b3f03363894a9b9458a96a80
+---
+
+Status: review
 
 <!--
   Authored for PROFILE-PUBLISH-2 / Initiative 24 after BMAD correct-course planning.
@@ -58,17 +62,17 @@ This is the first backend slice of Epic E36 / PROFILE-PUBLISH-2. It is read-only
 
 ## Tasks / Subtasks
 
-1. **(RED)** Add backend tests for the member published-offer endpoint before production code:
+1. [x] **(RED)** Add backend tests for the member published-offer endpoint before production code:
    - anonymous request returns 401;
    - authenticated member gets 200;
    - only published offers are returned;
    - `?material=...` filters by compatible material categories;
    - response JSON fails closed against internal fields (`bundle_hash`, raw Orca refs, chain bodies, sidecar paths/internals);
    - route-enforcement test remains green without adding the route to `_PUBLIC_ROUTES`.
-2. **(GREEN)** Add the API route and DTO in the appropriate profile/offers module, reusing the existing offer store/listing functions instead of duplicating sidecar parsing.
-3. Wire the router under `/api/profiles/offers/published` without changing admin routes.
-4. **(VERIFY)** Run targeted pytest for the new tests and adjacent profile-offer tests; run ruff format/check on touched backend files.
-5. Update this story's Dev Agent Record, sprint-status row, and commit on the story branch.
+2. [x] **(GREEN)** Add the API route and DTO in the appropriate profile/offers module, reusing the existing offer store/listing functions instead of duplicating sidecar parsing.
+3. [x] Wire the router under `/api/profiles/offers/published` without changing admin routes.
+4. [x] **(VERIFY)** Run targeted pytest for the new tests and adjacent profile-offer tests; run ruff format/check on touched backend files.
+5. [x] Update this story's Dev Agent Record, sprint-status row, and commit on the story branch.
 
 ## Dev Notes
 
@@ -96,16 +100,29 @@ This is the first backend slice of Epic E36 / PROFILE-PUBLISH-2. It is read-only
 
 ### Agent Model Used
 
-_To be filled by the implementing dev-story agent._
+claude-sonnet-4-6 via repo-local Claude Code (implementation), with Laura/Hermes controller verification.
 
 ### Completion Notes List
 
-_To be filled during implementation._
+- 2026-06-13 — Story 36.1 implemented on branch `feat/E36.1-member-published-offer-list`.
+  - RED evidence: `apps/api` targeted test file initially failed because the route/module did not exist.
+  - GREEN evidence: `tests/test_member_profile_offers.py` passed: **15 passed**.
+  - Adjacent verification: `tests/test_member_profile_offers.py tests/test_admin_profile_offers.py tests/test_profile_offer_store.py` passed: **62 passed**.
+  - Lint/format: `ruff format --check` and `ruff check` passed on touched backend files.
+  - DTO mapping note: stored offer `label` maps to member `portal_label`; `quality_tier` and `printer_name` are nullable derived display fields from profile library block manifests.
+  - Scope held: no Alembic/DB, worker, arq, resolver, estimate-by-offer, frontend, or deploy changes.
+  - Review fix: blank `?material=` now returns an empty list instead of silently disabling the material filter; unused logger removed.
 
 ### File List
 
-_To be filled during implementation._
+- `apps/api/app/modules/slicer/member_router.py` (new)
+- `apps/api/app/modules/slicer/schemas.py`
+- `apps/api/app/router.py`
+- `apps/api/tests/test_member_profile_offers.py` (new)
+- `_bmad-output/implementation-artifacts/36-1-member-published-offer-list-endpoint.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
 ## Change Log
 
-- 2026-06-13 — story authored; status set to ready-for-dev. Implementation not started.
+- 2026-06-13 — story authored; status set to ready-for-dev.
+- 2026-06-13 — implementation complete; status moved to review.
