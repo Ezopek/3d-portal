@@ -39,9 +39,16 @@ from app.modules.slicer.estimate_read import (
 )
 from app.modules.slicer.estimate_store import EstimateStore
 from app.modules.slicer.models import EstimateStatus, MaterialClass, PrintIntentPreset, QualityTier
+from app.modules.slicer.profile_library import read_block
+from app.modules.slicer.profile_offer import is_valid_offer_id, read_offer
+from app.modules.slicer.profile_policy import ProfilePolicyStore
+from app.modules.slicer.profile_publish import PUBLISH_STATE_PUBLISHED, publish_state_of
+from app.modules.slicer.profile_selection import select_profile
 from app.modules.slicer.recompute import enqueue_recompute
 from app.modules.slicer.schemas import (
     EstimateView,
+    OverrideContextView,
+    ProfileSelectionContextView,
     QualityTierAvailability,
     QualityTierAvailabilityResponse,
     RecomputeRequest,
@@ -54,6 +61,84 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/estimates", tags=["estimates"])
 
 QUALITY_TIER_ORDER: tuple[QualityTier, ...] = ("aesthetic", "standard", "strong")
+
+
+def _offer_material_class(sidecar: dict) -> MaterialClass:
+    """Best-effort member-safe material context for an already-published offer.
+
+    The offer path does not live-resolve; it only needs an OverrideContextView. Published
+    offers should carry compatible material categories, so pick the first resolver-known
+    category. If a malformed historical sidecar lacks one, fall back to PLA as a display-only
+    context rather than turning the member read path into a resolver 422.
+    """
+    for category in sidecar.get("compatible_material_categories") or []:
+        if category in ("PLA", "PETG", "PCTG", "TPU"):
+            return category
+    return "PLA"
+
+
+def _offer_quality_tier(root: object, sidecar: dict) -> QualityTier:
+    """Best-effort quality-tier display context from the offer's process block.
+
+    36.1 already derives the member list label this way. The estimate-by-offer path reuses
+    the same safe curated manifest (no raw Orca body). A malformed/missing process block
+    degrades to ``standard`` purely for display context; it does not affect bundle lookup.
+    """
+    chain = sidecar.get("chain") or {}
+    process_block_id = chain.get("process_block_id")
+    manifest = (
+        read_block(root, process_block_id)
+        if isinstance(process_block_id, str) and process_block_id
+        else None
+    )
+    name = ""
+    if manifest is not None:
+        name = str(manifest.get("portal_label") or manifest.get("name") or "").lower()
+    for tier in ("aesthetic", "standard", "strong"):
+        if tier in name:
+            return tier
+    return "standard"
+
+
+def _offer_profile_selection_context(
+    *,
+    material_class: MaterialClass,
+    spoolman_filament_ref: str | None,
+) -> ProfileSelectionContextView | None:
+    """Return E35 policy context for the offer path without live resolving/slicing.
+
+    No Spoolman snapshot read is needed here: when a concrete ref is supplied, exact
+    override lookup uses the ref directly; otherwise material-default selection uses the
+    offer's material fallback. This never changes the published bundle hash.
+    """
+    if spoolman_filament_ref is None:
+        return None
+    settings = get_settings()
+    policy = ProfilePolicyStore(settings.slicer_profile_policy_dir).load()
+    selection = select_profile(
+        policy=policy,
+        spoolman_filament_ref=spoolman_filament_ref,
+        fallback_material=material_class,
+        filaments_by_ref={},
+    )
+    return build_profile_selection_context(selection, None)
+
+
+def _read_published_offer_or_404(root: object, offer_id: str) -> dict:
+    """Read one active published offer or raise member-safe 404."""
+    if not is_valid_offer_id(offer_id):
+        raise HTTPException(status_code=404, detail="published offer not found")
+    sidecar = read_offer(root, offer_id)
+    if sidecar is None or sidecar.get("publish_state") != PUBLISH_STATE_PUBLISHED:
+        raise HTTPException(status_code=404, detail="published offer not found")
+    published = publish_state_of(sidecar)
+    if published.publish_state != PUBLISH_STATE_PUBLISHED or not published.published_bundle_hash:
+        raise HTTPException(status_code=404, detail="published offer not found")
+    try:
+        validate_content_hash(published.published_bundle_hash)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="published offer not found") from exc
+    return sidecar
 
 
 def get_estimate_store() -> EstimateStore:
@@ -164,11 +249,14 @@ async def read_quality_tier_availability(
 async def read_estimate(
     request: Request,
     stl_hash: Annotated[str, Query(description="Content hash (64 lowercase hex) of the STL")],
-    material_class: Annotated[MaterialClass, Query()],
-    quality_tier: Annotated[QualityTier, Query()],
-    printer_ref: Annotated[str, Query(description="Portal printer identity (resolve input)")],
     store: Annotated[EstimateStore, Depends(get_estimate_store)],
     resolver: Annotated[EstimateResolver, Depends(get_estimate_resolver)],
+    material_class: Annotated[MaterialClass | None, Query()] = None,
+    quality_tier: Annotated[QualityTier | None, Query()] = None,
+    printer_ref: Annotated[
+        str | None, Query(description="Portal printer identity (resolve input)")
+    ] = None,
+    offer_id: Annotated[str | None, Query(description="Published profile offer id")] = None,
     spoolman_filament_ref: Annotated[str | None, Query()] = None,
     _user_id: uuid.UUID = current_user,
 ) -> EstimateView:
@@ -178,6 +266,41 @@ async def read_estimate(
         validate_content_hash(stl_hash)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="malformed stl_hash") from exc
+
+    if offer_id is not None:
+        settings = get_settings()
+        sidecar = _read_published_offer_or_404(settings.slicer_vendored_profiles_dir, offer_id)
+        published = publish_state_of(sidecar)
+        if published.published_bundle_hash is None:
+            raise HTTPException(status_code=404, detail="published offer not found")
+        offer_material_class = _offer_material_class(sidecar)
+        offer_quality_tier = _offer_quality_tier(settings.slicer_vendored_profiles_dir, sidecar)
+        override_context = OverrideContextView(
+            material_class=offer_material_class,
+            quality_tier=offer_quality_tier,
+        )
+        profile_selection_context = _offer_profile_selection_context(
+            material_class=offer_material_class,
+            spoolman_filament_ref=spoolman_filament_ref,
+        )
+        record = store.read(stl_hash, published.published_bundle_hash)
+        if record is None:
+            return EstimateView(
+                status="not_computed",
+                override_context=override_context,
+                profile_selection_context=profile_selection_context,
+                offer_id=offer_id,
+            )
+        projected = project_estimate(
+            record,
+            override_context=override_context,
+            profile_selection_context=profile_selection_context,
+        )
+        projected.offer_id = offer_id
+        return projected
+
+    if material_class is None or quality_tier is None or printer_ref is None:
+        raise HTTPException(status_code=422, detail="missing preset fields")
 
     intent = PrintIntentPreset(
         name=f"{material_class} {quality_tier}",

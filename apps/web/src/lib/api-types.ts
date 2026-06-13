@@ -424,7 +424,13 @@ export type QualityTier = "aesthetic" | "standard" | "strong";
 // The estimate lifecycle the UI renders: the Decision AJ EstimateStatus
 // {fresh,stale,queued,failed} plus "absent" (a 200 store miss). "loading" is a
 // query/transport state the FE owns; it is never a server-reported value.
-export type UIEstimateStatus = "fresh" | "stale" | "queued" | "failed" | "absent";
+export type UIEstimateStatus =
+  | "fresh"
+  | "stale"
+  | "queued"
+  | "failed"
+  | "absent"
+  | "not_computed";
 
 // The granular parse-failure reasons the backend classifies (rendered "here's why").
 export type EstimateFailureReason =
@@ -474,6 +480,7 @@ export interface EstimateView {
   failure_reason: EstimateFailureReason | null;
   override_context: OverrideContextView;
   profile_selection_context?: ProfileSelectionContextView | null;
+  offer_id?: string | null;
 }
 
 // EST-RECOMPUTE-1 — the guarded POST /api/estimates/recompute response. `enqueued` is the

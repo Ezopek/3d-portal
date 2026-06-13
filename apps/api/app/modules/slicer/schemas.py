@@ -26,7 +26,7 @@ from app.modules.slicer.profile_policy import EstimateProfileSource, FilamentOve
 # endpoint adds as a FIRST-CLASS UI empty state (AC-1/AC-3), distinct from a transport
 # error and from ``failed``. ``loading`` is a query/transport state the FE owns; it is
 # never a DTO value (the server never reports "loading").
-UIEstimateStatus = Literal["fresh", "stale", "queued", "failed", "absent"]
+UIEstimateStatus = Literal["fresh", "stale", "queued", "failed", "absent", "not_computed"]
 
 
 class WarningView(BaseModel):
@@ -151,6 +151,7 @@ class EstimateView(BaseModel):
     failure_reason: EstimateFailureReason | None = None
     override_context: OverrideContextView
     profile_selection_context: ProfileSelectionContextView | None = None
+    offer_id: str | None = None
 
 
 # --- Story 33.1 (Decision AK, OD-7) — read-only admin profile inventory DTOs --------

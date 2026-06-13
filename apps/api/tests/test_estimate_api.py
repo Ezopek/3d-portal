@@ -34,6 +34,7 @@ from pydantic import ValidationError
 
 from app.core.auth.jwt import encode_token
 from app.main import create_app
+from app.modules.slicer import profile_offer
 from app.modules.slicer.bundle_store import BundleStore
 from app.modules.slicer.enqueue import slice_job_id
 from app.modules.slicer.estimate_read import (
@@ -51,7 +52,14 @@ from app.modules.slicer.models import (
     SliceWarning,
 )
 from app.modules.slicer.overrides import NoopOverrideProvider
-from app.modules.slicer.profile_policy import EstimateProfileSource, ProfileSelection
+from app.modules.slicer.profile_policy import (
+    EstimateProfileSource,
+    FilamentOverride,
+    MaterialDefault,
+    ProfilePolicy,
+    ProfilePolicyStore,
+    ProfileSelection,
+)
 from app.modules.slicer.resolver import VendoredProfileSource, resolve
 from app.modules.slicer.router import (
     get_arq_pool,
@@ -69,6 +77,7 @@ FIXTURES = Path(__file__).parent / "fixtures" / "slicer"
 
 STL_HASH = "a" * 64
 BUNDLE_HASH = "b" * 64
+OFFER_BUNDLE_HASH = "c" * 64
 COMPUTED_AT = "2026-06-02T10:00:00+00:00"
 
 
@@ -168,6 +177,12 @@ async def seam(
     monkeypatch.setenv("ADMIN_PASSWORD", "pw")
     monkeypatch.setenv("JWT_SECRET", "test")
     monkeypatch.setenv("TOTP_FERNET_KEY", "ZmFrZS10ZXN0LWtleS0zMi1ieXRlcy1mb3ItdGVzdHM=")
+    vendored_root = tmp_path / "vendored"
+    vendored_root.mkdir()
+    policy_root = tmp_path / "policy"
+    policy_root.mkdir()
+    monkeypatch.setenv("SLICER_VENDORED_PROFILES_DIR", str(vendored_root))
+    monkeypatch.setenv("SLICER_PROFILE_POLICY_DIR", str(policy_root))
 
     from app.core.config import get_settings
     from app.core.db.session import get_engine, init_schema
@@ -225,6 +240,85 @@ def _read_url(
     if spoolman_filament_ref is not None:
         url += f"&spoolman_filament_ref={quote(spoolman_filament_ref, safe='')}"
     return url
+
+
+def _offer_read_url(
+    *,
+    stl_hash: str = STL_HASH,
+    offer_id: str,
+    spoolman_filament_ref: str | None = None,
+) -> str:
+    url = f"/api/estimates?stl_hash={stl_hash}&offer_id={offer_id}"
+    if spoolman_filament_ref is not None:
+        url += f"&spoolman_filament_ref={quote(spoolman_filament_ref, safe='')}"
+    return url
+
+
+def _published_offer(
+    *,
+    offer_id: str | None = None,
+    bundle_hash: str = OFFER_BUNDLE_HASH,
+    categories: list[str] | None = None,
+) -> dict:
+    oid = offer_id or profile_offer.mint_offer_id()
+    sidecar = profile_offer.build_offer_record(
+        offer_id=oid,
+        label="Member Standard PLA",
+        description=None,
+        chain=profile_offer.ProfileChain(
+            machine_block_id="a" * 32,
+            process_block_id="b" * 32,
+            filament_block_id="c" * 32,
+        ),
+        visibility="visible",
+        is_default=False,
+        compatible_material_categories=categories or ["PLA"],
+        validation_state="usable",
+        reasons=[],
+        created_at="2026-06-13T00:00:00+00:00",
+        created_by=str(uuid.uuid4()),
+        updated_at="2026-06-13T00:00:00+00:00",
+    )
+    sidecar["publish_state"] = "published"
+    sidecar["published_bundle_hash"] = bundle_hash
+    sidecar["published_at"] = "2026-06-13T01:00:00+00:00"
+    sidecar["published_by"] = str(uuid.uuid4())
+    sidecar["source_snapshot_ref"] = "d" * 64
+    sidecar["published_stl_hash"] = "e" * 64
+    return sidecar
+
+
+def _unpublished_offer() -> dict:
+    return profile_offer.build_offer_record(
+        offer_id=profile_offer.mint_offer_id(),
+        label="Draft PLA",
+        description=None,
+        chain=profile_offer.ProfileChain(
+            machine_block_id="d" * 32,
+            process_block_id="e" * 32,
+            filament_block_id="f" * 32,
+        ),
+        visibility="visible",
+        is_default=False,
+        compatible_material_categories=["PLA"],
+        validation_state="usable",
+        reasons=[],
+        created_at="2026-06-13T00:00:00+00:00",
+        created_by=str(uuid.uuid4()),
+        updated_at="2026-06-13T00:00:00+00:00",
+    )
+
+
+def _vendored_root() -> Path:
+    from app.core.config import get_settings
+
+    return get_settings().slicer_vendored_profiles_dir
+
+
+def _policy_store() -> ProfilePolicyStore:
+    from app.core.config import get_settings
+
+    return ProfilePolicyStore(get_settings().slicer_profile_policy_dir)
 
 
 # === AC-1 — DTO no-leak =======================================================
@@ -551,6 +645,12 @@ async def recompute_seam(
     monkeypatch.setenv("ADMIN_PASSWORD", "pw")
     monkeypatch.setenv("JWT_SECRET", "test")
     monkeypatch.setenv("TOTP_FERNET_KEY", "ZmFrZS10ZXN0LWtleS0zMi1ieXRlcy1mb3ItdGVzdHM=")
+    vendored_root = tmp_path / "vendored"
+    vendored_root.mkdir()
+    policy_root = tmp_path / "policy"
+    policy_root.mkdir()
+    monkeypatch.setenv("SLICER_VENDORED_PROFILES_DIR", str(vendored_root))
+    monkeypatch.setenv("SLICER_PROFILE_POLICY_DIR", str(policy_root))
 
     from app.core.config import get_settings
     from app.core.db.session import get_engine, init_schema
@@ -767,6 +867,185 @@ async def test_recompute_response_carries_no_internal_field_names(recompute_seam
         "gcode",
     ):
         assert internal not in raw, f"internal field {internal!r} leaked into the response body"
+
+
+# === Story 36.2 — estimate-by-offer read path =================================
+
+
+@pytest.mark.asyncio
+async def test_36_2_offer_id_reads_published_bundle_without_preset_fields(seam):
+    ac, store, resolver = seam
+    offer = _published_offer()
+    profile_offer.store_offer(_vendored_root(), offer)
+    store.write(_fresh(bundle_hash=OFFER_BUNDLE_HASH))
+
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.get(_offer_read_url(offer_id=offer["offer_id"]))
+
+    assert r.status_code == 200
+    assert resolver.called is False
+    body = r.json()
+    assert body["status"] == "fresh"
+    assert body["time_seconds"] == 12947
+    assert body["offer_id"] == offer["offer_id"]
+
+
+@pytest.mark.asyncio
+async def test_36_2_offer_id_absent_record_returns_not_computed(seam):
+    ac, _store, resolver = seam
+    offer = _published_offer()
+    profile_offer.store_offer(_vendored_root(), offer)
+
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.get(_offer_read_url(offer_id=offer["offer_id"]))
+
+    assert r.status_code == 200
+    assert resolver.called is False
+    body = r.json()
+    assert body["status"] == "not_computed"
+    assert body["offer_id"] == offer["offer_id"]
+    assert body["time_seconds"] is None
+    assert body["filament_g"] is None
+    assert body["filament_cost"] is None
+
+
+@pytest.mark.asyncio
+async def test_36_2_missing_or_unpublished_offer_returns_404_not_resolve_422(seam):
+    ac, _store, resolver = seam
+    draft = _unpublished_offer()
+    profile_offer.store_offer(_vendored_root(), draft)
+
+    ac.cookies.set("portal_access", _member_cookie())
+    missing = await ac.get(_offer_read_url(offer_id=profile_offer.mint_offer_id()))
+    unpublished = await ac.get(_offer_read_url(offer_id=draft["offer_id"]))
+
+    assert missing.status_code == 404
+    assert unpublished.status_code == 404
+    assert resolver.called is False
+
+
+@pytest.mark.asyncio
+async def test_36_2_offer_id_rejects_bad_stl_hash_before_offer_read(seam):
+    ac, _store, resolver = seam
+    offer = _published_offer()
+    profile_offer.store_offer(_vendored_root(), offer)
+
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.get(_offer_read_url(stl_hash="not-a-hash", offer_id=offer["offer_id"]))
+
+    assert r.status_code == 422
+    assert resolver.called is False
+
+
+@pytest.mark.asyncio
+async def test_36_2_offer_id_bad_published_bundle_hash_returns_404(seam):
+    ac, _store, resolver = seam
+    offer = _published_offer(bundle_hash="not-a-content-hash")
+    profile_offer.store_offer(_vendored_root(), offer)
+
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.get(_offer_read_url(offer_id=offer["offer_id"]))
+
+    assert r.status_code == 404
+    assert resolver.called is False
+
+
+@pytest.mark.asyncio
+async def test_36_2_offer_id_ignores_preset_fields_and_uses_offer_bundle(seam):
+    ac, store, resolver = seam
+    offer = _published_offer()
+    profile_offer.store_offer(_vendored_root(), offer)
+    store.write(_fresh(bundle_hash=OFFER_BUNDLE_HASH))
+
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.get(
+        _offer_read_url(offer_id=offer["offer_id"])
+        + "&material_class=TPU&quality_tier=strong&printer_ref=wrong-printer"
+    )
+
+    assert r.status_code == 200
+    assert r.json()["status"] == "fresh"
+    assert resolver.called is False
+
+
+@pytest.mark.asyncio
+async def test_36_2_offer_id_optional_spoolman_ref_uses_policy_context(seam):
+    ac, _store, resolver = seam
+    offer = _published_offer(categories=["PLA"])
+    profile_offer.store_offer(_vendored_root(), offer)
+    _policy_store().save(
+        ProfilePolicy(
+            material_defaults={"PLA": MaterialDefault(orca_filament_profile_ref="Generic PLA")},
+            filament_overrides={
+                "Vendor\x1fPLA\x1fSpeed White": FilamentOverride(
+                    orca_filament_profile_ref="Exact Speed White"
+                )
+            },
+        )
+    )
+
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.get(
+        _offer_read_url(
+            offer_id=offer["offer_id"],
+            spoolman_filament_ref="Vendor\x1fPLA\x1fSpeed White",
+        )
+    )
+
+    assert r.status_code == 200
+    assert resolver.called is False
+    ctx = r.json()["profile_selection_context"]
+    assert ctx["estimate_profile_source"] == "exact_filament_mapping"
+    assert ctx["selected_material"] == "PLA"
+    assert ctx["selected_spoolman_filament_ref"] == "Vendor\x1fPLA\x1fSpeed White"
+    assert ctx["orca_filament_profile_name"] == "Exact Speed White"
+
+
+@pytest.mark.asyncio
+async def test_36_2_offer_id_unavailable_policy_context_is_200_not_computed(seam):
+    ac, _store, resolver = seam
+    offer = _published_offer(categories=["TPU"])
+    profile_offer.store_offer(_vendored_root(), offer)
+
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.get(
+        _offer_read_url(
+            offer_id=offer["offer_id"],
+            spoolman_filament_ref="Vendor\x1fTPU\x1fMystery",
+        )
+    )
+
+    assert r.status_code == 200
+    assert resolver.called is False
+    body = r.json()
+    assert body["status"] == "not_computed"
+    assert body["profile_selection_context"]["estimate_profile_source"] == "unavailable_no_profile"
+
+
+@pytest.mark.asyncio
+async def test_36_2_offer_id_response_leak_fence(seam):
+    ac, _store, _resolver = seam
+    offer = _published_offer()
+    profile_offer.store_offer(_vendored_root(), offer)
+
+    ac.cookies.set("portal_access", _member_cookie())
+    r = await ac.get(_offer_read_url(offer_id=offer["offer_id"]))
+
+    assert r.status_code == 200
+    raw = r.text
+    for internal in (
+        "bundle_hash",
+        "published_bundle_hash",
+        "source_snapshot_ref",
+        "published_stl_hash",
+        "machine_block_id",
+        "process_block_id",
+        "filament_block_id",
+        "job_id",
+        "_queue_name",
+        "gcode",
+    ):
+        assert internal not in raw, f"internal field {internal!r} leaked into response"
 
 
 # === Story 35.3 — profile_selection_context on the estimate API ================
