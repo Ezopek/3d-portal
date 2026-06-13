@@ -378,6 +378,19 @@ Source: operator request after reviewing current PROFILE-LIB-1 / PROFILE-OFFER-1
 
 ---
 
+## Deferred from: operator queue — Files tab STL/source/3MF delete UI (2026-06-14)
+
+Source: operator request: "Nie mogę z poziomu portalu usunąć plików STL z modelu... Nie ma takiego przycisku..."
+
+Tracked as sprint-status backlog row: `37-1-stl-file-delete-ui`.
+Story sketch: `_bmad-output/implementation-artifacts/37-1-stl-file-delete-ui.md`.
+
+**Problem:** The backend already exposes admin file deletion and `PhotosTab` already has a confirmation-driven delete UX, but `FilesTab` does not expose a delete button for STL/source/3MF rows. Operators cannot remove uploaded STL files from the portal UI.
+
+**Desired behavior:** Add a Files tab delete action using the existing `useDeleteFile(modelId)` / `DELETE /api/admin/models/{model_id}/files/{file_id}` path, with confirmation, query invalidation, selected-file fallback/empty-state handling, i18n parity, tests, and visual coverage. Keep the delete affordance admin-scoped; do not expose file deletion to normal members by accident.
+
+---
+
 ## Declined / done
 
 _(none yet)_
