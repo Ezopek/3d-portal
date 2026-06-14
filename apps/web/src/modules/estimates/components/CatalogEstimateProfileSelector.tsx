@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { type ReactNode, useId } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { MaterialClass, QualityTier } from "@/lib/api-types";
@@ -19,6 +19,11 @@ interface Props {
    * standalone/pure unit-test behavior: all portal tiers (for the chosen material) selectable.
    */
   availability?: readonly QualityTierAvailability[];
+  /**
+   * Story 36.4: optional slot for additional compact controls (e.g. offer picker select)
+   * appended inside the same flex row so they form a single estimate profile bar.
+   */
+  children?: ReactNode;
 }
 
 /**
@@ -60,6 +65,7 @@ export function CatalogEstimateProfileSelector({
   value,
   onChange,
   availability,
+  children,
 }: Props) {
   const { t } = useTranslation();
   const materialId = useId();
@@ -165,6 +171,7 @@ export function CatalogEstimateProfileSelector({
           })}
         </select>
       </div>
+      {children}
     </div>
   );
 }

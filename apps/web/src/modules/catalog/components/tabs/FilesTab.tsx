@@ -222,28 +222,27 @@ export function FilesTab({
           exposed here (they stay at the EST-INGEST-1 internal defaults so the chip/panel query
           keys are unchanged). Read-only: it re-keys which estimate every chip/panel reads; it
           never enqueues, recomputes, or exposes ordering / spool semantics. Separate from the
-          admin render controls below. */}
+          admin render controls below.
+          Story 36.4: PublishedOfferPicker is passed as children so that the offer select
+          appears as a third inline item in the same flex row (one compact estimate profile bar). */}
       {active === "stl" && stlFiles.length > 0 && (
         <CatalogEstimateProfileSelector
           value={preset}
           onChange={setPreset}
           availability={catalogTierAvailability}
-        />
-      )}
-
-      {/* Story 36.3 (AC-7) — offer picker below the preset selector, above the file list.
-          Guard: active=stl && stlFiles.length>0 && isAuthenticated (§C.1).
-          Fails OPEN: transport error only hides the picker, not the estimate flow. */}
-      {active === "stl" && stlFiles.length > 0 && isAuthenticated && (
-        <PublishedOfferPicker
-          offers={publishedOffers.data?.offers ?? (publishedOffers.isSuccess ? [] : null)}
-          selectedOfferId={selectedOfferId}
-          onSelect={setSelectedOfferId}
-          isLoading={publishedOffers.isPending}
-          isError={publishedOffers.isError}
-          onRetry={() => void publishedOffers.refetch()}
-          isAuthenticated={isAuthenticated}
-        />
+        >
+          {isAuthenticated && (
+            <PublishedOfferPicker
+              offers={publishedOffers.data?.offers ?? (publishedOffers.isSuccess ? [] : null)}
+              selectedOfferId={selectedOfferId}
+              onSelect={setSelectedOfferId}
+              isLoading={publishedOffers.isPending}
+              isError={publishedOffers.isError}
+              onRetry={() => void publishedOffers.refetch()}
+              isAuthenticated={isAuthenticated}
+            />
+          )}
+        </CatalogEstimateProfileSelector>
       )}
 
       {isAdmin && active === "stl" && visible.length > 0 && (

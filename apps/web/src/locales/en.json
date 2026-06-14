@@ -804,6 +804,7 @@
   "modules.admin.queues.unit_hours": "{{n}}h",
   "modules.estimates.selector.reason_not_imported": "Not available yet",
   "modules.estimates.selector.reason_unavailable": "Not available",
+  "modules.member.offers.picker.select_label": "Profile",
   "modules.member.offers.picker.heading": "Published profiles",
   "modules.member.offers.picker.none_option": "Standard estimate",
   "modules.member.offers.picker.none_option_aria": "Use standard estimate (no profile selected)",

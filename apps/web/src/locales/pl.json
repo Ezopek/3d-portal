@@ -804,6 +804,7 @@
   "modules.admin.queues.unit_hours": "{{n}} godz.",
   "modules.estimates.selector.reason_not_imported": "Jeszcze niedostępny",
   "modules.estimates.selector.reason_unavailable": "Niedostępny",
+  "modules.member.offers.picker.select_label": "Profil",
   "modules.member.offers.picker.heading": "Opublikowane profile",
   "modules.member.offers.picker.none_option": "Standardowy szacunek",
   "modules.member.offers.picker.none_option_aria": "Użyj standardowego szacunku (bez wybranego profilu)",
