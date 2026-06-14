@@ -263,4 +263,8 @@ development_status:
   37-1-stl-file-delete-ui: done
   epic-37-retrospective: done
   epic-38: backlog
-  38-1-member-offer-request-estimate-cta: backlog
+  # 38-1-member-offer-request-estimate-cta: superseded by E38 decomposition 2026-06-14
+  38-1-admin-offer-sync-state-foundation: backlog
+  38-2-admin-offer-stale-badge-resync-action: backlog
+  38-3-filestab-offer-first-ux-cleanup: backlog
+  38-4-member-offer-request-estimate-cta: backlog

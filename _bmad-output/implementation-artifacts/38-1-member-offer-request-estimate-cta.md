@@ -1,6 +1,18 @@
 # Story 38.1: Member offer estimate CTA + remove legacy FilesTab quality selector
 
-Status: backlog
+> **SUPERSEDED — 2026-06-14**
+> This story was too coarse. It has been split into four focused stories by the E38 decomposition
+> pass. Do not pull work items from this file.
+>
+> Superseded by:
+> - **38.1** `38-1-admin-offer-sync-state-foundation.md` — admin backend: chain fingerprint + sync_state DTO + PROFILE-LIB-GUARD-1
+> - **38.2** `38-2-admin-offer-stale-badge-resync-action.md` — admin FE: stale badge + resync action
+> - **38.3** `38-3-filestab-offer-first-ux-cleanup.md` — FilesTab offer-first UX (remove quality selector)
+> - **38.4** `38-4-member-offer-request-estimate-cta.md` — member offer request-estimate CTA (G-ENQUEUE)
+>
+> Planning decision: `_bmad-output/planning-artifacts/_runtime/e38-decomposition-decision.md`
+
+Status: superseded
 
 <!--
   Source: operator decision 2026-06-14 — "następny slice to musi być G-ENQUEUE / request-estimate CTA oraz ukrycie/wywalenie starego selecta Jakość/Quality - bo to pozostałość po starym systemie wyceń".
