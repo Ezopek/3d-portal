@@ -252,13 +252,13 @@ development_status:
   35-5-estimate-ui-source-labels: done
   35-6-bounded-default-matrix-backfill: done
   epic-35-retrospective: done
-  epic-36: backlog
+  epic-36: done
   36-1-member-published-offer-list-endpoint: done
   36-2-member-estimate-by-offer-resolution: done
   ux-profile-publish-2-member-offer-picker: done
   36-3-member-offer-picker-ui: done
   36-4-compact-member-offer-picker-ui: done
-  epic-36-retrospective: backlog
+  epic-36-retrospective: done
   epic-37: backlog
   37-1-stl-file-delete-ui: backlog
   epic-37-retrospective: backlog

@@ -4,7 +4,7 @@
 baseline_commit: c01d3bd
 ---
 
-Status: review
+Status: done
 
 <!--
   Authored for PROFILE-PUBLISH-2 / Initiative 24 after operator confirmation of OD-1/OD-2/OD-4 defaults.
