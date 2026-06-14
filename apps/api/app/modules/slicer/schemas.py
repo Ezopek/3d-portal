@@ -263,6 +263,8 @@ class ProfileLibraryBlock(BaseModel):
     portal_label: str | None = None
     imported_at: str
     imported_by: str
+    stale_offers: list[dict] = Field(default_factory=list)
+    # added 38.1: populated by import endpoint only; empty list for all other callers
 
 
 class ProfileLibraryListResponse(BaseModel):
@@ -291,6 +293,9 @@ OfferPublishState = Literal["published", "unpublished"]
 # The per-offer validation state (AC-4): a stored offer is at worst ``invalid`` (a referenced
 # block went missing / wrong-typed); ``requires_attention`` is stored + listed + flagged.
 OfferValidationState = Literal["usable", "requires_attention", "invalid"]
+
+# Added 38.1: sync state indicates whether the published offer still reflects current blocks.
+OfferSyncState = Literal["current", "stale", "unknown"]
 
 
 class ProfileChainRef(BaseModel):
@@ -348,6 +353,7 @@ class PrintProfileOffer(BaseModel):
     published_by: str | None = None
     source_snapshot_ref: str | None = None
     published_stl_hash: str | None = None
+    sync_state: OfferSyncState = "unknown"
 
 
 class PrintProfileOfferListResponse(BaseModel):

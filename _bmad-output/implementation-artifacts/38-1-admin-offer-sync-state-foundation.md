@@ -1,6 +1,10 @@
+---
+baseline_commit: 4322d17752a5dc1832d9f2df3c706756654778d6
+---
+
 # Story 38.1: Admin offer sync-state foundation
 
-Status: ready-for-dev
+Status: done
 
 <!--
   Source: E38 decomposition decision (2026-06-14). Supersedes the single-story 38-1 capture.
@@ -67,58 +71,58 @@ This story delivers the **backend-only foundation** (fingerprint + DTO + delete 
 
 ## Tasks
 
-- [ ] **T1 — `profile_offer.py`: add helper functions**
-  - [ ] T1.1 Add `import hashlib` (stdlib) at the top.
-  - [ ] T1.2 Add `derive_chain_fingerprint(chain: ProfileChain, *, root: Path | str) -> str | None` — reads each block's manifest via `read_block()`, extracts `imported_at`, concatenates as `"{machine}|{process}|{filament}"`, returns `hashlib.sha256(concat.encode()).hexdigest()` or `None` if any manifest is missing or `imported_at` is not a string. This is the write-path helper (used in publish).
-  - [ ] T1.3 Add `OfferSyncState = Literal["current", "stale", "unknown"]` type alias (needed by schemas + internal derivation).
-  - [ ] T1.4 Add `derive_sync_state(sidecar: dict, *, chain_block_manifests: list[dict], resolved_state: OfferValidationState) -> OfferSyncState` — the read-path pure function that derives sync_state WITHOUT additional disk I/O by reusing `chain_block_manifests` (already loaded by the revalidation pass). Logic (evaluated in order, return on first match): (1) `resolved_state == "invalid"` → `"unknown"` (invalid badge dominates; do not fall through to len-check); (2) `sidecar.get("publish_state") != "published"` → `"unknown"`; (3) no `published_chain_fingerprint` in sidecar → `"stale"`; (4) `len(chain_block_manifests) < 3` → `"stale"` (defensive fallback; only reachable when resolved_state is NOT invalid, per step 1); (5) otherwise SHA-256 of `"|".join(m.get("imported_at","") for m in chain_block_manifests)` and compare to stored fingerprint → `"current"` or `"stale"`.
-  - [ ] T1.5 Add `offers_referencing_block(root: Path | str, block_id: str) -> list[dict]` — iterates `list_offers(root)`, checks each `sidecar["chain"]` for the given `block_id` in any of the three slot fields, returns matching raw sidecars.
-  - [ ] T1.6 Update `__all__` to export all new names.
+- [x] **T1 — `profile_offer.py`: add helper functions**
+  - [x] T1.1 Add `import hashlib` (stdlib) at the top.
+  - [x] T1.2 Add `derive_chain_fingerprint(chain: ProfileChain, *, root: Path | str) -> str | None` — reads each block's manifest via `read_block()`, extracts `imported_at`, concatenates as `"{machine}|{process}|{filament}"`, returns `hashlib.sha256(concat.encode()).hexdigest()` or `None` if any manifest is missing or `imported_at` is not a string. This is the write-path helper (used in publish).
+  - [x] T1.3 Add `OfferSyncState = Literal["current", "stale", "unknown"]` type alias (needed by schemas + internal derivation).
+  - [x] T1.4 Add `derive_sync_state(sidecar: dict, *, chain_block_manifests: list[dict], resolved_state: OfferValidationState) -> OfferSyncState` — the read-path pure function that derives sync_state WITHOUT additional disk I/O by reusing `chain_block_manifests` (already loaded by the revalidation pass). Logic (evaluated in order, return on first match): (1) `resolved_state == "invalid"` → `"unknown"` (invalid badge dominates; do not fall through to len-check); (2) `sidecar.get("publish_state") != "published"` → `"unknown"`; (3) no `published_chain_fingerprint` in sidecar → `"stale"`; (4) `len(chain_block_manifests) < 3` → `"stale"` (defensive fallback; only reachable when resolved_state is NOT invalid, per step 1); (5) otherwise SHA-256 of `"|".join(m.get("imported_at","") for m in chain_block_manifests)` and compare to stored fingerprint → `"current"` or `"stale"`.
+  - [x] T1.5 Add `offers_referencing_block(root: Path | str, block_id: str) -> list[dict]` — iterates `list_offers(root)`, checks each `sidecar["chain"]` for the given `block_id` in any of the three slot fields, returns matching raw sidecars.
+  - [x] T1.6 Update `__all__` to export all new names.
 
-- [ ] **T2 — `schemas.py`: DTO changes**
-  - [ ] T2.1 Add `OfferSyncState = Literal["current", "stale", "unknown"]` at the PROFILE-OFFER-1 DTO section (mirrors `profile_offer.OfferSyncState`; keeps the public contract in schemas.py as the source of truth for the wire format).
-  - [ ] T2.2 Add `sync_state: OfferSyncState = "unknown"` field to `PrintProfileOffer` (non-persisted, computed at read time by `admin_router._offer_dto`).
-  - [ ] T2.3 Add `stale_offers: list[dict] = Field(default_factory=list)` **directly to `ProfileLibraryBlock`** (NOT a subclass). This is the safest additive approach: the OpenAPI schema name stays `ProfileLibraryBlock`, existing strict clients are not broken, and 38.2 can depend on the field name being stable. Add a comment: `# added 38.1: populated by import endpoint only; empty list for all other callers`.
-  - [ ] T2.4 Do NOT add `sync_state` to `MemberPublishedOfferView` — it must remain absent (the member leak-fence test).
+- [x] **T2 — `schemas.py`: DTO changes**
+  - [x] T2.1 Add `OfferSyncState = Literal["current", "stale", "unknown"]` at the PROFILE-OFFER-1 DTO section (mirrors `profile_offer.OfferSyncState`; keeps the public contract in schemas.py as the source of truth for the wire format).
+  - [x] T2.2 Add `sync_state: OfferSyncState = "unknown"` field to `PrintProfileOffer` (non-persisted, computed at read time by `admin_router._offer_dto`).
+  - [x] T2.3 Add `stale_offers: list[dict] = Field(default_factory=list)` **directly to `ProfileLibraryBlock`** (NOT a subclass). This is the safest additive approach: the OpenAPI schema name stays `ProfileLibraryBlock`, existing strict clients are not broken, and 38.2 can depend on the field name being stable. Add a comment: `# added 38.1: populated by import endpoint only; empty list for all other callers`.
+  - [x] T2.4 Do NOT add `sync_state` to `MemberPublishedOfferView` — it must remain absent (the member leak-fence test).
 
-- [ ] **T3 — `profile_publish.py`: fingerprint at publish time**
-  - [ ] T3.1 Add `"published_chain_fingerprint"` to `_PUBLISH_HASH_KEYS` tuple so `apply_unpublished_state()` clears it on unpublish.
-  - [ ] T3.2 Update `apply_published_state()` signature to accept `chain_fingerprint: str | None` kwarg and write it as `updated["published_chain_fingerprint"] = chain_fingerprint` (alongside the other publish fields).
-  - [ ] T3.3 Update `publish_state_of()` dataclass `OfferPublishMetadata` to include `published_chain_fingerprint: str | None = None` and read it from the sidecar.
-  - [ ] T3.4 In `publish_offer()`, after `revalidate_offer()` confirms the chain is usable, call `from app.modules.slicer.profile_offer import derive_chain_fingerprint` (import at function level is fine given existing import pattern) and derive the fingerprint BEFORE calling `apply_published_state()`. **If `derive_chain_fingerprint()` returns `None`** (manifest missing or `imported_at` invalid), the publish MUST fail immediately — raise `HTTPException` using the existing invalid-chain error path (do NOT call `apply_published_state()`; do NOT write a sidecar with `published_chain_fingerprint: null`). Only if the fingerprint is a non-None string, pass it to `apply_published_state()`. The fingerprint derivation re-reads the 3 manifests — this is acceptable (3 small files); the revalidation already read them, but the existing code doesn't pass them through from `revalidate_offer()` to `publish_offer()`, so a second read is the pragmatic choice here (at publish time, not on every list/get).
-  - [ ] T3.5 Optionally bump `_OFFER_MANIFEST_VERSION_V2` constant to `"3"` and update the `offer_manifest_version` written on publish — this is a judgment call; if chosen, update the constant in BOTH `profile_offer.py` and `profile_publish.py` and document the bump reason. If NOT bumped, absence of `published_chain_fingerprint` is the only forward-compat signal (which the `"stale"` fallback covers). Either choice is valid — document which was chosen in the sidecar.
+- [x] **T3 — `profile_publish.py`: fingerprint at publish time**
+  - [x] T3.1 Add `"published_chain_fingerprint"` to `_PUBLISH_HASH_KEYS` tuple so `apply_unpublished_state()` clears it on unpublish.
+  - [x] T3.2 Update `apply_published_state()` signature to accept `chain_fingerprint: str | None` kwarg and write it as `updated["published_chain_fingerprint"] = chain_fingerprint` (alongside the other publish fields).
+  - [x] T3.3 Update `publish_state_of()` dataclass `OfferPublishMetadata` to include `published_chain_fingerprint: str | None = None` and read it from the sidecar.
+  - [x] T3.4 In `publish_offer()`, after `revalidate_offer()` confirms the chain is usable, call `from app.modules.slicer.profile_offer import derive_chain_fingerprint` (import at function level is fine given existing import pattern) and derive the fingerprint BEFORE calling `apply_published_state()`. **If `derive_chain_fingerprint()` returns `None`** (manifest missing or `imported_at` invalid), the publish MUST fail immediately — raise `HTTPException` using the existing invalid-chain error path (do NOT call `apply_published_state()`; do NOT write a sidecar with `published_chain_fingerprint: null`). Only if the fingerprint is a non-None string, pass it to `apply_published_state()`. The fingerprint derivation re-reads the 3 manifests — this is acceptable (3 small files); the revalidation already read them, but the existing code doesn't pass them through from `revalidate_offer()` to `publish_offer()`, so a second read is the pragmatic choice here (at publish time, not on every list/get).
+  - [x] T3.5 Optionally bump `_OFFER_MANIFEST_VERSION_V2` constant to `"3"` and update the `offer_manifest_version` written on publish — this is a judgment call; if chosen, update the constant in BOTH `profile_offer.py` and `profile_publish.py` and document the bump reason. If NOT bumped, absence of `published_chain_fingerprint` is the only forward-compat signal (which the `"stale"` fallback covers). Either choice is valid — document which was chosen in the sidecar.
 
-- [ ] **T4 — `admin_router.py`: wire sync_state + delete guard + import response**
-  - [ ] T4.1 Add imports: `from app.modules.slicer.schemas import OfferSyncState` (add to existing import block at lines 81–104); `from app.modules.slicer.profile_offer import derive_sync_state, offers_referencing_block` (add to the `profile_offer` module-level import or use `profile_offer.derive_sync_state` / `profile_offer.offers_referencing_block`). No `ProfileLibraryImportResponse` import — `stale_offers` is now a field on `ProfileLibraryBlock` directly.
-  - [ ] T4.2 Update `_offer_dto()` (lines 785–820): after the `PrintProfileOffer(...)` constructor block, add computation of `sync_state` via `profile_offer.derive_sync_state(sidecar, chain_block_manifests=resolved.chain_block_manifests, resolved_state=resolved.state)` and pass it as `sync_state=sync_state` into the constructor.
-  - [ ] T4.3 Update `delete_profile_block()` (lines 751–770): BEFORE the `profile_library.delete_block()` call, call `offers_referencing_block(source.root, block_id)`. If the list is non-empty, raise `HTTPException(status_code=409, detail={"reason_category": "profile_block_in_use", "message": f"block is referenced by {len(referencing)} offer(s)", "offers": [{"offer_id": s.get("offer_id"), "label": s.get("label"), "publish_state": s.get("publish_state")} for s in referencing]})`. Do NOT emit the audit event on 409.
-  - [ ] T4.4 Add `responses={409: {"description": "Block in use by one or more offers"}}` to the `@router.delete("/profiles/library/{block_id}")` decorator.
-  - [ ] T4.5 Update `import_profile_block()` (lines 597–690): keep `response_model=ProfileLibraryBlock` on the decorator (no change — `stale_offers` is now a field on `ProfileLibraryBlock`); after the audit `record_event()` call, compute `stale = offers_referencing_block(source.root, block_id)` and return `ProfileLibraryBlock(**_block_dto(manifest).model_dump(), stale_offers=[{"offer_id": s.get("offer_id"), "label": s.get("label"), "publish_state": s.get("publish_state")} for s in stale if s.get("publish_state") == "published"])`. The filter to `published`-only is intentional — unpublished offers are not serving members and will receive a fresh fingerprint on their next publish.
+- [x] **T4 — `admin_router.py`: wire sync_state + delete guard + import response**
+  - [x] T4.1 Add imports: `from app.modules.slicer.schemas import OfferSyncState` (add to existing import block at lines 81–104); `from app.modules.slicer.profile_offer import derive_sync_state, offers_referencing_block` (add to the `profile_offer` module-level import or use `profile_offer.derive_sync_state` / `profile_offer.offers_referencing_block`). No `ProfileLibraryImportResponse` import — `stale_offers` is now a field on `ProfileLibraryBlock` directly.
+  - [x] T4.2 Update `_offer_dto()` (lines 785–820): after the `PrintProfileOffer(...)` constructor block, add computation of `sync_state` via `profile_offer.derive_sync_state(sidecar, chain_block_manifests=resolved.chain_block_manifests, resolved_state=resolved.state)` and pass it as `sync_state=sync_state` into the constructor.
+  - [x] T4.3 Update `delete_profile_block()` (lines 751–770): BEFORE the `profile_library.delete_block()` call, call `offers_referencing_block(source.root, block_id)`. If the list is non-empty, raise `HTTPException(status_code=409, detail={"reason_category": "profile_block_in_use", "message": f"block is referenced by {len(referencing)} offer(s)", "offers": [{"offer_id": s.get("offer_id"), "label": s.get("label"), "publish_state": s.get("publish_state")} for s in referencing]})`. Do NOT emit the audit event on 409.
+  - [x] T4.4 Add `responses={409: {"description": "Block in use by one or more offers"}}` to the `@router.delete("/profiles/library/{block_id}")` decorator.
+  - [x] T4.5 Update `import_profile_block()` (lines 597–690): keep `response_model=ProfileLibraryBlock` on the decorator (no change — `stale_offers` is now a field on `ProfileLibraryBlock`); after the audit `record_event()` call, compute `stale = offers_referencing_block(source.root, block_id)` and return `ProfileLibraryBlock(**_block_dto(manifest).model_dump(), stale_offers=[{"offer_id": s.get("offer_id"), "label": s.get("label"), "publish_state": s.get("publish_state")} for s in stale if s.get("publish_state") == "published"])`. The filter to `published`-only is intentional — unpublished offers are not serving members and will receive a fresh fingerprint on their next publish.
 
-- [ ] **T5 — Tests: `test_admin_profile_offers.py`**
-  - [ ] T5.1 Add test: freshly published offer has `sync_state == "current"`. (Note: existing publish tests in `test_admin_profile_publish.py` mock the bundle store + arq pool — reuse the same seam pattern. Alternatively this test can call `GET /api/admin/profiles/offers/{offer_id}` on a published offer and assert `sync_state`.)
-  - [ ] T5.2 Add test: after re-importing the process block (same fixture → same block_id, new `imported_at`), the offer's `sync_state` becomes `"stale"`.
-  - [ ] T5.3 Add test: an offer whose sidecar lacks `published_chain_fingerprint` (manually written or via `profile_offer.store_offer()` with a crafted sidecar) has `sync_state == "stale"`.
-  - [ ] T5.4 Add test: an unpublished offer has `sync_state == "unknown"`.
-  - [ ] T5.5 Assert that `sync_state` does NOT appear in `GET /api/profiles/offers/published` (member DTO leak-fence). Can be a negative assertion on response JSON keys.
-  - [ ] T5.6 **[fingerprint-None failure]** Add test: publish attempt for an offer whose chain includes a block whose manifest has a missing or non-string `imported_at` (simulate by patching the manifest on disk or by using a test-double for `read_block`) returns HTTP 4xx (the existing invalid-chain error status) and does NOT write a published sidecar — verify the offer sidecar on disk remains unpublished after the failed call.
+- [x] **T5 — Tests: `test_admin_profile_offers.py`**
+  - [x] T5.1 Add test: freshly published offer has `sync_state == "current"`. (Note: existing publish tests in `test_admin_profile_publish.py` mock the bundle store + arq pool — reuse the same seam pattern. Alternatively this test can call `GET /api/admin/profiles/offers/{offer_id}` on a published offer and assert `sync_state`.)
+  - [x] T5.2 Add test: after re-importing the process block (same fixture → same block_id, new `imported_at`), the offer's `sync_state` becomes `"stale"`.
+  - [x] T5.3 Add test: an offer whose sidecar lacks `published_chain_fingerprint` (manually written or via `profile_offer.store_offer()` with a crafted sidecar) has `sync_state == "stale"`.
+  - [x] T5.4 Add test: an unpublished offer has `sync_state == "unknown"`.
+  - [x] T5.5 Assert that `sync_state` does NOT appear in `GET /api/profiles/offers/published` (member DTO leak-fence). Can be a negative assertion on response JSON keys.
+  - [x] T5.6 **[fingerprint-None failure]** Add test: publish attempt for an offer whose chain includes a block whose manifest has a missing or non-string `imported_at` (simulate by patching the manifest on disk or by using a test-double for `read_block`) returns HTTP 4xx (the existing invalid-chain error status) and does NOT write a published sidecar — verify the offer sidecar on disk remains unpublished after the failed call.
 
-- [ ] **T7 — Unit tests: `profile_offer.py` helpers (mandatory)**
+- [x] **T7 — Unit tests: `profile_offer.py` helpers (mandatory)**
   These unit tests exercise the pure helpers in isolation, without HTTP. Add to `test_profile_offer_store.py` or `test_profile_offer_validate.py` (whichever already imports `profile_offer`).
-  - [ ] T7.1 `derive_chain_fingerprint`: valid chain (all 3 manifests present, `imported_at` strings) → returns 64-char hex string; same inputs → deterministic same output.
-  - [ ] T7.2 `derive_chain_fingerprint`: one manifest missing `imported_at` (key absent or value is `None` / `int`) → returns `None`.
-  - [ ] T7.3 `derive_sync_state`: `resolved_state == "invalid"` → always `"unknown"` regardless of fingerprint in sidecar (verify the `len < 3` fallback is NOT reached by passing only 1 manifest and confirming `"unknown"` not `"stale"`).
-  - [ ] T7.4 `offers_referencing_block`: two offer sidecars reference the block (one via `machine_block_id`, one via `filament_block_id`) → returns list of length 2; a third sidecar with a different block_id in all slots → not included.
-  - [ ] T7.5 409 body shape: the delete-guard integration test (T6.1) asserts the exact JSON keys in the 409 response body: `reason_category`, `message`, `offers`; each entry in `offers` contains exactly `offer_id`, `label`, `publish_state` and nothing else (no `published_bundle_hash`, no filesystem paths).
+  - [x] T7.1 `derive_chain_fingerprint`: valid chain (all 3 manifests present, `imported_at` strings) → returns 64-char hex string; same inputs → deterministic same output.
+  - [x] T7.2 `derive_chain_fingerprint`: one manifest missing `imported_at` (key absent or value is `None` / `int`) → returns `None`.
+  - [x] T7.3 `derive_sync_state`: `resolved_state == "invalid"` → always `"unknown"` regardless of fingerprint in sidecar (verify the `len < 3` fallback is NOT reached by passing only 1 manifest and confirming `"unknown"` not `"stale"`).
+  - [x] T7.4 `offers_referencing_block`: two offer sidecars reference the block (one via `machine_block_id`, one via `filament_block_id`) → returns list of length 2; a third sidecar with a different block_id in all slots → not included.
+  - [x] T7.5 409 body shape: the delete-guard integration test (T6.1) asserts the exact JSON keys in the 409 response body: `reason_category`, `message`, `offers`; each entry in `offers` contains exactly `offer_id`, `label`, `publish_state` and nothing else (no `published_bundle_hash`, no filesystem paths).
 
-- [ ] **T6 — Tests: `test_admin_profile_library.py`**
-  - [ ] T6.1 Add test: `DELETE /api/admin/profiles/library/{block_id}` returns 409 with `reason_category == "profile_block_in_use"` and non-empty `offers` list when the block is used by at least one offer sidecar — **including when that offer is unpublished** (create an offer sidecar that references the block but has `publish_state != "published"`; verify DELETE still returns 409).
-  - [ ] T6.2 Assert the 409 body does NOT contain `published_bundle_hash`, filesystem paths, or raw Orca body fields (leak-fence).
-  - [ ] T6.3 Assert no block files were removed (library snapshot before == library snapshot after on 409).
-  - [ ] T6.4 Assert no audit event was written on 409 (`AuditLog` table count unchanged).
-  - [ ] T6.5 Verify existing 204 delete test still passes for an unreferenced block.
-  - [ ] T6.6 Add test: block upsert response includes `stale_offers: []` when no published offer exists; `stale_offers` list has one entry when a published offer references the just-upserted block.
-  - [ ] T6.7 Verify existing `invalid unknown_block` contract: manually delete a block file after offer creation → list/get still returns `validation_state == "invalid"` with `unknown_block` reason (existing test, confirm it still passes with the new guard in place).
+- [x] **T6 — Tests: `test_admin_profile_library.py`**
+  - [x] T6.1 Add test: `DELETE /api/admin/profiles/library/{block_id}` returns 409 with `reason_category == "profile_block_in_use"` and non-empty `offers` list when the block is used by at least one offer sidecar — **including when that offer is unpublished** (create an offer sidecar that references the block but has `publish_state != "published"`; verify DELETE still returns 409).
+  - [x] T6.2 Assert the 409 body does NOT contain `published_bundle_hash`, filesystem paths, or raw Orca body fields (leak-fence).
+  - [x] T6.3 Assert no block files were removed (library snapshot before == library snapshot after on 409).
+  - [x] T6.4 Assert no audit event was written on 409 (`AuditLog` table count unchanged).
+  - [x] T6.5 Verify existing 204 delete test still passes for an unreferenced block.
+  - [x] T6.6 Add test: block upsert response includes `stale_offers: []` when no published offer exists; `stale_offers` list has one entry when a published offer references the just-upserted block.
+  - [x] T6.7 Verify existing `invalid unknown_block` contract: manually delete a block file after offer creation → list/get still returns `validation_state == "invalid"` with `unknown_block` reason (existing test, confirm it still passes with the new guard in place).
 
 ## Dev Notes
 
@@ -314,8 +318,45 @@ Story 38.2 (Admin offer stale badge + resync action) depends on:
 - Alembic migration: **not required** — offer sidecars are file-backed, not DB rows.
 - Normal API + web deploy is sufficient after merge.
 
+## Dev Agent Record
+
+### Completion Notes
+
+- T3.5 (manifest version bump): decided NOT to bump — absence of `published_chain_fingerprint` is the sole compat signal, covered by the `"stale"` fallback.
+- T5.1/T5.2/T5.6 publish tests: switched from HTTP import (`_import_chain_blocks`) to direct `_store_chain_block_t5` seeding from `INTENTS_FIXTURE` — mirrored pattern from `test_admin_profile_publish.py` — because HTTP import requires system parent inheritance resolution which failed with `chain_resolve_failed: missing_system_profile`.
+- T6.5 existing test: had to delete offers out-of-band (filesystem) rather than via HTTP DELETE, because the new 409 guard correctly blocks deletion while offers reference the block.
+- Regression in `test_list_revalidates_after_referenced_block_deleted`: fixed by replacing HTTP DELETE with `profile_library.delete_block()` direct call.
+- `ProfileLibraryBlock.stale_offers` double-kwarg TypeError: fixed by mutating `model_dump()` dict before unpacking.
+
+### Debug Log
+
+| Issue | Fix |
+|-------|-----|
+| `seam_publish` → `offer_requires_attention` (chain resolve failed missing system profile) | Replaced HTTP import with direct `_store_chain_block_t5` seeder from INTENTS_FIXTURE |
+| `ProfileLibraryBlock(**_block_dto(...).model_dump(), stale_offers=...)` TypeError | `block_data = .model_dump(); block_data["stale_offers"] = ...; return ProfileLibraryBlock(**block_data)` |
+| `test_list_revalidates_after_referenced_block_deleted` → 409 instead of 204 | Changed to out-of-band `_pl.delete_block(root, process)` |
+| 25 ruff errors in test files | 12 auto-fixed; 13 manually fixed (E402 imports, RUF059 unpacked vars, F841 unused) |
+
+### Senior Developer Review (AI)
+
+- 2026-06-14 — Aider diff review: **APPROVE**. No critical/important changes requested.
+- Controller verification: targeted pytest `91 passed`; full gate log `.hermes/run-logs/38-1-check-all-final.log` shows `16/16` and `all green.`
+
+## File List
+
+### Modified
+
+- `apps/api/app/modules/slicer/profile_offer.py` — `derive_chain_fingerprint`, `derive_sync_state`, `offers_referencing_block`, `OfferSyncState`, `__all__`
+- `apps/api/app/modules/slicer/schemas.py` — `OfferSyncState`, `PrintProfileOffer.sync_state`, `ProfileLibraryBlock.stale_offers`
+- `apps/api/app/modules/slicer/profile_publish.py` — `_PUBLISH_HASH_KEYS`, `OfferPublishMetadata`, `apply_published_state`, `publish_offer`
+- `apps/api/app/modules/slicer/admin_router.py` — `_offer_dto` sync_state wire, delete guard 409, import response stale_offers
+- `apps/api/tests/test_admin_profile_offers.py` — T5.1–T5.6 tests + regression fix
+- `apps/api/tests/test_admin_profile_library.py` — T6.1–T6.7 tests
+- `apps/api/tests/test_profile_offer_store.py` — T7.1–T7.5 unit tests
+
 ## Change Log
 
 - 2026-06-14 — created from E38 decomposition. Supersedes the PROFILE-OFFER-SYNC-1 backend half of `deferred-work.md` + PROFILE-LIB-GUARD-1.
 - 2026-06-14 — enriched to ready-for-dev with full implementation context (Tasks/Subtasks, Dev Notes, concrete file paths, function signatures, testing plan, dependency notes for 38.2).
+- 2026-06-14 — implemented: all T1–T7 tasks complete; 91 tests pass (3× determinism gate); check-all.sh 16/16 green; status → review.
 - 2026-06-14 — revised after Aider story review: (1) T3.4 + AC: fingerprint None → HTTPException, no null sidecar; T5.6 new test. (2) T1.4 + AC + Dev Notes pseudocode: derive_sync_state step ordering made explicit; len<3 fallback only reachable when resolved_state != invalid. (3) AC + T6.1: delete guard explicitly blocks on ANY offer including unpublished; stale_offers import field filters to published-only. (4) T7 task group added: mandatory helper unit tests for derive_chain_fingerprint, derive_sync_state, offers_referencing_block, exact 409 body shape. (5) T2.3 + T4.1/4.5 + Dev Notes: replaced ProfileLibraryImportResponse subclass with additive stale_offers field directly on ProfileLibraryBlock; response_model unchanged; no OpenAPI schema rename.

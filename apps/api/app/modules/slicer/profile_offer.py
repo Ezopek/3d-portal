@@ -25,6 +25,7 @@ subtree disjoint from ``system/`` / ``intents/`` (grid) / ``library/`` (blocks).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import uuid
@@ -38,6 +39,7 @@ from app.modules.slicer.profile_library import read_block
 
 Visibility = Literal["hidden", "visible"]
 OfferValidationState = Literal["usable", "requires_attention", "invalid"]
+OfferSyncState = Literal["current", "stale", "unknown"]
 
 # Offer-sidecar schema version — v2 is the additive PROFILE-PUBLISH-1 publish-state bump.
 # v1 sidecars (without publish_state fields) read forward as unpublished.
@@ -528,6 +530,73 @@ def revalidate_offers(root: Path | str, sidecars: list[dict]) -> list[ResolvedOf
     return resolved
 
 
+def derive_chain_fingerprint(chain: ProfileChain, *, root: Path | str) -> str | None:
+    """Derive a SHA-256 fingerprint from the chain's block ``imported_at`` timestamps.
+
+    Returns a 64-char hex string, or ``None`` if any manifest is missing or its
+    ``imported_at`` value is not a string.  Used at publish time only (write path).
+    """
+    slots = {
+        "machine": chain.machine_block_id,
+        "process": chain.process_block_id,
+        "filament": chain.filament_block_id,
+    }
+    parts: list[str] = []
+    for slot in _CHAIN_SLOTS:
+        manifest = read_block(root, slots[slot])
+        if manifest is None:
+            return None
+        imported_at = manifest.get("imported_at")
+        if not isinstance(imported_at, str):
+            return None
+        parts.append(imported_at)
+    concat = "|".join(parts)
+    return hashlib.sha256(concat.encode()).hexdigest()
+
+
+def derive_sync_state(
+    sidecar: dict,
+    *,
+    chain_block_manifests: list[dict],
+    resolved_state: OfferValidationState,
+) -> OfferSyncState:
+    """Derive ``sync_state`` at read time WITHOUT additional disk I/O.
+
+    Reuses ``chain_block_manifests`` already loaded by the revalidation pass.
+    Logic is evaluated in strict order — the first matching branch wins.
+    """
+    # (1) Invalid offer — badge dominates; do NOT fall through to len<3 check
+    if resolved_state == "invalid":
+        return "unknown"
+    # (2) Unpublished offer has no published fingerprint to compare
+    if sidecar.get("publish_state") != "published":
+        return "unknown"
+    stored = sidecar.get("published_chain_fingerprint")
+    # (3) Backward-compat: offer published before 38.1 (no fingerprint stored)
+    if not stored:
+        return "stale"
+    # (4) Defensive fallback — only reachable when resolved_state != "invalid"
+    if len(chain_block_manifests) < 3:
+        return "stale"
+    parts = [m.get("imported_at", "") for m in chain_block_manifests]
+    current_fp = hashlib.sha256("|".join(parts).encode()).hexdigest()
+    return "current" if current_fp == stored else "stale"
+
+
+def offers_referencing_block(root: Path | str, block_id: str) -> list[dict]:
+    """Return raw sidecars of every offer that references ``block_id`` in any chain slot."""
+    result: list[dict] = []
+    for sidecar in list_offers(root):
+        chain = sidecar.get("chain") or {}
+        if block_id in (
+            chain.get("machine_block_id"),
+            chain.get("process_block_id"),
+            chain.get("filament_block_id"),
+        ):
+            result.append(sidecar)
+    return result
+
+
 def revalidate_offer(root: Path | str, sidecar: dict, *, peers: list[dict]) -> ResolvedOffer:
     """Recompute one offer's read-time validation against ``peers`` (the full offer set)."""
     by_id = {s.get("offer_id"): s for s in peers}
@@ -564,6 +633,7 @@ __all__ = [
     "REASON_UNKNOWN_BLOCK",
     "REASON_WRONG_BLOCK_TYPE",
     "ChainValidation",
+    "OfferSyncState",
     "OfferValidationState",
     "ProfileChain",
     "ResolvedOffer",
@@ -571,11 +641,14 @@ __all__ = [
     "build_offer_record",
     "chain_of",
     "delete_offer",
+    "derive_chain_fingerprint",
+    "derive_sync_state",
     "evaluate_offer",
     "is_valid_offer_id",
     "list_offers",
     "mint_offer_id",
     "offer_path",
+    "offers_referencing_block",
     "offers_root",
     "read_offer",
     "restore_offer",

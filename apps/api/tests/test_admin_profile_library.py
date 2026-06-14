@@ -413,3 +413,263 @@ async def test_import_audit_failure_rolls_back(seam, monkeypatch) -> None:
     # Fresh import rolled back → library tree byte-identical, no temp leftover.
     assert _snapshot_library(root) == before
     assert not list((root / "library").rglob(".*tmp*")) if (root / "library").exists() else True
+
+
+# === T6: Story 38.1 — delete guard (409) + stale_offers import response =========
+
+
+async def _import_chain_blocks_lib(ac) -> tuple[str, str, str]:
+    """Import machine + process + filament blocks; return their (machine, process, filament) ids."""
+    machine = (
+        await ac.post(
+            "/api/admin/profiles/library",
+            **_upload(_fixture_bytes("user_machine_k1max_microswiss.json")),
+        )
+    ).json()["block_id"]
+    process = (
+        await ac.post(
+            "/api/admin/profiles/library",
+            **_upload(_fixture_bytes("user_process_tpu_flowtech.json")),
+        )
+    ).json()["block_id"]
+    filament = (
+        await ac.post(
+            "/api/admin/profiles/library", **_upload(_fixture_bytes("user_filament_rosa_flex.json"))
+        )
+    ).json()["block_id"]
+    return machine, process, filament
+
+
+def _seed_offer_sidecar(
+    root, machine_id: str, process_id: str, filament_id: str, *, publish_state: str = "unpublished"
+) -> str:
+    """Write a raw offer sidecar referencing the given block ids."""
+    import uuid as _uuid
+
+    from app.modules.slicer.profile_offer import ProfileChain, build_offer_record, store_offer
+
+    offer_id = _uuid.uuid4().hex
+    record = build_offer_record(
+        offer_id=offer_id,
+        label="T6 Offer",
+        description=None,
+        chain=ProfileChain(
+            machine_block_id=machine_id,
+            process_block_id=process_id,
+            filament_block_id=filament_id,
+        ),
+        visibility="hidden",
+        is_default=False,
+        compatible_material_categories=["TPU"],
+        validation_state="usable",
+        reasons=[],
+        created_at="2026-06-14T00:00:00+00:00",
+        created_by=_uuid.UUID("00000000-0000-0000-0000-0000000000aa"),
+        updated_at="2026-06-14T00:00:00+00:00",
+    )
+    if publish_state == "published":
+        record["publish_state"] = "published"
+        record["published_bundle_hash"] = "a" * 64
+        record["published_at"] = "2026-06-14T01:00:00+00:00"
+        record["published_by"] = "00000000-0000-0000-0000-0000000000aa"
+        record["source_snapshot_ref"] = "b" * 64
+        record["published_stl_hash"] = "c" * 64
+    store_offer(root, record)
+    return offer_id
+
+
+@pytest.mark.asyncio
+async def test_t6_1_delete_block_409_when_referenced_by_unpublished_offer(seam) -> None:
+    ac, root, admin_id = seam
+    await _login_admin(ac, admin_id)
+    machine, process, filament = await _import_chain_blocks_lib(ac)
+    _seed_offer_sidecar(root, machine, process, filament, publish_state="unpublished")
+
+    r = await ac.delete(f"/api/admin/profiles/library/{machine}")
+    assert r.status_code == 409
+    body = r.json()["detail"]
+    assert body["reason_category"] == "profile_block_in_use"
+    assert len(body["offers"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_t6_2_409_body_has_no_leaked_fields(seam) -> None:
+    ac, root, admin_id = seam
+    await _login_admin(ac, admin_id)
+    machine, process, filament = await _import_chain_blocks_lib(ac)
+    _seed_offer_sidecar(root, machine, process, filament, publish_state="published")
+
+    r = await ac.delete(f"/api/admin/profiles/library/{process}")
+    assert r.status_code == 409
+    body = r.json()["detail"]
+    assert "reason_category" in body
+    assert "message" in body
+    assert "offers" in body
+    offer_entry = body["offers"][0]
+    assert set(offer_entry.keys()) == {"offer_id", "label", "publish_state"}
+    assert "published_bundle_hash" not in offer_entry
+    assert "source_snapshot_ref" not in offer_entry
+    raw_text = r.text
+    assert "published_bundle_hash" not in raw_text
+    assert "source_snapshot_ref" not in raw_text
+
+
+@pytest.mark.asyncio
+async def test_t6_3_409_no_block_files_deleted(seam) -> None:
+    ac, root, admin_id = seam
+    await _login_admin(ac, admin_id)
+    machine, process, filament = await _import_chain_blocks_lib(ac)
+    _seed_offer_sidecar(root, machine, process, filament, publish_state="unpublished")
+    before = _snapshot_library(root)
+
+    r = await ac.delete(f"/api/admin/profiles/library/{machine}")
+    assert r.status_code == 409
+    assert _snapshot_library(root) == before
+
+
+@pytest.mark.asyncio
+async def test_t6_4_409_no_audit_event(seam) -> None:
+    ac, root, admin_id = seam
+    await _login_admin(ac, admin_id)
+    machine, process, filament = await _import_chain_blocks_lib(ac)
+    _seed_offer_sidecar(root, machine, process, filament, publish_state="unpublished")
+
+    from app.core.db.session import get_engine
+
+    with Session(get_engine()) as session:
+        count_before = len(
+            session.exec(
+                select(AuditLog).where(AuditLog.action == "slicer_profile.library_delete")
+            ).all()
+        )
+
+    r = await ac.delete(f"/api/admin/profiles/library/{process}")
+    assert r.status_code == 409
+
+    with Session(get_engine()) as session:
+        count_after = len(
+            session.exec(
+                select(AuditLog).where(AuditLog.action == "slicer_profile.library_delete")
+            ).all()
+        )
+    assert count_after == count_before
+
+
+@pytest.mark.asyncio
+async def test_t6_5_delete_unreferenced_block_204(seam) -> None:
+    ac, root, admin_id = seam
+    await _login_admin(ac, admin_id)
+    machine, process, filament = await _import_chain_blocks_lib(ac)
+    # Import an extra block that no offer references
+    _extra_id = (
+        await ac.post(
+            "/api/admin/profiles/library",
+            **_upload(_fixture_bytes("user_process_tpu_flowtech.json")),
+        )
+    ).json()["block_id"]
+    # Note: process == extra_id (same fixture = same block_id). Create offer with different block.
+    # Instead, import a fresh block not referenced by any offer.
+    _seed_offer_sidecar(root, machine, process, filament, publish_state="unpublished")
+
+    # filament is referenced - should 409; but machine is also referenced
+    # Let's just verify that a block NOT referenced (extra imported block that is different)
+    # We can just verify that process block that IS referenced gives 409, and deleting the same
+    # block again after removing the offer would give 204 - but that's complex.
+    # Simpler: verify no offers exist at all, then delete gives 204.
+
+    offers_dir = root / "offers"
+    if offers_dir.exists():
+        for p in offers_dir.rglob("*.json"):
+            p.unlink()
+
+    r = await ac.delete(f"/api/admin/profiles/library/{machine}")
+    assert r.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_t6_6_import_response_stale_offers_empty_when_no_published_offer(seam) -> None:
+    ac, _root, admin_id = seam
+    await _login_admin(ac, admin_id)
+    r = await ac.post(
+        "/api/admin/profiles/library",
+        **_upload(_fixture_bytes("user_process_tpu_flowtech.json")),
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert "stale_offers" in body
+    assert body["stale_offers"] == []
+
+
+@pytest.mark.asyncio
+async def test_t6_6b_import_response_stale_offers_populated_for_published_offer(seam) -> None:
+    ac, root, admin_id = seam
+    await _login_admin(ac, admin_id)
+    machine, process, filament = await _import_chain_blocks_lib(ac)
+    offer_id = _seed_offer_sidecar(root, machine, process, filament, publish_state="published")
+
+    # Re-import the process block (same fixture = same block_id, new imported_at)
+    r = await ac.post(
+        "/api/admin/profiles/library",
+        **_upload(_fixture_bytes("user_process_tpu_flowtech.json")),
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert "stale_offers" in body
+    assert len(body["stale_offers"]) == 1
+    entry = body["stale_offers"][0]
+    assert entry["offer_id"] == offer_id
+    assert entry["publish_state"] == "published"
+    assert "published_bundle_hash" not in entry
+    assert "source_snapshot_ref" not in entry
+
+
+@pytest.mark.asyncio
+async def test_t6_6c_import_response_stale_offers_excludes_unpublished(seam) -> None:
+    ac, root, admin_id = seam
+    await _login_admin(ac, admin_id)
+    machine, process, filament = await _import_chain_blocks_lib(ac)
+    # Unpublished offer — should NOT appear in stale_offers
+    _seed_offer_sidecar(root, machine, process, filament, publish_state="unpublished")
+
+    r = await ac.post(
+        "/api/admin/profiles/library",
+        **_upload(_fixture_bytes("user_process_tpu_flowtech.json")),
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["stale_offers"] == []
+
+
+@pytest.mark.asyncio
+async def test_t6_7_out_of_band_delete_still_returns_invalid_unknown_block(seam) -> None:
+    ac, root, admin_id = seam
+    await _login_admin(ac, admin_id)
+    machine, process, filament = await _import_chain_blocks_lib(ac)
+
+    # Create an offer via the API
+    offer_body = {
+        "label": "TPU Offer",
+        "chain": {
+            "machine_block_id": machine,
+            "process_block_id": process,
+            "filament_block_id": filament,
+        },
+        "visibility": "hidden",
+        "is_default": False,
+        "compatible_material_categories": ["TPU"],
+    }
+    r = await ac.post("/api/admin/profiles/offers", json=offer_body)
+    assert r.status_code == 201, r.text
+    offer_id = r.json()["offer_id"]
+
+    # Out-of-band delete the process block directly from disk
+    from app.modules.slicer import profile_library as _pl
+
+    _pl.delete_block(root, process)
+
+    # Now list/get should return invalid with unknown_block
+    r = await ac.get(f"/api/admin/profiles/offers/{offer_id}")
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["validation_state"] == "invalid"
+    assert "unknown_block" in data["reasons"]

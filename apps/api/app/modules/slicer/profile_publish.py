@@ -46,7 +46,12 @@ PUBLISH_STATE_UNPUBLISHED: PublishState = "unpublished"
 DEFAULT_PUBLISH_STL_HASH = "282d26c1660c41b30d15b293b5c92bfe494ab62d76350009ceba55e714774b7f"
 
 _OFFER_MANIFEST_VERSION_V2 = "2"
-_PUBLISH_HASH_KEYS = ("published_bundle_hash", "source_snapshot_ref", "published_stl_hash")
+_PUBLISH_HASH_KEYS = (
+    "published_bundle_hash",
+    "source_snapshot_ref",
+    "published_stl_hash",
+    "published_chain_fingerprint",
+)
 
 
 @dataclass(frozen=True)
@@ -57,6 +62,7 @@ class OfferPublishMetadata:
     published_by: str | None = None
     source_snapshot_ref: str | None = None
     published_stl_hash: str | None = None
+    published_chain_fingerprint: str | None = None
 
 
 @dataclass(frozen=True)
@@ -93,6 +99,7 @@ def publish_state_of(sidecar: dict) -> OfferPublishMetadata:
     published_stl_hash = sidecar.get("published_stl_hash")
     if not all(isinstance(value, str) and value for value in (bundle_hash, published_at)):
         return OfferPublishMetadata(publish_state=PUBLISH_STATE_UNPUBLISHED)
+    chain_fingerprint = sidecar.get("published_chain_fingerprint")
     return OfferPublishMetadata(
         publish_state=PUBLISH_STATE_PUBLISHED,
         published_bundle_hash=bundle_hash,
@@ -100,6 +107,9 @@ def publish_state_of(sidecar: dict) -> OfferPublishMetadata:
         published_by=published_by if isinstance(published_by, str) else None,
         source_snapshot_ref=source_snapshot_ref if isinstance(source_snapshot_ref, str) else None,
         published_stl_hash=published_stl_hash if isinstance(published_stl_hash, str) else None,
+        published_chain_fingerprint=chain_fingerprint
+        if isinstance(chain_fingerprint, str)
+        else None,
     )
 
 
@@ -111,6 +121,7 @@ def apply_published_state(
     published_by: uuid.UUID,
     source_snapshot_ref: str,
     stl_hash: str,
+    chain_fingerprint: str | None = None,
 ) -> dict:
     """Return a v2 sidecar with additive active publish metadata."""
     validate_content_hash(bundle_hash)
@@ -124,6 +135,7 @@ def apply_published_state(
     updated["published_by"] = str(published_by)
     updated["source_snapshot_ref"] = source_snapshot_ref
     updated["published_stl_hash"] = stl_hash
+    updated["published_chain_fingerprint"] = chain_fingerprint
     return updated
 
 
@@ -254,6 +266,17 @@ async def publish_offer(
             "stl_hash_mismatch",
             "catalog STL bytes do not match the requested hash",
         )
+
+    from app.modules.slicer.profile_offer import derive_chain_fingerprint
+
+    chain_fingerprint = derive_chain_fingerprint(chain_of(sidecar), root=root)
+    if chain_fingerprint is None:
+        raise PublishError(
+            409,
+            "offer_not_usable",
+            "cannot derive chain fingerprint: missing or invalid imported_at in block manifest",
+        )
+
     estimate_job_id = slice_job_id(cached_stl_hash, outcome.bundle.bundle_hash)
     published_at = _now_iso()
     updated = apply_published_state(
@@ -263,6 +286,7 @@ async def publish_offer(
         published_by=actor_user_id,
         source_snapshot_ref=outcome.bundle.source_snapshot_ref,
         stl_hash=cached_stl_hash,
+        chain_fingerprint=chain_fingerprint,
     )
     previous = snapshot_offer(root, offer_id)
     store_publish_state(root, updated)

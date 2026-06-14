@@ -9,6 +9,7 @@ referenced block is removed.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import uuid
@@ -23,10 +24,13 @@ from app.modules.slicer.profile_offer import (
     ProfileChain,
     build_offer_record,
     delete_offer,
+    derive_chain_fingerprint,
+    derive_sync_state,
     is_valid_offer_id,
     list_offers,
     mint_offer_id,
     offer_path,
+    offers_referencing_block,
     offers_root,
     read_offer,
     revalidate_offers,
@@ -53,7 +57,7 @@ def _store_block(root: Path, profile_type: str, name: str, **extra: object) -> s
         "validation_state": "usable",
         "reasons": [],
         "portal_label": None,
-        "imported_at": "2026-06-06T00:00:00+00:00",
+        "imported_at": extra.get("imported_at", "2026-06-06T00:00:00+00:00"),
         "imported_by": str(ADMIN_ID),
         "original_filename": "p.json",
     }
@@ -275,3 +279,195 @@ def test_duplicate_default_computed_across_offer_set(tmp_path: Path) -> None:
     states = [r.state for r in revalidate_offers(tmp_path, list_offers(tmp_path))]
     # Both visible defaults for PLA are flagged requires_attention.
     assert states == ["requires_attention", "requires_attention"]
+
+
+# === T7: Story 38.1 — derive_chain_fingerprint / derive_sync_state / offers_referencing_block ===
+
+
+def _make_manifest(
+    profile_type: str, name: str, imported_at: str = "2026-06-01T00:00:00+00:00"
+) -> dict:
+    return {
+        "profile_type": profile_type,
+        "name": name,
+        "imported_at": imported_at,
+        "validation_state": "usable",
+        "reasons": [],
+    }
+
+
+def _make_chain_and_blocks(
+    root: Path, imported_at: str = "2026-06-01T00:00:00+00:00"
+) -> tuple[ProfileChain, list[dict]]:
+    machine_id = _store_block(root, "machine", "K1 Max T7", imported_at=imported_at)
+    process_id = _store_block(root, "process", "0.20 Standard T7", imported_at=imported_at)
+    filament_id = _store_block(
+        root, "filament", "Rosa PLA T7", material_type="PLA", imported_at=imported_at
+    )
+    chain = ProfileChain(
+        machine_block_id=machine_id,
+        process_block_id=process_id,
+        filament_block_id=filament_id,
+    )
+    manifests = [
+        _make_manifest("machine", "K1 Max T7", imported_at),
+        _make_manifest("process", "0.20 Standard T7", imported_at),
+        _make_manifest("filament", "Rosa PLA T7", imported_at),
+    ]
+    return chain, manifests
+
+
+def test_t7_1_derive_chain_fingerprint_returns_64char_hex_and_is_deterministic(
+    tmp_path: Path,
+) -> None:
+    chain, _manifests = _make_chain_and_blocks(tmp_path)
+    fp1 = derive_chain_fingerprint(chain, root=tmp_path)
+    fp2 = derive_chain_fingerprint(chain, root=tmp_path)
+    assert fp1 is not None
+    assert len(fp1) == 64
+    assert fp1 == fp2  # deterministic
+
+
+def test_t7_2_derive_chain_fingerprint_returns_none_when_imported_at_missing(
+    tmp_path: Path,
+) -> None:
+    machine_id = _store_block(tmp_path, "machine", "K1 No iat")
+    process_id = _store_block(tmp_path, "process", "0.20 No iat")
+    filament_id = _store_block(tmp_path, "filament", "Rosa No iat", material_type="PLA")
+
+    # Patch the machine manifest to have no imported_at
+    from app.modules.slicer.profile_library import block_path, manifest_path
+
+    machine_bp = block_path(tmp_path, "machine", machine_id)
+    mpath = manifest_path(machine_bp)
+    data = json.loads(mpath.read_text())
+    del data["imported_at"]
+    mpath.write_text(json.dumps(data))
+
+    chain = ProfileChain(
+        machine_block_id=machine_id,
+        process_block_id=process_id,
+        filament_block_id=filament_id,
+    )
+    result = derive_chain_fingerprint(chain, root=tmp_path)
+    assert result is None
+
+
+def test_t7_2b_derive_chain_fingerprint_returns_none_when_imported_at_is_not_string(
+    tmp_path: Path,
+) -> None:
+    machine_id = _store_block(tmp_path, "machine", "K1 Int iat")
+    process_id = _store_block(tmp_path, "process", "0.20 Int iat")
+    filament_id = _store_block(tmp_path, "filament", "Rosa Int iat", material_type="PLA")
+
+    # Patch the process manifest to have non-string imported_at
+    from app.modules.slicer.profile_library import block_path, manifest_path
+
+    proc_bp = block_path(tmp_path, "process", process_id)
+    mpath = manifest_path(proc_bp)
+    data = json.loads(mpath.read_text())
+    data["imported_at"] = 12345  # int, not string
+    mpath.write_text(json.dumps(data))
+
+    chain = ProfileChain(
+        machine_block_id=machine_id,
+        process_block_id=process_id,
+        filament_block_id=filament_id,
+    )
+    result = derive_chain_fingerprint(chain, root=tmp_path)
+    assert result is None
+
+
+def test_t7_3_derive_sync_state_invalid_returns_unknown_and_skips_len_check(tmp_path: Path) -> None:
+    # Even with only 1 manifest (len < 3), invalid should return "unknown" not "stale"
+    sidecar = {"publish_state": "published", "published_chain_fingerprint": "a" * 64}
+    result = derive_sync_state(
+        sidecar, chain_block_manifests=[{"imported_at": "x"}], resolved_state="invalid"
+    )
+    assert result == "unknown"
+
+
+def test_t7_3b_derive_sync_state_unpublished_returns_unknown(tmp_path: Path) -> None:
+    sidecar = {"publish_state": "unpublished"}
+    _, manifests = _make_chain_and_blocks(tmp_path)
+    result = derive_sync_state(sidecar, chain_block_manifests=manifests, resolved_state="usable")
+    assert result == "unknown"
+
+
+def test_t7_3c_derive_sync_state_no_fingerprint_returns_stale(tmp_path: Path) -> None:
+    sidecar = {"publish_state": "published"}  # no published_chain_fingerprint
+    _, manifests = _make_chain_and_blocks(tmp_path)
+    result = derive_sync_state(sidecar, chain_block_manifests=manifests, resolved_state="usable")
+    assert result == "stale"
+
+
+def test_t7_3d_derive_sync_state_current_when_fingerprints_match(tmp_path: Path) -> None:
+    imported_at = "2026-06-01T00:00:00+00:00"
+    _, manifests = _make_chain_and_blocks(tmp_path, imported_at=imported_at)
+    expected_fp = hashlib.sha256(f"{imported_at}|{imported_at}|{imported_at}".encode()).hexdigest()
+    sidecar = {"publish_state": "published", "published_chain_fingerprint": expected_fp}
+    result = derive_sync_state(sidecar, chain_block_manifests=manifests, resolved_state="usable")
+    assert result == "current"
+
+
+def test_t7_3e_derive_sync_state_stale_when_fingerprints_differ(tmp_path: Path) -> None:
+    imported_at = "2026-06-01T00:00:00+00:00"
+    _, manifests = _make_chain_and_blocks(tmp_path, imported_at=imported_at)
+    old_fp = "b" * 64  # wrong fingerprint
+    sidecar = {"publish_state": "published", "published_chain_fingerprint": old_fp}
+    result = derive_sync_state(sidecar, chain_block_manifests=manifests, resolved_state="usable")
+    assert result == "stale"
+
+
+def test_t7_4_offers_referencing_block_returns_matching_sidecars(tmp_path: Path) -> None:
+    machine_id = _store_block(tmp_path, "machine", "M1")
+    process_id = _store_block(tmp_path, "process", "P1")
+    filament_id = _store_block(tmp_path, "filament", "F1", material_type="PLA")
+    other_machine = _store_block(tmp_path, "machine", "M2")
+    other_process = _store_block(tmp_path, "process", "P2")
+    other_filament = _store_block(tmp_path, "filament", "F2", material_type="PLA")
+
+    chain1 = ProfileChain(
+        machine_block_id=machine_id, process_block_id=process_id, filament_block_id=filament_id
+    )
+    chain2 = ProfileChain(
+        machine_block_id=machine_id,
+        process_block_id=other_process,
+        filament_block_id=other_filament,
+    )
+    chain3 = ProfileChain(
+        machine_block_id=other_machine,
+        process_block_id=other_process,
+        filament_block_id=filament_id,
+    )
+    chain4 = ProfileChain(
+        machine_block_id=other_machine,
+        process_block_id=other_process,
+        filament_block_id=other_filament,
+    )
+
+    r1 = _record(tmp_path, chain=chain1)
+    r2 = _record(tmp_path, chain=chain2)
+    r3 = _record(tmp_path, chain=chain3)
+    r4 = _record(tmp_path, chain=chain4)
+    for r in [r1, r2, r3, r4]:
+        store_offer(tmp_path, r)
+
+    # machine_id is used by chain1 and chain2 (via machine_block_id)
+    refs = offers_referencing_block(tmp_path, machine_id)
+    assert len(refs) == 2
+    ref_ids = {s["offer_id"] for s in refs}
+    assert r1["offer_id"] in ref_ids
+    assert r2["offer_id"] in ref_ids
+
+    # filament_id is used by chain1 and chain3 (via filament_block_id)
+    refs_f = offers_referencing_block(tmp_path, filament_id)
+    assert len(refs_f) == 2
+
+    # other_machine only used by chain3 and chain4
+    refs_om = offers_referencing_block(tmp_path, other_machine)
+    assert len(refs_om) == 2
+
+    # non-existent block
+    refs_none = offers_referencing_block(tmp_path, "0" * 32)
+    assert refs_none == []

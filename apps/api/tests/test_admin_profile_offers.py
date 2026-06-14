@@ -10,6 +10,7 @@ list/get/delete round-trip, audit, and the curated leak fence.
 
 from __future__ import annotations
 
+import hashlib as _hashlib
 import json
 import shutil
 import uuid
@@ -422,9 +423,12 @@ async def test_list_revalidates_after_referenced_block_deleted(seam) -> None:
     ).json()
     assert created["validation_state"] == "usable"
 
-    # Delete the referenced process block — the next list must surface invalid unknown_block,
-    # NOT the stale usable, and the offer itself must remain (no eager cross-deletion).
-    assert (await ac.delete(f"/api/admin/profiles/library/{process}")).status_code == 204
+    # Delete the referenced process block out-of-band (bypassing the delete guard, which now
+    # correctly returns 409 when an offer references the block). The next list must still surface
+    # invalid unknown_block — NOT the stale usable — and the offer itself must remain.
+    from app.modules.slicer import profile_library as _pl
+
+    assert _pl.delete_block(_root, process) is True
     listed = (await ac.get("/api/admin/profiles/offers")).json()["offers"]
     assert len(listed) == 1
     assert listed[0]["validation_state"] == "invalid"
@@ -585,3 +589,338 @@ async def test_create_audit_failure_rolls_back(seam, monkeypatch) -> None:
     # Fresh create rolled back → offers tree byte-identical, no temp leftover.
     assert _snapshot_offers(root) == before
     assert not list((root / "offers").rglob(".*tmp*")) if (root / "offers").exists() else True
+
+
+# === T5: Story 38.1 — sync_state in offer DTO ===================================
+
+
+class _FakeArqPool:
+    def __init__(self) -> None:
+        self.calls: list = []
+
+    async def enqueue_job(self, name: str, *args: object, **kwargs: object) -> object:
+        self.calls.append((name, args, kwargs))
+        return object()
+
+
+_STL_BYTES = b"solid t5-stl\nendsolid t5-stl\n"
+_STL_HASH = _hashlib.sha256(_STL_BYTES).hexdigest()
+_PUBLISH_SYSTEM_DIR = FIXTURES / "system"
+_INTENTS_FIXTURE = FIXTURES / "intents" / "creality-k1-max-microswiss-hf" / "TPU" / "standard.json"
+
+
+def _store_chain_block_t5(
+    root: Path, profile_type: str, name: str, body: dict, *, material_type: str | None = None
+) -> str:
+    """Seed a chain block directly (bypassing the import endpoint) for publish tests."""
+    from app.modules.slicer.profile_library import (
+        derive_block_id,
+        store_block,
+    )
+
+    block_id = derive_block_id(profile_type, name)  # type: ignore[arg-type]
+    from datetime import UTC, datetime
+
+    imported_at = datetime.now(UTC).isoformat()
+    manifest = {
+        "manifest_version": "1",
+        "block_id": block_id,
+        "profile_type": profile_type,
+        "name": name,
+        "source": "user",
+        "is_system": False,
+        "inherit": body.get("inherit"),
+        "inherit_chain": [body["inherit"]] if isinstance(body.get("inherit"), str) else [],
+        "settings_id": None,
+        "material_type": material_type,
+        "compatible_printers": [],
+        "validation_state": "usable",
+        "reasons": [],
+        "portal_label": None,
+        "imported_at": imported_at,
+        "imported_by": "00000000-0000-0000-0000-0000000000aa",
+        "original_filename": f"{profile_type}.json",
+    }
+    store_block(root, profile_type=profile_type, block_id=block_id, body=body, manifest=manifest)  # type: ignore[arg-type]
+    return block_id
+
+
+def _seed_publish_offer(root: Path) -> str:
+    """Seed a usable offer with chain blocks from the standard intent fixture."""
+    import uuid as _uuid
+
+    from app.modules.slicer.profile_offer import ProfileChain, build_offer_record, store_offer
+
+    partials = json.loads(_INTENTS_FIXTURE.read_text(encoding="utf-8"))
+    machine = _store_chain_block_t5(root, "machine", "offer-machine-t5", partials["machine"])
+    process = _store_chain_block_t5(root, "process", "offer-process-t5", partials["process"])
+    filament = _store_chain_block_t5(
+        root, "filament", "offer-filament-t5", partials["filament"], material_type="TPU"
+    )
+    offer_id = _uuid.uuid4().hex
+    record = build_offer_record(
+        offer_id=offer_id,
+        label="T5 Standard",
+        description=None,
+        chain=ProfileChain(
+            machine_block_id=machine, process_block_id=process, filament_block_id=filament
+        ),
+        visibility="visible",
+        is_default=False,
+        compatible_material_categories=["TPU"],
+        validation_state="usable",
+        reasons=[],
+        created_at="2026-06-14T00:00:00+00:00",
+        created_by=_uuid.UUID("00000000-0000-0000-0000-0000000000aa"),
+        updated_at="2026-06-14T00:00:00+00:00",
+    )
+    store_offer(root, record)
+    return offer_id, machine, process, filament
+
+
+@pytest_asyncio.fixture
+async def seam_publish(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[tuple]:
+    """Full publish seam: bundle_store + STL cache + arq pool + content dir."""
+    from sqlmodel import Session as _Session
+
+    from app.core.db.models import Category, Model, ModelFile, ModelFileKind, User, UserRole
+
+    vendored_root = tmp_path / "vendored"
+    content_dir = tmp_path / "content"
+    system_dir = vendored_root / "system"
+    system_dir.mkdir(parents=True)
+
+    if _PUBLISH_SYSTEM_DIR.exists():
+        for source in _PUBLISH_SYSTEM_DIR.glob("*.json"):
+            shutil.copy(source, system_dir / source.name)
+
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/s.db")
+    monkeypatch.setenv("ADMIN_EMAIL", "admin@localhost.localdomain")
+    monkeypatch.setenv("ADMIN_PASSWORD", "pw")
+    monkeypatch.setenv("JWT_SECRET", JWT_SECRET)
+    monkeypatch.setenv("TOTP_FERNET_KEY", "ZmFrZS10ZXN0LWtleS0zMi1ieXRlcy1mb3ItdGVzdHM=")
+    monkeypatch.setenv("PORTAL_CONTENT_DIR", str(content_dir))
+    monkeypatch.setenv("SLICER_VENDORED_PROFILES_DIR", str(vendored_root))
+    monkeypatch.setenv("SLICER_BUNDLE_STORE_DIR", str(tmp_path / "bundle-store"))
+    monkeypatch.setenv("SLICER_ESTIMATE_STORE_DIR", str(tmp_path / "estimate-store"))
+    monkeypatch.setenv("SLICER_STL_CACHE_DIR", str(tmp_path / "stl-cache"))
+    monkeypatch.setenv("ORCA_VERSION", ORCA_VERSION)
+
+    from app.core.config import get_settings
+    from app.core.db.session import get_engine, init_schema
+
+    get_settings.cache_clear()
+    get_engine.cache_clear()
+
+    app = create_app()
+    engine = get_engine()
+    init_schema(engine)
+
+    with _Session(engine) as session:
+        u = User(
+            email="admin@localhost.localdomain",
+            display_name="Admin",
+            role=UserRole.admin,
+            password_hash="x",
+        )
+        session.add(u)
+        session.commit()
+        session.refresh(u)
+        admin_id = u.id
+
+        category = Category(slug=f"cat-{uuid.uuid4().hex[:8]}", name_en="cat")
+        session.add(category)
+        session.commit()
+        session.refresh(category)
+        model = Model(slug=f"model-{uuid.uuid4().hex[:8]}", name_en="m", category_id=category.id)
+        session.add(model)
+        session.commit()
+        session.refresh(model)
+        storage_path = f"models/{model.id}/files/part.stl"
+        file_row = ModelFile(
+            model_id=model.id,
+            kind=ModelFileKind.stl,
+            original_name="part.stl",
+            storage_path=storage_path,
+            sha256=_STL_HASH,
+            size_bytes=len(_STL_BYTES),
+            mime_type="model/stl",
+        )
+        session.add(file_row)
+        session.commit()
+        stl_path = content_dir / storage_path
+        stl_path.parent.mkdir(parents=True, exist_ok=True)
+        stl_path.write_bytes(_STL_BYTES)
+
+    fake_redis = fakeredis.aioredis.FakeRedis()
+    factory = MagicMock()
+    factory.get = MagicMock(return_value=fake_redis)
+
+    async def _aclose() -> None:
+        return None
+
+    factory.aclose = _aclose
+    app.state.redis = factory
+    pool = _FakeArqPool()
+    app.state.arq = pool
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+        headers={"X-Portal-Client": "web"},
+    ) as ac:
+        yield ac, vendored_root, admin_id, pool
+
+    get_settings.cache_clear()
+    get_engine.cache_clear()
+
+
+async def _do_publish(ac, offer_id: str) -> dict:
+    r = await ac.post(
+        f"/api/admin/profiles/offers/{offer_id}/publish", json={"stl_hash": _STL_HASH}
+    )
+    assert r.status_code == 200, f"publish failed: {r.text}"
+    return r.json()
+
+
+@pytest.mark.asyncio
+async def test_t5_1_freshly_published_offer_has_sync_state_current(seam_publish) -> None:
+    ac, root, admin_id, _pool = seam_publish
+    await _login_admin(ac, admin_id)
+    offer_id, _machine, _process, _filament = _seed_publish_offer(root)
+    await _do_publish(ac, offer_id)
+
+    r = await ac.get(f"/api/admin/profiles/offers/{offer_id}")
+    assert r.status_code == 200, r.text
+    assert r.json()["sync_state"] == "current"
+
+
+@pytest.mark.asyncio
+async def test_t5_2_offer_becomes_stale_after_block_manifest_updated(seam_publish) -> None:
+    """After re-writing a block manifest with newer imported_at, sync_state becomes stale."""
+    ac, root, admin_id, _pool = seam_publish
+    await _login_admin(ac, admin_id)
+    offer_id, _machine, process, _filament = _seed_publish_offer(root)
+    await _do_publish(ac, offer_id)
+
+    # Bump the process block's imported_at in the manifest (simulates re-import)
+    from app.modules.slicer.profile_library import block_path, manifest_path
+
+    proc_bp = block_path(root, "process", process)
+    mpath = manifest_path(proc_bp)
+    data = json.loads(mpath.read_text())
+    data["imported_at"] = "2026-06-15T12:00:00+00:00"
+    mpath.write_text(json.dumps(data))
+
+    r = await ac.get(f"/api/admin/profiles/offers/{offer_id}")
+    assert r.status_code == 200, r.text
+    assert r.json()["sync_state"] == "stale"
+
+
+@pytest.mark.asyncio
+async def test_t5_3_offer_without_fingerprint_is_stale(seam) -> None:
+    ac, root, admin_id = seam
+    await _login_admin(ac, admin_id)
+    machine, process, filament = await _import_chain_blocks(ac)
+    created = (
+        await ac.post(
+            "/api/admin/profiles/offers",
+            json=_offer_body(machine, process, filament, visibility="visible", categories=["TPU"]),
+        )
+    ).json()
+    offer_id = created["offer_id"]
+
+    # Manually write a published sidecar without published_chain_fingerprint (pre-38.1)
+    from app.modules.slicer import profile_offer as _po
+
+    sidecar = _po.read_offer(root, offer_id)
+    sidecar["publish_state"] = "published"
+    sidecar["published_bundle_hash"] = "a" * 64
+    sidecar["published_at"] = "2026-06-14T00:00:00+00:00"
+    sidecar["published_by"] = str(admin_id)
+    sidecar["source_snapshot_ref"] = "b" * 64
+    sidecar["published_stl_hash"] = "c" * 64
+    sidecar.pop("published_chain_fingerprint", None)
+    _po.store_offer(root, sidecar)
+
+    r = await ac.get(f"/api/admin/profiles/offers/{offer_id}")
+    assert r.status_code == 200, r.text
+    assert r.json()["sync_state"] == "stale"
+
+
+@pytest.mark.asyncio
+async def test_t5_4_unpublished_offer_has_sync_state_unknown(seam) -> None:
+    ac, _root, admin_id = seam
+    await _login_admin(ac, admin_id)
+    machine, process, filament = await _import_chain_blocks(ac)
+    created = (
+        await ac.post("/api/admin/profiles/offers", json=_offer_body(machine, process, filament))
+    ).json()
+
+    r = await ac.get(f"/api/admin/profiles/offers/{created['offer_id']}")
+    assert r.status_code == 200, r.text
+    assert r.json()["sync_state"] == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_t5_5_sync_state_not_in_member_dto(seam) -> None:
+    ac, root, admin_id = seam
+    await _login_admin(ac, admin_id)
+    machine, process, filament = await _import_chain_blocks(ac)
+    created = (
+        await ac.post(
+            "/api/admin/profiles/offers",
+            json=_offer_body(machine, process, filament, visibility="visible", categories=["TPU"]),
+        )
+    ).json()
+
+    from app.modules.slicer import profile_offer as _po
+
+    sidecar = _po.read_offer(root, created["offer_id"])
+    sidecar["publish_state"] = "published"
+    sidecar["published_bundle_hash"] = "a" * 64
+    sidecar["published_at"] = "2026-06-14T00:00:00+00:00"
+    sidecar["published_by"] = str(admin_id)
+    sidecar["source_snapshot_ref"] = "b" * 64
+    sidecar["published_stl_hash"] = "c" * 64
+    _po.store_offer(root, sidecar)
+
+    ac.cookies.set("portal_access", _token("member"))
+    r = await ac.get("/api/profiles/offers/published")
+    assert r.status_code == 200, r.text
+    offers = r.json()["offers"]
+    assert len(offers) >= 1
+    for offer in offers:
+        assert "sync_state" not in offer
+        assert "published_bundle_hash" not in offer
+        assert "published_chain_fingerprint" not in offer
+
+
+@pytest.mark.asyncio
+async def test_t5_6_publish_fails_when_manifest_missing_imported_at(seam_publish) -> None:
+    ac, root, admin_id, _pool = seam_publish
+    await _login_admin(ac, admin_id)
+    offer_id, _machine, process, _filament = _seed_publish_offer(root)
+
+    # Corrupt the process block manifest: remove imported_at
+    from app.modules.slicer.profile_library import block_path, manifest_path
+
+    proc_bp = block_path(root, "process", process)
+    mpath = manifest_path(proc_bp)
+    data = json.loads(mpath.read_text())
+    del data["imported_at"]
+    mpath.write_text(json.dumps(data))
+
+    # Publish should fail
+    r = await ac.post(
+        f"/api/admin/profiles/offers/{offer_id}/publish", json={"stl_hash": _STL_HASH}
+    )
+    assert r.status_code in (409, 422, 400), f"expected 4xx, got {r.status_code}: {r.text}"
+
+    # Sidecar must remain unpublished
+    from app.modules.slicer import profile_offer as _po
+
+    sidecar = _po.read_offer(root, offer_id)
+    assert sidecar["publish_state"] == "unpublished"
+    assert sidecar.get("published_chain_fingerprint") is None

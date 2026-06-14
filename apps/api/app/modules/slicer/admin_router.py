@@ -687,7 +687,19 @@ async def import_profile_block(
         profile_library.restore_block(source.root, profile_type, block_id, prev_body, prev_manifest)
         raise
 
-    return _block_dto(manifest)
+    stale = profile_offer.offers_referencing_block(source.root, block_id)
+    stale_offers = [
+        {
+            "offer_id": s.get("offer_id"),
+            "label": s.get("label"),
+            "publish_state": s.get("publish_state"),
+        }
+        for s in stale
+        if s.get("publish_state") == "published"
+    ]
+    block_data = _block_dto(manifest).model_dump()
+    block_data["stale_offers"] = stale_offers
+    return ProfileLibraryBlock(**block_data)
 
 
 @router.get(
@@ -746,6 +758,7 @@ async def get_profile_block(
     responses={
         204: {"description": "Block deleted"},
         404: {"description": "No block with that id"},
+        409: {"description": "Block in use by one or more offers"},
     },
 )
 async def delete_profile_block(
@@ -756,6 +769,23 @@ async def delete_profile_block(
 ) -> None:
     if not profile_library.is_valid_block_id(block_id):
         raise _reject(404, "not_found", "no such profile block")
+    referencing = profile_offer.offers_referencing_block(source.root, block_id)
+    if referencing:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "reason_category": "profile_block_in_use",
+                "message": f"block is referenced by {len(referencing)} offer(s)",
+                "offers": [
+                    {
+                        "offer_id": s.get("offer_id"),
+                        "label": s.get("label"),
+                        "publish_state": s.get("publish_state"),
+                    }
+                    for s in referencing
+                ],
+            },
+        )
     removed = profile_library.delete_block(source.root, block_id)
     if not removed:
         raise _reject(404, "not_found", "no such profile block")
@@ -793,6 +823,11 @@ def _offer_dto(resolved: profile_offer.ResolvedOffer) -> PrintProfileOffer:
     sidecar = resolved.sidecar
     chain = sidecar.get("chain") or {}
     publish_state = profile_publish.publish_state_of(sidecar)
+    sync_state = profile_offer.derive_sync_state(
+        sidecar,
+        chain_block_manifests=resolved.chain_block_manifests,
+        resolved_state=resolved.state,
+    )
     return PrintProfileOffer(
         offer_id=sidecar["offer_id"],
         label=sidecar["label"],
@@ -817,6 +852,7 @@ def _offer_dto(resolved: profile_offer.ResolvedOffer) -> PrintProfileOffer:
         published_by=publish_state.published_by,
         source_snapshot_ref=publish_state.source_snapshot_ref,
         published_stl_hash=publish_state.published_stl_hash,
+        sync_state=sync_state,
     )
 
 
