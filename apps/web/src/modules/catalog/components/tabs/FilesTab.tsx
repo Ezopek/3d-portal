@@ -1,5 +1,5 @@
 import { Box, ChevronDown, ChevronRight, Download, Package, Upload } from "lucide-react";
-import { Suspense, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -16,7 +16,9 @@ import {
 import { useFileIndex } from "@/modules/catalog/components/viewer3d/hooks/useFileIndex";
 import { CatalogEstimateProfileSelector } from "@/modules/estimates/components/CatalogEstimateProfileSelector";
 import { EstimateChip } from "@/modules/estimates/components/EstimateChip";
+import { PublishedOfferPicker } from "@/modules/estimates/components/PublishedOfferPicker";
 import { RowEstimatePanel } from "@/modules/estimates/components/RowEstimatePanel";
+import { usePublishedOffers } from "@/modules/estimates/hooks/usePublishedOffers";
 import { useQualityTierAvailability } from "@/modules/estimates/hooks/useQualityTierAvailability";
 import {
   CATALOG_ESTIMATE_PRINTER_REF,
@@ -53,7 +55,7 @@ export function FilesTab({
 }) {
   const { t } = useTranslation();
   const [active, setActive] = useState<Visible>("stl");
-  const { isAdmin } = useAuth();
+  const { isAdmin, isAuthenticated } = useAuth();
   const setRenderSelection = useSetFileRenderSelection(modelId);
   const triggerRender = useTriggerRender(modelId);
   const upload = useUploadFile(modelId);
@@ -64,6 +66,9 @@ export function FilesTab({
   // resets on navigate; no persistence). Defaults to PLA · standard · no pin, the exact
   // EST-INGEST-1 default bundle, so the first-load chip shows real numbers, not `absent`.
   const [preset, setPreset] = useState<PrintIntentPresetInput>(defaultPreset);
+
+  // Story 36.3 (AC-6) — ephemeral offer selection; null = preset mode (§D.3).
+  const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null);
   const tierAvailability = useQualityTierAvailability(
     preset.material_class,
     CATALOG_ESTIMATE_PRINTER_REF,
@@ -82,6 +87,22 @@ export function FilesTab({
   // TPU availability arrives) that could otherwise fire a member-reachable resolver 422.
   const canReadSelectedEstimate =
     tierAvailability.isSuccess && selectedTierAvailability?.available === true;
+
+  // Story 36.3 (AC-2/AC-9) — published offers for the current material.
+  // Enabled only when authenticated and there are STL files (§E.6, §D.5).
+  const publishedOffers = usePublishedOffers(preset.material_class, {
+    isAuthenticated: isAuthenticated === true,
+    hasStlFiles: active === "stl",
+  });
+
+  // AC-9: when the offer list settles and no longer contains the selected offer,
+  // deselect (material changed or offer was unpublished). useEffect to avoid
+  // side-effects during render.
+  useEffect(() => {
+    if (selectedOfferId === null || !publishedOffers.isSuccess) return;
+    const ids = new Set(publishedOffers.data.offers.map((o) => o.offer_id));
+    if (!ids.has(selectedOfferId)) setSelectedOfferId(null);
+  }, [publishedOffers.isSuccess, publishedOffers.data, selectedOfferId]);
 
   const stlFiles: StlFile[] = useMemo(
     () =>
@@ -210,6 +231,21 @@ export function FilesTab({
         />
       )}
 
+      {/* Story 36.3 (AC-7) — offer picker below the preset selector, above the file list.
+          Guard: active=stl && stlFiles.length>0 && isAuthenticated (§C.1).
+          Fails OPEN: transport error only hides the picker, not the estimate flow. */}
+      {active === "stl" && stlFiles.length > 0 && isAuthenticated && (
+        <PublishedOfferPicker
+          offers={publishedOffers.data?.offers ?? (publishedOffers.isSuccess ? [] : null)}
+          selectedOfferId={selectedOfferId}
+          onSelect={setSelectedOfferId}
+          isLoading={publishedOffers.isPending}
+          isError={publishedOffers.isError}
+          onRetry={() => void publishedOffers.refetch()}
+          isAuthenticated={isAuthenticated}
+        />
+      )}
+
       {isAdmin && active === "stl" && visible.length > 0 && (
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">
@@ -291,6 +327,7 @@ export function FilesTab({
                           preset={preset}
                           printerRef={CATALOG_ESTIMATE_PRINTER_REF}
                           enabled={canReadSelectedEstimate}
+                          offerId={selectedOfferId}
                         />
                       </div>
                     )}
@@ -349,6 +386,7 @@ export function FilesTab({
                       preset={preset}
                       printerRef={CATALOG_ESTIMATE_PRINTER_REF}
                       enabled={canReadSelectedEstimate}
+                      offerId={selectedOfferId}
                     />
                   </div>
                 )}

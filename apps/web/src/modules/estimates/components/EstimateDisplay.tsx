@@ -101,7 +101,22 @@ export function EstimateDisplay({
     );
   }
 
-  // 3) absent — explicit empty state, distinct from failed and from a transport error.
+  // 3a) not_computed — offer+STL pair not yet computed; distinct from absent/failed.
+  // §E.3: no source badge (would be misleading — no estimate exists yet).
+  if (data.status === "not_computed") {
+    return (
+      <div role="status" className="rounded-lg border p-4">
+        <p className="font-medium">
+          {t("modules.member.offers.estimate.not_computed_title")}
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {t("modules.member.offers.estimate.not_computed_detail")}
+        </p>
+      </div>
+    );
+  }
+
+  // 3b) absent — explicit empty state, distinct from failed and from a transport error.
   if (data.status === "absent") {
     const isUnavailable =
       data.profile_selection_context?.estimate_profile_source ===

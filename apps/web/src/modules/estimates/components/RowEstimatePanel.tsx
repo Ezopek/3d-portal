@@ -1,7 +1,11 @@
 import { FileQuestion } from "lucide-react";
+import { useTranslation } from "react-i18next";
+
+import { ApiError } from "@/lib/api";
 
 import { EstimateDisplay } from "@/modules/estimates/components/EstimateDisplay";
 import { useEstimate } from "@/modules/estimates/hooks/useEstimate";
+import { useOfferEstimate } from "@/modules/estimates/hooks/useOfferEstimate";
 import type { PrintIntentPresetInput } from "@/modules/estimates/lib/preset";
 import { EmptyState } from "@/ui/custom/EmptyState";
 
@@ -11,19 +15,31 @@ interface Props {
   preset: PrintIntentPresetInput;
   printerRef: string;
   enabled?: boolean;
+  /** Story 36.3 (AC-5) — when provided, switches the panel to offer mode. */
+  offerId?: string | null;
 }
 
 /**
- * EST-DISPLAY-1 (UX §C) — the expanded-row estimate breakdown.
+ * EST-DISPLAY-1 (UX §C) + Story 36.3 (AC-5) — the expanded-row estimate breakdown.
  *
- * A thin wrapper that binds the FilesTab GLOBAL preset to the shipped Story 32.6
- * `EstimateDisplay`. It shares the `useEstimate` query key with the row's `EstimateChip`
- * (same `stlHash + preset + printerRef`), so the panel reuses the chip's already-cached read —
- * one network request per `(hash, preset)`, not two. Read-only: it renders the server
- * cache/recompute state as-is; there is no recompute affordance.
+ * When `offerId` is provided, switches to offer mode: uses `useOfferEstimate` instead of
+ * `useEstimate`. The two modes share the same `EstimateDisplay` render path; the cache key
+ * differs so switching "None" ↔ offer never serves stale cross-mode values.
  */
-export function RowEstimatePanel({ stlHash, preset, printerRef, enabled = true }: Props) {
-  const query = useEstimate(stlHash, preset, printerRef, { enabled });
+export function RowEstimatePanel({
+  stlHash,
+  preset,
+  printerRef,
+  enabled = true,
+  offerId,
+}: Props) {
+  const { t } = useTranslation();
+  // Story 36.3 (AC-5): always call both hooks; disabled by their own enabled gates.
+  const presetQuery = useEstimate(stlHash, preset, printerRef, {
+    enabled: enabled && !offerId,
+  });
+  const offerQuery = useOfferEstimate(stlHash, offerId ?? "");
+  const query = offerId ? offerQuery : presetQuery;
 
   // No hash ⇒ the read seam was never engaged; show the honest no-hash state rather than a
   // perpetual spinner (a disabled query stays `isPending`).
@@ -35,6 +51,25 @@ export function RowEstimatePanel({ stlHash, preset, printerRef, enabled = true }
           tone="muted"
           icon={<FileQuestion className="size-8" />}
         />
+      </div>
+    );
+  }
+
+  // §E.7 — offer 404: the selected offer was unpublished since selection.
+  if (
+    offerId &&
+    query.isError &&
+    query.error instanceof ApiError &&
+    query.error.status === 404
+  ) {
+    return (
+      <div role="status" className="rounded-lg border p-4">
+        <p className="font-medium">
+          {t("modules.member.offers.estimate.offer_unavailable_title")}
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {t("modules.member.offers.estimate.offer_unavailable_detail")}
+        </p>
       </div>
     );
   }

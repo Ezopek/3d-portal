@@ -12,6 +12,12 @@ vi.mock("@/modules/estimates/hooks/useEstimate", () => ({
   useEstimate: (...args: unknown[]) => mockUseEstimate(...args),
 }));
 
+// useOfferEstimate is always called (rules of hooks); mock it as disabled by default
+// for all existing preset-mode tests (no offerId → hook stays idle).
+vi.mock("@/modules/estimates/hooks/useOfferEstimate", () => ({
+  useOfferEstimate: () => ({ isPending: true, isError: false, data: undefined, isFetching: false }),
+}));
+
 const HASH = "a".repeat(64);
 const PRINTER = "creality-k1-max-microswiss-hf";
 

@@ -641,3 +641,18 @@ export interface ProfileOffersFilters {
   material_category?: MaterialClass;
   visibility?: OfferVisibility;
 }
+
+// --- Story 36.1 — member-facing published offer DTOs ---
+// Mirrors slicer/schemas.py MemberPublishedOfferView.
+// NFR24-LEAKFENCE-1: bundle_hash / raw chain block IDs / sidecar paths ABSENT.
+export interface MemberPublishedOfferView {
+  offer_id: string;
+  portal_label: string; // admin-assigned display name; DATA (untranslated)
+  quality_tier: string | null; // "aesthetic"|"standard"|"strong"; null if block unavailable
+  compatible_material_categories: string[];
+  printer_name: string | null; // null if machine block unavailable
+}
+
+export interface MemberPublishedOfferListResponse {
+  offers: MemberPublishedOfferView[];
+}

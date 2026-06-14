@@ -44,6 +44,13 @@ export const test = base.extend({
         body: JSON.stringify(DEFAULT_ADMIN_ME),
       }),
     );
+    await page.route("**/api/profiles/offers/published**", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ offers: [] }),
+      }),
+    );
     await use(page);
   },
 });

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { SpoolIcon } from "@/modules/estimates/components/SpoolIcon";
 import { useEstimate } from "@/modules/estimates/hooks/useEstimate";
+import { useOfferEstimate } from "@/modules/estimates/hooks/useOfferEstimate";
 import { EM_DASH, formatMass } from "@/modules/estimates/lib/format";
 import type { PrintIntentPresetInput } from "@/modules/estimates/lib/preset";
 
@@ -18,6 +19,8 @@ interface Props {
   preset: PrintIntentPresetInput;
   printerRef: string;
   enabled?: boolean;
+  /** Story 36.3 (AC-4) — when provided, switches the chip to offer mode. */
+  offerId?: string | null;
 }
 
 /**
@@ -31,11 +34,22 @@ interface Props {
  * It is NON-INTERACTIVE (a `<span>`, never focusable) — the chip never triggers a recompute
  * (EST-RECOMPUTE-1 is deferred). State is signalled by glyph + text + color, never color alone.
  */
-export function EstimateChip({ stlHash, preset, printerRef, enabled = true }: Props) {
+export function EstimateChip({
+  stlHash,
+  preset,
+  printerRef,
+  enabled = true,
+  offerId,
+}: Props) {
   const { t } = useTranslation();
-  // Always called (rules of hooks); self-disables when `stlHash` is empty or the parent
-  // availability gate has not confirmed the selected slot is offerable.
-  const query = useEstimate(stlHash, preset, printerRef, { enabled });
+  // Story 36.3 (AC-4): offer mode uses useOfferEstimate; preset mode uses useEstimate.
+  // Both hooks are ALWAYS called (rules of hooks) — disabled by their own enabled gates.
+  const presetQuery = useEstimate(stlHash, preset, printerRef, {
+    enabled: enabled && !offerId,
+  });
+  const offerQuery = useOfferEstimate(stlHash, offerId ?? "");
+  // Active query depends on mode; offer mode bypasses the availability gate (NFR24-NO-422-1).
+  const query = offerId ? offerQuery : presetQuery;
 
   const base =
     "inline-flex shrink-0 items-center justify-end gap-1 tabular-nums text-xs";
@@ -77,7 +91,20 @@ export function EstimateChip({ stlHash, preset, printerRef, enabled = true }: Pr
 
   const data = query.data;
 
-  // 4) absent — explicit "no estimate yet" store miss, distinct from failed/error.
+  // 4a) not_computed (offer mode §E.3) — em-dash in chip, no badge.
+  if (data.status === "not_computed") {
+    return (
+      <ChipShell
+        title={t("modules.member.offers.estimate.not_computed_chip")}
+        className={base}
+      >
+        <SpoolIcon className="size-3.5 text-muted-foreground/60" />
+        <span className="text-muted-foreground">{EM_DASH}</span>
+      </ChipShell>
+    );
+  }
+
+  // 4b) absent — explicit "no estimate yet" store miss, distinct from failed/error.
   if (data.status === "absent") {
     const isUnavailable =
       data.profile_selection_context?.estimate_profile_source ===
