@@ -130,6 +130,15 @@ async function stubEstimate(
       }),
     }),
   );
+  // Story 38.3: stub the published offers endpoint — return empty list so the picker
+  // does not appear in chip/panel visual baselines (no authenticated member in visual tests).
+  await page.route("**/api/profiles/offers/published**", (r) =>
+    r.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ offers: [] }),
+    }),
+  );
   await page.route("**/api/estimates**", (r) => {
     // The tier-availability read shares the `/api/estimates` prefix; serve it from the SAME
     // handler so the disabled-tier body is never shadowed by the generic estimate stub.
@@ -186,39 +195,9 @@ for (const state of STATES) {
 // selectable. This availability body is handed to the unified `stubEstimate` route above so the
 // `/quality-tiers` read is fulfilled deterministically (no route-precedence flake).
 // Baseline status: deferred to the controller-owned visual pass, same precedent as the
-// EST-DISPLAY-1 cases above.
-const TIERS_AESTHETIC_STRONG_UNAVAILABLE = {
-  printer_ref: "creality-k1-max-microswiss-hf",
-  material_class: "PLA",
-  tiers: [
-    { quality_tier: "aesthetic", available: false, reason: "profile_not_imported" },
-    { quality_tier: "standard", available: true, reason: null },
-    { quality_tier: "strong", available: false, reason: "profile_not_imported" },
-  ],
-};
-
-test("FilesTab estimate profile selector — unavailable tiers disabled (EST-TIERS-1)", async ({
-  page,
-}) => {
-  await page.clock.install({ time: new Date(FIXED_NOW_ISO) });
-  await stubModelDetail(page);
-  await stubEstimate(
-    page,
-    estimate({ status: "fresh" }),
-    TIERS_AESTHETIC_STRONG_UNAVAILABLE,
-  );
-  await page.goto(`/catalog/${MODEL_ID}`);
-  await waitForReady(page);
-  await page.getByRole("tabpanel").first().waitFor({ state: "visible" });
-  // Aesthetic + Strong resolve to no vendored profile → their <option>s must be DISABLED
-  // before the snapshot (E33.1: quality is a native <select>, not a radio group). Assert the
-  // disabled state directly without depending on locale-specific label/copy; the localized copy
-  // itself is pixel-verified by the screenshot below.
-  await expect(page.locator("option:disabled")).toHaveCount(2);
-  await expect(page.getByRole("tabpanel").first()).toHaveScreenshot(
-    "filestab-estimate-tiers-disabled.png",
-  );
-});
+// E38.3: EST-TIERS-1 test removed — the Material + Quality tier profile selector is removed
+// from FilesTab in Story 38.3 (offer-first UX). The useQualityTierAvailability hook is retained
+// internally as a load-bearing 422 gate (NFR21-NO-422-1) but its UI is gone.
 
 test("FilesTab estimate chip — expanded panel reuses EstimateDisplay", async ({
   page,

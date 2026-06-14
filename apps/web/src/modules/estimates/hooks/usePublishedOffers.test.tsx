@@ -48,6 +48,27 @@ describe("usePublishedOffers", () => {
     fetchSpy.mockRestore();
   });
 
+  it("omits material param when called with undefined", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ offers: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const { result } = renderHook(
+      () => usePublishedOffers(undefined, { isAuthenticated: true, hasStlFiles: true }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const url = fetchSpy.mock.calls[0]?.[0] as string;
+    expect(url).toContain("/api/profiles/offers/published");
+    expect(url).not.toContain("material=");
+    fetchSpy.mockRestore();
+  });
+
   it("is disabled when isAuthenticated is false", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 

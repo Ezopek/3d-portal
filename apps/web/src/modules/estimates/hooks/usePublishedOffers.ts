@@ -11,7 +11,7 @@ const OFFERS_STALE_TIME_MS = 30_000;
 const OFFERS_GC_TIME_MS = 5 * 60_000;
 
 /**
- * Story 36.3 (AC-2) — member-facing published offer list hook.
+ * Story 36.3 (AC-2) / Story 38.3 (AC-2) — member-facing published offer list hook.
  *
  * Cache key: ["member", "offers", "published", { material }]
  * Deliberately different from the preset estimate key family so clearing the offer
@@ -19,17 +19,22 @@ const OFFERS_GC_TIME_MS = 5 * 60_000;
  *
  * Disabled when !isAuthenticated (AuthGate discipline, NFR24-AUTHGATE-1) or when
  * there are no STL files (no offer picker needed).
+ *
+ * material is optional (Story 38.3): when undefined, lists ALL published offers
+ * (no ?material param sent). Backend already supports omitted material (returns all).
  */
 export function usePublishedOffers(
-  material: string,
+  material: string | undefined,
   options: { isAuthenticated: boolean; hasStlFiles: boolean },
 ) {
   return useQuery<MemberPublishedOfferListResponse>({
     queryKey: ["member", "offers", "published", { material }],
     queryFn: () => {
-      const params = new URLSearchParams({ material });
+      const params = new URLSearchParams();
+      if (material) params.set("material", material);
+      const query = params.toString();
       return api<MemberPublishedOfferListResponse>(
-        `/profiles/offers/published?${params.toString()}`,
+        `/profiles/offers/published${query ? `?${query}` : ""}`,
       );
     },
     staleTime: OFFERS_STALE_TIME_MS,

@@ -15,7 +15,6 @@ import {
   type StlFile,
 } from "@/modules/catalog/components/viewer3d";
 import { useFileIndex } from "@/modules/catalog/components/viewer3d/hooks/useFileIndex";
-import { CatalogEstimateProfileSelector } from "@/modules/estimates/components/CatalogEstimateProfileSelector";
 import { EstimateChip } from "@/modules/estimates/components/EstimateChip";
 import { PublishedOfferPicker } from "@/modules/estimates/components/PublishedOfferPicker";
 import { RowEstimatePanel } from "@/modules/estimates/components/RowEstimatePanel";
@@ -64,11 +63,10 @@ export function FilesTab({
   const upload = useUploadFile(modelId);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // EST-DISPLAY-1 — one GLOBAL, member-visible estimate preset feeds every STL row chip AND
-  // the expanded panel (UX §A; not per-row). Ephemeral component state (UX Q1 v1 default —
-  // resets on navigate; no persistence). Defaults to PLA · standard · no pin, the exact
-  // EST-INGEST-1 default bundle, so the first-load chip shows real numbers, not `absent`.
-  const [preset, setPreset] = useState<PrintIntentPresetInput>(defaultPreset);
+  // EST-DISPLAY-1 — frozen default preset; feeds EstimateChip + RowEstimatePanel (preset
+  // prop required by both). When an offer is selected, chips/panels use offer-mode internally
+  // and the preset is not queried. When no offer is selected, the preset drives the estimate.
+  const preset: PrintIntentPresetInput = defaultPreset();
 
   // Story 36.3 (AC-6) — ephemeral offer selection; null = preset mode (§D.3).
   const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null);
@@ -91,9 +89,10 @@ export function FilesTab({
   const canReadSelectedEstimate =
     tierAvailability.isSuccess && selectedTierAvailability?.available === true;
 
-  // Story 36.3 (AC-2/AC-9) — published offers for the current material.
+  // Story 38.3 (AC-3) — all published offers (no material filter); listing all offers
+  // avoids the legacy material-class gate and is supported by the backend.
   // Enabled only when authenticated and there are STL files (§E.6, §D.5).
-  const publishedOffers = usePublishedOffers(preset.material_class, {
+  const publishedOffers = usePublishedOffers(undefined, {
     isAuthenticated: isAuthenticated === true,
     hasStlFiles: active === "stl",
   });
@@ -220,33 +219,24 @@ export function FilesTab({
         </div>
       )}
 
-      {/* EST-DISPLAY-1 (UX §A; product correction) — compact, member-visible estimate process /
-          quality profile selector, visually subordinate to the STL list. This surface is an
-          orientational per-STL gram ESTIMATE preview only: material class + Spoolman pin are NOT
-          exposed here (they stay at the EST-INGEST-1 internal defaults so the chip/panel query
-          keys are unchanged). Read-only: it re-keys which estimate every chip/panel reads; it
-          never enqueues, recomputes, or exposes ordering / spool semantics. Separate from the
-          admin render controls below.
-          Story 36.4: PublishedOfferPicker is passed as children so that the offer select
-          appears as a third inline item in the same flex row (one compact estimate profile bar). */}
-      {active === "stl" && stlFiles.length > 0 && (
-        <CatalogEstimateProfileSelector
-          value={preset}
-          onChange={setPreset}
-          availability={catalogTierAvailability}
-        >
-          {isAuthenticated && (
-            <PublishedOfferPicker
-              offers={publishedOffers.data?.offers ?? (publishedOffers.isSuccess ? [] : null)}
-              selectedOfferId={selectedOfferId}
-              onSelect={setSelectedOfferId}
-              isLoading={publishedOffers.isPending}
-              isError={publishedOffers.isError}
-              onRetry={() => void publishedOffers.refetch()}
-              isAuthenticated={isAuthenticated}
-            />
-          )}
-        </CatalogEstimateProfileSelector>
+      {/* EST-DISPLAY-1 (UX §A; E38.3 offer-first) — standalone published offer picker,
+          member-visible. Replaces the legacy Material + Quality selectors. Read-only: selects
+          which offer estimate every chip/panel reads; never enqueues, recomputes, or exposes
+          ordering / spool semantics. Separate from the admin render controls below.
+          When no offers are published the picker renders nothing; chips/panels fall back to
+          preset mode using defaultPreset. */}
+      {active === "stl" && stlFiles.length > 0 && isAuthenticated && (
+        <div className="flex items-center justify-end">
+          <PublishedOfferPicker
+            offers={publishedOffers.data?.offers ?? (publishedOffers.isSuccess ? [] : null)}
+            selectedOfferId={selectedOfferId}
+            onSelect={setSelectedOfferId}
+            isLoading={publishedOffers.isPending}
+            isError={publishedOffers.isError}
+            onRetry={() => void publishedOffers.refetch()}
+            isAuthenticated={isAuthenticated}
+          />
+        </div>
       )}
 
       {isAdmin && active === "stl" && visible.length > 0 && (

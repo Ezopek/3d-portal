@@ -20,10 +20,10 @@ interface Props {
 }
 
 /**
- * Story 36.4 — compact member-facing offer picker.
+ * Story 36.4 / Story 38.3 — compact member-facing offer picker.
  *
- * Renders as a label + <select> flex item designed to sit inside
- * CatalogEstimateProfileSelector's children slot — one unified estimate profile bar.
+ * Renders as a label + <select> flex item. Primary usage: standalone in the FilesTab
+ * estimate bar (Story 38.3), no longer embedded inside CatalogEstimateProfileSelector.
  *
  * Replaces the 36.3 large radio/card layout (operator correction 2026-06-14).
  * Fails OPEN: transport error never blocks the existing preset estimate flow.

@@ -59,6 +59,7 @@ interface RouterOpts {
   estimateError?: boolean;
   unavailableTiers?: string[];
   unavailableTiersByMaterial?: Partial<Record<string, string[]>>;
+  publishedOffers?: Array<{ offer_id: string; portal_label: string; quality_tier: string | null; compatible_material_categories: string[]; printer_name: string | null }>;
 }
 
 // Route fetch by URL so the order of the (always-mounted) preset-bar `/spools/summary` read,
@@ -68,6 +69,9 @@ function installRouter(opts: RouterOpts = {}) {
   fetchMock.mockImplementation((input: unknown) => {
     const url = String(input);
     if (url.includes("/spools/summary")) return Promise.resolve(json(EMPTY_SUMMARY));
+    if (url.includes("/profiles/offers/published")) {
+      return Promise.resolve(json({ offers: opts.publishedOffers ?? [] }));
+    }
     if (url.includes("/estimates/quality-tiers")) {
       const material = new URL(url, "http://test.local").searchParams.get("material_class") ?? "PLA";
       const unavailable = new Set(
@@ -232,12 +236,12 @@ describe("FilesTab — admin render controls (unchanged, separate from estimates
     expect(screen.getByRole("button", { name: /re-render preview/i })).toBeTruthy();
   });
 
-  it("non-admin does not see the Re-render button (but DOES see the estimate selector)", () => {
+  it("non-admin does not see the Re-render button; no material/quality selector visible", () => {
     mockUseAuth.mockReturnValue({ isAdmin: false });
     render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
     expect(screen.queryByRole("button", { name: /re-render preview/i })).toBeNull();
-    // The estimate selector is member-visible (not admin-gated).
-    expect(screen.getByLabelText(/material/i)).toBeTruthy();
+    // Material/quality selects are removed (E38.3 offer-first surface).
+    expect(screen.queryByLabelText(/material/i)).toBeNull();
   });
 
   it("clicking Re-render posts an empty selection so the worker uses persisted flags", async () => {
@@ -259,92 +263,78 @@ describe("FilesTab — admin render controls (unchanged, separate from estimates
 });
 
 describe("FilesTab — EST-DISPLAY-1 estimate surface", () => {
-  it("shows the member-visible estimate selector on the STL tab only", () => {
+  it("CatalogEstimateProfileSelector is not rendered in the member FilesTab", () => {
     render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
-    expect(screen.getByLabelText(/material/i)).toBeTruthy();
-    // Switch to the Source tab → the estimate selector is gone (STL-only surface).
-    fireEvent.click(screen.getByRole("button", { name: /source/i }));
     expect(screen.queryByLabelText(/material/i)).toBeNull();
+    expect(screen.queryByLabelText(/quality/i)).toBeNull();
   });
 
-  it("does not render the selector when there are no STL files", () => {
-    render(<FilesTab modelId={MODEL_ID} files={[FILES[2]!]} />, { wrapper: wrap() });
-    expect(screen.queryByLabelText(/material/i)).toBeNull();
-  });
-
-  it("surfaces material + quality (Path B reversal) but NO pinned-filament/spool control", () => {
-    // Story 33.1 / Init 21 Path B: material is now surfaced so per-material compatibility (the
-    // TPU directive) is live here; the surface stays an estimate preview — no Spoolman pin /
-    // spool control, `spoolman_filament_ref` stays null (AC-18).
-    render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
-    expect(screen.getByLabelText(/material/i)).toBeTruthy();
-    // E33.1: quality is a native <select>, not a radio group.
-    expect((screen.getByLabelText(/quality/i) as HTMLSelectElement).tagName).toBe("SELECT");
-    expect(screen.queryByRole("radiogroup")).toBeNull();
-    expect(screen.queryByLabelText(/pinned filament|spool/i)).toBeNull();
-    expect(screen.queryByText("Print preset")).toBeNull();
-  });
-
-  it("changing the estimate profile re-keys the estimate read to the chosen quality tier", async () => {
-    installRouter({ unavailableTiers: [] });
-    render(<FilesTab modelId={MODEL_ID} files={FILES_WITH_HASH} />, { wrapper: wrap() });
-    await waitFor(() => expect(estimateCalls().length).toBeGreaterThanOrEqual(2));
-    await waitFor(() =>
-      expect((screen.getByRole("option", { name: "Strong" }) as HTMLOptionElement).disabled).toBe(
-        false,
-      ),
-    );
-    // Default reads are PLA · standard (material defaults to PLA).
-    expect(estimateCalls().every((u) => u.includes("material_class=PLA"))).toBe(true);
-    fetchMock.mockClear();
-    fireEvent.change(screen.getByLabelText(/quality/i), { target: { value: "strong" } });
-    await waitFor(() =>
-      expect(estimateCalls().some((u) => u.includes("quality_tier=strong"))).toBe(true),
-    );
-    // Material class is still the unchanged internal default on the re-keyed read.
-    expect(
-      estimateCalls()
-        .filter((u) => u.includes("quality_tier=strong"))
-        .every((u) => u.includes("material_class=PLA")),
-    ).toBe(true);
-  });
-
-  it("disables unavailable tiers from backend availability before they can fire estimate reads", async () => {
-    render(<FilesTab modelId={MODEL_ID} files={FILES_WITH_HASH} />, { wrapper: wrap() });
-    await waitFor(() => expect(availabilityCalls().length).toBe(1));
-    await waitFor(() =>
-      expect(screen.getByRole("option", { name: /Strong.*Not available yet/i })).toBeTruthy(),
-    );
-    const strong = screen.getByRole("option", {
-      name: /Strong.*Not available yet/i,
-    }) as HTMLOptionElement;
-    expect(strong.disabled).toBe(true);
-
-    fetchMock.mockClear();
-    // The selectTier guard ignores an unavailable tier even if a change event reaches the select.
-    fireEvent.change(screen.getByLabelText(/quality/i), { target: { value: "strong" } });
-    expect(estimateCalls()).toEqual([]);
-  });
-
-  it("does not fire an estimate read while a material switch lands on an unavailable target tier", async () => {
+  it("PublishedOfferPicker is rendered when offers are available", async () => {
+    mockUseAuth.mockReturnValue({ isAdmin: false, isAuthenticated: true });
     installRouter({
-      unavailableTiersByMaterial: {
-        PLA: ["aesthetic", "strong"],
-        TPU: ["standard"],
-      },
+      publishedOffers: [
+        {
+          offer_id: "offer-1",
+          portal_label: "Standard PLA offer",
+          quality_tier: "standard",
+          compatible_material_categories: ["PLA"],
+          printer_name: "K1 Max",
+        },
+      ],
     });
-    render(<FilesTab modelId={MODEL_ID} files={FILES_WITH_HASH} />, { wrapper: wrap() });
-    await waitFor(() => expect(availabilityCalls().some((u) => u.includes("material_class=PLA"))).toBe(true));
-    await waitFor(() => expect(estimateCalls().length).toBeGreaterThan(0));
-
-    fetchMock.mockClear();
-    fireEvent.change(screen.getByLabelText(/material/i), { target: { value: "TPU" } });
-
-    await waitFor(() => expect(availabilityCalls().some((u) => u.includes("material_class=TPU"))).toBe(true));
+    render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
     await waitFor(() =>
-      expect(screen.getByRole("option", { name: /Standard.*Not available yet/i })).toBeTruthy(),
+      expect(screen.getByText("Standard PLA offer")).toBeTruthy(),
     );
-    expect(estimateCalls()).toEqual([]);
+    // The picker select is present.
+    expect(screen.getByRole("combobox")).toBeTruthy();
+  });
+
+  it("PublishedOfferPicker is not rendered on non-STL tabs", async () => {
+    mockUseAuth.mockReturnValue({ isAdmin: false, isAuthenticated: true });
+    installRouter({
+      publishedOffers: [
+        {
+          offer_id: "offer-1",
+          portal_label: "Standard PLA offer",
+          quality_tier: "standard",
+          compatible_material_categories: ["PLA"],
+          printer_name: "K1 Max",
+        },
+      ],
+    });
+    render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
+    // Wait for the picker to appear on the STL tab first.
+    await waitFor(() => expect(screen.getByText("Standard PLA offer")).toBeTruthy());
+    // Switch to Source tab — picker must disappear.
+    fireEvent.click(screen.getByRole("button", { name: /source/i }));
+    expect(screen.queryByRole("combobox")).toBeNull();
+  });
+
+  it("shows the PublishedOfferPicker on the STL tab only (not on Source tab)", async () => {
+    mockUseAuth.mockReturnValue({ isAdmin: false, isAuthenticated: true });
+    installRouter({
+      publishedOffers: [
+        {
+          offer_id: "offer-1",
+          portal_label: "Test offer",
+          quality_tier: "standard",
+          compatible_material_categories: ["PLA"],
+          printer_name: null,
+        },
+      ],
+    });
+    render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
+    await waitFor(() => expect(screen.getByRole("combobox")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /source/i }));
+    expect(screen.queryByRole("combobox")).toBeNull();
+  });
+
+  it("does not render the offer picker when there are no STL files", () => {
+    mockUseAuth.mockReturnValue({ isAdmin: false, isAuthenticated: true });
+    render(<FilesTab modelId={MODEL_ID} files={[FILES[2]!]} />, { wrapper: wrap() });
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.queryByLabelText(/material/i)).toBeNull();
   });
 
   it("reads GET /api/estimates keyed by sha256 + preset + the catalog printer ref", async () => {
@@ -357,6 +347,13 @@ describe("FilesTab — EST-DISPLAY-1 estimate surface", () => {
     expect(a).toContain("quality_tier=standard");
     expect(a).toContain("printer_ref=creality-k1-max-microswiss-hf");
     expect(urls.some((u) => u.includes(`stl_hash=${HASH_B}`))).toBe(true);
+  });
+
+  it("keeps preset-fallback estimate reads gated when the frozen default tier is unavailable", async () => {
+    installRouter({ unavailableTiers: ["standard"] });
+    render(<FilesTab modelId={MODEL_ID} files={FILES_WITH_HASH} />, { wrapper: wrap() });
+    await waitFor(() => expect(availabilityCalls().length).toBe(1));
+    expect(estimateCalls()).toEqual([]);
   });
 
   it("renders a fresh grams chip for a hash-bearing row", async () => {

@@ -1,5 +1,5 @@
 generated: 2026-05-09
-last_updated: 2026-06-14
+last_updated: 2026-06-14T20:15Z
 project: 3d-portal
 project_key: NOKEY
 tracking_system: file-system
@@ -266,5 +266,5 @@ development_status:
   # 38-1-member-offer-request-estimate-cta: superseded by E38 decomposition 2026-06-14
   38-1-admin-offer-sync-state-foundation: done
   38-2-admin-offer-stale-badge-resync-action: backlog
-  38-3-filestab-offer-first-ux-cleanup: ready-for-dev
+  38-3-filestab-offer-first-ux-cleanup: done
   38-4-member-offer-request-estimate-cta: backlog
