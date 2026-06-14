@@ -1,6 +1,6 @@
 # Story 37.1: Portal UI — delete STL/source/3MF files from a model
 
-Status: backlog
+Status: done
 
 <!--
   Source: operator queue request 2026-06-14 — "Nie mogę z poziomu portalu usunąć plików STL z modelu... Nie ma takiego przycisku..."
@@ -54,3 +54,33 @@ The gap is the **Files tab UI** (`apps/web/src/modules/catalog/components/tabs/F
 ## Change Log
 
 - 2026-06-14 — captured from operator queue request; status `backlog`.
+
+
+## Dev Agent Record
+
+### Agent Model Used
+
+Laura/Hermes controller implementation with strict TDD; Aider routine diff review via `laura-aider-review-diff`.
+
+### Completion Notes List
+
+- 2026-06-14 — Implemented on branch `feat/E37.1-stl-file-delete-ui`.
+- RED evidence: `npm run test -- --run src/modules/catalog/components/tabs/FilesTab.test.tsx --reporter=verbose` failed on the new delete-affordance tests because no delete buttons existed.
+- GREEN targeted evidence: `FilesTab.test.tsx` passed **26 tests**, including admin visibility for STL/source/3MF delete buttons, confirmation-before-delete, DELETE endpoint call, and expanded-STL state cleanup.
+- Additional targeted evidence: i18n parity + `ConfirmDialog` + `useDeleteFile` tests passed **3 files / 5 tests**.
+- Web evidence: `npm run typecheck`, `npm run lint -- --max-warnings=0`, and full Vitest passed **126 files / 660 tests**.
+- Review evidence: `laura-aider-review-diff` returned `REQUEST_CHANGES` due a false-positive claim that `catalog.actions.delete` was missing. Controller verified the key exists in both `en.json` and `pl.json`, and the targeted i18n/ConfirmDialog tests passed. Non-blocking notes were accepted as UX trade-offs.
+- Full gate evidence after visual baseline refresh: `.hermes/run-logs/check-all-20260614_033356-E37.1-after-baselines.log` — `infra/scripts/check-all.sh` passed **16/16**, including visual regression **472 passed / 24 skipped**.
+- Scope held: reused existing `useDeleteFile(modelId)` and backend `DELETE /api/admin/models/{model_id}/files/{file_id}`; no backend/API change, no estimate data purge, no member exposure.
+
+### File List
+
+- `_bmad-output/implementation-artifacts/37-1-stl-file-delete-ui.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `apps/web/src/modules/catalog/components/tabs/FilesTab.tsx`
+- `apps/web/src/modules/catalog/components/tabs/FilesTab.test.tsx`
+- `apps/web/src/locales/en.json`
+- `apps/web/src/locales/pl.json`
+- `apps/web/tests/visual/__snapshots__/catalog-detail.spec.ts/*.png`
+- `apps/web/tests/visual/__snapshots__/catalog-filestab-estimate.spec.ts/*.png`
+- `apps/web/tests/visual/__snapshots__/share-member-enriched*.spec.ts/*.png`

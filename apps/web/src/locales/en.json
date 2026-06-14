@@ -822,5 +822,7 @@
   "modules.member.offers.estimate.not_computed_detail": "The estimate for this file with the selected profile hasn't been computed yet.",
   "modules.member.offers.estimate.offer_unavailable_chip": "—",
   "modules.member.offers.estimate.offer_unavailable_title": "Profile no longer available",
-  "modules.member.offers.estimate.offer_unavailable_detail": "The selected print profile is no longer published."
+  "modules.member.offers.estimate.offer_unavailable_detail": "The selected print profile is no longer published.",
+  "catalog.actions.deleteFile": "Delete {{name}}",
+  "catalog.actions.confirmDeleteFile": "Delete {{name}}?"
 }

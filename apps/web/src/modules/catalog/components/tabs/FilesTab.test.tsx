@@ -417,3 +417,64 @@ describe("FilesTab — EST-DISPLAY-1 estimate surface", () => {
     expect(screen.queryByRole("button", { name: /recompute|recalculate|re-estimate/i })).toBeNull();
   });
 });
+
+
+describe("FilesTab — admin file delete affordance", () => {
+  it("admin sees delete actions for STL/source/3MF rows, but non-admin does not", () => {
+    mockUseAuth.mockReturnValue({ isAdmin: true });
+    render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
+    expect(screen.getByRole("button", { name: /delete a\.stl/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /delete b\.stl/i })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /source/i }));
+    expect(screen.getByRole("button", { name: /delete c\.f3d/i })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /3mf/i }));
+    expect(screen.getByRole("button", { name: /delete d\.3mf/i })).toBeTruthy();
+
+    cleanup();
+    mockUseAuth.mockReturnValue({ isAdmin: false });
+    render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
+    expect(screen.queryByRole("button", { name: /delete a\.stl/i })).toBeNull();
+  });
+
+  it("requires confirmation before deleting a visible file row", async () => {
+    mockUseAuth.mockReturnValue({ isAdmin: true });
+    render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
+
+    fireEvent.click(screen.getByRole("button", { name: /delete a\.stl/i }));
+    expect(screen.getByText("Delete a.stl?")).toBeTruthy();
+    expect(
+      findCall((u, i) => u.endsWith("/admin/models/" + MODEL_ID + "/files/fa") && i.method === "DELETE"),
+    ).toBeUndefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() =>
+      expect(
+        findCall((u, i) => u.endsWith("/admin/models/" + MODEL_ID + "/files/fa") && i.method === "DELETE"),
+      ).toBeTruthy(),
+    );
+  });
+
+  it("clears a selected/expanded STL after confirming deletion so viewer state cannot target the deleted file", async () => {
+    mockUseAuth.mockReturnValue({ isAdmin: true });
+    render(<FilesTab modelId={MODEL_ID} files={FILES_WITH_HASH} />, { wrapper: wrap() });
+
+    fireEvent.click(screen.getByRole("button", { name: /Toggle 3D preview for a\.stl/i }));
+    expect(
+      screen.getByRole("button", { name: /Toggle 3D preview for a\.stl/i }).getAttribute("aria-expanded"),
+    ).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: /delete a\.stl/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() =>
+      expect(
+        findCall((u, i) => u.endsWith("/admin/models/" + MODEL_ID + "/files/fa") && i.method === "DELETE"),
+      ).toBeTruthy(),
+    );
+    expect(
+      screen.getByRole("button", { name: /Toggle 3D preview for a\.stl/i }).getAttribute("aria-expanded"),
+    ).toBe("false");
+  });
+});

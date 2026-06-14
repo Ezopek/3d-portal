@@ -1,10 +1,11 @@
-import { Box, ChevronDown, ChevronRight, Download, Package, Upload } from "lucide-react";
+import { Box, ChevronDown, ChevronRight, Download, Package, Trash2, Upload } from "lucide-react";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import type { ModelFileKind, ModelFileRead } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
+import { useDeleteFile } from "@/modules/catalog/hooks/mutations/useDeleteFile";
 import { useSetFileRenderSelection } from "@/modules/catalog/hooks/mutations/useSetFileRenderSelection";
 import { useTriggerRender } from "@/modules/catalog/hooks/mutations/useTriggerRender";
 import { useUploadFile } from "@/modules/catalog/hooks/mutations/useUploadFile";
@@ -27,6 +28,7 @@ import {
 } from "@/modules/estimates/lib/preset";
 import { useAuth } from "@/shell/AuthContext";
 import { Button } from "@/ui/button";
+import { ConfirmDialog } from "@/ui/custom/ConfirmDialog";
 
 type Visible = "stl" | "source" | "archive_3mf";
 
@@ -58,6 +60,7 @@ export function FilesTab({
   const { isAdmin, isAuthenticated } = useAuth();
   const setRenderSelection = useSetFileRenderSelection(modelId);
   const triggerRender = useTriggerRender(modelId);
+  const deleteFile = useDeleteFile(modelId);
   const upload = useUploadFile(modelId);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -129,6 +132,7 @@ export function FilesTab({
   }
   const visible = files.filter((f) => f.kind === active);
   const [expandedFileId, setExpandedFileId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalInitialId, setModalInitialId] = useState<string | undefined>(
     undefined,
@@ -359,6 +363,17 @@ export function FilesTab({
                     >
                       <Download className="size-3.5" aria-hidden />
                     </a>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        aria-label={t("catalog.actions.deleteFile", { name: f.original_name })}
+                        disabled={deleteFile.isPending}
+                        onClick={() => setPendingDelete({ id: f.id, name: f.original_name })}
+                        className="flex items-center rounded px-2 py-1 text-xs text-destructive hover:bg-destructive/10 disabled:pointer-events-none disabled:opacity-50"
+                      >
+                        <Trash2 className="size-3.5" aria-hidden />
+                      </button>
+                    )}
                   </div>
                 </div>
                 {isExpanded && stlFile !== undefined && (
@@ -394,6 +409,34 @@ export function FilesTab({
           })}
         </ul>
       )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(next) => {
+          if (!next) setPendingDelete(null);
+        }}
+        title={
+          pendingDelete !== null
+            ? t("catalog.actions.confirmDeleteFile", { name: pendingDelete.name })
+            : ""
+        }
+        confirmLabel={t("catalog.actions.delete")}
+        destructive
+        pending={deleteFile.isPending}
+        onConfirm={() => {
+          if (pendingDelete === null) return;
+          const deletedId = pendingDelete.id;
+          deleteFile.mutate(deletedId, {
+            onError: (err) => toast.error(err.message),
+          });
+          setExpandedFileId((current) => (current === deletedId ? null : current));
+          if (modalInitialId === deletedId) {
+            setModalOpen(false);
+            setModalInitialId(undefined);
+          }
+          setPendingDelete(null);
+        }}
+      />
     </div>
   );
 }

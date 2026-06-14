@@ -822,5 +822,7 @@
   "modules.member.offers.estimate.not_computed_detail": "Szacunek dla tego pliku z wybranym profilem nie został jeszcze obliczony.",
   "modules.member.offers.estimate.offer_unavailable_chip": "—",
   "modules.member.offers.estimate.offer_unavailable_title": "Profil nie jest już dostępny",
-  "modules.member.offers.estimate.offer_unavailable_detail": "Wybrany profil druku nie jest już opublikowany."
+  "modules.member.offers.estimate.offer_unavailable_detail": "Wybrany profil druku nie jest już opublikowany.",
+  "catalog.actions.deleteFile": "Usuń {{name}}",
+  "catalog.actions.confirmDeleteFile": "Usunąć {{name}}?"
 }
