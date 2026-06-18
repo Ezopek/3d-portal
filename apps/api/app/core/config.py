@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     admin_email: str = "admin@local"
     admin_password: str = "change-me"
     totp_fernet_key: str = ""
+    bcrypt_rounds: int = Field(default=12, ge=4, le=15)
 
     # 2FA enforcement (Story 7.4, Decision F)
     enforce_2fa_for_roles: Annotated[list[UserRole], NoDecode] = Field(default_factory=list)
@@ -88,6 +89,13 @@ class Settings(BaseSettings):
         if isinstance(v, str) and v.strip() == "":
             return None
         return v
+
+    @model_validator(mode="after")
+    def _production_bcrypt_rounds_floor(self) -> "Settings":
+        """Keep test/dev hash-cost overrides from leaking into production."""
+        if self.environment == "production" and self.bcrypt_rounds < 12:
+            raise ValueError("bcrypt_rounds must be >= 12 in production")
+        return self
 
     # Story 8.5: admin-issued password-reset link TTL bounds.
     password_reset_ttl_seconds: int = Field(default=3600, ge=60, le=86400)

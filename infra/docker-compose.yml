@@ -22,6 +22,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       TOTP_FERNET_KEY: ${TOTP_FERNET_KEY}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
       ENFORCE_2FA_FOR_ROLES: ${ENFORCE_2FA_FOR_ROLES:-}
       DATABASE_URL: sqlite:////data/state/portal.db
       REDIS_URL: redis://redis:6379/0
@@ -121,6 +122,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       TOTP_FERNET_KEY: ${TOTP_FERNET_KEY}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
       ENFORCE_2FA_FOR_ROLES: ${ENFORCE_2FA_FOR_ROLES:-}
       DATABASE_URL: sqlite:////data/state/portal.db
       REDIS_URL: redis://redis:6379/0

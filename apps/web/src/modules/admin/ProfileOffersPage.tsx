@@ -29,6 +29,7 @@ import {
 import { useDeleteProfileOffer } from "@/modules/admin/hooks/useDeleteProfileOffer";
 import { useProfileLibrary } from "@/modules/admin/hooks/useProfileLibrary";
 import { useProfileOffers } from "@/modules/admin/hooks/useProfileOffers";
+import { useRepublishProfileOffer } from "@/modules/admin/hooks/useRepublishProfileOffer";
 import { useUpdateProfileOffer } from "@/modules/admin/hooks/useUpdateProfileOffer";
 import { Button } from "@/ui/button";
 import { ConfirmDialog } from "@/ui/custom/ConfirmDialog";
@@ -41,13 +42,21 @@ const STATE_PRESENTATION: Record<
   { icon: LucideIcon; className: string }
 > = {
   usable: { icon: CheckCircle2, className: "bg-success/10 text-success" },
-  requires_attention: { icon: AlertTriangle, className: "bg-warning/10 text-warning" },
+  requires_attention: {
+    icon: AlertTriangle,
+    className: "bg-warning/10 text-warning",
+  },
   invalid: { icon: XCircle, className: "bg-destructive/10 text-destructive" },
 };
 
 // The generic material-category table (SCP § 3.6). Rendered as DATA (untranslated — no
 // per-material i18n key), matching the backend `OFFER_MATERIAL_CATEGORIES` set.
-const MATERIAL_CATEGORIES: readonly MaterialClass[] = ["PLA", "PETG", "PCTG", "TPU"];
+const MATERIAL_CATEGORIES: readonly MaterialClass[] = [
+  "PLA",
+  "PETG",
+  "PCTG",
+  "TPU",
+];
 
 // The three chain slots, in machine→process→filament order (the picker + trio + detail order).
 const CHAIN_SLOTS: readonly ProfileType[] = ["machine", "process", "filament"];
@@ -102,6 +111,17 @@ function StateBadge({ state }: { state: OfferValidationState }) {
   );
 }
 
+function SyncStateBadge({ state }: { state: PrintProfileOffer["sync_state"] }) {
+  const { t } = useTranslation();
+  if (state !== "stale") return null;
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md bg-warning/10 px-1.5 py-0.5 text-xs font-medium text-warning">
+      <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
+      {t("modules.admin.offers.sync.stale")}
+    </span>
+  );
+}
+
 /** A small text-labelled chip — visibility + default indicators on a row. */
 function MetaChip({ children }: { children: React.ReactNode }) {
   return (
@@ -144,8 +164,9 @@ function formStateFromOffer(offer: PrintProfileOffer): OfferFormState {
     description: offer.description ?? "",
     visibility: offer.visibility,
     is_default: offer.is_default,
-    categories: offer.compatible_material_categories.filter((c): c is MaterialClass =>
-      (MATERIAL_CATEGORIES as readonly string[]).includes(c),
+    categories: offer.compatible_material_categories.filter(
+      (c): c is MaterialClass =>
+        (MATERIAL_CATEGORIES as readonly string[]).includes(c),
     ),
   };
 }
@@ -192,7 +213,8 @@ function OfferForm({
     form.machine_block_id !== "" &&
     form.process_block_id !== "" &&
     form.filament_block_id !== "";
-  const canSave = form.label.trim() !== "" && (mode === "edit" || chainComplete);
+  const canSave =
+    form.label.trim() !== "" && (mode === "edit" || chainComplete);
 
   function toggleCategory(category: MaterialClass) {
     setForm((prev) => ({
@@ -204,7 +226,8 @@ function OfferForm({
   }
 
   function handleSave() {
-    const description = form.description.trim() === "" ? null : form.description.trim();
+    const description =
+      form.description.trim() === "" ? null : form.description.trim();
     if (mode === "edit" && offer) {
       update.mutate(
         {
@@ -254,10 +277,15 @@ function OfferForm({
           const key = `${slot}_block_id` as const;
           const selectId = `${fieldId}-${slot}`;
           const selected = blockForSlotValue(form, slot);
-          const selectedBlock = libraryBlocks.find((b) => b.block_id === selected);
+          const selectedBlock = libraryBlocks.find(
+            (b) => b.block_id === selected,
+          );
           return (
             <div key={slot} className="grid gap-1">
-              <label htmlFor={selectId} className="text-xs font-medium text-foreground">
+              <label
+                htmlFor={selectId}
+                className="text-xs font-medium text-foreground"
+              >
                 {t(`modules.admin.profileOffers.form.slot.${slot}`)}
               </label>
               {mode === "edit" ? (
@@ -272,7 +300,9 @@ function OfferForm({
                   id={selectId}
                   value={selected}
                   className="rounded border border-border bg-background px-2 py-1 text-sm"
-                  onChange={(e) => setForm((prev) => ({ ...prev, [key]: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, [key]: e.target.value }))
+                  }
                 >
                   <option value="">
                     {t("modules.admin.profileOffers.form.slot_placeholder")}
@@ -296,7 +326,10 @@ function OfferForm({
 
       {/* Label + description (DATA — untranslated). */}
       <div className="grid gap-1">
-        <label htmlFor={`${fieldId}-label`} className="text-xs font-medium text-foreground">
+        <label
+          htmlFor={`${fieldId}-label`}
+          className="text-xs font-medium text-foreground"
+        >
           {t("modules.admin.profileOffers.form.label_field")}
         </label>
         <input
@@ -305,11 +338,16 @@ function OfferForm({
           value={form.label}
           placeholder={t("modules.admin.profileOffers.form.label_placeholder")}
           className="rounded border border-border bg-background px-2 py-1 text-sm"
-          onChange={(e) => setForm((prev) => ({ ...prev, label: e.target.value }))}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, label: e.target.value }))
+          }
         />
       </div>
       <div className="grid gap-1">
-        <label htmlFor={`${fieldId}-desc`} className="text-xs font-medium text-foreground">
+        <label
+          htmlFor={`${fieldId}-desc`}
+          className="text-xs font-medium text-foreground"
+        >
           {t("modules.admin.profileOffers.form.description_field")}
         </label>
         <input
@@ -317,7 +355,9 @@ function OfferForm({
           type="text"
           value={form.description}
           className="rounded border border-border bg-background px-2 py-1 text-sm"
-          onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, description: e.target.value }))
+          }
         />
       </div>
 
@@ -327,13 +367,19 @@ function OfferForm({
           <span className="text-xs font-medium text-foreground">
             {t("modules.admin.profileOffers.form.visibility")}
           </span>
-          <div className="flex gap-1" role="group" aria-label={t("modules.admin.profileOffers.form.visibility")}>
+          <div
+            className="flex gap-1"
+            role="group"
+            aria-label={t("modules.admin.profileOffers.form.visibility")}
+          >
             {(["hidden", "visible"] as const).map((value) => (
               <button
                 key={value}
                 type="button"
                 aria-pressed={form.visibility === value}
-                onClick={() => setForm((prev) => ({ ...prev, visibility: value }))}
+                onClick={() =>
+                  setForm((prev) => ({ ...prev, visibility: value }))
+                }
                 className={cn(
                   "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
                   form.visibility === value
@@ -353,7 +399,9 @@ function OfferForm({
           <button
             type="button"
             aria-pressed={form.is_default}
-            onClick={() => setForm((prev) => ({ ...prev, is_default: !prev.is_default }))}
+            onClick={() =>
+              setForm((prev) => ({ ...prev, is_default: !prev.is_default }))
+            }
             className={cn(
               "w-fit rounded-full border px-3 py-1 text-xs font-medium transition-colors",
               form.is_default
@@ -361,7 +409,9 @@ function OfferForm({
                 : "border-border text-muted-foreground hover:text-foreground",
             )}
           >
-            {t(`modules.admin.profileOffers.form.default_${form.is_default ? "on" : "off"}`)}
+            {t(
+              `modules.admin.profileOffers.form.default_${form.is_default ? "on" : "off"}`,
+            )}
           </button>
         </div>
       </div>
@@ -374,7 +424,11 @@ function OfferForm({
         <span className="text-xs font-medium text-foreground">
           {t("modules.admin.profileOffers.form.categories")}
         </span>
-        <div className="flex flex-wrap gap-1" role="group" aria-label={t("modules.admin.profileOffers.form.categories")}>
+        <div
+          className="flex flex-wrap gap-1"
+          role="group"
+          aria-label={t("modules.admin.profileOffers.form.categories")}
+        >
           {MATERIAL_CATEGORIES.map((category) => (
             <button
               key={category}
@@ -401,12 +455,22 @@ function OfferForm({
       ) : null}
 
       <div className="flex gap-2">
-        <Button variant="default" size="sm" disabled={pending || !canSave} onClick={handleSave}>
+        <Button
+          variant="default"
+          size="sm"
+          disabled={pending || !canSave}
+          onClick={handleSave}
+        >
           {pending
             ? t("modules.admin.profileOffers.form.saving")
             : t("modules.admin.profileOffers.form.save")}
         </Button>
-        <Button variant="outline" size="sm" disabled={pending} onClick={onClose}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={pending}
+          onClick={onClose}
+        >
           {t("common.cancel")}
         </Button>
       </div>
@@ -438,7 +502,9 @@ function OfferDetail({ offer }: { offer: PrintProfileOffer }) {
                 {block.material_type ? (
                   <span>
                     {t("modules.admin.profileOffers.field.material_type")}:{" "}
-                    <span className="font-mono text-foreground">{block.material_type}</span>
+                    <span className="font-mono text-foreground">
+                      {block.material_type}
+                    </span>
                   </span>
                 ) : null}
                 {block.inherit_chain.length > 0 ? (
@@ -451,7 +517,8 @@ function OfferDetail({ offer }: { offer: PrintProfileOffer }) {
                 ) : null}
                 {block.compatible_printers.length > 0 ? (
                   <span>
-                    {t("modules.admin.profileOffers.field.compatible_printers")}:{" "}
+                    {t("modules.admin.profileOffers.field.compatible_printers")}
+                    :{" "}
                     <span className="font-mono text-foreground">
                       {block.compatible_printers.join(", ")}
                     </span>
@@ -495,9 +562,35 @@ function OfferRow({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const republish = useRepublishProfileOffer();
   const ChevronIcon = open ? ChevronDown : ChevronRight;
   const firstReason = offer.reasons[0];
-  const trio = CHAIN_SLOTS.map((slot) => blockForSlot(offer, slot)?.name ?? "—").join(" · ");
+  const trio = CHAIN_SLOTS.map(
+    (slot) => blockForSlot(offer, slot)?.name ?? "—",
+  ).join(" · ");
+  const canRepublish =
+    offer.sync_state === "stale" &&
+    offer.publish_state === "published" &&
+    offer.validation_state !== "invalid";
+  const missingRepublishHash = canRepublish && !offer.published_stl_hash;
+
+  function handleRepublish() {
+    setLocalError(null);
+    if (!offer.published_stl_hash) {
+      setLocalError(
+        t("modules.admin.offers.republish.missing_stl_hash"),
+      );
+      return;
+    }
+    republish.mutate(
+      { offerId: offer.offer_id, stlHash: offer.published_stl_hash },
+      {
+        onError: () =>
+          setLocalError(t("modules.admin.offers.republish.error")),
+      },
+    );
+  }
 
   return (
     <li className="rounded-md border border-border bg-card">
@@ -516,23 +609,58 @@ function OfferRow({
           <ChevronIcon className="size-4" aria-hidden="true" />
         </Button>
         <div className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate font-medium text-foreground">{offer.label}</span>
+          <span className="truncate font-medium text-foreground">
+            {offer.label}
+          </span>
           <span className="truncate text-xs text-muted-foreground">{trio}</span>
           {offer.validation_state === "invalid" && firstReason ? (
-            <span className="truncate text-xs text-destructive">{t(reasonKey(firstReason))}</span>
+            <span className="truncate text-xs text-destructive">
+              {t(reasonKey(firstReason))}
+            </span>
           ) : null}
           <div className="mt-0.5 flex flex-wrap gap-1">
-            <MetaChip>{t(`modules.admin.profileOffers.visibility.${offer.visibility}`)}</MetaChip>
+            <MetaChip>
+              {t(`modules.admin.profileOffers.visibility.${offer.visibility}`)}
+            </MetaChip>
             {offer.is_default ? (
-              <MetaChip>{t("modules.admin.profileOffers.badge.default")}</MetaChip>
+              <MetaChip>
+                {t("modules.admin.profileOffers.badge.default")}
+              </MetaChip>
             ) : null}
           </div>
         </div>
         <StateBadge state={offer.validation_state} />
+        <SyncStateBadge state={offer.sync_state} />
+        {canRepublish ? (
+          <div className="flex flex-col items-end gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={republish.isPending || missingRepublishHash}
+              title={
+                missingRepublishHash
+                  ? t("modules.admin.offers.republish.missing_stl_hash")
+                  : undefined
+              }
+              onClick={handleRepublish}
+            >
+              {republish.isPending
+                ? t("modules.admin.offers.republish.pending")
+                : t("modules.admin.offers.republish.action")}
+            </Button>
+            {missingRepublishHash ? (
+              <span className="max-w-40 text-right text-xs text-warning">
+                {t("modules.admin.offers.republish.missing_stl_hash")}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={t("modules.admin.profileOffers.edit.action", { label: offer.label })}
+          aria-label={t("modules.admin.profileOffers.edit.action", {
+            label: offer.label,
+          })}
           onClick={() => onEdit(offer)}
         >
           <Pencil className="size-4" aria-hidden="true" />
@@ -541,12 +669,22 @@ function OfferRow({
           variant="ghost"
           size="icon-sm"
           className="text-destructive"
-          aria-label={t("modules.admin.profileOffers.delete.action", { label: offer.label })}
+          aria-label={t("modules.admin.profileOffers.delete.action", {
+            label: offer.label,
+          })}
           onClick={() => onDelete(offer)}
         >
           <Trash2 className="size-4" aria-hidden="true" />
         </Button>
       </div>
+      {localError ? (
+        <p
+          className="border-t border-border px-3 py-2 text-xs text-destructive"
+          role="alert"
+        >
+          {localError}
+        </p>
+      ) : null}
       {open ? <OfferDetail offer={offer} /> : null}
     </li>
   );
@@ -591,8 +729,12 @@ function FilterChip({
  */
 export function ProfileOffersPage() {
   const { t } = useTranslation();
-  const [materialFilter, setMaterialFilter] = useState<MaterialClass | undefined>(undefined);
-  const [visibilityFilter, setVisibilityFilter] = useState<OfferVisibility | undefined>(undefined);
+  const [materialFilter, setMaterialFilter] = useState<
+    MaterialClass | undefined
+  >(undefined);
+  const [visibilityFilter, setVisibilityFilter] = useState<
+    OfferVisibility | undefined
+  >(undefined);
   const filters: ProfileOffersFilters | undefined =
     materialFilter || visibilityFilter
       ? { material_category: materialFilter, visibility: visibilityFilter }
@@ -605,7 +747,9 @@ export function ProfileOffersPage() {
   const [formMode, setFormMode] = useState<
     { kind: "create" } | { kind: "edit"; offer: PrintProfileOffer } | null
   >(null);
-  const [confirmTarget, setConfirmTarget] = useState<PrintProfileOffer | null>(null);
+  const [confirmTarget, setConfirmTarget] = useState<PrintProfileOffer | null>(
+    null,
+  );
 
   const libraryBlocks = library.data?.blocks ?? [];
   const items = offers.data?.offers ?? [];
@@ -637,7 +781,10 @@ export function ProfileOffersPage() {
             role="group"
             aria-label={t("modules.admin.profileOffers.filter.material")}
           >
-            <FilterChip active={!materialFilter} onClick={() => setMaterialFilter(undefined)}>
+            <FilterChip
+              active={!materialFilter}
+              onClick={() => setMaterialFilter(undefined)}
+            >
               {t("modules.admin.profileOffers.filter.all")}
             </FilterChip>
             {MATERIAL_CATEGORIES.map((category) => (
@@ -655,7 +802,10 @@ export function ProfileOffersPage() {
             role="group"
             aria-label={t("modules.admin.profileOffers.filter.visibility")}
           >
-            <FilterChip active={!visibilityFilter} onClick={() => setVisibilityFilter(undefined)}>
+            <FilterChip
+              active={!visibilityFilter}
+              onClick={() => setVisibilityFilter(undefined)}
+            >
               {t("modules.admin.profileOffers.filter.all")}
             </FilterChip>
             {(["visible", "hidden"] as const).map((value) => (
@@ -693,18 +843,28 @@ export function ProfileOffersPage() {
           <p className="text-sm font-medium text-destructive">
             {t("modules.admin.profileOffers.error_title")}
           </p>
-          <Button variant="outline" size="sm" onClick={() => void offers.refetch()}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void offers.refetch()}
+          >
             {t("modules.admin.profileOffers.retry")}
           </Button>
         </div>
       ) : offers.isLoading ? (
-        <div className="flex flex-col gap-2" aria-hidden="true" data-testid="offers-skeleton">
+        <div
+          className="flex flex-col gap-2"
+          aria-hidden="true"
+          data-testid="offers-skeleton"
+        >
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="h-14 animate-pulse rounded-md bg-muted" />
           ))}
         </div>
       ) : items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("modules.admin.profileOffers.empty")}</p>
+        <p className="text-sm text-muted-foreground">
+          {t("modules.admin.profileOffers.empty")}
+        </p>
       ) : (
         <ul className="flex flex-col gap-2">
           {items.map((offer) => (
@@ -726,7 +886,9 @@ export function ProfileOffersPage() {
         title={t("modules.admin.profileOffers.delete.confirm_title", {
           label: confirmTarget?.label ?? "",
         })}
-        description={t("modules.admin.profileOffers.delete.confirm_description")}
+        description={t(
+          "modules.admin.profileOffers.delete.confirm_description",
+        )}
         destructive
         pending={deleteOffer.isPending}
         onConfirm={handleDeleteConfirm}

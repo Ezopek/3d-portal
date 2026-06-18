@@ -7,8 +7,8 @@ response serializers in ``apps/api/app/modules/auth/totp/schemas.py`` do
 not expose the column at all.
 
 Decision E §1515-1534 owns the recovery-codes batch generator: 8 codes per
-batch, ``secrets.token_hex(4)`` per code (32 bits entropy), bcrypt cost 12
-matching the existing ``app/core/auth/password.py`` precedent.
+batch, ``secrets.token_hex(4)`` per code (32 bits entropy), bcrypt cost 12 in
+production matching the existing ``app/core/auth/password.py`` precedent.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from redis.asyncio import Redis
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.core.db.models import RecoveryCode, User
 from app.core.db.models._enums import UserRole
 
@@ -46,7 +46,6 @@ _ENROLLMENT_TTL_SECONDS = 600  # 10 minutes (epics.md §1676)
 # commit if the lock TTL expired mid-critical-section.
 _ISSUER_NAME = "3d-portal"
 _RECOVERY_BATCH_SIZE = 8
-_BCRYPT_ROUNDS = 12
 
 
 # ---------------------------------------------------------------------------
@@ -118,8 +117,9 @@ def generate_recovery_codes_batch() -> tuple[uuid.UUID, list[tuple[str, str]]]:
 
     Returns ``(batch_id, [(cleartext, bcrypt_hash), ...])`` with one entry
     per code. Decision E §1530 binds ``secrets.token_hex(4)`` (32 bits of
-    entropy → 8-char lowercase hex). Bcrypt cost 12 matches the
-    ``hash_password`` precedent + Decision E §1524.
+    entropy → 8-char lowercase hex). Production bcrypt cost 12 matches the
+    ``hash_password`` precedent + Decision E §1524; tests may lower it via
+    settings to keep the full suite deterministic and bounded.
     """
     batch_id = uuid.uuid4()
     pairs: list[tuple[str, str]] = []
@@ -127,7 +127,7 @@ def generate_recovery_codes_batch() -> tuple[uuid.UUID, list[tuple[str, str]]]:
         cleartext = secrets.token_hex(4)
         digest = bcrypt.hashpw(
             cleartext.encode(),
-            bcrypt.gensalt(rounds=_BCRYPT_ROUNDS),
+            bcrypt.gensalt(rounds=get_settings().bcrypt_rounds),
         ).decode()
         pairs.append((cleartext, digest))
     return batch_id, pairs

@@ -599,7 +599,7 @@ async def regenerate_recovery_codes(
 
     def _commit_batch() -> tuple[int, uuid.UUID, list[str]]:
         # Story 7.5 Codex P2-3: ``generate_recovery_codes_batch`` performs
-        # eight cost-12 bcrypt hashes (~250ms each); running it inside this
+        # eight production-cost bcrypt hashes; running it inside this
         # threadpool worker keeps the event loop free for other requests.
         batch_id_inner, code_pairs = generate_recovery_codes_batch()
 

@@ -319,6 +319,7 @@ def test_totp_fernet_key_missing_in_production_warns_does_not_raise(
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("JWT_SECRET", "real-jwt-secret")
     monkeypatch.setenv("ADMIN_PASSWORD", "real-admin-password")
+    monkeypatch.delenv("BCRYPT_ROUNDS", raising=False)
     monkeypatch.delenv("TOTP_FERNET_KEY", raising=False)
     get_settings.cache_clear()
     try:
@@ -342,6 +343,21 @@ def test_totp_fernet_key_empty_ok_in_dev(monkeypatch: pytest.MonkeyPatch) -> Non
         settings = get_settings()
         assert settings.environment == "dev"
         assert settings.totp_fernet_key == ""
+    finally:
+        get_settings.cache_clear()
+
+
+def test_bcrypt_rounds_below_12_rejected_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("JWT_SECRET", "real-jwt-secret")
+    monkeypatch.setenv("ADMIN_PASSWORD", "real-admin-password")
+    monkeypatch.setenv("BCRYPT_ROUNDS", "4")
+    monkeypatch.delenv("TOTP_FERNET_KEY", raising=False)
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(ValidationError) as excinfo:
+            get_settings()
+        assert "bcrypt_rounds must be >= 12 in production" in str(excinfo.value)
     finally:
         get_settings.cache_clear()
 

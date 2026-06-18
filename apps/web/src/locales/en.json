@@ -824,5 +824,16 @@
   "modules.member.offers.estimate.offer_unavailable_title": "Profile no longer available",
   "modules.member.offers.estimate.offer_unavailable_detail": "The selected print profile is no longer published.",
   "catalog.actions.deleteFile": "Delete {{name}}",
-  "catalog.actions.confirmDeleteFile": "Delete {{name}}?"
+  "catalog.actions.confirmDeleteFile": "Delete {{name}}?",
+  "modules.admin.offers.sync.stale": "Stale",
+  "modules.admin.offers.republish.action": "Republish",
+  "modules.admin.offers.republish.pending": "Republishing…",
+  "modules.admin.offers.republish.error": "Republish failed — check the server logs and try again.",
+  "modules.admin.offers.republish.missing_stl_hash": "No published STL hash is available; select an STL before republishing.",
+  "modules.admin.library.stale_offers.banner": "{{count}} published offer(s) now require republish: {{labels}}",
+  "modules.admin.library.stale_offers.republish_now": "Republish now",
+  "modules.admin.library.stale_offers.republishing": "Republishing…",
+  "modules.admin.library.stale_offers.later": "Later",
+  "modules.admin.library.stale_offers.success": "republished",
+  "modules.admin.library.stale_offers.error": "republish failed"
 }

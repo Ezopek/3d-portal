@@ -824,5 +824,16 @@
   "modules.member.offers.estimate.offer_unavailable_title": "Profil nie jest już dostępny",
   "modules.member.offers.estimate.offer_unavailable_detail": "Wybrany profil druku nie jest już opublikowany.",
   "catalog.actions.deleteFile": "Usuń {{name}}",
-  "catalog.actions.confirmDeleteFile": "Usunąć {{name}}?"
+  "catalog.actions.confirmDeleteFile": "Usunąć {{name}}?",
+  "modules.admin.offers.sync.stale": "Nieaktualna",
+  "modules.admin.offers.republish.action": "Opublikuj ponownie",
+  "modules.admin.offers.republish.pending": "Publikowanie ponownie…",
+  "modules.admin.offers.republish.error": "Ponowna publikacja nie powiodła się — sprawdź logi serwera i spróbuj ponownie.",
+  "modules.admin.offers.republish.missing_stl_hash": "Brak hasha opublikowanego STL; wybierz STL przed ponowną publikacją.",
+  "modules.admin.library.stale_offers.banner": "{{count}} opublikowane oferty wymagają teraz ponownej publikacji: {{labels}}",
+  "modules.admin.library.stale_offers.republish_now": "Opublikuj ponownie teraz",
+  "modules.admin.library.stale_offers.republishing": "Publikowanie ponownie…",
+  "modules.admin.library.stale_offers.later": "Później",
+  "modules.admin.library.stale_offers.success": "opublikowano ponownie",
+  "modules.admin.library.stale_offers.error": "ponowna publikacja nie powiodła się"
 }

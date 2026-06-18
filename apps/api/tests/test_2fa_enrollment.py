@@ -37,6 +37,10 @@ from app.modules.auth.totp.service import (
 FERNET_KEY = "ZmFrZS10ZXN0LWtleS0zMi1ieXRlcy1mb3ItdGVzdHM="
 
 
+def _bcrypt_prefix() -> str:
+    return f"$2b${get_settings().bcrypt_rounds:02d}$"
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -276,7 +280,7 @@ def test_confirm_golden_path_persists_fernet_ciphertext_and_8_recovery_codes(cli
         batch_ids = {row.batch_id for row in rows}
         assert len(batch_ids) == 1
         for row in rows:
-            assert row.code_hash.startswith("$2b$12$")
+            assert row.code_hash.startswith(_bcrypt_prefix())
 
 
 def test_confirm_response_returns_8_cleartext_codes_8char_lowercase_hex(client):
@@ -361,7 +365,7 @@ def test_decrypt_secret_roundtrips_to_original_cleartext(client):
     _batch_id, pairs = generate_recovery_codes_batch()
     assert len(pairs) == 8
     for cleartext, digest in pairs:
-        assert digest.startswith("$2b$12$")
+        assert digest.startswith(_bcrypt_prefix())
         assert bcrypt.checkpw(cleartext.encode(), digest.encode())
 
 

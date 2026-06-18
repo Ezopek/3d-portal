@@ -75,6 +75,13 @@ const OFFER_USABLE = {
   validation_state: "usable",
   reasons: [],
   chain_blocks: [MACHINE_BLOCK, PROCESS_BLOCK, FILAMENT_BLOCK],
+  publish_state: "published",
+  published_bundle_hash: "4".repeat(64),
+  published_at: "2026-06-06T01:00:00+00:00",
+  published_by: "11111111-1111-1111-1111-111111111111",
+  source_snapshot_ref: "5".repeat(64),
+  published_stl_hash: "6".repeat(64),
+  sync_state: "current",
   created_at: "2026-06-06T00:00:00+00:00",
   created_by: "11111111-1111-1111-1111-111111111111",
   updated_at: "2026-06-06T00:00:00+00:00",
@@ -101,15 +108,29 @@ const OFFER_INVALID = {
   is_default: false,
   compatible_material_categories: ["PETG"],
   validation_state: "invalid",
+  sync_state: "unknown",
   reasons: ["unknown_block"],
   // A deleted referenced machine block ⇒ omitted from the echo (surfaced via unknown_block).
   chain_blocks: [PROCESS_BLOCK, FILAMENT_BLOCK],
 };
 
-const MIXED = [OFFER_USABLE, OFFER_ATTENTION, OFFER_INVALID];
+const OFFER_STALE = {
+  ...OFFER_USABLE,
+  offer_id: "d".repeat(32),
+  label: "PLA after profile update",
+  description: "Published before the process profile was re-imported",
+  visibility: "visible",
+  is_default: false,
+  compatible_material_categories: ["PLA"],
+  validation_state: "usable",
+  reasons: [],
+  sync_state: "stale",
+};
+
+const MIXED = [OFFER_USABLE, OFFER_STALE, OFFER_ATTENTION, OFFER_INVALID];
 
 test.describe("/admin/profile-offers baselines", () => {
-  test("offer list — usable + requires_attention + invalid", async ({ page }) => {
+  test("offer list — usable + stale + requires_attention + invalid", async ({ page }) => {
     await stubProfileOffers(page, { offers: MIXED, library: LIBRARY });
     await page.goto("/admin/profile-offers");
     await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });

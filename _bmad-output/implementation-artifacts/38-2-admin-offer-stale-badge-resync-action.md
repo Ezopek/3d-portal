@@ -1,6 +1,6 @@
 # Story 38.2: Admin offer stale badge + resync action
 
-Status: backlog
+Status: done
 
 <!--
   Source: E38 decomposition decision (2026-06-14). Covers PROFILE-OFFER-SYNC-1 frontend half.
@@ -26,43 +26,43 @@ No new backend endpoints are introduced. All resync actions must be **explicit o
 
 ### ProfileOffersPage — sync-state badge
 
-- [ ] Each offer row in the admin offer list (`ProfileOffersPage`) shows a `sync_state` badge:
+- [x] Each offer row in the admin offer list (`ProfileOffersPage`) shows a `sync_state` badge:
   - `sync_state == "current"` → no badge or a subtle "current" indicator (design: keep the row uncluttered when everything is fine).
   - `sync_state == "stale"` → visible amber/warning badge labelled "Stale" (en) / "Nieaktualna" (pl).
   - `sync_state == "unknown"` (unpublished offers) → no badge (their publish_state badge already makes them visually distinct).
-- [ ] The badge is derived from the `sync_state` field returned by `GET /api/admin/profiles/offers`; no additional API call per row.
-- [ ] The existing `publish_state` and `validation_state` badges remain unchanged; `sync_state` is additive.
+- [x] The badge is derived from the `sync_state` field returned by `GET /api/admin/profiles/offers`; no additional API call per row.
+- [x] The existing `publish_state` and `validation_state` badges remain unchanged; `sync_state` is additive.
 
 ### ProfileOffersPage — resync action
 
-- [ ] A stale published offer row has an adjacent resync action (button or icon-button): "Republish" (en) / "Opublikuj ponownie" (pl).
-- [ ] Clicking republish calls the existing `POST /api/admin/profiles/offers/{offer_id}/publish` with the offer's current `published_stl_hash` (if the offer was published with a known STL hash) or prompts the operator to select an STL if `published_stl_hash` is absent.
-- [ ] On success: invalidate the admin offers query key; the offer row updates to `sync_state = "current"` after refetch.
-- [ ] On failure: show an honest inline error; do not silently swallow publish failures.
-- [ ] `invalid` offers must NOT show a resync action (the offer cannot be resync'd until the referenced block issue is resolved).
-- [ ] `unpublished` offers must NOT show a resync action from the stale path (they have their own publish flow).
+- [x] A stale published offer row has an adjacent resync action (button or icon-button): "Republish" (en) / "Opublikuj ponownie" (pl).
+- [x] Clicking republish calls the existing `POST /api/admin/profiles/offers/{offer_id}/publish` with the offer's current `published_stl_hash` (if the offer was published with a known STL hash) or prompts the operator to select an STL if `published_stl_hash` is absent.
+- [x] On success: invalidate the admin offers query key; the offer row updates to `sync_state = "current"` after refetch.
+- [x] On failure: show an honest inline error; do not silently swallow publish failures.
+- [x] `invalid` offers must NOT show a resync action (the offer cannot be resync'd until the referenced block issue is resolved).
+- [x] `unpublished` offers must NOT show a resync action from the stale path (they have their own publish flow).
 
 ### ProfileLibraryPage — post-import notification
 
-- [ ] After a successful block upsert (`POST /api/admin/profiles/library`), when the response `stale_offers` list is non-empty, show an inline notification/banner: "X published offer(s) now require republish: [offer labels]" with two choices:
+- [x] After a successful block upsert (`POST /api/admin/profiles/library`), when the response `stale_offers` list is non-empty, show an inline notification/banner: "X published offer(s) now require republish: [offer labels]" with two choices:
   - **Republish now** — for each offer in `stale_offers`, call `POST /api/admin/profiles/offers/{offer_id}/publish` sequentially (or with bounded parallelism). Show per-offer success/failure inline.
   - **Later** — dismiss the notification. The stale badge will be visible on the offers page.
-- [ ] When `stale_offers` is empty, no notification is shown.
-- [ ] The notification is non-blocking (it does not prevent the operator from continuing to use the UI).
-- [ ] "Republish now" in the notification uses the same publish path as the offers-page resync action; no new endpoint.
+- [x] When `stale_offers` is empty, no notification is shown.
+- [x] The notification is non-blocking (it does not prevent the operator from continuing to use the UI).
+- [x] "Republish now" in the notification uses the same publish path as the offers-page resync action; no new endpoint.
 
 ### i18n
 
-- [ ] All new copy keys under `modules.admin.offers.*` and `modules.admin.library.*` in both `en.json` and `pl.json`.
-- [ ] Key naming consistent with existing admin i18n keys.
+- [x] All new copy keys under `modules.admin.offers.*` and `modules.admin.library.*` in both `en.json` and `pl.json`.
+- [x] Key naming consistent with existing admin i18n keys.
 
 ### Tests
 
-- [ ] `ProfileOffersPage` unit tests: stale badge renders for `sync_state == "stale"`; current renders no badge; invalid offer has no resync button; resync button calls publish mutation and invalidates query.
-- [ ] `ProfileLibraryPage` unit tests: post-import notification renders when `stale_offers` non-empty; "Republish now" calls publish for each offer; "Later" dismisses the notification without calling publish.
-- [ ] Focused vitest pass + `tsc -b` + `eslint --max-warnings=0` before merge.
-- [ ] Visual baselines updated for offer list with stale badge and resync button (4 Playwright projects).
-- [ ] Full `infra/scripts/check-all.sh` gate before merge.
+- [x] `ProfileOffersPage` unit tests: stale badge renders for `sync_state == "stale"`; current renders no badge; invalid offer has no resync button; resync button calls publish mutation and invalidates query.
+- [x] `ProfileLibraryPage` unit tests: post-import notification renders when `stale_offers` non-empty; "Republish now" calls publish for each offer; "Later" dismisses the notification without calling publish.
+- [x] Focused vitest pass + `tsc -b` + `eslint --max-warnings=0` before merge.
+- [x] Visual baselines updated for offer list with stale badge and resync button (4 Playwright projects).
+- [x] Full `infra/scripts/check-all.sh` gate before merge.
 
 ## Likely files
 

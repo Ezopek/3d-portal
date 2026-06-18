@@ -10,10 +10,13 @@ import {
 import { useId, useRef, useState, type ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
 
+import { api } from "@/lib/api";
 import type {
+  PrintProfileOfferListResponse,
   ProfileLibraryBlock,
   ProfileType,
   ProfileValidationState,
+  StaleProfileOfferRef,
 } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
 import { AdminTabs } from "@/modules/admin/AdminTabs";
@@ -23,6 +26,7 @@ import {
 } from "@/modules/admin/hooks/useDeleteProfileBlock";
 import { useImportProfileBlock } from "@/modules/admin/hooks/useImportProfileBlock";
 import { useProfileLibrary } from "@/modules/admin/hooks/useProfileLibrary";
+import { useRepublishProfileOffer } from "@/modules/admin/hooks/useRepublishProfileOffer";
 import { Button } from "@/ui/button";
 import { ConfirmDialog } from "@/ui/custom/ConfirmDialog";
 
@@ -34,7 +38,10 @@ const STATE_PRESENTATION: Record<
   { icon: LucideIcon; className: string }
 > = {
   usable: { icon: CheckCircle2, className: "bg-success/10 text-success" },
-  requires_attention: { icon: AlertTriangle, className: "bg-warning/10 text-warning" },
+  requires_attention: {
+    icon: AlertTriangle,
+    className: "bg-warning/10 text-warning",
+  },
   error: { icon: XCircle, className: "bg-destructive/10 text-destructive" },
 };
 
@@ -78,7 +85,11 @@ function StateBadge({ state }: { state: ProfileValidationState }) {
 }
 
 /** The upload affordance: file picker + optional portal-label. Fails closed/visible (AC-16). */
-function UploadControl() {
+function UploadControl({
+  onStaleOffers,
+}: {
+  onStaleOffers: (offers: StaleProfileOfferRef[]) => void;
+}) {
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
   const labelId = useId();
@@ -91,7 +102,12 @@ function UploadControl() {
     if (file) {
       importBlock.mutate(
         { file, portal_label: label.trim() || undefined },
-        { onSuccess: () => setLabel("") },
+        {
+          onSuccess: (block) => {
+            setLabel("");
+            onStaleOffers(block.stale_offers ?? []);
+          },
+        },
       );
     }
   }
@@ -100,14 +116,19 @@ function UploadControl() {
     <div className="flex flex-col gap-2 rounded-md border border-border bg-card p-3">
       <div className="flex flex-wrap items-end gap-2">
         <div className="grid gap-1">
-          <label htmlFor={labelId} className="text-xs font-medium text-foreground">
+          <label
+            htmlFor={labelId}
+            className="text-xs font-medium text-foreground"
+          >
             {t("modules.admin.profileLibrary.upload.label_field")}
           </label>
           <input
             id={labelId}
             type="text"
             value={label}
-            placeholder={t("modules.admin.profileLibrary.upload.label_placeholder")}
+            placeholder={t(
+              "modules.admin.profileLibrary.upload.label_placeholder",
+            )}
             className="rounded border border-border bg-background px-2 py-1 text-sm"
             onChange={(e) => setLabel(e.target.value)}
           />
@@ -140,6 +161,110 @@ function UploadControl() {
   );
 }
 
+type RepublishStatus = "success" | "error";
+
+async function fetchPublishedStlHashes(): Promise<Map<string, string>> {
+  const response = await api<PrintProfileOfferListResponse>(
+    "/admin/profiles/offers",
+  );
+  return new Map(
+    response.offers
+      .filter((offer) => offer.published_stl_hash)
+      .map((offer) => [offer.offer_id, offer.published_stl_hash as string]),
+  );
+}
+
+function StaleOffersNotification({
+  offers,
+  onDismiss,
+}: {
+  offers: StaleProfileOfferRef[];
+  onDismiss: () => void;
+}) {
+  const { t } = useTranslation();
+  const republish = useRepublishProfileOffer();
+  const [results, setResults] = useState<Record<string, RepublishStatus>>({});
+
+  async function handleRepublishNow() {
+    const next: Record<string, RepublishStatus> = {};
+    let stlHashes: Map<string, string>;
+    try {
+      stlHashes = await fetchPublishedStlHashes();
+    } catch {
+      setResults(
+        Object.fromEntries(
+          offers.map((offer) => [offer.offer_id, "error" as const]),
+        ),
+      );
+      return;
+    }
+    for (const offer of offers) {
+      const stlHash = stlHashes.get(offer.offer_id);
+      if (!stlHash) {
+        next[offer.offer_id] = "error";
+        continue;
+      }
+      try {
+        await republish.mutateAsync({ offerId: offer.offer_id, stlHash });
+        next[offer.offer_id] = "success";
+      } catch {
+        next[offer.offer_id] = "error";
+      }
+    }
+    setResults(next);
+  }
+
+  return (
+    <section className="flex flex-col gap-2 rounded-md border border-warning/40 bg-warning/10 p-3">
+      <p className="text-sm font-medium text-foreground">
+        {t("modules.admin.library.stale_offers.banner", {
+          count: offers.length,
+          labels: offers.map((offer) => offer.label).join(", "),
+        })}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="default"
+          size="sm"
+          disabled={republish.isPending}
+          onClick={handleRepublishNow}
+        >
+          {republish.isPending
+            ? t("modules.admin.library.stale_offers.republishing")
+            : t("modules.admin.library.stale_offers.republish_now")}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={republish.isPending}
+          onClick={onDismiss}
+        >
+          {t("modules.admin.library.stale_offers.later")}
+        </Button>
+      </div>
+      {Object.keys(results).length > 0 ? (
+        <ul className="flex flex-col gap-1 text-xs">
+          {offers.map((offer) => {
+            const status = results[offer.offer_id];
+            if (!status) return null;
+            return (
+              <li
+                key={offer.offer_id}
+                className={
+                  status === "success" ? "text-success" : "text-destructive"
+                }
+              >
+                {offer.label}:{" "}
+                {t(`modules.admin.library.stale_offers.${status}`)}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
 /** Curated detail (NO raw Orca JSON, AC-16): inherit chain + flagged reasons + curated fields. */
 function BlockDetail({ block }: { block: ProfileLibraryBlock }) {
   const { t } = useTranslation();
@@ -154,19 +279,27 @@ function BlockDetail({ block }: { block: ProfileLibraryBlock }) {
         </DetailRow>
       ) : null}
       {block.material_type ? (
-        <DetailRow label={t("modules.admin.profileLibrary.field.material_type")}>
-          <span className="font-mono text-foreground">{block.material_type}</span>
+        <DetailRow
+          label={t("modules.admin.profileLibrary.field.material_type")}
+        >
+          <span className="font-mono text-foreground">
+            {block.material_type}
+          </span>
         </DetailRow>
       ) : null}
       <DetailRow label={t("modules.admin.profileLibrary.field.inherit_chain")}>
         {block.inherit_chain.length > 0 ? (
-          <span className="font-mono text-foreground">{block.inherit_chain.join(" → ")}</span>
+          <span className="font-mono text-foreground">
+            {block.inherit_chain.join(" → ")}
+          </span>
         ) : (
           "—"
         )}
       </DetailRow>
       {block.compatible_printers.length > 0 ? (
-        <DetailRow label={t("modules.admin.profileLibrary.field.compatible_printers")}>
+        <DetailRow
+          label={t("modules.admin.profileLibrary.field.compatible_printers")}
+        >
           <span className="font-mono text-foreground">
             {block.compatible_printers.join(", ")}
           </span>
@@ -187,7 +320,13 @@ function BlockDetail({ block }: { block: ProfileLibraryBlock }) {
   );
 }
 
-function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+function DetailRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex flex-wrap gap-1">
       <span className="text-muted-foreground">{label}:</span>
@@ -223,9 +362,13 @@ function BlockRow({
           <ChevronIcon className="size-4" aria-hidden="true" />
         </Button>
         <div className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate font-medium text-foreground">{block.name}</span>
+          <span className="truncate font-medium text-foreground">
+            {block.name}
+          </span>
           {block.portal_label ? (
-            <span className="truncate text-xs text-muted-foreground">{block.portal_label}</span>
+            <span className="truncate text-xs text-muted-foreground">
+              {block.portal_label}
+            </span>
           ) : null}
         </div>
         <StateBadge state={block.validation_state} />
@@ -233,7 +376,9 @@ function BlockRow({
           variant="ghost"
           size="icon-sm"
           className="text-destructive"
-          aria-label={t("modules.admin.profileLibrary.delete.action", { name: block.name })}
+          aria-label={t("modules.admin.profileLibrary.delete.action", {
+            name: block.name,
+          })}
           onClick={() => onDelete(block)}
         >
           <Trash2 className="size-4" aria-hidden="true" />
@@ -257,7 +402,9 @@ export function ProfileLibraryPage() {
   const [filter, setFilter] = useState<ProfileType | undefined>(undefined);
   const library = useProfileLibrary(filter);
   const deleteBlock = useDeleteProfileBlock();
-  const [confirmTarget, setConfirmTarget] = useState<ProfileLibraryBlock | null>(null);
+  const [confirmTarget, setConfirmTarget] =
+    useState<ProfileLibraryBlock | null>(null);
+  const [staleOffers, setStaleOffers] = useState<StaleProfileOfferRef[]>([]);
 
   function handleDeleteConfirm() {
     if (!confirmTarget) return;
@@ -286,14 +433,32 @@ export function ProfileLibraryPage() {
         </p>
       </header>
 
-      <UploadControl />
+      <UploadControl onStaleOffers={setStaleOffers} />
 
-      <div className="flex flex-wrap gap-2" role="group" aria-label={t("modules.admin.profileLibrary.filter.all")}>
-        <FilterChip active={filter === undefined} onClick={() => setFilter(undefined)}>
+      {staleOffers.length > 0 ? (
+        <StaleOffersNotification
+          offers={staleOffers}
+          onDismiss={() => setStaleOffers([])}
+        />
+      ) : null}
+
+      <div
+        className="flex flex-wrap gap-2"
+        role="group"
+        aria-label={t("modules.admin.profileLibrary.filter.all")}
+      >
+        <FilterChip
+          active={filter === undefined}
+          onClick={() => setFilter(undefined)}
+        >
           {t("modules.admin.profileLibrary.filter.all")}
         </FilterChip>
         {PROFILE_TYPE_FILTERS.map((type) => (
-          <FilterChip key={type} active={filter === type} onClick={() => setFilter(type)}>
+          <FilterChip
+            key={type}
+            active={filter === type}
+            onClick={() => setFilter(type)}
+          >
             {t(`modules.admin.profileLibrary.filter.${type}`)}
           </FilterChip>
         ))}
@@ -304,12 +469,20 @@ export function ProfileLibraryPage() {
           <p className="text-sm font-medium text-destructive">
             {t("modules.admin.profileLibrary.error_title")}
           </p>
-          <Button variant="outline" size="sm" onClick={() => void library.refetch()}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void library.refetch()}
+          >
             {t("modules.admin.profileLibrary.retry")}
           </Button>
         </div>
       ) : library.isLoading ? (
-        <div className="flex flex-col gap-2" aria-hidden="true" data-testid="library-skeleton">
+        <div
+          className="flex flex-col gap-2"
+          aria-hidden="true"
+          data-testid="library-skeleton"
+        >
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="h-12 animate-pulse rounded-md bg-muted" />
           ))}
@@ -327,7 +500,11 @@ export function ProfileLibraryPage() {
               </h2>
               <ul className="flex flex-col gap-2">
                 {group.items.map((block) => (
-                  <BlockRow key={block.block_id} block={block} onDelete={setConfirmTarget} />
+                  <BlockRow
+                    key={block.block_id}
+                    block={block}
+                    onDelete={setConfirmTarget}
+                  />
                 ))}
               </ul>
             </section>
@@ -343,7 +520,9 @@ export function ProfileLibraryPage() {
         title={t("modules.admin.profileLibrary.delete.confirm_title", {
           name: confirmTarget?.name ?? "",
         })}
-        description={t("modules.admin.profileLibrary.delete.confirm_description")}
+        description={t(
+          "modules.admin.profileLibrary.delete.confirm_description",
+        )}
         destructive
         pending={deleteBlock.isPending}
         onConfirm={handleDeleteConfirm}

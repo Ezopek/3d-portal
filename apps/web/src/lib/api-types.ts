@@ -22,9 +22,9 @@ export interface LoginRequest {
 }
 
 export interface LoginResponse {
-  partial_auth: false;  // discriminator — always false on this shape
+  partial_auth: false; // discriminator — always false on this shape
   user: MeResponse;
-  totp_enroll_required: boolean;  // Story 7.4 — true when Decision F enforcement requires enrollment
+  totp_enroll_required: boolean; // Story 7.4 — true when Decision F enforcement requires enrollment
 }
 
 export interface PartialAuthResponse {
@@ -35,7 +35,7 @@ export interface PartialAuthResponse {
 
 export interface VerifyRequest {
   partial_token: string;
-  code: string;  // ^(\d{6}|[0-9a-f]{8})$
+  code: string; // ^(\d{6}|[0-9a-f]{8})$
 }
 
 // --- Categories ---
@@ -137,7 +137,7 @@ export interface PrintRead {
   id: string;
   model_id: string;
   photo_file_id: string | null;
-  printed_at: string | null;  // YYYY-MM-DD
+  printed_at: string | null; // YYYY-MM-DD
   note: string | null;
   created_at: string;
   updated_at: string;
@@ -168,7 +168,7 @@ export interface ModelSummary {
   status: ModelStatus;
   rating: number | null;
   thumbnail_file_id: string | null;
-  date_added: string;  // YYYY-MM-DD
+  date_added: string; // YYYY-MM-DD
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
@@ -226,7 +226,11 @@ export interface SessionsListParams {
 
 // --- Admin users (Story 8.2) ---
 
-export type AdminUserSortBy = "email" | "role" | "created_at" | "last_active_at";
+export type AdminUserSortBy =
+  | "email"
+  | "role"
+  | "created_at"
+  | "last_active_at";
 export type AdminUserSortOrder = "asc" | "desc";
 
 export interface AdminUser {
@@ -549,6 +553,12 @@ export type ProfileType = "machine" | "process" | "filament";
 
 export type ProfileValidationState = "usable" | "requires_attention" | "error";
 
+export interface StaleProfileOfferRef {
+  offer_id: string;
+  label: string;
+  publish_state: OfferPublishState;
+}
+
 export interface ProfileLibraryBlock {
   block_id: string;
   profile_type: ProfileType;
@@ -567,6 +577,8 @@ export interface ProfileLibraryBlock {
   portal_label: string | null;
   imported_at: string;
   imported_by: string;
+  // Added 38.1: populated by import/upsert only; empty for normal list callers.
+  stale_offers: StaleProfileOfferRef[];
 }
 
 export interface ProfileLibraryListResponse {
@@ -580,6 +592,8 @@ export interface ProfileLibraryListResponse {
 // the grid (33.1/33.2) and library (PROFILE-LIB-1) DTOs above and never replaces them.
 
 export type OfferVisibility = "hidden" | "visible";
+export type OfferPublishState = "published" | "unpublished";
+export type OfferSyncState = "current" | "stale" | "unknown";
 
 // The per-offer validation state (AC-4): a stored offer is at worst `invalid` (a referenced
 // block went missing / wrong-typed); `requires_attention` is stored + listed + flagged.
@@ -610,6 +624,13 @@ export interface PrintProfileOffer {
   created_at: string;
   created_by: string;
   updated_at: string;
+  publish_state: OfferPublishState;
+  published_bundle_hash: string | null;
+  published_at: string | null;
+  published_by: string | null;
+  source_snapshot_ref: string | null;
+  published_stl_hash: string | null;
+  sync_state: OfferSyncState;
 }
 
 export interface PrintProfileOfferListResponse {
@@ -640,6 +661,15 @@ export interface PrintProfileOfferUpdate {
 export interface ProfileOffersFilters {
   material_category?: MaterialClass;
   visibility?: OfferVisibility;
+}
+
+export interface OfferPublishResult {
+  offer_id: string;
+  published_bundle_hash: string;
+  publish_state: OfferPublishState;
+  published_at: string;
+  estimate_job_id: string;
+  estimate: unknown | null;
 }
 
 // --- Story 36.1 — member-facing published offer DTOs ---
