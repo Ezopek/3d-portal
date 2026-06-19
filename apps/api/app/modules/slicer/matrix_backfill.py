@@ -117,6 +117,46 @@ def enumerate_matrix_cells(
     return cells
 
 
+def enumerate_offer_cells(
+    offers: list[dict], *, visible_only: bool, offer_id: str | None = None
+) -> list[ResolvedMatrixCell]:
+    """Return one resolved backfill cell per eligible published offer.
+
+    This is the offer-SoT counterpart to :func:`enumerate_matrix_cells`: it is pure, performs
+    no policy/material-default reads, and never resolves profile chains. The bundle hash is the
+    already-published ``published_bundle_hash`` stored on the offer sidecar.
+    """
+    cells: list[ResolvedMatrixCell] = []
+    for sidecar in offers:
+        current_offer_id = sidecar.get("offer_id", "")
+        if offer_id is not None and current_offer_id != offer_id:
+            continue
+        publish_state = publish_state_of(sidecar)
+        bundle_hash = publish_state.published_bundle_hash
+        if publish_state.publish_state != PUBLISH_STATE_PUBLISHED:
+            continue
+        if not bundle_hash:
+            continue
+        if sidecar.get("validation_state") == "invalid":
+            continue
+        if visible_only and sidecar.get("visibility") != "visible":
+            continue
+        cells.append(
+            ResolvedMatrixCell(
+                cell=MatrixCell(
+                    offer_id=current_offer_id,
+                    offer_label=sidecar.get("label", current_offer_id),
+                    material="",
+                    orca_profile_ref="",
+                ),
+                bundle_hash=bundle_hash,
+                profile_selection=None,
+                resolve_failed=False,
+            )
+        )
+    return cells
+
+
 # ---------------------------------------------------------------------------
 # Resolution
 # ---------------------------------------------------------------------------

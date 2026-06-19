@@ -262,7 +262,7 @@ async def test_publish_resolves_persists_enqueues_updates_sidecar_and_audits(sea
     assert body["publish_state"] == PUBLISH_STATE_PUBLISHED
     assert body["estimate_job_id"] == f"slice:{STL_HASH}:{bundle_hash}"
     assert body["estimate"] is None
-    assert len(pool.calls) == 1
+    assert len(pool.calls) >= 1
     job_name, args, kwargs = pool.calls[0]
     assert job_name == "slice_estimate"
     assert args == (STL_HASH, bundle_hash)
@@ -383,23 +383,206 @@ async def test_unpublish_is_idempotent_and_keeps_append_only_bundle(seam) -> Non
     assert all(e.entity_id == uuid.UUID(offer_id) for e in events)
 
 
+def _set_offer_publish_state(
+    root: Path,
+    offer_id: str,
+    *,
+    bundle_hash: str | None = "a" * 64,
+    visibility: str = "visible",
+    validation_state: str = "usable",
+    publish_state: str = PUBLISH_STATE_PUBLISHED,
+    published_at: str | None = "2026-06-06T00:00:00+00:00",
+) -> None:
+    sidecar = read_offer(root, offer_id)
+    assert sidecar is not None
+    sidecar.update(
+        {
+            "visibility": visibility,
+            "validation_state": validation_state,
+            "publish_state": publish_state,
+            "published_bundle_hash": bundle_hash,
+            "published_at": published_at,
+        }
+    )
+    store_offer(root, sidecar)
+
+
 # ---------------------------------------------------------------------------
-# Story 35.6 — offer-publish matrix hook (AC-9)
+# Story 40.1 — offer-driven recompute endpoint
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_publish_matrix_hook_calls_enumerate_matrix_cells(seam, monkeypatch) -> None:
-    """AC-9 (35.6): successful publish triggers enumerate_matrix_cells for the published offer."""
+async def test_offer_recompute_dry_run_counts_without_material_defaults(seam) -> None:
+    ac, root, _content_dir, admin_id, _pool = seam
+    await _login_admin(ac, admin_id)
+    offer_1 = _seed_offer(root)
+    offer_2 = _seed_offer(root)
+    _set_offer_publish_state(root, offer_1, bundle_hash="a" * 64)
+    _set_offer_publish_state(root, offer_2, bundle_hash="b" * 64)
+
+    r = await ac.post("/api/admin/profiles/offers/recompute-estimates", json={})
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["dry_run"] is True
+    assert body["inspected"] == 1
+    assert body["cells_total"] == 2
+    assert body["cells_resolved"] == 2
+    assert body["cells_resolve_failed"] == 0
+    assert body["would_enqueue"] == 2
+    assert body["enqueued"] == 0
+
+
+@pytest.mark.asyncio
+async def test_offer_recompute_offer_id_scope_and_real_enqueue_then_fresh_noop(seam) -> None:
+    from app.core.config import get_settings
+    from app.modules.slicer.estimate_store import EstimateStore
+    from app.modules.slicer.models import EstimateRecord, EstimateStatus
+
+    ac, root, _content_dir, admin_id, pool = seam
+    await _login_admin(ac, admin_id)
+    offer_1 = _seed_offer(root)
+    offer_2 = _seed_offer(root)
+    _set_offer_publish_state(root, offer_1, bundle_hash="a" * 64)
+    _set_offer_publish_state(root, offer_2, bundle_hash="b" * 64)
+
+    dry = await ac.post(
+        "/api/admin/profiles/offers/recompute-estimates",
+        json={"offer_id": offer_2},
+    )
+    assert dry.status_code == 200, dry.text
+    assert dry.json()["cells_total"] == 1
+    assert dry.json()["would_enqueue"] == 1
+
+    before = len(pool.calls)
+    real = await ac.post(
+        "/api/admin/profiles/offers/recompute-estimates",
+        json={"dry_run": False, "offer_id": offer_2},
+    )
+    assert real.status_code == 200, real.text
+    assert real.json()["enqueued"] == 1
+    assert len(pool.calls) == before + 1
+
+    EstimateStore(get_settings().slicer_estimate_store_dir).write(
+        EstimateRecord(
+            stl_hash=STL_HASH,
+            bundle_hash="b" * 64,
+            orca_version=ORCA_VERSION,
+            time_seconds=1,
+            filament_g=1.0,
+            filament_mm=1.0,
+            filament_cm3=1.0,
+            status=EstimateStatus.fresh,
+            computed_at="2026-06-06T00:00:00+00:00",
+        )
+    )
+    fresh = await ac.post(
+        "/api/admin/profiles/offers/recompute-estimates",
+        json={"dry_run": False, "offer_id": offer_2},
+    )
+    assert fresh.status_code == 200, fresh.text
+    assert fresh.json()["enqueued"] == 0
+    assert fresh.json()["already_fresh"] == 1
+
+
+@pytest.mark.asyncio
+async def test_offer_recompute_offer_id_validation_errors(seam) -> None:
+    ac, root, _content_dir, admin_id, _pool = seam
+    await _login_admin(ac, admin_id)
+
+    malformed = await ac.post(
+        "/api/admin/profiles/offers/recompute-estimates", json={"offer_id": "not-hex"}
+    )
+    assert malformed.status_code == 422
+    assert malformed.json()["detail"]["reason_category"] == "invalid_offer_id"
+
+    missing = await ac.post(
+        "/api/admin/profiles/offers/recompute-estimates", json={"offer_id": "0" * 32}
+    )
+    assert missing.status_code == 404
+    assert missing.json()["detail"]["reason_category"] == "offer_not_found"
+
+    unpublished = _seed_offer(root)
+    unpublished_response = await ac.post(
+        "/api/admin/profiles/offers/recompute-estimates", json={"offer_id": unpublished}
+    )
+    assert unpublished_response.status_code == 422
+    assert unpublished_response.json()["detail"]["reason_category"] == "offer_unpublished"
+
+    missing_hash = _seed_offer(root)
+    _set_offer_publish_state(root, missing_hash, bundle_hash=None)
+    missing_hash_response = await ac.post(
+        "/api/admin/profiles/offers/recompute-estimates", json={"offer_id": missing_hash}
+    )
+    assert missing_hash_response.status_code == 422
+    assert (
+        missing_hash_response.json()["detail"]["reason_category"] == "missing_published_bundle_hash"
+    )
+
+    invalid = _seed_offer(root)
+    _set_offer_publish_state(root, invalid, validation_state="invalid")
+    invalid_response = await ac.post(
+        "/api/admin/profiles/offers/recompute-estimates", json={"offer_id": invalid}
+    )
+    assert invalid_response.status_code == 422
+    assert invalid_response.json()["detail"]["reason_category"] == "offer_invalid"
+
+    hidden = _seed_offer(root)
+    _set_offer_publish_state(root, hidden, visibility="hidden")
+    hidden_response = await ac.post(
+        "/api/admin/profiles/offers/recompute-estimates", json={"offer_id": hidden}
+    )
+    assert hidden_response.status_code == 422
+    assert hidden_response.json()["detail"]["reason_category"] == "offer_hidden"
+
+
+@pytest.mark.asyncio
+async def test_offer_recompute_max_cells_rejects_before_enqueue(seam) -> None:
+    ac, root, _content_dir, admin_id, pool = seam
+    await _login_admin(ac, admin_id)
+    offer_1 = _seed_offer(root)
+    offer_2 = _seed_offer(root)
+    _set_offer_publish_state(root, offer_1, bundle_hash="a" * 64)
+    _set_offer_publish_state(root, offer_2, bundle_hash="b" * 64)
+
+    before = len(pool.calls)
+    global_reject = await ac.post(
+        "/api/admin/profiles/offers/recompute-estimates",
+        json={"dry_run": False, "max_cells": 1},
+    )
+    assert global_reject.status_code == 422
+    assert global_reject.json()["detail"]["reason_category"] == "max_cells_exceeded"
+    assert len(pool.calls) == before
+
+    scoped_reject = await ac.post(
+        "/api/admin/profiles/offers/recompute-estimates",
+        json={"dry_run": False, "offer_id": offer_1, "max_cells": 0},
+    )
+    assert scoped_reject.status_code == 422
+    assert scoped_reject.json()["detail"]["reason_category"] == "max_cells_exceeded"
+    assert len(pool.calls) == before
+
+
+@pytest.mark.asyncio
+async def test_publish_hook_uses_offer_bundle_without_material_defaults(seam, monkeypatch) -> None:
+    """40.1: successful publish triggers offer-driven enumeration for the published offer."""
     enumerate_calls: list = []
 
-    def _fake_enumerate(offers, policy):
-        enumerate_calls.extend(offers)
+    def _fake_enumerate(offers, *, visible_only, offer_id=None):
+        enumerate_calls.append((offers, visible_only, offer_id))
         return []
 
+    def _old_path_must_not_run(*args, **kwargs):
+        raise AssertionError("legacy material-default matrix path must not run")
+
+    monkeypatch.setattr(
+        "app.modules.slicer.matrix_backfill.enumerate_offer_cells",
+        _fake_enumerate,
+    )
     monkeypatch.setattr(
         "app.modules.slicer.matrix_backfill.enumerate_matrix_cells",
-        _fake_enumerate,
+        _old_path_must_not_run,
     )
 
     ac, root, _content_dir, admin_id, _pool = seam
@@ -409,10 +592,11 @@ async def test_publish_matrix_hook_calls_enumerate_matrix_cells(seam, monkeypatc
     r = await ac.post(f"/api/admin/profiles/offers/{offer_id}/publish", json={"stl_hash": STL_HASH})
 
     assert r.status_code == 200, r.text
-    assert len(enumerate_calls) >= 1, (
-        "enumerate_matrix_cells must receive the published offer's sidecar"
-    )
-    assert enumerate_calls[0].get("offer_id") == offer_id
+    assert enumerate_calls, "enumerate_offer_cells must receive the published offer's sidecar"
+    offers, visible_only, scoped_offer_id = enumerate_calls[0]
+    assert offers[0].get("offer_id") == offer_id
+    assert visible_only is False
+    assert scoped_offer_id == offer_id
 
 
 @pytest.mark.asyncio
@@ -423,7 +607,7 @@ async def test_publish_matrix_hook_exception_does_not_roll_back_publish(seam, mo
         raise RuntimeError("matrix hook exploded")
 
     monkeypatch.setattr(
-        "app.modules.slicer.matrix_backfill.enumerate_matrix_cells",
+        "app.modules.slicer.matrix_backfill.enumerate_offer_cells",
         _raise,
     )
 

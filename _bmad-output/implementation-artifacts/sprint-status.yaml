@@ -1,5 +1,5 @@
 generated: 2026-05-09
-last_updated: 2026-06-14T20:15Z
+last_updated: 2026-06-19T14:30Z
 project: 3d-portal
 project_key: NOKEY
 tracking_system: file-system
@@ -268,3 +268,8 @@ development_status:
   38-2-admin-offer-stale-badge-resync-action: done
   38-3-filestab-offer-first-ux-cleanup: done
   38-4-member-offer-request-estimate-cta: backlog
+  epic-40: in-progress
+  40-1-profile-offer-estimate-sot: done
+  40-2-admin-offer-recompute-ui: backlog
+  40-3-member-visible-default-offer-selection: backlog
+  40-4-demote-legacy-profile-grid: backlog

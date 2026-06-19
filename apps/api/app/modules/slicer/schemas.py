@@ -590,6 +590,17 @@ class DefaultMatrixBackfillRequest(BaseModel):
     offer_id: str | None = None
 
 
+class OfferRecomputeRequest(BaseModel):
+    """Body for POST /api/admin/profiles/offers/recompute-estimates."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    dry_run: bool = True
+    visible_only: bool = True
+    offer_id: str | None = None
+    max_cells: int | None = None
+
+
 class DefaultMatrixBackfillResponse(BaseModel):
     """Classified counters for default-matrix backfill preview/enqueue."""
 

@@ -19,6 +19,7 @@ from app.modules.slicer.matrix_backfill import (
     MatrixCell,
     ResolvedMatrixCell,
     enumerate_matrix_cells,
+    enumerate_offer_cells,
     resolve_matrix_cells,
 )
 from app.modules.slicer.profile_policy import (
@@ -168,6 +169,71 @@ def test_enumerate_with_material_filter_returns_only_matching_cells():
     assert len(cells) == 2
     assert all(c.material == "PLA" for c in cells)
     assert {c.offer_id for c in cells} == {"offer-1", "offer-2"}
+
+
+# ---------------------------------------------------------------------------
+# Tests: enumerate_offer_cells (Story 40.1 offer-SoT pure enumeration)
+# ---------------------------------------------------------------------------
+
+
+def _offer_sidecar(
+    offer_id: str,
+    *,
+    publish_state: str = PUBLISH_STATE_PUBLISHED,
+    bundle_hash: str | None = "a" * 64,
+    validation_state: str = "usable",
+    visibility: str = "visible",
+) -> dict:
+    sidecar = _sidecar(offer_id, publish_state=publish_state)
+    sidecar["validation_state"] = validation_state
+    sidecar["visibility"] = visibility
+    if publish_state == PUBLISH_STATE_PUBLISHED:
+        sidecar["published_bundle_hash"] = bundle_hash
+    return sidecar
+
+
+def test_enumerate_offer_cells_includes_published_visible_valid_hash():
+    cells = enumerate_offer_cells([_offer_sidecar("offer-1")], visible_only=True)
+
+    assert len(cells) == 1
+    assert cells[0].cell.offer_id == "offer-1"
+    assert cells[0].bundle_hash == "a" * 64
+    assert cells[0].resolve_failed is False
+
+
+def test_enumerate_offer_cells_skips_ineligible_offers():
+    cells = enumerate_offer_cells(
+        [
+            _offer_sidecar("published"),
+            _offer_sidecar("unpublished", publish_state=PUBLISH_STATE_UNPUBLISHED),
+            _offer_sidecar("invalid", validation_state="invalid"),
+            _offer_sidecar("hidden", visibility="hidden"),
+            _offer_sidecar("missing-hash", bundle_hash=None),
+        ],
+        visible_only=True,
+    )
+
+    assert [cell.cell.offer_id for cell in cells] == ["published"]
+
+
+def test_enumerate_offer_cells_visible_only_false_includes_hidden():
+    cells = enumerate_offer_cells(
+        [_offer_sidecar("hidden", visibility="hidden")], visible_only=False
+    )
+
+    assert [cell.cell.offer_id for cell in cells] == ["hidden"]
+
+
+def test_enumerate_offer_cells_offer_id_scope():
+    cells = enumerate_offer_cells(
+        [_offer_sidecar("offer-1"), _offer_sidecar("offer-2", bundle_hash="b" * 64)],
+        visible_only=True,
+        offer_id="offer-2",
+    )
+
+    assert len(cells) == 1
+    assert cells[0].cell.offer_id == "offer-2"
+    assert cells[0].bundle_hash == "b" * 64
 
 
 # ---------------------------------------------------------------------------

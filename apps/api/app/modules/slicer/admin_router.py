@@ -90,6 +90,7 @@ from app.modules.slicer.schemas import (
     MaterialDefaultUpsert,
     OfferPublishRequest,
     OfferPublishResult,
+    OfferRecomputeRequest,
     OfferVisibility,
     PolicyAdminView,
     PrintProfileOffer,
@@ -1216,30 +1217,23 @@ async def publish_profile_offer(
     except profile_publish.PublishError as exc:
         raise _reject(exc.status_code, exc.reason_category, exc.message) from exc
 
-    # Story 35.6 — offer-publish matrix hook (AC-9).
-    # Enqueue estimates for all catalog STLs x this offer's compatible material defaults.
+    # Story 40.1 — offer-publish offer-SoT hook.
+    # Enqueue estimates for all catalog STLs x this offer's published bundle hash.
     # Never re-raises: a backfill failure must NOT roll back the publish.
     try:
-        from app.modules.slicer.matrix_backfill import enumerate_matrix_cells, resolve_matrix_cells
+        from sqlmodel import Session as _Session
+
+        from app.modules.slicer.estimate_store import EstimateStore
+        from app.modules.slicer.matrix_backfill import (
+            enqueue_matrix_for_all_stls,
+            enumerate_offer_cells,
+        )
 
         _settings = get_settings()
         _sidecar = profile_offer.read_offer(source.root, offer_id)
         if _sidecar is not None:
-            _policy = ProfilePolicyStore(_settings.slicer_profile_policy_dir).load()
-            _cells = enumerate_matrix_cells([_sidecar], _policy)
-            if _cells:
-                _resolved = resolve_matrix_cells(
-                    _cells,
-                    source=source,
-                    store=bundle_store,
-                    orca_version=_settings.orca_version,
-                    validator=NullCliValidator(),
-                )
-                from sqlmodel import Session as _Session
-
-                from app.modules.slicer.estimate_store import EstimateStore
-                from app.modules.slicer.matrix_backfill import enqueue_matrix_for_all_stls
-
+            _resolved = enumerate_offer_cells([_sidecar], visible_only=False, offer_id=offer_id)
+            if _resolved:
                 _counters: dict[str, int] = {}
                 with _Session(get_engine()) as _sess:
                     _counters = await enqueue_matrix_for_all_stls(
@@ -1254,7 +1248,7 @@ async def publish_profile_offer(
                     "slicer.offer_publish_matrix_hook",
                     extra={
                         "labels.offer_id": offer_id,
-                        "labels.cells_count": len(_cells),
+                        "labels.cells_count": len(_resolved),
                         "labels.enqueued": _counters.get("enqueued", 0),
                         "labels.already_fresh": _counters.get("already_fresh", 0),
                     },
@@ -1431,6 +1425,134 @@ def _policy_entity_id(discriminator: str) -> uuid.UUID:
     return uuid.uuid5(uuid.NAMESPACE_URL, f"slicer_policy:{discriminator}")
 
 
+def _offer_recompute_noneligible_reason(sidecar: dict, *, visible_only: bool) -> str | None:
+    if sidecar.get("publish_state") != profile_publish.PUBLISH_STATE_PUBLISHED:
+        return "offer_unpublished"
+    publish_state = profile_publish.publish_state_of(sidecar)
+    if not publish_state.published_bundle_hash:
+        return "missing_published_bundle_hash"
+    if sidecar.get("validation_state") == "invalid":
+        return "offer_invalid"
+    if visible_only and sidecar.get("visibility") != "visible":
+        return "offer_hidden"
+    return None
+
+
+async def _dry_run_offer_cells(
+    response: DefaultMatrixBackfillResponse,
+    *,
+    rows: list[Any],
+    active_cells: list[Any],
+    estimate_store: Any,
+    content_root: Any,
+) -> DefaultMatrixBackfillResponse:
+    from app.modules.slicer.models import EstimateStatus
+    from app.modules.slicer.stl_cache import is_content_hash
+
+    for row in rows:
+        abs_path = (content_root / row.storage_path).resolve()
+        try:
+            abs_path.relative_to(content_root)
+        except ValueError:
+            response.errors += len(active_cells)
+            continue
+        if not abs_path.is_file():
+            response.missing_stl += len(active_cells)
+            continue
+        candidate_stl_hash = row.sha256
+        if not is_content_hash(candidate_stl_hash):
+            response.errors += len(active_cells)
+            continue
+        for rc in active_cells:
+            existing = estimate_store.read(candidate_stl_hash, rc.bundle_hash)
+            if existing is not None and existing.status == EstimateStatus.fresh:
+                response.already_fresh += 1
+            else:
+                response.would_enqueue += 1
+    return response
+
+
+async def _run_offer_recompute(
+    *,
+    body: OfferRecomputeRequest,
+    request: Request,
+    source: VendoredProfileSource,
+) -> DefaultMatrixBackfillResponse:
+    """Preview or enqueue offer-SoT estimates for all catalog STLs."""
+    from sqlmodel import select
+
+    from app.core.db.models import ModelFile, ModelFileKind
+    from app.modules.slicer.estimate_store import EstimateStore
+    from app.modules.slicer.matrix_backfill import (
+        enqueue_matrix_for_all_stls,
+        enumerate_offer_cells,
+    )
+    from app.modules.slicer.stl_cache import StlCache
+
+    if body.offer_id is not None and not profile_offer.is_valid_offer_id(body.offer_id):
+        raise _reject(422, "invalid_offer_id", "offer_id must be a 32-char lowercase hex string")
+
+    settings = get_settings()
+    sidecars = profile_offer.list_offers(source.root)
+    if body.offer_id is not None:
+        sidecar = profile_offer.read_offer(source.root, body.offer_id)
+        if sidecar is None:
+            raise _reject(404, "offer_not_found", "no such profile offer")
+        reason = _offer_recompute_noneligible_reason(sidecar, visible_only=body.visible_only)
+        if reason is not None:
+            raise _reject(422, reason, "profile offer is not eligible for estimate recompute")
+        sidecars = [sidecar]
+
+    resolved = enumerate_offer_cells(
+        sidecars, visible_only=body.visible_only, offer_id=body.offer_id
+    )
+    active_cells = [rc for rc in resolved if rc.bundle_hash is not None]
+    response = DefaultMatrixBackfillResponse(
+        dry_run=body.dry_run,
+        cells_total=len(resolved),
+        cells_resolved=len(active_cells),
+        cells_resolve_failed=0,
+    )
+
+    estimate_store = EstimateStore(settings.slicer_estimate_store_dir)
+    content_root = settings.portal_content_dir.resolve()
+    with Session(get_engine()) as session:
+        rows = session.exec(select(ModelFile).where(ModelFile.kind == ModelFileKind.stl)).all()
+        response.inspected = len(rows)
+        if (
+            body.max_cells is not None
+            and response.cells_total * response.inspected > body.max_cells
+        ):
+            raise _reject(422, "max_cells_exceeded", "requested recompute exceeds max_cells")
+        if not active_cells:
+            return response
+        if body.dry_run:
+            return await _dry_run_offer_cells(
+                response,
+                rows=rows,
+                active_cells=active_cells,
+                estimate_store=estimate_store,
+                content_root=content_root,
+            )
+
+        arq_pool = getattr(request.app.state, "arq", None)
+        if arq_pool is None:
+            raise HTTPException(status_code=503, detail="slicer queue unavailable")
+        counters = await enqueue_matrix_for_all_stls(
+            resolved,
+            arq_pool=arq_pool,
+            stl_cache=StlCache(settings.slicer_stl_cache_dir),
+            estimate_store=estimate_store,
+            content_dir=content_root,
+            db_session=session,
+        )
+        response.enqueued = counters.get("enqueued", 0)
+        response.already_fresh = counters.get("already_fresh", 0)
+        response.missing_stl = counters.get("missing_stl", 0)
+        response.errors = counters.get("errors", 0)
+        return response
+
+
 async def _run_default_matrix_backfill(
     *,
     body: DefaultMatrixBackfillRequest,
@@ -1567,6 +1689,25 @@ async def read_policy(
     # get_snapshot() already logs when it soft-fails on an exception (AC-2 single warning).
     policy = store.load()
     return _build_policy_admin_view(policy, snapshot, source)
+
+
+@router.post(
+    "/profiles/offers/recompute-estimates",
+    response_model=DefaultMatrixBackfillResponse,
+    summary="Preview or enqueue offer-driven estimate recompute for all catalog STLs",
+    description=(
+        "Admin-gated offer-SoT recompute. Defaults to dry-run preview, filters optionally by "
+        "offer_id and visible_only, and returns the same classified counters as the legacy "
+        "default-matrix backfill without reading material_defaults."
+    ),
+)
+async def offer_recompute_estimates(
+    body: OfferRecomputeRequest,
+    request: Request,
+    source: Annotated[VendoredProfileSource, Depends(get_policy_profile_source)],
+    _user_id: uuid.UUID = current_admin,
+) -> DefaultMatrixBackfillResponse:
+    return await _run_offer_recompute(body=body, request=request, source=source)
 
 
 @router.post(
