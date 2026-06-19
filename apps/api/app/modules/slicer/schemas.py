@@ -577,3 +577,31 @@ class FilamentOverrideDeleteRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     spoolman_filament_ref: str
+
+
+class DefaultMatrixBackfillRequest(BaseModel):
+    """Body for POST /api/admin/policy/default-matrix-backfill."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    dry_run: bool = True
+    include_overrides: bool = False
+    material: str | None = None
+    offer_id: str | None = None
+
+
+class DefaultMatrixBackfillResponse(BaseModel):
+    """Classified counters for default-matrix backfill preview/enqueue."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    dry_run: bool
+    inspected: int = 0
+    cells_total: int = 0
+    cells_resolved: int = 0
+    cells_resolve_failed: int = 0
+    enqueued: int = 0
+    already_fresh: int = 0
+    missing_stl: int = 0
+    errors: int = 0
+    would_enqueue: int = 0

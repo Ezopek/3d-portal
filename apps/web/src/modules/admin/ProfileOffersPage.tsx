@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -12,6 +13,7 @@ import { useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type {
+  DefaultMatrixBackfillResponse,
   MaterialClass,
   OfferValidationState,
   OfferVisibility,
@@ -29,6 +31,12 @@ import {
 import { useDeleteProfileOffer } from "@/modules/admin/hooks/useDeleteProfileOffer";
 import { useProfileLibrary } from "@/modules/admin/hooks/useProfileLibrary";
 import { useProfileOffers } from "@/modules/admin/hooks/useProfileOffers";
+import {
+  useDefaultMatrixBackfill,
+  useDeleteMaterialDefault,
+  useProfilePolicy,
+  useUpsertMaterialDefault,
+} from "@/modules/admin/hooks/useProfilePolicy";
 import { useRepublishProfileOffer } from "@/modules/admin/hooks/useRepublishProfileOffer";
 import { useUpdateProfileOffer } from "@/modules/admin/hooks/useUpdateProfileOffer";
 import { Button } from "@/ui/button";
@@ -578,16 +586,13 @@ function OfferRow({
   function handleRepublish() {
     setLocalError(null);
     if (!offer.published_stl_hash) {
-      setLocalError(
-        t("modules.admin.offers.republish.missing_stl_hash"),
-      );
+      setLocalError(t("modules.admin.offers.republish.missing_stl_hash"));
       return;
     }
     republish.mutate(
       { offerId: offer.offer_id, stlHash: offer.published_stl_hash },
       {
-        onError: () =>
-          setLocalError(t("modules.admin.offers.republish.error")),
+        onError: () => setLocalError(t("modules.admin.offers.republish.error")),
       },
     );
   }
@@ -716,6 +721,336 @@ function FilterChip({
   );
 }
 
+function BackfillSummary({
+  summary,
+}: {
+  summary: DefaultMatrixBackfillResponse;
+}) {
+  const { t } = useTranslation();
+  const counters = [
+    "inspected",
+    "cells_total",
+    "cells_resolved",
+    "cells_resolve_failed",
+    "would_enqueue",
+    "enqueued",
+    "already_fresh",
+    "missing_stl",
+    "errors",
+  ] as const;
+  return (
+    <dl className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+      {counters.map((key) => (
+        <div
+          key={key}
+          className="rounded-md border border-border bg-muted/30 p-2"
+        >
+          <dt className="text-xs text-muted-foreground">
+            {t(`modules.admin.profileOffers.policy.backfill.counter.${key}`)}
+          </dt>
+          <dd className="text-sm font-semibold text-foreground">
+            {summary[key]}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+export function ProfilePolicyPanel() {
+  const { t } = useTranslation();
+  // Collapsed by default: the policy/backfill controls are an occasional admin task, so they
+  // start as a compact summary header below the offers heading and NEVER cover the primary
+  // offer actions (compose / per-row expanders). The policy fetch is gated on `open` so a
+  // closed panel keeps a stable height (no loading→loaded shift) and skips an admin API call.
+  const [open, setOpen] = useState(false);
+  const policy = useProfilePolicy(open);
+  const upsertDefault = useUpsertMaterialDefault();
+  const deleteDefault = useDeleteMaterialDefault();
+  const backfill = useDefaultMatrixBackfill();
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [enabledDrafts, setEnabledDrafts] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [backfillMaterial, setBackfillMaterial] = useState("");
+  const [confirmRun, setConfirmRun] = useState(false);
+
+  const configuredDefaults = useMemo(
+    () => policy.data?.policy.material_defaults ?? {},
+    [policy.data?.policy.material_defaults],
+  );
+  const materials = useMemo(() => {
+    const keys = new Set<string>(MATERIAL_CATEGORIES);
+    for (const material of Object.keys(configuredDefaults)) keys.add(material);
+    for (const material of policy.data?.spoolman_materials ?? [])
+      keys.add(material.material);
+    return Array.from(keys).sort();
+  }, [configuredDefaults, policy.data?.spoolman_materials]);
+  const hasEnabledDefault = Object.values(configuredDefaults).some(
+    (entry) => entry.enabled,
+  );
+  const profileNames = policy.data?.orca_filament_profile_names ?? [];
+  const policyError =
+    policy.isError || upsertDefault.isError || deleteDefault.isError;
+  const backfillDisabled = !hasEnabledDefault || backfill.isPending;
+  const ChevronIcon = open ? ChevronDown : ChevronRight;
+
+  function profileFor(material: string): string {
+    return (
+      drafts[material] ??
+      configuredDefaults[material]?.orca_filament_profile_ref ??
+      ""
+    );
+  }
+
+  function enabledFor(material: string): boolean {
+    return (
+      enabledDrafts[material] ?? configuredDefaults[material]?.enabled ?? true
+    );
+  }
+
+  function saveDefault(material: string) {
+    const ref = profileFor(material).trim();
+    if (!ref) return;
+    upsertDefault.mutate({
+      material,
+      body: { orca_filament_profile_ref: ref, enabled: enabledFor(material) },
+    });
+  }
+
+  function runBackfill(dryRun: boolean) {
+    backfill.mutate({
+      dry_run: dryRun,
+      include_overrides: false,
+      material: backfillMaterial === "" ? null : backfillMaterial,
+    });
+  }
+
+  return (
+    <section className="flex flex-col gap-4 rounded-md border border-border bg-card p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-sm font-semibold text-foreground">
+            {t("modules.admin.profileOffers.policy.title")}
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            {t("modules.admin.profileOffers.policy.description")}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <ChevronIcon className="size-4" aria-hidden="true" />
+          {t(
+            open
+              ? "modules.admin.profileOffers.policy.collapse"
+              : "modules.admin.profileOffers.policy.expand",
+          )}
+        </Button>
+      </div>
+
+      {open ? (
+        <>
+          {policyError ? (
+            <p className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
+              {t("modules.admin.profileOffers.policy.error")}
+            </p>
+          ) : null}
+
+          {policy.isLoading ? (
+            <div
+              className="h-24 animate-pulse rounded-md bg-muted"
+              aria-hidden="true"
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="text-xs text-muted-foreground">
+                  <tr className="border-b border-border text-left">
+                    <th className="py-2 pr-3 font-medium">
+                      {t("modules.admin.profileOffers.policy.material")}
+                    </th>
+                    <th className="py-2 pr-3 font-medium">
+                      {t("modules.admin.profileOffers.policy.profile")}
+                    </th>
+                    <th className="py-2 pr-3 font-medium">
+                      {t("modules.admin.profileOffers.policy.enabled")}
+                    </th>
+                    <th className="py-2 font-medium">
+                      {t("modules.admin.profileOffers.policy.actions")}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {materials.map((material) => {
+                    const hasEntry = configuredDefaults[material] !== undefined;
+                    return (
+                      <tr key={material} className="border-b border-border/60">
+                        <td className="py-2 pr-3 font-medium text-foreground">
+                          {material}
+                        </td>
+                        <td className="py-2 pr-3">
+                          <input
+                            list="orca-filament-profiles"
+                            value={profileFor(material)}
+                            onChange={(event) =>
+                              setDrafts((prev) => ({
+                                ...prev,
+                                [material]: event.target.value,
+                              }))
+                            }
+                            className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground"
+                            aria-label={t(
+                              "modules.admin.profileOffers.policy.profileFor",
+                              { material },
+                            )}
+                          />
+                        </td>
+                        <td className="py-2 pr-3">
+                          <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                            <input
+                              type="checkbox"
+                              checked={enabledFor(material)}
+                              onChange={(event) =>
+                                setEnabledDrafts((prev) => ({
+                                  ...prev,
+                                  [material]: event.target.checked,
+                                }))
+                              }
+                            />
+                            {t(
+                              "modules.admin.profileOffers.policy.enabledShort",
+                            )}
+                          </label>
+                        </td>
+                        <td className="py-2">
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={
+                                !profileFor(material).trim() ||
+                                upsertDefault.isPending
+                              }
+                              onClick={() => saveDefault(material)}
+                            >
+                              {t("modules.admin.profileOffers.policy.save")}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={!hasEntry || deleteDefault.isPending}
+                              onClick={() => deleteDefault.mutate(material)}
+                            >
+                              {t("modules.admin.profileOffers.policy.delete")}
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <datalist id="orca-filament-profiles">
+                {profileNames.map((name) => (
+                  <option key={name} value={name} />
+                ))}
+              </datalist>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3 rounded-md border border-border bg-muted/20 p-3">
+            <div className="flex flex-col gap-1">
+              <h3 className="text-sm font-medium text-foreground">
+                {t("modules.admin.profileOffers.policy.backfill.title")}
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                {t("modules.admin.profileOffers.policy.backfill.description")}
+              </p>
+            </div>
+            {!hasEnabledDefault ? (
+              <p className="text-xs text-warning">
+                {t("modules.admin.profileOffers.policy.backfill.noDefaults")}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                {t(
+                  "modules.admin.profileOffers.policy.backfill.materialFilter",
+                )}
+                <select
+                  value={backfillMaterial}
+                  onChange={(event) => setBackfillMaterial(event.target.value)}
+                  className="rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground"
+                >
+                  <option value="">
+                    {t(
+                      "modules.admin.profileOffers.policy.backfill.allMaterials",
+                    )}
+                  </option>
+                  {Object.entries(configuredDefaults)
+                    .filter(([, entry]) => entry.enabled)
+                    .map(([material]) => (
+                      <option key={material} value={material}>
+                        {material}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={backfillDisabled}
+                onClick={() => runBackfill(true)}
+              >
+                {t("modules.admin.profileOffers.policy.backfill.inspect")}
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                disabled={backfillDisabled}
+                onClick={() => setConfirmRun(true)}
+              >
+                {t("modules.admin.profileOffers.policy.backfill.run")}
+              </Button>
+              <Link
+                to="/admin/queues"
+                className="inline-flex h-7 items-center rounded-md px-2.5 text-[0.8rem] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                {t("modules.admin.profileOffers.policy.backfill.queues")}
+              </Link>
+            </div>
+            {backfill.isError ? (
+              <p className="text-xs text-destructive">
+                {t("modules.admin.profileOffers.policy.backfill.error")}
+              </p>
+            ) : null}
+            {backfill.data ? <BackfillSummary summary={backfill.data} /> : null}
+          </div>
+        </>
+      ) : null}
+
+      <ConfirmDialog
+        open={confirmRun}
+        onOpenChange={setConfirmRun}
+        title={t("modules.admin.profileOffers.policy.backfill.confirmTitle")}
+        description={t(
+          "modules.admin.profileOffers.policy.backfill.confirmDescription",
+        )}
+        pending={backfill.isPending}
+        onConfirm={() => {
+          runBackfill(false);
+          setConfirmRun(false);
+        }}
+      />
+    </section>
+  );
+}
+
 /**
  * PROFILE-OFFER-1 (AC-17) — the admin PrintProfileOffer composition surface.
  *
@@ -773,6 +1108,8 @@ export function ProfileOffersPage() {
           {t("modules.admin.profileOffers.description")}
         </p>
       </header>
+
+      <ProfilePolicyPanel />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-col gap-2">

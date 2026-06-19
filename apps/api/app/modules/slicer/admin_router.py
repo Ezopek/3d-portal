@@ -83,6 +83,8 @@ from app.modules.slicer.schemas import (
     AdminProfileProvenance,
     AdminProfileSlot,
     AdminProfileStatus,
+    DefaultMatrixBackfillRequest,
+    DefaultMatrixBackfillResponse,
     FilamentOverrideDeleteRequest,
     FilamentOverrideUpsert,
     MaterialDefaultUpsert,
@@ -1429,6 +1431,118 @@ def _policy_entity_id(discriminator: str) -> uuid.UUID:
     return uuid.uuid5(uuid.NAMESPACE_URL, f"slicer_policy:{discriminator}")
 
 
+async def _run_default_matrix_backfill(
+    *,
+    body: DefaultMatrixBackfillRequest,
+    request: Request,
+    store: ProfilePolicyStore,
+    source: VendoredProfileSource,
+) -> DefaultMatrixBackfillResponse:
+    """Preview or enqueue the published-offer x material-default estimate matrix."""
+    if body.include_overrides:
+        raise _reject(
+            422,
+            "include_overrides_not_supported",
+            "HTTP backfill is limited to material defaults; filament overrides stay opt-in-only",
+        )
+
+    material_filter = None
+    if body.material is not None:
+        material_filter = normalize_material(body.material)
+        if not material_filter:
+            raise _reject(422, "invalid_material", "material filter must be non-blank")
+
+    from sqlmodel import select
+
+    from app.core.db.models import ModelFile, ModelFileKind
+    from app.modules.slicer.estimate_store import EstimateStore
+    from app.modules.slicer.matrix_backfill import (
+        enqueue_matrix_for_all_stls,
+        enumerate_matrix_cells,
+        resolve_matrix_cells,
+    )
+    from app.modules.slicer.models import EstimateStatus
+    from app.modules.slicer.profile_offer import list_offers
+    from app.modules.slicer.stl_cache import StlCache, is_content_hash
+    from app.modules.slicer.validation import NullCliValidator
+
+    settings = get_settings()
+    policy = store.load()
+    sidecars = list_offers(source.root)
+    if body.offer_id:
+        sidecars = [s for s in sidecars if s.get("offer_id") == body.offer_id]
+    offers_map = {s.get("offer_id", ""): s for s in sidecars if s.get("offer_id")}
+    cells = enumerate_matrix_cells(sidecars, policy, material_filter=material_filter)
+    resolved = resolve_matrix_cells(
+        cells,
+        source=source,
+        store=BundleStore(settings.slicer_bundle_store_dir),
+        orca_version=settings.orca_version,
+        validator=NullCliValidator(),
+        offers_map=offers_map,
+    )
+    active_cells = [rc for rc in resolved if rc.bundle_hash is not None]
+
+    response = DefaultMatrixBackfillResponse(
+        dry_run=body.dry_run,
+        cells_total=len(resolved),
+        cells_resolved=len(active_cells),
+        cells_resolve_failed=sum(1 for rc in resolved if rc.resolve_failed),
+    )
+
+    estimate_store = EstimateStore(settings.slicer_estimate_store_dir)
+    content_root = settings.portal_content_dir.resolve()
+    with Session(get_engine()) as session:
+        rows = session.exec(select(ModelFile).where(ModelFile.kind == ModelFileKind.stl)).all()
+        response.inspected = len(rows)
+
+        # No resolvable cells (empty policy, all resolve-failed, or filtered to nothing) means
+        # there is nothing to enqueue: skip the STL scan and never touch the queue. This keeps a
+        # real (non-dry) run with an empty policy from failing on the arq availability check.
+        if not active_cells:
+            return response
+
+        if body.dry_run:
+            for row in rows:
+                abs_path = (content_root / row.storage_path).resolve()
+                try:
+                    abs_path.relative_to(content_root)
+                except ValueError:
+                    response.errors += len(active_cells)
+                    continue
+                if not abs_path.is_file():
+                    response.missing_stl += len(active_cells)
+                    continue
+                candidate_stl_hash = row.sha256
+                if not is_content_hash(candidate_stl_hash):
+                    response.errors += len(active_cells)
+                    continue
+                for rc in active_cells:
+                    existing = estimate_store.read(candidate_stl_hash, rc.bundle_hash)
+                    if existing is not None and existing.status == EstimateStatus.fresh:
+                        response.already_fresh += 1
+                    else:
+                        response.would_enqueue += 1
+            return response
+
+        arq_pool = getattr(request.app.state, "arq", None)
+        if arq_pool is None:
+            raise HTTPException(status_code=503, detail="slicer queue unavailable")
+        counters = await enqueue_matrix_for_all_stls(
+            resolved,
+            arq_pool=arq_pool,
+            stl_cache=StlCache(settings.slicer_stl_cache_dir),
+            estimate_store=estimate_store,
+            content_dir=content_root,
+            db_session=session,
+        )
+        response.enqueued = counters.get("enqueued", 0)
+        response.already_fresh = counters.get("already_fresh", 0)
+        response.missing_stl = counters.get("missing_stl", 0)
+        response.errors = counters.get("errors", 0)
+        return response
+
+
 # --- GET /api/admin/policy ---------------------------------------------------
 
 
@@ -1453,6 +1567,32 @@ async def read_policy(
     # get_snapshot() already logs when it soft-fails on an exception (AC-2 single warning).
     policy = store.load()
     return _build_policy_admin_view(policy, snapshot, source)
+
+
+@router.post(
+    "/policy/default-matrix-backfill",
+    response_model=DefaultMatrixBackfillResponse,
+    summary="Preview or enqueue the published-offer x material-default estimate matrix",
+    description=(
+        "Admin-gated explicit control for default-matrix estimate backfill. Defaults to "
+        "dry-run preview, excludes filament overrides, filters optionally by material or "
+        "offer_id, and returns classified counters without exposing raw Orca bodies, gcode, "
+        "bundle hashes, STL paths, or queue internals."
+    ),
+)
+async def default_matrix_backfill(
+    body: DefaultMatrixBackfillRequest,
+    request: Request,
+    store: Annotated[ProfilePolicyStore, Depends(get_policy_store)],
+    source: Annotated[VendoredProfileSource, Depends(get_policy_profile_source)],
+    _user_id: uuid.UUID = current_admin,
+) -> DefaultMatrixBackfillResponse:
+    return await _run_default_matrix_backfill(
+        body=body,
+        request=request,
+        store=store,
+        source=source,
+    )
 
 
 # --- PUT /api/admin/policy/material-defaults/{material} ----------------------

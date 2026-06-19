@@ -672,6 +672,69 @@ export interface OfferPublishResult {
   estimate: unknown | null;
 }
 
+export interface MaterialDefaultPolicyEntry {
+  orca_filament_profile_ref: string;
+  enabled: boolean;
+}
+
+export interface FilamentOverridePolicyEntry {
+  orca_filament_profile_ref: string;
+  enabled: boolean;
+}
+
+export interface ProfilePolicy {
+  material_defaults: Record<string, MaterialDefaultPolicyEntry>;
+  filament_overrides: Record<string, FilamentOverridePolicyEntry>;
+}
+
+export interface SpoolmanMaterialPolicyInfo {
+  material: string;
+  configured: boolean;
+  enabled: boolean | null;
+  orca_filament_profile_ref: string | null;
+}
+
+export interface SpoolmanFilamentPolicyInfo {
+  ref: string;
+  name: string;
+  vendor_name: string | null;
+  material: string | null;
+  has_override: boolean;
+  override: FilamentOverridePolicyEntry | null;
+}
+
+export interface PolicyAdminView {
+  policy: ProfilePolicy;
+  spoolman_materials: SpoolmanMaterialPolicyInfo[];
+  spoolman_filaments: SpoolmanFilamentPolicyInfo[];
+  orca_filament_profile_names: string[];
+}
+
+export interface MaterialDefaultUpsert {
+  orca_filament_profile_ref: string;
+  enabled: boolean;
+}
+
+export interface DefaultMatrixBackfillRequest {
+  dry_run?: boolean;
+  include_overrides?: boolean;
+  material?: string | null;
+  offer_id?: string | null;
+}
+
+export interface DefaultMatrixBackfillResponse {
+  dry_run: boolean;
+  inspected: number;
+  cells_total: number;
+  cells_resolved: number;
+  cells_resolve_failed: number;
+  enqueued: number;
+  already_fresh: number;
+  missing_stl: number;
+  errors: number;
+  would_enqueue: number;
+}
+
 // --- Story 36.1 — member-facing published offer DTOs ---
 // Mirrors slicer/schemas.py MemberPublishedOfferView.
 // NFR24-LEAKFENCE-1: bundle_hash / raw chain block IDs / sidecar paths ABSENT.

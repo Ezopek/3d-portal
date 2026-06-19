@@ -11,7 +11,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  * serve a deterministic 12-triangle cube fixture so the WebGL render is
  * stable across machines (within Playwright's pixel-ratio tolerance).
  */
-export async function stubViewerStl(page: Page, modelId: string, fileId: string) {
+export async function stubViewerStl(
+  page: Page,
+  modelId: string,
+  fileId: string,
+) {
   const cube = readFileSync(join(__dirname, "fixtures", "cube.stl"));
   await page.route(
     `**/api/models/${modelId}/files/${fileId}/content**`,
@@ -157,7 +161,12 @@ export async function stubSotList(page: Page) {
       contentType: "application/json",
       body: JSON.stringify([
         { id: "tag-1", slug: "dragon", name_en: "Dragon", name_pl: "Smok" },
-        { id: "tag-2", slug: "articulated", name_en: "Articulated", name_pl: null },
+        {
+          id: "tag-2",
+          slug: "articulated",
+          name_en: "Articulated",
+          name_pl: null,
+        },
       ]),
     }),
   );
@@ -186,7 +195,12 @@ export async function stubSotList(page: Page) {
             created_at: "2026-04-12T00:00:00Z",
             updated_at: "2026-04-12T00:00:00Z",
             tags: [
-              { id: "tag-1", slug: "dragon", name_en: "Dragon", name_pl: "Smok" },
+              {
+                id: "tag-1",
+                slug: "dragon",
+                name_en: "Dragon",
+                name_pl: "Smok",
+              },
             ],
             gallery_file_ids: [
               "f1111111-1111-1111-1111-111111111111",
@@ -254,22 +268,87 @@ export async function stubSotDetail(page: Page) {
         updated_at: "2026-04-12T00:00:00Z",
         tags: [
           { id: "t1", slug: "dragon", name_en: "Dragon", name_pl: "Smok" },
-          { id: "t2", slug: "articulated", name_en: "Articulated", name_pl: null },
+          {
+            id: "t2",
+            slug: "articulated",
+            name_en: "Articulated",
+            name_pl: null,
+          },
         ],
-        category: { id: "c1", parent_id: null, slug: "decorations", name_en: "Decorations", name_pl: "Dekoracje" },
+        category: {
+          id: "c1",
+          parent_id: null,
+          slug: "decorations",
+          name_en: "Decorations",
+          name_pl: "Dekoracje",
+        },
         files: [
-          { id: "f1", model_id: id, kind: "stl", original_name: "dragon.stl", storage_path: "", sha256: "", size_bytes: 1234567, mime_type: "model/stl", position: null, created_at: "" },
-          { id: "f2", model_id: id, kind: "image", original_name: "iso.png", storage_path: "", sha256: "", size_bytes: 1024, mime_type: "image/png", position: null, created_at: "" },
+          {
+            id: "f1",
+            model_id: id,
+            kind: "stl",
+            original_name: "dragon.stl",
+            storage_path: "",
+            sha256: "",
+            size_bytes: 1234567,
+            mime_type: "model/stl",
+            position: null,
+            created_at: "",
+          },
+          {
+            id: "f2",
+            model_id: id,
+            kind: "image",
+            original_name: "iso.png",
+            storage_path: "",
+            sha256: "",
+            size_bytes: 1024,
+            mime_type: "image/png",
+            position: null,
+            created_at: "",
+          },
         ],
         prints: [
-          { id: "p1", model_id: id, photo_file_id: "f2", printed_at: "2026-04-30", note: "Printed in PETG 0.2mm", created_at: "", updated_at: "" },
+          {
+            id: "p1",
+            model_id: id,
+            photo_file_id: "f2",
+            printed_at: "2026-04-30",
+            note: "Printed in PETG 0.2mm",
+            created_at: "",
+            updated_at: "",
+          },
         ],
         notes: [
-          { id: "n1", model_id: id, kind: "description", body: "Articulated dragon for Bambu A1.", author_id: null, created_at: "", updated_at: "" },
-          { id: "n2", model_id: id, kind: "operational", body: "0.2mm layer, supports off", author_id: null, created_at: "", updated_at: "" },
+          {
+            id: "n1",
+            model_id: id,
+            kind: "description",
+            body: "Articulated dragon for Bambu A1.",
+            author_id: null,
+            created_at: "",
+            updated_at: "",
+          },
+          {
+            id: "n2",
+            model_id: id,
+            kind: "operational",
+            body: "0.2mm layer, supports off",
+            author_id: null,
+            created_at: "",
+            updated_at: "",
+          },
         ],
         external_links: [
-          { id: "el1", model_id: id, source: "printables", external_id: "12345", url: "https://printables.com/m/12345", created_at: "", updated_at: "" },
+          {
+            id: "el1",
+            model_id: id,
+            source: "printables",
+            external_id: "12345",
+            url: "https://printables.com/m/12345",
+            created_at: "",
+            updated_at: "",
+          },
         ],
       }),
     }),
@@ -318,7 +397,10 @@ export async function stubProfileLibrary(
           status: opts.postRejection.status,
           contentType: "application/json",
           body: JSON.stringify({
-            detail: { reason_category: opts.postRejection.reason_category, message: "rejected" },
+            detail: {
+              reason_category: opts.postRejection.reason_category,
+              message: "rejected",
+            },
           }),
         });
       }
@@ -329,9 +411,17 @@ export async function stubProfileLibrary(
       });
     }
     if (method === "DELETE") {
-      return route.fulfill({ status: 204, contentType: "application/json", body: "" });
+      return route.fulfill({
+        status: 204,
+        contentType: "application/json",
+        body: "",
+      });
     }
-    return route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+    return route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: "{}",
+    });
   });
 }
 
@@ -349,10 +439,70 @@ export async function stubProfileOffers(
     offers?: unknown[];
     library?: unknown[];
     postRejection?: { status: number; reason_category: string };
+    /** Curated `GET /api/admin/policy` view for the (collapsed-by-default) policy panel. */
+    policy?: unknown;
+    /** Curated `POST /api/admin/policy/default-matrix-backfill` summary. */
+    backfill?: unknown;
   } = {},
 ) {
   const offers = opts.offers ?? [];
   const library = opts.library ?? [];
+  const policy = opts.policy ?? {
+    policy: { material_defaults: {}, filament_overrides: {} },
+    spoolman_materials: [],
+    spoolman_filaments: [],
+    orca_filament_profile_names: [],
+  };
+  // Policy/backfill surface (ProfilePolicyPanel). The panel only fetches once expanded, but we
+  // register these unconditionally so the expanded-panel baseline is deterministic and no
+  // unstubbed /api/admin/policy 404 ever reaches the page. Order matters: the most specific
+  // sub-paths are registered last so Playwright (reverse match order) prefers them.
+  await page.route("**/api/admin/policy", (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(policy),
+    }),
+  );
+  await page.route(
+    "**/api/admin/policy/material-defaults/**",
+    (route: Route) => {
+      if (route.request().method() === "DELETE") {
+        return route.fulfill({
+          status: 204,
+          contentType: "application/json",
+          body: "",
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(policy),
+      });
+    },
+  );
+  await page.route(
+    "**/api/admin/policy/default-matrix-backfill**",
+    (route: Route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          opts.backfill ?? {
+            dry_run: true,
+            inspected: 0,
+            cells_total: 0,
+            cells_resolved: 0,
+            cells_resolve_failed: 0,
+            would_enqueue: 0,
+            enqueued: 0,
+            already_fresh: 0,
+            missing_stl: 0,
+            errors: 0,
+          },
+        ),
+      }),
+  );
   await page.route("**/api/admin/profiles/library**", (route: Route) =>
     route.fulfill({
       status: 200,
@@ -375,7 +525,10 @@ export async function stubProfileOffers(
           status: opts.postRejection.status,
           contentType: "application/json",
           body: JSON.stringify({
-            detail: { reason_category: opts.postRejection.reason_category, message: "rejected" },
+            detail: {
+              reason_category: opts.postRejection.reason_category,
+              message: "rejected",
+            },
           }),
         });
       }
@@ -393,9 +546,17 @@ export async function stubProfileOffers(
       });
     }
     if (method === "DELETE") {
-      return route.fulfill({ status: 204, contentType: "application/json", body: "" });
+      return route.fulfill({
+        status: 204,
+        contentType: "application/json",
+        body: "",
+      });
     }
-    return route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+    return route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: "{}",
+    });
   });
 }
 

@@ -783,10 +783,12 @@ def test_slicer_module_mounts_only_narrow_estimates_read_router():
     # (Decision AM) added the FOUR separate-block library routes; PROFILE-OFFER-1
     # (Decision AN) added the FIVE PrintProfileOffer CRUD routes; PROFILE-PUBLISH-1
     # (Decision AR) adds exactly TWO publish-state POSTs:
-    # /profiles/offers/{offer_id}/publish and .../unpublish. Fence the surface with equal
-    # rigor: exactly SIX GETs (grid inventory + library list + library detail + offer list +
-    # offer detail + policy read), SIX POSTs (grid import + library import + offer create +
-    # offer publish + offer unpublish + filament override upsert), EXACTLY ONE PATCH
+    # /profiles/offers/{offer_id}/publish and .../unpublish; E39.1 (profile policy
+    # backfill) adds exactly ONE more POST /policy/default-matrix-backfill. Fence the
+    # surface with equal rigor: exactly SIX GETs (grid inventory + library list +
+    # library detail + offer list + offer detail + policy read), SEVEN POSTs (grid import +
+    # library import + offer create + offer publish + offer unpublish + filament override
+    # upsert + policy default-matrix backfill), EXACTLY ONE PATCH
     # (offer edit; chain not patchable), EXACTLY FOUR DELETEs (library delete +
     # offer delete + two policy deletes), and EXACTLY ONE PUT (material-default upsert).
     # The publish POST is the sanctioned first admin route that reaches the append-only
@@ -803,12 +805,13 @@ def test_slicer_module_mounts_only_narrow_estimates_read_router():
     assert '"/profiles/offers/{offer_id}"' in admin_text
     assert '"/policy"' in admin_text
     # The sanctioned POSTs are grid import, library import, offer create, publish,
-    # unpublish, and filament override upsert.
-    assert admin_text.count("@router.post") == 6
+    # unpublish, filament override upsert, and policy default-matrix backfill.
+    assert admin_text.count("@router.post") == 7
     assert '"/profiles/import"' in admin_text
     assert '"/profiles/offers/{offer_id}/publish"' in admin_text
     assert '"/profiles/offers/{offer_id}/unpublish"' in admin_text
     assert '"/policy/filament-overrides"' in admin_text
+    assert '"/policy/default-matrix-backfill"' in admin_text
     assert admin_text.count("@router.put") == 1
     assert '"/policy/material-defaults/{material}"' in admin_text
     # Exactly ONE patch (the sanctioned offer edit); the chain is immutable (delete + recreate).

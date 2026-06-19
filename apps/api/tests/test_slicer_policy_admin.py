@@ -47,8 +47,9 @@ _KNOWN_PROFILES = {"Generic PLA", "Generic PETG"}
 class _FakeSource:
     """Minimal stub that satisfies the system_tree() seam used by the policy admin routes."""
 
-    def __init__(self, filament_profile_names: set[str] | None = None) -> None:
+    def __init__(self, filament_profile_names: set[str] | None = None, root=None) -> None:
         self._names = filament_profile_names or _KNOWN_PROFILES
+        self.root = root
 
     def system_tree(self) -> dict[str, dict]:
         # Return minimal bodies that classify_profile() tags as "filament"
@@ -87,7 +88,7 @@ def client_with_policy(tmp_path, monkeypatch):
 
     policy_store = ProfilePolicyStore(tmp_path)
     fake_snap = _make_snapshot()
-    fake_source = _FakeSource()
+    fake_source = _FakeSource(root=tmp_path)
 
     app = create_app()
     app.dependency_overrides[get_policy_store] = lambda: policy_store
@@ -756,3 +757,150 @@ def test_put_material_default_matrix_hook_exception_does_not_prevent_200(
         cookies=_admin_cookie(),
     )
     assert r.status_code == 200, r.text
+
+
+# === Story E39.1 — POST /api/admin/policy/default-matrix-backfill ============
+
+_BACKFILL_URL = "/api/admin/policy/default-matrix-backfill"
+
+
+def _active_resolved_cell(bundle_hash: str = "bundle-hash-001"):
+    """Build a ResolvedMatrixCell with a non-None bundle_hash (an "active" cell)."""
+    from app.modules.slicer.matrix_backfill import MatrixCell, ResolvedMatrixCell
+
+    return ResolvedMatrixCell(
+        cell=MatrixCell(
+            offer_id="offer-1",
+            offer_label="Offer 1",
+            material="PLA",
+            orca_profile_ref="Generic PLA",
+        ),
+        bundle_hash=bundle_hash,
+        profile_selection=None,
+        resolve_failed=False,
+    )
+
+
+def test_default_matrix_backfill_unauthenticated_is_401(client_with_policy):
+    c, _ = client_with_policy
+    r = c.post(_BACKFILL_URL, json={})
+    assert r.status_code == 401
+
+
+def test_default_matrix_backfill_empty_policy_dry_run_zero_cells(client_with_policy):
+    """Empty policy → dry-run preview returns cells_total=0, sane inspected, no enqueue."""
+    c, _store = client_with_policy  # store starts empty
+    r = c.post(_BACKFILL_URL, json={}, cookies=_admin_cookie())
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["dry_run"] is True  # default
+    assert body["cells_total"] == 0
+    assert body["cells_resolved"] == 0
+    assert body["would_enqueue"] == 0
+    assert body["enqueued"] == 0
+    # inspected mirrors the STL-row count of the isolated test DB — present and non-negative
+    assert body["inspected"] >= 0
+
+
+def test_default_matrix_backfill_include_overrides_is_422(client_with_policy):
+    """G-BACKFILL-OPT-IN: the HTTP surface refuses filament overrides."""
+    c, _ = client_with_policy
+    r = c.post(_BACKFILL_URL, json={"include_overrides": True}, cookies=_admin_cookie())
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"]["reason_category"] == "include_overrides_not_supported"
+
+
+def test_default_matrix_backfill_blank_material_is_422(client_with_policy):
+    """A whitespace-only material filter normalizes to blank and is rejected."""
+    c, _ = client_with_policy
+    r = c.post(_BACKFILL_URL, json={"material": "   "}, cookies=_admin_cookie())
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"]["reason_category"] == "invalid_material"
+
+
+def test_default_matrix_backfill_lowercase_material_is_accepted(client_with_policy):
+    """A non-blank material filter is normalized (lowercase → upper) and accepted, not rejected."""
+    c, _ = client_with_policy  # empty policy → no cells, but the filter itself must pass
+    r = c.post(_BACKFILL_URL, json={"material": "pla"}, cookies=_admin_cookie())
+    assert r.status_code == 200, r.text
+    assert r.json()["cells_total"] == 0
+
+
+def test_default_matrix_backfill_dry_run_reports_resolved_cells(client_with_policy, monkeypatch):
+    """Published offer + enabled default → dry-run reports nonzero cells without enqueuing."""
+    c, store = client_with_policy
+    store.save(
+        ProfilePolicy(
+            material_defaults={
+                "PLA": MaterialDefault(orca_filament_profile_ref="Generic PLA", enabled=True)
+            }
+        )
+    )
+    monkeypatch.setattr(
+        "app.modules.slicer.profile_offer.list_offers", lambda root: [{"offer_id": "offer-1"}]
+    )
+    monkeypatch.setattr(
+        "app.modules.slicer.matrix_backfill.resolve_matrix_cells",
+        lambda cells, **_kw: [_active_resolved_cell()],
+    )
+
+    r = c.post(_BACKFILL_URL, json={"dry_run": True}, cookies=_admin_cookie())
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["dry_run"] is True
+    assert body["cells_total"] == 1
+    assert body["cells_resolved"] == 1
+    # No STL rows in the isolated DB → nothing enqueued, but the matrix scope is reported.
+    assert body["enqueued"] == 0
+
+
+def test_default_matrix_backfill_run_maps_enqueue_counters(client_with_policy, monkeypatch):
+    """Non-dry run delegates to enqueue_matrix_for_all_stls and maps its counters back."""
+    c, store = client_with_policy
+    store.save(
+        ProfilePolicy(
+            material_defaults={
+                "PLA": MaterialDefault(orca_filament_profile_ref="Generic PLA", enabled=True)
+            }
+        )
+    )
+    monkeypatch.setattr(
+        "app.modules.slicer.profile_offer.list_offers", lambda root: [{"offer_id": "offer-1"}]
+    )
+    monkeypatch.setattr(
+        "app.modules.slicer.matrix_backfill.resolve_matrix_cells",
+        lambda cells, **_kw: [_active_resolved_cell()],
+    )
+
+    enqueue_calls: list = []
+
+    async def _fake_enqueue(resolved, **_kw):
+        enqueue_calls.append(resolved)
+        return {"enqueued": 4, "already_fresh": 2, "missing_stl": 1, "errors": 0}
+
+    monkeypatch.setattr(
+        "app.modules.slicer.matrix_backfill.enqueue_matrix_for_all_stls", _fake_enqueue
+    )
+    # The app lifespan already populates request.app.state.arq with a real pool (the endpoint
+    # only checks it is non-None before delegating to the mocked enqueue helper above).
+
+    r = c.post(_BACKFILL_URL, json={"dry_run": False}, cookies=_admin_cookie())
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["dry_run"] is False
+    assert body["cells_total"] == 1
+    assert body["cells_resolved"] == 1
+    assert body["enqueued"] == 4
+    assert body["already_fresh"] == 2
+    assert body["missing_stl"] == 1
+    assert len(enqueue_calls) == 1
+
+
+def test_default_matrix_backfill_run_empty_policy_no_queue_no_503(client_with_policy):
+    """A real run with an empty policy short-circuits: no cells, no arq dependency, no 503."""
+    c, _store = client_with_policy  # empty policy, app.state.arq unset
+    r = c.post(_BACKFILL_URL, json={"dry_run": False}, cookies=_admin_cookie())
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["cells_total"] == 0
+    assert body["enqueued"] == 0
