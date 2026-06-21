@@ -62,9 +62,6 @@ services:
       # Append-only estimate cache ROOT (Story 32.3). Like the bundle store this is the
       # ROOT — EstimateStore adds the internal estimates/ child; never an external path.
       SLICER_ESTIMATE_STORE_DIR: ${SLICER_ESTIMATE_STORE_DIR:-/data/content/slicer}
-      # Portal-owned profile-selection policy store ROOT (Story 35.1, Init 23). Single
-      # profile_policy.json on the portal-content volume; read on demand (mtime-cached).
-      SLICER_PROFILE_POLICY_DIR: ${SLICER_PROFILE_POLICY_DIR:-/data/content/slicer}
       SLICER_DEFAULT_MATERIAL_CLASS: ${SLICER_DEFAULT_MATERIAL_CLASS:-PLA}
       SLICER_DEFAULT_QUALITY_TIER: ${SLICER_DEFAULT_QUALITY_TIER:-standard}
       SLICER_DEFAULT_PRINTER_REF: ${SLICER_DEFAULT_PRINTER_REF:-creality-k1-max-microswiss-hf}
@@ -146,9 +143,6 @@ services:
       # Append-only estimate cache ROOT (Story 32.3). Like the bundle store this is the
       # ROOT — EstimateStore adds the internal estimates/ child; never an external path.
       SLICER_ESTIMATE_STORE_DIR: ${SLICER_ESTIMATE_STORE_DIR:-/data/content/slicer}
-      # Portal-owned profile-selection policy store ROOT (Story 35.1, Init 23). Single
-      # profile_policy.json on the portal-content volume; read on demand (mtime-cached).
-      SLICER_PROFILE_POLICY_DIR: ${SLICER_PROFILE_POLICY_DIR:-/data/content/slicer}
       SLICER_DEFAULT_MATERIAL_CLASS: ${SLICER_DEFAULT_MATERIAL_CLASS:-PLA}
       SLICER_DEFAULT_QUALITY_TIER: ${SLICER_DEFAULT_QUALITY_TIER:-standard}
       SLICER_DEFAULT_PRINTER_REF: ${SLICER_DEFAULT_PRINTER_REF:-creality-k1-max-microswiss-hf}

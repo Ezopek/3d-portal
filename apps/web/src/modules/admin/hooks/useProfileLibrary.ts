@@ -6,11 +6,9 @@ import type { ProfileLibraryListResponse, ProfileType } from "@/lib/api-types";
 /**
  * PROFILE-LIB-1 (AC-17) — the operator profile-block inventory list.
  *
- * Cache topology (per the story's enumeration): `staleTime: 0` + `refetchOnMount: "always"`
- * because the admin must see the TRUE current inventory state on entry — the same contract
- * `useAdminProfiles` points to. The key namespace (`["admin","profile-library", …]`) is
- * deliberately DISJOINT from the grid's `["admin","profiles"]`: the two surfaces are
- * independent, so neither cross-invalidates the other.
+ * Cache topology: `staleTime: 0` + `refetchOnMount: "always"` because the
+ * admin must see the TRUE current inventory state on entry. The query key namespace is
+ * `["admin", "profile-library", …]`, independent from Profile Offers.
  */
 export function useProfileLibrary(profileType?: ProfileType) {
   return useQuery<ProfileLibraryListResponse>({

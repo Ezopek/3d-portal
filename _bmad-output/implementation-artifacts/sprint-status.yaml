@@ -272,5 +272,5 @@ development_status:
   40-1-profile-offer-estimate-sot: done
   40-2-admin-offer-recompute-ui: done
   40-3-member-visible-default-offer-selection: done
-  # 40.4 intentionally deferred/gated after assessment; legacy removal is not safe in Epic 40 closeout.
-  40-4-demote-legacy-profile-grid: backlog
+  # 40.4 reopened by explicit operator decision on 2026-06-21: remove legacy profile systems completely.
+  40-4-demote-legacy-profile-grid: done

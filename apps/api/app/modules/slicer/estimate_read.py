@@ -37,12 +37,10 @@ from app.modules.slicer.overrides import (
     map_filament_extra,
     spoolman_filament_ref,
 )
-from app.modules.slicer.profile_policy import EstimateProfileSource, ProfileSelection
 from app.modules.slicer.resolver import VendoredProfileSource, resolve
 from app.modules.slicer.schemas import (
     EstimateView,
     OverrideContextView,
-    ProfileSelectionContextView,
     WarningView,
 )
 from app.modules.slicer.validation import NullCliValidator
@@ -78,17 +76,10 @@ class ResolvedPreset:
     ``bundle_hash`` is the Story 32.1 ``resolve`` output (the estimate-store read key);
     ``pinned_filament`` is the Spoolman filament the preset pins (``None`` when the
     preset has no pin), surfaced for the override-context panel (AC-5).
-
-    ``profile_selection`` and ``selected_filament_name`` are Story 35.3 additive fields
-    (AC-3): ``None`` on the no-filament path and populated by the resolver when a filament
-    profile is selected. ``unavailable_no_profile`` is never carried here — that path raises
-    ``UnavailableProfileError`` before ``ResolvedPreset`` is constructed.
     """
 
     bundle_hash: str
     pinned_filament: SpoolmanFilament | None = None
-    profile_selection: ProfileSelection | None = None
-    selected_filament_name: str | None = None
 
 
 class PresetResolveError(Exception):
@@ -103,25 +94,6 @@ class PresetResolveError(Exception):
         self.reason = reason
 
 
-class UnavailableProfileError(Exception):
-    """No filament profile is configured for the selected filament (Story 35.3, AC-4/AC-5).
-
-    Raised by the resolver when ``select_profile`` returns
-    ``EstimateProfileSource.unavailable_no_profile`` — caught by the router, which returns a
-    200 absent estimate (never a 422). The order/request path stays open (NFR23-NO-BLOCK-1).
-    """
-
-    def __init__(
-        self,
-        *,
-        profile_selection: ProfileSelection,
-        selected_filament_name: str | None,
-    ) -> None:
-        super().__init__("no profile configured for filament")
-        self.profile_selection = profile_selection
-        self.selected_filament_name = selected_filament_name
-
-
 @runtime_checkable
 class EstimateResolver(Protocol):
     """The seam the router depends on (overridable in tests)."""
@@ -130,29 +102,6 @@ class EstimateResolver(Protocol):
 
 
 # === pure projection =========================================================
-
-
-def build_profile_selection_context(
-    profile_selection: ProfileSelection | None,
-    selected_filament_name: str | None = None,
-) -> ProfileSelectionContextView | None:
-    """Project a ``ProfileSelection`` onto the UI-safe ``ProfileSelectionContextView`` (AC-13).
-
-    ``None`` input ⇒ ``None`` (the no-filament path, AC-12). All other sources (including
-    ``unavailable_no_profile``) ⇒ a ``ProfileSelectionContextView`` with the relevant fields.
-    ``orca_filament_profile_ref`` IS the Orca system profile name; the DTO exposes it as
-    ``orca_filament_profile_name`` for readability (``None`` for ``unavailable_no_profile``).
-    Pure + deterministic: no clock, no I/O, same inputs ⇒ same output.
-    """
-    if profile_selection is None:
-        return None
-    return ProfileSelectionContextView(
-        estimate_profile_source=profile_selection.source,
-        selected_material=profile_selection.selected_material,
-        selected_spoolman_filament_ref=profile_selection.selected_spoolman_filament_ref,
-        selected_filament_name=selected_filament_name,
-        orca_filament_profile_name=profile_selection.orca_filament_profile_ref,
-    )
 
 
 def safe_purchase_url(extra: dict[str, str]) -> str | None:
@@ -211,7 +160,6 @@ def project_estimate(
     *,
     override_context: OverrideContextView,
     currency: str | None = ESTIMATE_CURRENCY,
-    profile_selection_context: ProfileSelectionContextView | None = None,
 ) -> EstimateView:
     """Project an ``EstimateRecord`` (or its absence) onto the UI-safe ``EstimateView``.
 
@@ -221,16 +169,12 @@ def project_estimate(
     Orca-key fields are simply not read (they have no DTO slot). For a ``failed`` record
     the numerics are already ``None`` by the model invariant — they project as ``None``,
     never ``0``.
-
-    ``profile_selection_context`` is Story 35.3 additive (AC-3): ``None`` on the no-filament
-    path (backward-compat, AC-1) and populated when a policy context exists.
     """
     if record is None:
         return EstimateView(
             status="absent",
             override_context=override_context,
             currency=currency,
-            profile_selection_context=profile_selection_context,
         )
     return EstimateView(
         status=record.status.value,
@@ -244,7 +188,6 @@ def project_estimate(
         warnings=[WarningView(code=SLICE_WARNING_CODE, message=w.message) for w in record.warnings],
         failure_reason=record.reason,
         override_context=override_context,
-        profile_selection_context=profile_selection_context,
     )
 
 
@@ -322,8 +265,6 @@ class SettingsEstimateResolver:
         )
 
         pinned_filament: SpoolmanFilament | None = None
-        profile_selection: ProfileSelection | None = None
-        selected_filament_name: str | None = None
 
         if intent.spoolman_filament_ref is not None:
             filaments_by_ref = await self._filaments_by_ref()  # ONE read — shared below
@@ -331,26 +272,6 @@ class SettingsEstimateResolver:
             provider: NoopOverrideProvider | SpoolmanOverrideProvider = SpoolmanOverrideProvider(
                 filaments_by_ref
             )
-
-            # Story 35.3 — policy selection reusing the SAME filaments_by_ref map (AC-10).
-            # Lazy import: keeps module load free of policy/selection deps on the no-filament path.
-            from app.modules.slicer.profile_policy import ProfilePolicyStore
-            from app.modules.slicer.profile_selection import select_profile
-
-            policy = ProfilePolicyStore(settings.slicer_profile_policy_dir).load()
-            selection = select_profile(
-                policy=policy,
-                spoolman_filament_ref=intent.spoolman_filament_ref,
-                fallback_material=intent.material_class,
-                filaments_by_ref=filaments_by_ref,
-            )
-            if selection.source == EstimateProfileSource.unavailable_no_profile:
-                raise UnavailableProfileError(
-                    profile_selection=selection,
-                    selected_filament_name=pinned_filament.name if pinned_filament else None,
-                )
-            profile_selection = selection
-            selected_filament_name = pinned_filament.name if pinned_filament else None
         else:
             provider = NoopOverrideProvider()
 
@@ -367,8 +288,6 @@ class SettingsEstimateResolver:
         return ResolvedPreset(
             bundle_hash=outcome.bundle.bundle_hash,
             pinned_filament=pinned_filament,
-            profile_selection=profile_selection,
-            selected_filament_name=selected_filament_name,
         )
 
     async def _filaments_by_ref(self) -> dict[str, SpoolmanFilament]:

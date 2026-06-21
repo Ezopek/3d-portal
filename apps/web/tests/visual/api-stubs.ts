@@ -439,72 +439,12 @@ export async function stubProfileOffers(
     offers?: unknown[];
     library?: unknown[];
     postRejection?: { status: number; reason_category: string };
-    /** Curated `GET /api/admin/policy` view for the (collapsed-by-default) policy panel. */
-    policy?: unknown;
-    /** Curated `POST /api/admin/policy/default-matrix-backfill` summary. */
-    backfill?: unknown;
     /** Curated `POST /api/admin/profiles/offers/recompute-estimates` summary. */
     recompute?: unknown;
   } = {},
 ) {
   const offers = opts.offers ?? [];
   const library = opts.library ?? [];
-  const policy = opts.policy ?? {
-    policy: { material_defaults: {}, filament_overrides: {} },
-    spoolman_materials: [],
-    spoolman_filaments: [],
-    orca_filament_profile_names: [],
-  };
-  // Policy/backfill surface (ProfilePolicyPanel). The panel only fetches once expanded, but we
-  // register these unconditionally so the expanded-panel baseline is deterministic and no
-  // unstubbed /api/admin/policy 404 ever reaches the page. Order matters: the most specific
-  // sub-paths are registered last so Playwright (reverse match order) prefers them.
-  await page.route("**/api/admin/policy", (route: Route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(policy),
-    }),
-  );
-  await page.route(
-    "**/api/admin/policy/material-defaults/**",
-    (route: Route) => {
-      if (route.request().method() === "DELETE") {
-        return route.fulfill({
-          status: 204,
-          contentType: "application/json",
-          body: "",
-        });
-      }
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(policy),
-      });
-    },
-  );
-  await page.route(
-    "**/api/admin/policy/default-matrix-backfill**",
-    (route: Route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(
-          opts.backfill ?? {
-            dry_run: true,
-            inspected: 0,
-            cells_total: 0,
-            cells_resolved: 0,
-            cells_resolve_failed: 0,
-            would_enqueue: 0,
-            enqueued: 0,
-            already_fresh: 0,
-            missing_stl: 0,
-            errors: 0,
-          },
-        ),
-      }),
-  );
   await page.route("**/api/admin/profiles/library**", (route: Route) =>
     route.fulfill({
       status: 200,

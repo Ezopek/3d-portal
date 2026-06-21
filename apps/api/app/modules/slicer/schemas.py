@@ -19,7 +19,6 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.modules.slicer.models import EstimateFailureReason, MaterialClass, QualityTier
-from app.modules.slicer.profile_policy import EstimateProfileSource, FilamentOverride, ProfilePolicy
 
 # The UI estimate status = the Decision AJ ``EstimateStatus`` lifecycle
 # ``{fresh, stale, queued, failed}`` PLUS ``absent`` — a 200 store miss the read
@@ -109,23 +108,6 @@ class QualityTierAvailabilityResponse(BaseModel):
     tiers: list[QualityTierAvailability]
 
 
-class ProfileSelectionContextView(BaseModel):
-    """Policy-selection provenance surfaced alongside an estimate (Story 35.3, FR23-ESTIMATE-API-1).
-
-    Carries ONLY the five DTO-fence fields (AC-2): no ``bundle_hash``, no ``settings_ids``,
-    no raw Orca profile body, no filesystem path, no g-code (FR20-PRESET-1 extended to the
-    policy-source context). ``extra="forbid"`` so an unknown field is caught by the negative-
-    assertion test (AC-2 contract).
-    """
-
-    model_config = ConfigDict(extra="forbid")
-    estimate_profile_source: EstimateProfileSource
-    selected_material: str | None = None
-    selected_spoolman_filament_ref: str | None = None
-    selected_filament_name: str | None = None
-    orca_filament_profile_name: str | None = None
-
-
 class EstimateView(BaseModel):
     """The UI-safe estimate the read endpoint returns (AC-1).
 
@@ -133,9 +115,6 @@ class EstimateView(BaseModel):
     ``status="failed"`` + ``failure_reason`` + every numeric ``None`` (NEVER ``0`` — the
     no-silent-zero contract carries through to the wire). ``filament_cost`` is
     INFORMATIONAL only (AC-9 — no quote/checkout).
-
-    ``profile_selection_context`` is additive (Story 35.3, AC-3): ``None`` on the no-filament
-    path (AC-1 backward-compat) and populated when a filament profile is selected or absent.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -150,7 +129,6 @@ class EstimateView(BaseModel):
     warnings: list[WarningView] = Field(default_factory=list)
     failure_reason: EstimateFailureReason | None = None
     override_context: OverrideContextView
-    profile_selection_context: ProfileSelectionContextView | None = None
     offer_id: str | None = None
 
 
@@ -497,100 +475,6 @@ class RecomputeResponse(BaseModel):
     estimate: EstimateView
 
 
-# === POLICY-ADMIN-1 (FR23-ADMIN-1) — admin policy management surface DTOs ====
-#
-# Six additive DTOs for the GET /api/admin/policy read and the four write mutations.
-# All are ``extra="forbid"`` (AC-11 no-leak contract). No raw Orca profile body,
-# no g-code, no bundle_hash, no filesystem path crosses the wire (AC-11).
-
-
-class SpoolmanMaterialInfo(BaseModel):
-    """Per-normalized-material projection from the live Spoolman snapshot (AC-1).
-
-    ``configured`` is True iff a matching ENABLED entry exists in
-    ``policy.material_defaults``. ``enabled`` is the stored flag or None when the
-    material has no entry yet.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    material: str
-    configured: bool
-    enabled: bool | None = None
-    orca_filament_profile_ref: str | None = None
-
-
-class SpoolmanFilamentPolicyInfo(BaseModel):
-    """Per-filament projection from the Spoolman snapshot + override store (AC-1).
-
-    ``ref`` is the churn-stable ``vendor∥material∥name`` key. ``override`` is the
-    stored ``FilamentOverride`` if one exists, else ``None``.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    ref: str
-    name: str
-    vendor_name: str | None = None
-    material: str | None = None
-    has_override: bool
-    override: FilamentOverride | None = None
-
-
-class PolicyAdminView(BaseModel):
-    """Full policy admin read response (AC-1). Leak-fenced: no Orca internals.
-
-    ``orca_filament_profile_names`` carries names only (string list, AC-11).
-    ``spoolman_materials`` and ``spoolman_filaments`` are empty when the snapshot
-    is unavailable (AC-2 soft-fail path).
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    policy: ProfilePolicy
-    spoolman_materials: list[SpoolmanMaterialInfo]
-    spoolman_filaments: list[SpoolmanFilamentPolicyInfo]
-    orca_filament_profile_names: list[str]
-
-
-class MaterialDefaultUpsert(BaseModel):
-    """Body for PUT /api/admin/policy/material-defaults/{material} (AC-4)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    orca_filament_profile_ref: str
-    enabled: bool = True
-
-
-class FilamentOverrideUpsert(BaseModel):
-    """Body for POST /api/admin/policy/filament-overrides (AC-7)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    spoolman_filament_ref: str
-    orca_filament_profile_ref: str
-    enabled: bool = True
-
-
-class FilamentOverrideDeleteRequest(BaseModel):
-    """Body for DELETE /api/admin/policy/filament-overrides (AC-8)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    spoolman_filament_ref: str
-
-
-class DefaultMatrixBackfillRequest(BaseModel):
-    """Body for POST /api/admin/policy/default-matrix-backfill."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    dry_run: bool = True
-    include_overrides: bool = False
-    material: str | None = None
-    offer_id: str | None = None
-
-
 class OfferRecomputeRequest(BaseModel):
     """Body for POST /api/admin/profiles/offers/recompute-estimates."""
 
@@ -602,8 +486,8 @@ class OfferRecomputeRequest(BaseModel):
     max_cells: int | None = None
 
 
-class DefaultMatrixBackfillResponse(BaseModel):
-    """Classified counters for default-matrix backfill preview/enqueue."""
+class OfferEstimateRecomputeResponse(BaseModel):
+    """Classified counters for offer-driven estimate recompute preview/enqueue."""
 
     model_config = ConfigDict(extra="forbid")
 

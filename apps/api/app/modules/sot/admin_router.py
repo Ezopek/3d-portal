@@ -498,44 +498,6 @@ async def admin_upload_file(
         except Exception as exc:
             logger.warning("thumbnail enqueue failed: %s", exc)
 
-    # Story 35.6 — default-matrix backfill hook (AC-8).
-    # For new STL uploads, pre-compute estimates for every (offer, material_default) pair.
-    # Wrapped in try/except so a backfill failure NEVER 500s the upload response.
-    if kind == ModelFileKind.stl:
-        try:
-            from app.modules.slicer.bundle_store import BundleStore
-            from app.modules.slicer.estimate_store import EstimateStore
-            from app.modules.slicer.ingest import ingest_stl_for_default_matrix
-            from app.modules.slicer.matrix_backfill import load_active_matrix
-            from app.modules.slicer.profile_policy import ProfilePolicyStore
-            from app.modules.slicer.resolver import VendoredProfileSource
-            from app.modules.slicer.stl_cache import StlCache
-            from app.modules.slicer.validation import NullCliValidator
-
-            _settings = get_settings()
-            _source = VendoredProfileSource(_settings.slicer_vendored_profiles_dir)
-            _resolved = load_active_matrix(
-                root=_source.root,
-                policy_store=ProfilePolicyStore(_settings.slicer_profile_policy_dir),
-                source=_source,
-                store=BundleStore(_settings.slicer_bundle_store_dir),
-                orca_version=_settings.orca_version,
-                validator=NullCliValidator(),
-            )
-            await ingest_stl_for_default_matrix(
-                file_row,
-                resolved_cells=_resolved,
-                arq_pool=request.app.state.arq,
-                stl_cache=StlCache(_settings.slicer_stl_cache_dir),
-                estimate_store=EstimateStore(_settings.slicer_estimate_store_dir),
-                content_dir=_settings.portal_content_dir.resolve(),
-            )
-        except Exception:
-            logger.exception(
-                "slicer.matrix_ingest_hook.error",
-                extra={"labels.model_file_id": str(file_row.id)},
-            )
-
     return ModelFileRead.model_validate(file_row)
 
 

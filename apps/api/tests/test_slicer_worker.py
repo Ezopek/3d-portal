@@ -778,49 +778,35 @@ def test_slicer_module_mounts_only_narrow_estimates_read_router():
     # transitions go through the store's guarded mark_queued, never a direct write().
     assert "store.write" not in router_text
 
-    # Story 33.1 (PROFILE-ADMIN-1) added the read-only admin inventory GET; Story 33.2
-    # (PROFILE-ADMIN-2) added the grid import POST /profiles/import; PROFILE-LIB-1
-    # (Decision AM) added the FOUR separate-block library routes; PROFILE-OFFER-1
-    # (Decision AN) added the FIVE PrintProfileOffer CRUD routes; PROFILE-PUBLISH-1
-    # (Decision AR) adds exactly TWO publish-state POSTs:
-    # /profiles/offers/{offer_id}/publish and .../unpublish; E39.1 (profile policy
-    # backfill) adds POST /policy/default-matrix-backfill; E40.1 adds the offer-SoT
-    # POST /profiles/offers/recompute-estimates. Fence the surface with equal rigor:
-    # exactly SIX GETs (grid inventory + library list + library detail + offer list +
-    # offer detail + policy read), EIGHT POSTs (grid import + library import + offer create +
-    # offer publish + offer unpublish + offer recompute + filament override upsert + policy
-    # default-matrix backfill), EXACTLY ONE PATCH
-    # (offer edit; chain not patchable), EXACTLY FOUR DELETEs (library delete +
-    # offer delete + two policy deletes), and EXACTLY ONE PUT (material-default upsert).
-    # The publish POST is the sanctioned first admin route that reaches the append-only
-    # bundle/slice path; the grid intents/system tree remains untouched.
+    # E40.4 removed the legacy policy/grid surfaces, leaving only the Library + Offer surface.
+    # PROFILE-LIB-1 (Decision AM): library list + detail GETs, library import POST, delete.
+    # PROFILE-OFFER-1 (Decision AN): offer list + detail GETs, create POST, patch, delete.
+    # PROFILE-PUBLISH-1 (Decision AR): publish + unpublish POSTs.
+    # E40.1: offer-SoT recompute POST /profiles/offers/recompute-estimates.
+    # Surface fence: FOUR GETs, FIVE POSTs, ONE PATCH, TWO DELETEs. No policy routes.
     admin_router_path = module / "admin_router.py"
     assert admin_router_path.exists()
     admin_text = admin_router_path.read_text(encoding="utf-8")
     assert 'APIRouter(prefix="/api/admin"' in admin_text
-    assert admin_text.count("@router.get") == 6
-    assert '"/profiles"' in admin_text
+    assert admin_text.count("@router.get") == 4
     assert '"/profiles/library"' in admin_text
     assert '"/profiles/library/{block_id}"' in admin_text
     assert '"/profiles/offers"' in admin_text
     assert '"/profiles/offers/{offer_id}"' in admin_text
-    assert '"/policy"' in admin_text
-    # The sanctioned POSTs are grid import, library import, offer create, publish,
-    # unpublish, offer recompute, filament override upsert, and policy default-matrix backfill.
-    assert admin_text.count("@router.post") == 8
-    assert '"/profiles/import"' in admin_text
+    assert '"/policy"' not in admin_text
+    # The sanctioned POSTs are library import, offer create, publish, unpublish, recompute.
+    assert admin_text.count("@router.post") == 5
+    assert '"/profiles/library"' in admin_text
     assert '"/profiles/offers/{offer_id}/publish"' in admin_text
     assert '"/profiles/offers/{offer_id}/unpublish"' in admin_text
     assert '"/profiles/offers/recompute-estimates"' in admin_text
-    assert '"/policy/filament-overrides"' in admin_text
-    assert '"/policy/default-matrix-backfill"' in admin_text
-    assert admin_text.count("@router.put") == 1
-    assert '"/policy/material-defaults/{material}"' in admin_text
+    assert '"/policy/filament-overrides"' not in admin_text
+    assert '"/policy/"' not in admin_text
+    assert admin_text.count("@router.put") == 0
     # Exactly ONE patch (the sanctioned offer edit); the chain is immutable (delete + recreate).
     assert admin_text.count("@router.patch") == 1
-    # Exactly FOUR deletes (library block delete + offer delete + material default +
-    # filament override).
-    assert admin_text.count("@router.delete") == 4
+    # Exactly TWO deletes (library block delete + offer delete).
+    assert admin_text.count("@router.delete") == 2
     # Admin-gated (not public); direct router code does not re-derive queue plumbing or write
     # estimates. Publish delegates to profile_publish instead of hiding a second route path.
     assert "current_admin" in admin_text

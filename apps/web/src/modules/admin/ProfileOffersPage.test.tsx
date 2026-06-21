@@ -28,8 +28,7 @@ import {
 } from "vitest";
 
 import type {
-  DefaultMatrixBackfillResponse,
-  PolicyAdminView,
+  OfferEstimateRecomputeResponse,
   PrintProfileOffer,
   ProfileLibraryBlock,
 } from "@/lib/api-types";
@@ -136,22 +135,9 @@ function offer(overrides: Partial<PrintProfileOffer> = {}): PrintProfileOffer {
   };
 }
 
-function policyView(overrides: Partial<PolicyAdminView> = {}): PolicyAdminView {
-  return {
-    policy: { material_defaults: {}, filament_overrides: {} },
-    spoolman_materials: [],
-    spoolman_filaments: [],
-    orca_filament_profile_names: [
-      "Generic PLA @System",
-      "Generic PETG @System",
-    ],
-    ...overrides,
-  };
-}
-
 function backfillResponse(
-  overrides: Partial<DefaultMatrixBackfillResponse> = {},
-): DefaultMatrixBackfillResponse {
+  overrides: Partial<OfferEstimateRecomputeResponse> = {},
+): OfferEstimateRecomputeResponse {
   return {
     dry_run: true,
     inspected: 4,
@@ -174,12 +160,8 @@ interface FetchState {
   postBody?: unknown;
   patchStatus?: number;
   patchBody?: unknown;
-  /** Default mocked `GET /api/admin/policy` payload (and the body PUT upserts echo back). */
-  policy?: PolicyAdminView;
-  /** Mocked `POST /api/admin/policy/default-matrix-backfill` summary. */
-  backfill?: DefaultMatrixBackfillResponse;
   /** Mocked `POST /api/admin/profiles/offers/recompute-estimates` summary. */
-  recompute?: DefaultMatrixBackfillResponse;
+  recompute?: OfferEstimateRecomputeResponse;
   recomputeStatus?: number;
 }
 
@@ -240,33 +222,6 @@ function installFetch(state: FetchState) {
             headers: { "Content-Type": "application/json" },
           },
         );
-      }
-      // Profile-policy surface (ProfilePolicyPanel) — backfill POST + material-default
-      // upsert/delete + the base view. All keyed off the same `/api/admin/policy` prefix.
-      if (url.includes("/api/admin/policy/default-matrix-backfill")) {
-        return new Response(
-          JSON.stringify(state.backfill ?? backfillResponse()),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        );
-      }
-      if (url.includes("/api/admin/policy/material-defaults/")) {
-        if (method === "DELETE") {
-          return new Response(null, { status: 204 });
-        }
-        // PUT echoes back the (unchanged here) policy view, matching the real upsert.
-        return new Response(JSON.stringify(state.policy ?? policyView()), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (url.includes("/api/admin/policy")) {
-        return new Response(JSON.stringify(state.policy ?? policyView()), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
       }
       return new Response("{}", {
         status: 200,
@@ -330,7 +285,7 @@ describe("ProfileOffersPage (PROFILE-OFFER-1)", () => {
         visible_only: true,
       });
     });
-    expect(await screen.findAllByText(/would enqueue/i)).toHaveLength(2);
+    expect(await screen.findAllByText(/would enqueue/i)).toHaveLength(1);
     expect(screen.getByText("3")).toBeTruthy();
   });
 
@@ -367,26 +322,6 @@ describe("ProfileOffersPage (PROFILE-OFFER-1)", () => {
       await screen.findByRole("button", { name: /inspect current offers/i }),
     );
     expect(await screen.findByText(/recompute request failed/i)).toBeTruthy();
-  });
-
-  it("advanced policy fetch is gated until the legacy panel is opened", async () => {
-    const fetchMock = installFetch({ offers: [] });
-    mount(<ProfileOffersPage />);
-    await screen.findByText(/no offers composed yet/i);
-    expect(
-      fetchMock.mock.calls.some(([url]) =>
-        (typeof url === "string" ? url : String(url)).includes("/api/admin/policy"),
-      ),
-    ).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: /show advanced/i }));
-    await screen.findByText(/advanced \/ legacy material defaults/i);
-    await waitFor(() =>
-      expect(
-        fetchMock.mock.calls.some(([url]) =>
-          (typeof url === "string" ? url : String(url)).includes("/api/admin/policy"),
-        ),
-      ).toBe(true),
-    );
   });
 
   it("renders offers with validation badges across all three states", async () => {
@@ -561,12 +496,6 @@ describe("ProfileOffersPage (PROFILE-OFFER-1)", () => {
         if (url.includes("/api/admin/profiles/offers")) {
           return new Response("{}", { status: 500 });
         }
-        if (url.includes("/api/admin/policy")) {
-          return new Response(JSON.stringify(policyView()), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
         return new Response(JSON.stringify({ blocks: LIBRARY }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -719,86 +648,5 @@ describe("ProfileOffersPage (PROFILE-OFFER-1)", () => {
     fireEvent.click(confirm);
     await waitFor(() => expect(screen.queryByText("Doomed")).toBeNull());
     expect(screen.getByText(/no offers composed yet/i)).toBeTruthy();
-  });
-
-  it("policy panel renders and warns when no material default is enabled", async () => {
-    installFetch({ offers: [] });
-    mount(<ProfileOffersPage />);
-    // The panel is collapsed by default — expand it to reveal the table + backfill controls.
-    fireEvent.click(await screen.findByRole("button", { name: /show advanced/i }));
-    // Panel header proves the policy view resolved (no undefined material_defaults).
-    expect(await screen.findByText(/advanced \/ legacy material defaults/i)).toBeTruthy();
-    // Empty material_defaults → the backfill matrix would be empty, so warn.
-    expect(
-      await screen.findByText(/no enabled material defaults/i),
-    ).toBeTruthy();
-  });
-
-  it("saving a material default PUTs to /material-defaults/PLA with the expected body", async () => {
-    const fetchMock = installFetch({ offers: [] });
-    mount(<ProfileOffersPage />);
-    fireEvent.click(await screen.findByRole("button", { name: /show advanced/i }));
-    const input = await screen.findByLabelText("Orca filament profile for PLA");
-    fireEvent.change(input, { target: { value: "Generic PLA @System" } });
-    const row = input.closest("tr") as HTMLElement;
-    fireEvent.click(within(row).getByRole("button", { name: /^save$/i }));
-
-    await waitFor(() => {
-      const put = fetchMock.mock.calls.find(
-        ([url, init]) =>
-          (typeof url === "string" ? url : String(url)).includes(
-            "/api/admin/policy/material-defaults/PLA",
-          ) && (init?.method ?? "GET").toUpperCase() === "PUT",
-      );
-      expect(put).toBeTruthy();
-      expect(JSON.parse((put?.[1]?.body as string) ?? "{}")).toEqual({
-        orca_filament_profile_ref: "Generic PLA @System",
-        enabled: true,
-      });
-    });
-  });
-
-  it("inspect backfill POSTs dry_run:true and renders the returned counters", async () => {
-    const fetchMock = installFetch({
-      offers: [],
-      policy: policyView({
-        policy: {
-          material_defaults: {
-            PLA: {
-              orca_filament_profile_ref: "Generic PLA @System",
-              enabled: true,
-            },
-          },
-          filament_overrides: {},
-        },
-      }),
-      backfill: backfillResponse({ would_enqueue: 5, inspected: 4 }),
-    });
-    mount(<ProfileOffersPage />);
-    fireEvent.click(await screen.findByRole("button", { name: /show advanced/i }));
-    const inspect = await screen.findByRole("button", {
-      name: /inspect backfill/i,
-    });
-    // The button is gated on an enabled default — wait for the policy fetch to land.
-    await waitFor(() => expect(inspect.hasAttribute("disabled")).toBe(false));
-    fireEvent.click(inspect);
-
-    await waitFor(() => {
-      const post = fetchMock.mock.calls.find(
-        ([url, init]) =>
-          (typeof url === "string" ? url : String(url)).includes(
-            "/api/admin/policy/default-matrix-backfill",
-          ) && (init?.method ?? "GET").toUpperCase() === "POST",
-      );
-      expect(post).toBeTruthy();
-      expect(JSON.parse((post?.[1]?.body as string) ?? "{}")).toMatchObject({
-        dry_run: true,
-        include_overrides: false,
-        material: null,
-      });
-    });
-    // Counter grid surfaces the returned summary (label + value).
-    expect(await screen.findAllByText(/would enqueue/i)).toHaveLength(2);
-    expect(screen.getByText("5")).toBeTruthy();
   });
 });

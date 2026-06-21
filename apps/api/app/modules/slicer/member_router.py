@@ -28,7 +28,6 @@ from app.core.auth.dependencies import current_user
 from app.core.config import get_settings
 from app.modules.slicer.profile_library import read_block
 from app.modules.slicer.profile_offer import list_offers
-from app.modules.slicer.profile_policy import normalize_material
 from app.modules.slicer.profile_publish import PUBLISH_STATE_PUBLISHED
 from app.modules.slicer.schemas import MemberPublishedOfferListResponse, MemberPublishedOfferView
 
@@ -37,6 +36,13 @@ router = APIRouter(prefix="/api/profiles/offers", tags=["profiles", "member"])
 # Quality-tier keywords to match against process block names. Order is significant:
 # checked left-to-right; first match wins. Lowercase comparison applied at match time.
 _QUALITY_TIER_KEYWORDS: tuple[str, ...] = ("aesthetic", "standard", "strong")
+
+
+def _normalize_material(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    trimmed = raw.strip()
+    return trimmed.upper() if trimmed else None
 
 
 def _derive_quality_tier(process_manifest: dict | None) -> str | None:
@@ -99,7 +105,7 @@ async def list_published_offers(
 
     # Optional material filter — normalize to uppercase to match stored categories (AC-8).
     if material is not None:
-        normalized = normalize_material(material)
+        normalized = _normalize_material(material)
         if normalized is None:
             published = []
         else:

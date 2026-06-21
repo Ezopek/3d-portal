@@ -32,23 +32,18 @@ from app.modules.slicer.estimate_read import (
     EstimateResolver,
     PresetResolveError,
     SettingsEstimateResolver,
-    UnavailableProfileError,
     build_override_context,
-    build_profile_selection_context,
     project_estimate,
 )
 from app.modules.slicer.estimate_store import EstimateStore
 from app.modules.slicer.models import EstimateStatus, MaterialClass, PrintIntentPreset, QualityTier
 from app.modules.slicer.profile_library import read_block
 from app.modules.slicer.profile_offer import is_valid_offer_id, read_offer
-from app.modules.slicer.profile_policy import ProfilePolicyStore
 from app.modules.slicer.profile_publish import PUBLISH_STATE_PUBLISHED, publish_state_of
-from app.modules.slicer.profile_selection import select_profile
 from app.modules.slicer.recompute import enqueue_recompute
 from app.modules.slicer.schemas import (
     EstimateView,
     OverrideContextView,
-    ProfileSelectionContextView,
     QualityTierAvailability,
     QualityTierAvailabilityResponse,
     RecomputeRequest,
@@ -98,30 +93,6 @@ def _offer_quality_tier(root: object, sidecar: dict) -> QualityTier:
         if tier in name:
             return tier
     return "standard"
-
-
-def _offer_profile_selection_context(
-    *,
-    material_class: MaterialClass,
-    spoolman_filament_ref: str | None,
-) -> ProfileSelectionContextView | None:
-    """Return E35 policy context for the offer path without live resolving/slicing.
-
-    No Spoolman snapshot read is needed here: when a concrete ref is supplied, exact
-    override lookup uses the ref directly; otherwise material-default selection uses the
-    offer's material fallback. This never changes the published bundle hash.
-    """
-    if spoolman_filament_ref is None:
-        return None
-    settings = get_settings()
-    policy = ProfilePolicyStore(settings.slicer_profile_policy_dir).load()
-    selection = select_profile(
-        policy=policy,
-        spoolman_filament_ref=spoolman_filament_ref,
-        fallback_material=material_class,
-        filaments_by_ref={},
-    )
-    return build_profile_selection_context(selection, None)
 
 
 def _read_published_offer_or_404(root: object, offer_id: str) -> dict:
@@ -279,22 +250,16 @@ async def read_estimate(
             material_class=offer_material_class,
             quality_tier=offer_quality_tier,
         )
-        profile_selection_context = _offer_profile_selection_context(
-            material_class=offer_material_class,
-            spoolman_filament_ref=spoolman_filament_ref,
-        )
         record = store.read(stl_hash, published.published_bundle_hash)
         if record is None:
             return EstimateView(
                 status="not_computed",
                 override_context=override_context,
-                profile_selection_context=profile_selection_context,
                 offer_id=offer_id,
             )
         projected = project_estimate(
             record,
             override_context=override_context,
-            profile_selection_context=profile_selection_context,
         )
         projected.offer_id = offer_id
         return projected
@@ -309,26 +274,8 @@ async def read_estimate(
         printer_ref=printer_ref,
         spoolman_filament_ref=spoolman_filament_ref,
     )
-    # override_context for the unavailable path uses no pinned filament (profile absent).
-    override_context_no_filament = build_override_context(intent, None)
-
     try:
         resolved = await resolver.resolve_preset(intent)
-    except UnavailableProfileError as exc:
-        # Story 35.3 (AC-4): no profile configured → 200 absent, NOT 422.
-        # The order/request path stays open (NFR23-NO-BLOCK-1).
-        # AC-14: log source label only — no filament names, no bodies.
-        logger.info(
-            "slicer.estimate.unavailable_profile",
-            extra={
-                "labels.estimate_profile_source": exc.profile_selection.source.value,
-                "labels.reason": "unconfigured",
-            },
-        )
-        ctx = build_profile_selection_context(exc.profile_selection, exc.selected_filament_name)
-        return project_estimate(
-            None, override_context=override_context_no_filament, profile_selection_context=ctx
-        )
     except PresetResolveError as exc:
         # The preset does not resolve to a bundle (e.g. a vendored profile is absent for
         # this printer/class/tier). A classified, no-internal-leak 422.
@@ -336,13 +283,7 @@ async def read_estimate(
 
     record = store.read(stl_hash, resolved.bundle_hash)
     override_context = build_override_context(intent, resolved.pinned_filament)
-    return project_estimate(
-        record,
-        override_context=override_context,
-        profile_selection_context=build_profile_selection_context(
-            resolved.profile_selection, resolved.selected_filament_name
-        ),
-    )
+    return project_estimate(record, override_context=override_context)
 
 
 @router.post(
@@ -380,68 +321,29 @@ async def recompute_estimate(
         printer_ref=body.printer_ref,
         spoolman_filament_ref=body.spoolman_filament_ref,
     )
-    override_context_no_filament = build_override_context(intent, None)
-
     try:
         resolved = await resolver.resolve_preset(intent)
-    except UnavailableProfileError as exc:
-        # Story 35.3 (AC-5): no profile configured → 200, enqueued=False, no job (NFR23-NO-BLOCK-1).
-        # AC-14: log source label only — no filament names, no bodies.
-        logger.info(
-            "slicer.estimate.unavailable_profile",
-            extra={
-                "labels.estimate_profile_source": exc.profile_selection.source.value,
-                "labels.reason": "unconfigured",
-            },
-        )
-        ctx = build_profile_selection_context(exc.profile_selection, exc.selected_filament_name)
-        return RecomputeResponse(
-            enqueued=False,
-            estimate=project_estimate(
-                None, override_context=override_context_no_filament, profile_selection_context=ctx
-            ),
-        )
     except PresetResolveError as exc:
         # Same classified, no-internal-leak 422 the read endpoint returns for an unresolvable
         # preset — and the enqueue is short-circuited (no job for a preset that has no bundle).
         raise HTTPException(status_code=422, detail="preset not resolvable") from exc
 
     override_context = build_override_context(intent, resolved.pinned_filament)
-    profile_selection_context = build_profile_selection_context(
-        resolved.profile_selection, resolved.selected_filament_name
-    )
     record = store.read(body.stl_hash, resolved.bundle_hash)
 
     # Idempotency / self-DoS guard (R1): a recompute already in flight ('queued') must NOT
-    # re-enqueue — return its still-servable projected estimate untouched. The Story 32.4
-    # _job_id dedupe would drop a duplicate job anyway; short-circuiting here also avoids a
-    # redundant queue round-trip and keeps enqueued=false honest.
+    # re-enqueue — return its still-servable projected estimate untouched.
     if record is not None and record.status == EstimateStatus.queued:
         return RecomputeResponse(
             enqueued=False,
-            estimate=project_estimate(
-                record,
-                override_context=override_context,
-                profile_selection_context=profile_selection_context,
-            ),
+            estimate=project_estimate(record, override_context=override_context),
         )
 
-    # fresh / stale / failed / absent ⇒ enqueue an idempotent by-hash re-slice. Reuse the Story
-    # 32.4 helper BYTE-IDENTICALLY (its own validate_content_hash + slice_job_id + queue name);
-    # do NOT re-derive the job-id/queue constants or hash a source file here.
     await enqueue_recompute(arq_pool, stl_hash=body.stl_hash, bundle_hash=resolved.bundle_hash)
 
-    # fresh / stale ⇒ mark queued (still SERVABLE: last numbers + a "recomputing" banner).
-    # failed ⇒ mark_queued is a no-op (returns the failed record unchanged — never "queued over"
-    # a failure); absent (miss) ⇒ mark_queued returns None (never fabricate a record). In both
-    # cases the honest current state is what we project — no fabricated numbers.
     queued = store.mark_queued(body.stl_hash, resolved.bundle_hash)
     result_record = queued if queued is not None else record
     return RecomputeResponse(
         enqueued=True,
-        estimate=project_estimate(
-            result_record,
-            override_context=override_context,
-            profile_selection_context=profile_selection_context,
-        ),
+        estimate=project_estimate(result_record, override_context=override_context),
     )

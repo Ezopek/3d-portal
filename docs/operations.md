@@ -197,37 +197,15 @@ When deploying to a fresh content volume (no pre-rendered PNGs), enqueue render 
 bash infra/scripts/render-all.sh "<bearer-jwt>"
 ```
 
-**Backfill default-matrix slicer estimates** — Story 35.6 / Initiative 23
+**Recompute Profile Offer slicer estimates** — Epic 40
 
-When material-default profiles are updated or new models added, backfill the bounded default matrix (Catalog STL × Active Offer × Compatible Material Default):
+Profile Offers are the estimate source of truth. Use the admin Profile Offers recompute action, which calls:
 
-```bash
-# 1. Inspect: list what would be enqueued (no write, no enqueue).
-docker compose exec api python3 apps/api/scripts/enqueue_default_matrix_backfill.py --dry-run
-
-# 2. Enqueue: distributes slicing work to the arq slicer-worker.
-docker compose exec api python3 apps/api/scripts/enqueue_default_matrix_backfill.py
+```text
+POST /api/admin/profiles/offers/recompute-estimates
 ```
 
-The script is bounded: it only enqueues `default_material_profile` estimates, NEVER `exact_filament_mapping` unless explicitly requested. deduplication via `(stl_hash, bundle_hash)` prevents redundant slices.
-
-**Backfill WebP thumbnail variants (image-kind ModelFiles)** — Story 13.2 / Decision P
-
-After deploying the Story 13.2 thumbnail pipeline (commit shipping `app/workers/generate_thumbnail.py`), legacy image-kind uploads do not yet have the `<storage_path>.thumb.webp` sibling on disk. New uploads auto-enqueue the variant; pre-pipeline files need a one-shot backfill. The variant endpoint silently serves the full-resolution original when the sibling is missing, so the backfill is non-blocking for users — run it whenever it's convenient post-deploy.
-
-```bash
-# 1. Inspect: list everything that would be enqueued (no write, no enqueue).
-SSH_TARGET=ezope@192.168.2.190 bash infra/scripts/backfill-thumbnails.sh --dry-run --verbose
-
-# 2. Enqueue: distributes Pillow work to the arq worker (fastest path).
-SSH_TARGET=ezope@192.168.2.190 bash infra/scripts/backfill-thumbnails.sh
-
-# 3. (alternative) Inline: render in-process inside the api container.
-#    Slower but produces deterministic per-file feedback in stdout.
-SSH_TARGET=ezope@192.168.2.190 bash infra/scripts/backfill-thumbnails.sh --inline --verbose
-```
-
-The script is idempotent — files that already have a `.thumb.webp` sibling are skipped without enqueueing. Re-runs are safe. Watch worker progress with `docker compose logs -f api worker` on the host. NOT auto-fired by `infra/scripts/deploy.sh`: operator runs once post-deploy.
+The old profile-grid/policy recompute path has been removed.
 
 ## GlitchTip observability — operator runbook
 

@@ -1,20 +1,4 @@
-"""Story 33.1 (PROFILE-ADMIN-1) — read-only admin profile inventory.
-
-A single **admin-gated** ``GET /api/admin/profiles?printer_ref=<ref>`` endpoint that
-enumerates every ``(material_class, quality_tier)`` slot over the named
-``MATERIAL_CLASS_ORDER x QUALITY_TIER_ORDER`` grid and projects, per slot, whether it is
-imported / resolvable / compatible, the single primary status by a fixed precedence, a
-structured reason, and leak-fenced provenance (Decision AK).
-
-Scope fence (AC-10 — read-only / deploy-clean): this router + the ``schemas.py`` DTOs +
-``compatibility.py`` are the only new surfaces. It introduces NO write/upload/multipart
-surface, NO on-disk write, NO ``config.py`` slot, NO Alembic migration, NO slicer-worker
-change. ``resolvable`` REUSES the same ``resolve_preset`` seam that backs
-``GET /api/estimates/quality-tiers`` (AC-5/AC-6 parity) — it does NOT re-derive resolution.
-
-The route carries ``current_admin`` (a default-value ``Depends``), so the Init 6 / Story
-11.4 route-enforcement gate recognises it WITHOUT any ``_PUBLIC_ROUTES`` edit (AC-2).
-"""
+"""Admin router for slicer profile library and offer management."""
 
 from __future__ import annotations
 
@@ -22,7 +6,7 @@ import json
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated, Any, Protocol, runtime_checkable
+from typing import Annotated, Any
 
 from fastapi import (
     APIRouter,
@@ -44,55 +28,13 @@ from app.core.config import get_settings
 from app.core.db.session import get_engine, get_session
 from app.modules.slicer import profile_library, profile_offer, profile_publish
 from app.modules.slicer.bundle_store import BundleStore
-from app.modules.slicer.compatibility import INCOMPATIBLE_REASON, is_compatible
-from app.modules.slicer.estimate_read import (
-    EstimateResolver,
-    PresetResolveError,
-    SettingsEstimateResolver,
-)
-from app.modules.slicer.import_service import (
-    build_manifest,
-    is_safe_printer_ref,
-    is_valid_triple_shape,
-    is_within_intents_root,
-    publish_intent,
-    restore_published_intent,
-    sanitize_original_filename,
-    snapshot_published_intent,
-    validate_import,
-)
-from app.modules.slicer.models import (
-    MaterialClass,
-    PrintIntentPreset,
-    QualityTier,
-    ResolveFailure,
-)
-from app.modules.slicer.overrides import spoolman_filament_ref as _spoolman_filament_ref
-from app.modules.slicer.profile_policy import (
-    FilamentOverride,
-    MaterialDefault,
-    ProfilePolicy,
-    ProfilePolicyStore,
-    normalize_material,
-    unknown_profile_refs,
-)
 from app.modules.slicer.resolver import VendoredProfileSource
-from app.modules.slicer.router import QUALITY_TIER_ORDER
 from app.modules.slicer.schemas import (
-    AdminProfileInventoryResponse,
-    AdminProfileProvenance,
-    AdminProfileSlot,
-    AdminProfileStatus,
-    DefaultMatrixBackfillRequest,
-    DefaultMatrixBackfillResponse,
-    FilamentOverrideDeleteRequest,
-    FilamentOverrideUpsert,
-    MaterialDefaultUpsert,
+    OfferEstimateRecomputeResponse,
     OfferPublishRequest,
     OfferPublishResult,
     OfferRecomputeRequest,
     OfferVisibility,
-    PolicyAdminView,
     PrintProfileOffer,
     PrintProfileOfferCreate,
     PrintProfileOfferListResponse,
@@ -102,13 +44,9 @@ from app.modules.slicer.schemas import (
     ProfileLibraryBlock,
     ProfileLibraryListResponse,
     ProfileLibraryType,
-    SpoolmanFilamentPolicyInfo,
-    SpoolmanMaterialInfo,
 )
 from app.modules.slicer.stl_cache import StlCache
 from app.modules.slicer.validation import NullCliValidator
-from app.modules.spools.models import SpoolmanSnapshot
-from app.modules.spools.service import SpoolsService
 
 # Upload cap for an imported intent triple (AC-4). An intent triple is a small JSON object
 # ({machine, process, filament} merged Orca key/values) — orders of magnitude below the
@@ -117,145 +55,12 @@ from app.modules.spools.service import SpoolsService
 # legitimate vendored triple is shown to exceed it.
 _MAX_PROFILE_BYTES = 1 * 1024 * 1024  # 1 MiB
 
+_LOG = logging.getLogger("app.modules.slicer.admin_router")
+
 router = APIRouter(prefix="/api/admin", tags=["admin-profiles"])
-
-# Inventory grid material axis, in resolver/UX order (PLA, PETG, PCTG, TPU). The companion
-# tier axis is QUALITY_TIER_ORDER (reused from the estimates router so the two surfaces
-# share one tier-order SoT). Together they are the named FE↔BE grid the FE mirrors.
-MATERIAL_CLASS_ORDER: tuple[MaterialClass, ...] = ("PLA", "PETG", "PCTG", "TPU")
-
-# Structured reason CATEGORIES for the two non-compatibility non-offerable statuses (the
-# FE localizes them). `profile_not_imported` is byte-identical to the string
-# `GET /api/estimates/quality-tiers` already emits, keeping the member/admin reason
-# vocabulary aligned. `incompatible_for_material` lives in compatibility.py (the compat SoT).
-NOT_IMPORTED_REASON = "profile_not_imported"
-NOT_RESOLVABLE_REASON = "not_resolvable"
-
-
-@runtime_checkable
-class ProfileInventorySource(Protocol):
-    """The read-only source seam the inventory depends on (overridable in tests).
-
-    Satisfied by ``VendoredProfileSource``; a test fake can drive ``has_intent`` /
-    ``system_tree_hash`` directly so the four statuses can be exercised without a real
-    vendored tree on disk.
-    """
-
-    def has_intent(self, intent: PrintIntentPreset) -> bool: ...
-
-    def system_tree_hash(self) -> str: ...
-
-    def manifest_label(self, intent: PrintIntentPreset) -> str | None: ...
-
-
-# === pure projection (shared SoT — unit-testable without HTTP) ================
-
-
-def derive_status_and_reason(
-    *, compatible: bool, imported: bool, resolvable: bool
-) -> tuple[AdminProfileStatus, str | None]:
-    """Map the three booleans to the single primary status + structured reason (AC-4).
-
-    Fixed precedence (top wins): Incompatible → Not imported → Not resolvable → Offerable.
-    ``compatible`` is evaluated FIRST and INDEPENDENTLY of import/resolve, so a
-    resolvable-but-incompatible slot reads ``incompatible`` (never "available"). Every
-    non-offerable status carries a non-null category whose name matches the status.
-    """
-    if not compatible:
-        return "incompatible", INCOMPATIBLE_REASON
-    if not imported:
-        return "not_imported", NOT_IMPORTED_REASON
-    if not resolvable:
-        return "not_resolvable", NOT_RESOLVABLE_REASON
-    return "offerable", None
-
-
-def build_slot(
-    material_class: MaterialClass,
-    quality_tier: QualityTier,
-    *,
-    imported: bool,
-    resolvable: bool,
-    provenance: AdminProfileProvenance,
-    portal_label: str | None = None,
-) -> AdminProfileSlot:
-    """Build one inventory slot from the per-dimension facts (the shared per-slot SoT).
-
-    ``compatible`` comes from the compatibility SoT (``compatibility.py``); ``offerable``
-    is the load-bearing conjunction; status/reason follow the AC-4 precedence.
-    ``portal_label`` is the operator label surfaced from the Story 33.2 sidecar manifest
-    (``None`` when no manifest exists — the unchanged 33.1 default); it does NOT replace any
-    live field (AC-10/AC-14). Both the admin grid and the member-selector projection derive
-    from THIS function, so a single test can assert neither surface offers an incompatible
-    slot (AC-8).
-    """
-    compatible = is_compatible(material_class, quality_tier)
-    offerable = imported and resolvable and compatible
-    status, reason = derive_status_and_reason(
-        compatible=compatible, imported=imported, resolvable=resolvable
-    )
-    return AdminProfileSlot(
-        material_class=material_class,
-        quality_tier=quality_tier,
-        imported=imported,
-        resolvable=resolvable,
-        compatible=compatible,
-        offerable=offerable,
-        status=status,
-        reason=reason,
-        portal_label=portal_label,
-        provenance=provenance,
-    )
-
-
-def member_selector_tiers(
-    slots: list[AdminProfileSlot],
-) -> dict[MaterialClass, list[dict[str, object]]]:
-    """Project the inventory onto the member-selector availability (AC-8, the shared SoT).
-
-    Mirrors the FE hybrid: **incompatible** tiers are HIDDEN (omitted entirely — never
-    teased); **compatible** tiers are surfaced with an ``available`` flag (``available ==
-    offerable``) so the FE can disable-with-explanation the compatible-but-unavailable ones.
-    The shared test asserts this projection NEVER surfaces an incompatible
-    ``(material_class, quality_tier)`` — the structural guard against the admin grid and
-    the member selector drifting (FR21-COMPAT-1 verifiable clause, NFR21-NO-422-1).
-    """
-    projection: dict[MaterialClass, list[dict[str, object]]] = {}
-    for slot in slots:
-        if not slot.compatible:
-            continue  # incompatible → hidden from the member surface
-        projection.setdefault(slot.material_class, []).append(
-            {"quality_tier": slot.quality_tier, "available": slot.offerable}
-        )
-    return projection
 
 
 # === DI seams (overridable in tests) =========================================
-
-
-def get_admin_profile_resolver(request: Request) -> EstimateResolver:
-    """The production preset → resolvability resolver (the SAME seam as the estimates read).
-
-    Reuses ``SettingsEstimateResolver`` so ``resolvable`` is computed by the identical
-    ``resolve_preset`` path that backs ``GET /api/estimates/quality-tiers`` (AC-5/AC-6
-    parity). The inventory intents pin no Spoolman filament, so the Redis factory is
-    unused on this path; it is wired through only to match the estimates seam. Overridable
-    in tests via ``app.dependency_overrides``.
-    """
-    redis_factory = getattr(request.app.state, "redis", None)
-    return SettingsEstimateResolver(redis_factory=redis_factory)
-
-
-def get_profile_inventory_source() -> ProfileInventorySource:
-    """The vendored profile source (intent-file presence + system-tree provenance hash).
-
-    Read-only: ``has_intent`` is a pure existence check (backs ``imported``) and
-    ``system_tree_hash`` is a content hash of the vendored system tree (backs provenance).
-    Overridable in tests.
-    """
-    settings = get_settings()
-
-    return VendoredProfileSource(settings.slicer_vendored_profiles_dir)
 
 
 def get_import_profile_source() -> VendoredProfileSource:
@@ -295,251 +100,6 @@ def _reject(status_code: int, reason_category: str, message: str) -> HTTPExcepti
             reason_category=reason_category, message=message
         ).model_dump(),
     )
-
-
-def _slot_id(printer_ref: str, material_class: str, quality_tier: str) -> uuid.UUID:
-    """Deterministic audit entity_id for a slot (stable across re-imports, AC-12)."""
-    return uuid.uuid5(
-        uuid.NAMESPACE_URL, f"slicer_profile:{printer_ref}/{material_class}/{quality_tier}"
-    )
-
-
-@router.post(
-    "/profiles/import",
-    response_model=AdminProfileSlot,
-    status_code=status.HTTP_201_CREATED,
-    summary="Validated import + publish of an Orca intent triple into a slot (admin only)",
-    description=(
-        "Story 33.2 (FR21-PROFILE-IMPORT-1 + FR21-COMPAT-1 enforce). Accepts a multipart "
-        "upload of an intent-triple JSON for the form-specified (printer_ref, material_class, "
-        "quality_tier) slot and publishes it ONLY when it is BOTH structurally resolvable "
-        "(reusing resolve() verbatim against the real system tree) AND compatible for the "
-        "material class (compatibility.py SoT). Gate order: size (413) → shape (422 "
-        "invalid_partial) → compatibility (422 incompatible_for_material) → structural "
-        "resolve (422 classified) → atomic publish → sidecar manifest → audit → 201. Admin-"
-        "gated; not public; CSRF enforced by middleware; no re-slice enqueued (OD-6 deferred)."
-    ),
-    responses={
-        201: {"description": "Profile imported + published"},
-        413: {"description": "Upload exceeds the profile size cap"},
-        422: {"description": "Rejected: malformed / incompatible / not resolvable"},
-    },
-)
-async def import_admin_profile(
-    request: Request,
-    file: Annotated[UploadFile, File(description="The intent-triple JSON (partials only)")],
-    printer_ref: Annotated[str, Form()],
-    material_class: Annotated[MaterialClass, Form()],
-    quality_tier: Annotated[QualityTier, Form()],
-    source: Annotated[VendoredProfileSource, Depends(get_import_profile_source)],
-    portal_label: Annotated[str | None, Form()] = None,
-    _user_id: uuid.UUID = current_admin,
-) -> AdminProfileSlot:
-    settings = get_settings()
-
-    # (1) size cap (413) — read with an explicit ceiling so a non-profile payload cannot
-    # exhaust memory. The target slot is taken from the form fields, NEVER inferred from the
-    # file content (the uploaded JSON is the partials only — AC-3).
-    data = b""
-    while True:
-        chunk = await file.read(64 * 1024)
-        if not chunk:
-            break
-        data += chunk
-        if len(data) > _MAX_PROFILE_BYTES:
-            raise _reject(
-                413,
-                "too_large",
-                f"profile upload exceeds the {_MAX_PROFILE_BYTES}-byte cap",
-            )
-
-    # (2) parse + shape gate (422 invalid_partial) — the SAME {machine,process,filament} dict
-    # shape the resolver applies, mirrored on the UPLOAD before any compatibility/resolve work.
-    try:
-        partials = json.loads(data.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        raise _reject(
-            422,
-            "invalid_partial",
-            "uploaded profile is not valid JSON",
-        ) from None
-    if not is_valid_triple_shape(partials):
-        raise _reject(
-            422,
-            "invalid_partial",
-            "expected an object carrying dict machine/process/filament entries",
-        )
-
-    # (2b) printer_ref path-safety gate (422) — printer_ref is the only attacker-controlled
-    # component joined into the on-disk intent_path (material_class/quality_tier are Literal
-    # enums). Reject traversal/separator/absolute values BEFORE any write so a malicious
-    # printer_ref can never escape <root>/intents (fallback-review Critical fix).
-    if not is_safe_printer_ref(printer_ref):
-        raise _reject(
-            422,
-            "invalid_printer_ref",
-            "printer_ref must be a single safe identifier (no path separators or traversal)",
-        )
-
-    # (3) compatibility gate (422) — cheap, no I/O, BEFORE any disk write or resolve (OD-7).
-    # resolvable ∧ ¬compatible is still NOT offerable: an incompatible slot is never published.
-    if not is_compatible(material_class, quality_tier):
-        raise _reject(
-            422,
-            INCOMPATIBLE_REASON,
-            f"slot {material_class}/{quality_tier} is not compatible for this material class",
-        )
-
-    intent = PrintIntentPreset(
-        name=f"{material_class} {quality_tier}",
-        material_class=material_class,
-        quality_tier=quality_tier,
-        printer_ref=printer_ref,
-        spoolman_filament_ref=None,
-    )
-
-    # (4) structural resolvability gate (422 classified) — reuse resolve() VERBATIM via a
-    # staged source; NOTHING is written until this passes (validate-before-publish, AC-7).
-    outcome = validate_import(
-        partials, intent, real_root=source.root, orca_version=settings.orca_version
-    )
-    if isinstance(outcome, ResolveFailure):
-        raise _reject(422, outcome.reason.value, outcome.message)
-
-    # (4b) belt-and-braces containment — the resolved publish target MUST stay below
-    # <root>/intents even if the syntactic gate were bypassed (defense-in-depth, AC-23).
-    intent_path = source.intent_path(intent)
-    if not is_within_intents_root(source.root, intent_path):
-        raise _reject(
-            422,
-            "invalid_printer_ref",
-            "resolved profile path escapes the vendored intents tree",
-        )
-
-    # (5) atomic publish + (6) sidecar manifest — the validated triple is written in place.
-    # Snapshot the prior pair so a later required side-effect failure (audit) can roll the disk
-    # state back; a request must not return 500 while leaving an unaudited profile live.
-    tree_hash = source.system_tree_hash()
-    original_filename = sanitize_original_filename(file.filename)
-    previous_intent, previous_manifest = snapshot_published_intent(intent_path)
-    manifest = build_manifest(
-        portal_label=portal_label,
-        imported_by=_user_id,
-        imported_at=datetime.now(UTC).isoformat(),
-        original_filename=original_filename,
-        compatible=True,
-        compat_reason=None,
-        source_system_tree_hash=tree_hash,
-        orca_version=settings.orca_version,
-    )
-    publish_intent(partials, intent_path=intent_path, manifest=manifest)
-
-    # (7) audit (NFR21-OBS-1) — leak-fenced: NO Orca profile body, NO g-code in the payload.
-    # If the audit write fails after publish, restore the prior intent+manifest pair before
-    # re-raising so an unaudited import never remains live on disk.
-    try:
-        record_event(
-            get_engine(),
-            action="slicer_profile.import",
-            entity_type="slicer_profile",
-            entity_id=_slot_id(printer_ref, material_class, quality_tier),
-            actor_user_id=_user_id,
-            after={
-                "printer_ref": printer_ref,
-                "material_class": material_class,
-                "quality_tier": quality_tier,
-                "portal_label": portal_label,
-                "source_system_tree_hash": tree_hash,
-                "original_filename": original_filename,
-            },
-            request_id=request.headers.get("x-request-id"),
-        )
-    except BaseException:
-        restore_published_intent(intent_path, previous_intent, previous_manifest)
-        raise
-
-    # (8) 201 + the freshly-offerable slot (imported ∧ resolvable ∧ compatible all hold now).
-    provenance = AdminProfileProvenance(
-        source_system_tree_hash=tree_hash, orca_version=settings.orca_version
-    )
-    return build_slot(
-        material_class,
-        quality_tier,
-        imported=True,
-        resolvable=True,
-        provenance=provenance,
-        portal_label=portal_label,
-    )
-
-
-@router.get(
-    "/profiles",
-    response_model=AdminProfileInventoryResponse,
-    summary="Read-only admin inventory of Orca process profiles per slot (admin only)",
-    description=(
-        "Story 33.1 (FR21-PROFILE-INVENTORY-1 + FR21-COMPAT-1 read-only). Enumerates every "
-        "(material_class, quality_tier) slot for one printer and projects whether it is "
-        "imported / resolvable / compatible, the single primary status by precedence "
-        "(Incompatible → Not imported → Not resolvable → Offerable), a structured reason, "
-        "and leak-fenced provenance. A read-only superset projection over the resolver — it "
-        "never writes, slices, or imports. Admin-gated; not public; no Orca internals leak."
-    ),
-)
-async def read_admin_profile_inventory(
-    printer_ref: Annotated[str, Query(description="Portal printer identity (resolve input)")],
-    resolver: Annotated[EstimateResolver, Depends(get_admin_profile_resolver)],
-    source: Annotated[ProfileInventorySource, Depends(get_profile_inventory_source)],
-    _user_id: uuid.UUID = current_admin,
-) -> AdminProfileInventoryResponse:
-    settings = get_settings()
-    orca_version = settings.orca_version
-    # Provenance tree hash is a property of the whole vendored system tree — constant
-    # across slots, so compute it once rather than per slot.
-    tree_hash = source.system_tree_hash()
-
-    slots: list[AdminProfileSlot] = []
-    for material_class in MATERIAL_CLASS_ORDER:
-        for quality_tier in QUALITY_TIER_ORDER:
-            intent = PrintIntentPreset(
-                name=f"{material_class} {quality_tier}",
-                material_class=material_class,
-                quality_tier=quality_tier,
-                printer_ref=printer_ref,
-                spoolman_filament_ref=None,
-            )
-            imported = source.has_intent(intent)
-            try:
-                # REUSE the estimates resolve seam verbatim (AC-6 parity) — resolvability is
-                # exactly "resolve_preset did not raise", for every slot including the
-                # incompatible ones (so the parity with quality-tiers is total).
-                await resolver.resolve_preset(intent)
-            except PresetResolveError:
-                resolvable = False
-            else:
-                resolvable = True
-            # Provenance only when the profile actually resolved (no resolved profile ⇒ no
-            # provenance). Leak-fenced: tree hash + orca_version only.
-            provenance = (
-                AdminProfileProvenance(source_system_tree_hash=tree_hash, orca_version=orca_version)
-                if resolvable
-                else AdminProfileProvenance()
-            )
-            # AC-14: surface the operator label from the sidecar manifest (when present).
-            # All other slot fields stay computed exactly as in 33.1 — the manifest never
-            # replaces imported/resolvable/compatible/status/offerable/provenance (AC-10).
-            portal_label = source.manifest_label(intent) if imported else None
-            slots.append(
-                build_slot(
-                    material_class,
-                    quality_tier,
-                    imported=imported,
-                    resolvable=resolvable,
-                    provenance=provenance,
-                    portal_label=portal_label,
-                )
-            )
-
-    return AdminProfileInventoryResponse(printer_ref=printer_ref, slots=slots)
 
 
 # === PROFILE-LIB-1 (Decision AM) — separate-block profile library CRUD =========
@@ -1304,125 +864,10 @@ async def unpublish_profile_offer(
     return _offer_dto(resolved)
 
 
-# === POLICY-ADMIN-1 (FR23-ADMIN-1) — filament-profile-selection policy admin ===
-#
-# Five additive admin-gated routes on the SAME router object (prefix="/api/admin").
-# Read + write surface for the portal's filament-profile-selection policy. Purely
-# additive: does NOT touch resolve(), the intents/grid, the library, the offer layer,
-# or the bundle/snapshot/estimate stores.
-#
-# All write routes carry ``current_admin`` (default-value Depends) so the Init 6
-# route-enforcement gate recognises them WITHOUT any _PUBLIC_ROUTES edit (AC-3).
-
-_POLICY_LOG = logging.getLogger("app.slicer.policy_admin")
-_LOG = logging.getLogger("app.modules.slicer.admin_router")
-
-
-# --- DI seams (overridable in tests) ----------------------------------------
-
-
-def get_policy_store() -> ProfilePolicyStore:
-    """The filesystem-backed policy store, rooted at the configured policy dir."""
-    settings = get_settings()
-    return ProfilePolicyStore(settings.slicer_profile_policy_dir)
-
-
-async def get_snapshot(request: Request) -> SpoolmanSnapshot | None:
-    """The live Spoolman snapshot; soft-fails to None when unavailable (AC-2)."""
-    redis_factory = getattr(request.app.state, "redis", None)
-    service = SpoolsService(redis_factory=redis_factory, client=None)
-    try:
-        return await service.get_summary()
-    except Exception:
-        _POLICY_LOG.warning(
-            "Spoolman snapshot unavailable for policy admin read",
-            extra={"labels": {"reason": "snapshot_unavailable"}},
-        )
-        return None
-
-
 def get_policy_profile_source() -> VendoredProfileSource:
     """The vendored profile source for filament name enumeration (AC-10)."""
     settings = get_settings()
     return VendoredProfileSource(settings.slicer_vendored_profiles_dir)
-
-
-# --- pure helpers -----------------------------------------------------------
-
-
-def _known_filament_profile_refs(source: VendoredProfileSource) -> set[str]:
-    """Vendored filament-type system profile names (AC-10 known_refs set).
-
-    Computed fresh per request — the system tree can change on deploy. NOT cached
-    across requests (AC-10 explicit prohibition).
-    """
-    return {
-        name
-        for name, body in source.system_tree().items()
-        if profile_library.classify_profile(body) == "filament"
-    }
-
-
-def _build_policy_admin_view(
-    policy: ProfilePolicy,
-    snapshot: SpoolmanSnapshot | None,
-    source: VendoredProfileSource,
-) -> PolicyAdminView:
-    """Project policy + snapshot + system_tree onto PolicyAdminView (AC-1/AC-2)."""
-    system_tree = source.system_tree()
-    orca_names = sorted(
-        name
-        for name, body in system_tree.items()
-        if profile_library.classify_profile(body) == "filament"
-    )
-
-    materials_info: list[SpoolmanMaterialInfo] = []
-    filaments_info: list[SpoolmanFilamentPolicyInfo] = []
-
-    if snapshot is not None:
-        seen: set[str] = set()
-        for f in snapshot.filaments:
-            norm = normalize_material(f.material)
-            if norm is None or norm in seen:
-                continue
-            seen.add(norm)
-            default = policy.material_defaults.get(norm)
-            materials_info.append(
-                SpoolmanMaterialInfo(
-                    material=norm,
-                    configured=default is not None and default.enabled,
-                    enabled=default.enabled if default is not None else None,
-                    orca_filament_profile_ref=(
-                        default.orca_filament_profile_ref if default else None
-                    ),
-                )
-            )
-
-        for f in snapshot.filaments:
-            ref = _spoolman_filament_ref(f)
-            override = policy.filament_overrides.get(ref)
-            filaments_info.append(
-                SpoolmanFilamentPolicyInfo(
-                    ref=ref,
-                    name=f.name,
-                    vendor_name=f.vendor_name,
-                    material=normalize_material(f.material),
-                    has_override=override is not None,
-                    override=override,
-                )
-            )
-
-    return PolicyAdminView(
-        policy=policy,
-        spoolman_materials=materials_info,
-        spoolman_filaments=filaments_info,
-        orca_filament_profile_names=orca_names,
-    )
-
-
-def _policy_entity_id(discriminator: str) -> uuid.UUID:
-    """Deterministic audit entity_id for a policy mutation (stable across re-saves)."""
-    return uuid.uuid5(uuid.NAMESPACE_URL, f"slicer_policy:{discriminator}")
 
 
 def _offer_recompute_noneligible_reason(sidecar: dict, *, visible_only: bool) -> str | None:
@@ -1439,13 +884,13 @@ def _offer_recompute_noneligible_reason(sidecar: dict, *, visible_only: bool) ->
 
 
 async def _dry_run_offer_cells(
-    response: DefaultMatrixBackfillResponse,
+    response: OfferEstimateRecomputeResponse,
     *,
     rows: list[Any],
     active_cells: list[Any],
     estimate_store: Any,
     content_root: Any,
-) -> DefaultMatrixBackfillResponse:
+) -> OfferEstimateRecomputeResponse:
     from app.modules.slicer.models import EstimateStatus
     from app.modules.slicer.stl_cache import is_content_hash
 
@@ -1477,7 +922,7 @@ async def _run_offer_recompute(
     body: OfferRecomputeRequest,
     request: Request,
     source: VendoredProfileSource,
-) -> DefaultMatrixBackfillResponse:
+) -> OfferEstimateRecomputeResponse:
     """Preview or enqueue offer-SoT estimates for all catalog STLs."""
     from sqlmodel import select
 
@@ -1507,7 +952,7 @@ async def _run_offer_recompute(
         sidecars, visible_only=body.visible_only, offer_id=body.offer_id
     )
     active_cells = [rc for rc in resolved if rc.bundle_hash is not None]
-    response = DefaultMatrixBackfillResponse(
+    response = OfferEstimateRecomputeResponse(
         dry_run=body.dry_run,
         cells_total=len(resolved),
         cells_resolved=len(active_cells),
@@ -1553,152 +998,14 @@ async def _run_offer_recompute(
         return response
 
 
-async def _run_default_matrix_backfill(
-    *,
-    body: DefaultMatrixBackfillRequest,
-    request: Request,
-    store: ProfilePolicyStore,
-    source: VendoredProfileSource,
-) -> DefaultMatrixBackfillResponse:
-    """Preview or enqueue the published-offer x material-default estimate matrix."""
-    if body.include_overrides:
-        raise _reject(
-            422,
-            "include_overrides_not_supported",
-            "HTTP backfill is limited to material defaults; filament overrides stay opt-in-only",
-        )
-
-    material_filter = None
-    if body.material is not None:
-        material_filter = normalize_material(body.material)
-        if not material_filter:
-            raise _reject(422, "invalid_material", "material filter must be non-blank")
-
-    from sqlmodel import select
-
-    from app.core.db.models import ModelFile, ModelFileKind
-    from app.modules.slicer.estimate_store import EstimateStore
-    from app.modules.slicer.matrix_backfill import (
-        enqueue_matrix_for_all_stls,
-        enumerate_matrix_cells,
-        resolve_matrix_cells,
-    )
-    from app.modules.slicer.models import EstimateStatus
-    from app.modules.slicer.profile_offer import list_offers
-    from app.modules.slicer.stl_cache import StlCache, is_content_hash
-    from app.modules.slicer.validation import NullCliValidator
-
-    settings = get_settings()
-    policy = store.load()
-    sidecars = list_offers(source.root)
-    if body.offer_id:
-        sidecars = [s for s in sidecars if s.get("offer_id") == body.offer_id]
-    offers_map = {s.get("offer_id", ""): s for s in sidecars if s.get("offer_id")}
-    cells = enumerate_matrix_cells(sidecars, policy, material_filter=material_filter)
-    resolved = resolve_matrix_cells(
-        cells,
-        source=source,
-        store=BundleStore(settings.slicer_bundle_store_dir),
-        orca_version=settings.orca_version,
-        validator=NullCliValidator(),
-        offers_map=offers_map,
-    )
-    active_cells = [rc for rc in resolved if rc.bundle_hash is not None]
-
-    response = DefaultMatrixBackfillResponse(
-        dry_run=body.dry_run,
-        cells_total=len(resolved),
-        cells_resolved=len(active_cells),
-        cells_resolve_failed=sum(1 for rc in resolved if rc.resolve_failed),
-    )
-
-    estimate_store = EstimateStore(settings.slicer_estimate_store_dir)
-    content_root = settings.portal_content_dir.resolve()
-    with Session(get_engine()) as session:
-        rows = session.exec(select(ModelFile).where(ModelFile.kind == ModelFileKind.stl)).all()
-        response.inspected = len(rows)
-
-        # No resolvable cells (empty policy, all resolve-failed, or filtered to nothing) means
-        # there is nothing to enqueue: skip the STL scan and never touch the queue. This keeps a
-        # real (non-dry) run with an empty policy from failing on the arq availability check.
-        if not active_cells:
-            return response
-
-        if body.dry_run:
-            for row in rows:
-                abs_path = (content_root / row.storage_path).resolve()
-                try:
-                    abs_path.relative_to(content_root)
-                except ValueError:
-                    response.errors += len(active_cells)
-                    continue
-                if not abs_path.is_file():
-                    response.missing_stl += len(active_cells)
-                    continue
-                candidate_stl_hash = row.sha256
-                if not is_content_hash(candidate_stl_hash):
-                    response.errors += len(active_cells)
-                    continue
-                for rc in active_cells:
-                    existing = estimate_store.read(candidate_stl_hash, rc.bundle_hash)
-                    if existing is not None and existing.status == EstimateStatus.fresh:
-                        response.already_fresh += 1
-                    else:
-                        response.would_enqueue += 1
-            return response
-
-        arq_pool = getattr(request.app.state, "arq", None)
-        if arq_pool is None:
-            raise HTTPException(status_code=503, detail="slicer queue unavailable")
-        counters = await enqueue_matrix_for_all_stls(
-            resolved,
-            arq_pool=arq_pool,
-            stl_cache=StlCache(settings.slicer_stl_cache_dir),
-            estimate_store=estimate_store,
-            content_dir=content_root,
-            db_session=session,
-        )
-        response.enqueued = counters.get("enqueued", 0)
-        response.already_fresh = counters.get("already_fresh", 0)
-        response.missing_stl = counters.get("missing_stl", 0)
-        response.errors = counters.get("errors", 0)
-        return response
-
-
-# --- GET /api/admin/policy ---------------------------------------------------
-
-
-@router.get(
-    "/policy",
-    response_model=PolicyAdminView,
-    summary="Read the full filament-profile-selection policy + Spoolman context (admin only)",
-    description=(
-        "POLICY-ADMIN-1 (FR23-ADMIN-1, AC-1/AC-2/AC-3). Returns the current "
-        "ProfilePolicy plus Spoolman material/filament projections and the sorted list "
-        "of vendored filament-type profile names. When the Spoolman snapshot is "
-        "unavailable (cold Redis / service down), returns 200 with empty material and "
-        "filament lists — never 500. Admin-gated; no Orca internals leak."
-    ),
-)
-async def read_policy(
-    store: Annotated[ProfilePolicyStore, Depends(get_policy_store)],
-    snapshot: Annotated[SpoolmanSnapshot | None, Depends(get_snapshot)],
-    source: Annotated[VendoredProfileSource, Depends(get_policy_profile_source)],
-    _user_id: uuid.UUID = current_admin,
-) -> PolicyAdminView:
-    # get_snapshot() already logs when it soft-fails on an exception (AC-2 single warning).
-    policy = store.load()
-    return _build_policy_admin_view(policy, snapshot, source)
-
-
 @router.post(
     "/profiles/offers/recompute-estimates",
-    response_model=DefaultMatrixBackfillResponse,
+    response_model=OfferEstimateRecomputeResponse,
     summary="Preview or enqueue offer-driven estimate recompute for all catalog STLs",
     description=(
         "Admin-gated offer-SoT recompute. Defaults to dry-run preview, filters optionally by "
-        "offer_id and visible_only, and returns the same classified counters as the legacy "
-        "default-matrix backfill without reading material_defaults."
+        "offer_id and visible_only, and returns classified counters without reading any "
+        "removed profile-policy state."
     ),
 )
 async def offer_recompute_estimates(
@@ -1706,341 +1013,5 @@ async def offer_recompute_estimates(
     request: Request,
     source: Annotated[VendoredProfileSource, Depends(get_policy_profile_source)],
     _user_id: uuid.UUID = current_admin,
-) -> DefaultMatrixBackfillResponse:
+) -> OfferEstimateRecomputeResponse:
     return await _run_offer_recompute(body=body, request=request, source=source)
-
-
-@router.post(
-    "/policy/default-matrix-backfill",
-    response_model=DefaultMatrixBackfillResponse,
-    summary="Preview or enqueue the published-offer x material-default estimate matrix",
-    description=(
-        "Admin-gated explicit control for default-matrix estimate backfill. Defaults to "
-        "dry-run preview, excludes filament overrides, filters optionally by material or "
-        "offer_id, and returns classified counters without exposing raw Orca bodies, gcode, "
-        "bundle hashes, STL paths, or queue internals."
-    ),
-)
-async def default_matrix_backfill(
-    body: DefaultMatrixBackfillRequest,
-    request: Request,
-    store: Annotated[ProfilePolicyStore, Depends(get_policy_store)],
-    source: Annotated[VendoredProfileSource, Depends(get_policy_profile_source)],
-    _user_id: uuid.UUID = current_admin,
-) -> DefaultMatrixBackfillResponse:
-    return await _run_default_matrix_backfill(
-        body=body,
-        request=request,
-        store=store,
-        source=source,
-    )
-
-
-# --- PUT /api/admin/policy/material-defaults/{material} ----------------------
-
-
-@router.put(
-    "/policy/material-defaults/{material}",
-    response_model=PolicyAdminView,
-    summary="Upsert a material-default entry in the policy (admin only)",
-    description=(
-        "POLICY-ADMIN-1 (AC-4/AC-6/AC-9/AC-10/AC-11/AC-12). Normalises the path "
-        "param, validates the orca_filament_profile_ref against the vendored filament "
-        "profile names (fresh per request — AC-10), saves atomically, and returns the "
-        "updated PolicyAdminView. 422 invalid_material on blank normalised key; "
-        "422 unknown_profile_ref when the ref is absent from the vendored tree. "
-        "No partial save on 422 (AC-9). Admin-gated; CSRF enforced by middleware."
-    ),
-    responses={
-        200: {"description": "Material default upserted"},
-        422: {"description": "Rejected: blank material or unknown profile ref"},
-    },
-)
-async def upsert_material_default(
-    material: str,
-    body: MaterialDefaultUpsert,
-    store: Annotated[ProfilePolicyStore, Depends(get_policy_store)],
-    snapshot: Annotated[SpoolmanSnapshot | None, Depends(get_snapshot)],
-    source: Annotated[VendoredProfileSource, Depends(get_policy_profile_source)],
-    request: Request,
-    _user_id: uuid.UUID = current_admin,
-) -> PolicyAdminView:
-    norm = normalize_material(material)
-    if not norm:
-        raise _reject(422, "invalid_material", "material key must be non-blank after normalisation")
-
-    policy = store.load()
-    candidate = ProfilePolicy(
-        material_defaults={
-            **policy.material_defaults,
-            norm: MaterialDefault(
-                orca_filament_profile_ref=body.orca_filament_profile_ref,
-                enabled=body.enabled,
-            ),
-        },
-        filament_overrides=policy.filament_overrides,
-    )
-
-    known_refs = _known_filament_profile_refs(source)
-    unknown = unknown_profile_refs(candidate, known_refs)
-    if unknown:
-        raise _reject(
-            422,
-            "unknown_profile_ref",
-            f"profile ref(s) not in vendored system tree: {sorted(unknown)}",
-        )
-
-    store.save(candidate)
-    record_event(
-        get_engine(),
-        action="slicer_policy.material_default_upsert",
-        entity_type="slicer_profile",
-        entity_id=_policy_entity_id(f"material_default:{norm}"),
-        actor_user_id=_user_id,
-        after={
-            "material_or_ref": norm,
-            "orca_filament_profile_ref": body.orca_filament_profile_ref,
-            "enabled": body.enabled,
-        },
-        request_id=request.headers.get("x-request-id"),
-    )
-
-    # Story 35.6 — material-default change matrix hook (AC-10).
-    # Re-enqueues all STLs for offers compatible with `norm` when the profile ref changes.
-    # Only fires when the ref changes (or a brand-new enabled default is added).
-    # Never re-raises: a backfill failure MUST NOT roll back the policy save.
-    old_default = policy.material_defaults.get(norm)
-    new_default = candidate.material_defaults.get(norm)
-    _profile_ref_changed = (
-        new_default is not None
-        and new_default.enabled
-        and (
-            old_default is None
-            or old_default.orca_filament_profile_ref != new_default.orca_filament_profile_ref
-        )
-    )
-    if _profile_ref_changed:
-        try:
-            from sqlmodel import Session as _Session
-
-            from app.modules.slicer.bundle_store import BundleStore
-            from app.modules.slicer.estimate_store import EstimateStore
-            from app.modules.slicer.matrix_backfill import (
-                enqueue_matrix_for_all_stls,
-                enumerate_matrix_cells,
-                resolve_matrix_cells,
-            )
-            from app.modules.slicer.profile_offer import list_offers
-            from app.modules.slicer.stl_cache import StlCache
-            from app.modules.slicer.validation import NullCliValidator
-
-            _settings = get_settings()
-            _arq_pool = getattr(request.app.state, "arq", None)
-            if _arq_pool is not None:
-                _all_sidecars = list_offers(source.root)
-                _compatible_sidecars = [
-                    s
-                    for s in _all_sidecars
-                    if norm in (s.get("compatible_material_categories") or [])
-                ]
-                _cells = enumerate_matrix_cells(
-                    _compatible_sidecars, candidate, material_filter=norm
-                )
-                if _cells:
-                    _resolved = resolve_matrix_cells(
-                        _cells,
-                        source=source,
-                        store=BundleStore(_settings.slicer_bundle_store_dir),
-                        orca_version=_settings.orca_version,
-                        validator=NullCliValidator(),
-                    )
-                    _counters: dict[str, int] = {}
-                    with _Session(get_engine()) as _sess:
-                        _counters = await enqueue_matrix_for_all_stls(
-                            _resolved,
-                            arq_pool=_arq_pool,
-                            stl_cache=StlCache(_settings.slicer_stl_cache_dir),
-                            estimate_store=EstimateStore(_settings.slicer_estimate_store_dir),
-                            content_dir=_settings.portal_content_dir.resolve(),
-                            db_session=_sess,
-                        )
-                    _LOG.info(
-                        "slicer.policy_material_default_matrix_hook",
-                        extra={
-                            "labels.material": norm,
-                            "labels.cells_count": len(_cells),
-                            "labels.enqueued": _counters.get("enqueued", 0),
-                            "labels.already_fresh": _counters.get("already_fresh", 0),
-                        },
-                    )
-        except Exception:
-            _LOG.exception(
-                "slicer.policy_material_default_matrix_hook.error",
-                extra={"labels.material": norm},
-            )
-
-    return _build_policy_admin_view(store.load(), snapshot, source)
-
-
-# --- DELETE /api/admin/policy/material-defaults/{material} -------------------
-
-
-@router.delete(
-    "/policy/material-defaults/{material}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Remove a material-default entry from the policy (admin only)",
-    description=(
-        "POLICY-ADMIN-1 (AC-5/AC-12). Normalises the path param (PLA == pla), removes "
-        "the entry, and returns 204. 404 not_found when the normalised key was absent. "
-        "Admin-gated; CSRF enforced by middleware."
-    ),
-    responses={
-        204: {"description": "Material default removed"},
-        404: {"description": "Material key not found in policy"},
-    },
-)
-async def delete_material_default(
-    material: str,
-    store: Annotated[ProfilePolicyStore, Depends(get_policy_store)],
-    request: Request,
-    _user_id: uuid.UUID = current_admin,
-) -> None:
-    norm = normalize_material(material)
-    policy = store.load()
-
-    if norm is None or norm not in policy.material_defaults:
-        raise _reject(404, "not_found", f"material default {material!r} not found in policy")
-
-    updated = ProfilePolicy(
-        material_defaults={k: v for k, v in policy.material_defaults.items() if k != norm},
-        filament_overrides=policy.filament_overrides,
-    )
-    store.save(updated)
-    record_event(
-        get_engine(),
-        action="slicer_policy.material_default_delete",
-        entity_type="slicer_profile",
-        entity_id=_policy_entity_id(f"material_default:{norm}"),
-        actor_user_id=_user_id,
-        after={"material_or_ref": norm, "orca_filament_profile_ref": None, "enabled": None},
-        request_id=request.headers.get("x-request-id"),
-    )
-
-
-# --- POST /api/admin/policy/filament-overrides --------------------------------
-
-
-@router.post(
-    "/policy/filament-overrides",
-    response_model=PolicyAdminView,
-    summary="Upsert a per-filament override entry in the policy (admin only)",
-    description=(
-        "POLICY-ADMIN-1 (AC-7/AC-9/AC-10/AC-11/AC-12). Ref is in the body (not a path "
-        "param) because it contains the unit-separator (U+001F) that would need "
-        "percent-encoding in URLs. Validates orca_filament_profile_ref against vendored "
-        "filament profiles (fresh per request — AC-10); 422 unknown_profile_ref when "
-        "absent. No partial save on 422 (AC-9). Admin-gated; CSRF enforced by middleware."
-    ),
-    responses={
-        200: {"description": "Filament override upserted"},
-        422: {"description": "Rejected: unknown profile ref"},
-    },
-)
-async def upsert_filament_override(
-    body: FilamentOverrideUpsert,
-    store: Annotated[ProfilePolicyStore, Depends(get_policy_store)],
-    snapshot: Annotated[SpoolmanSnapshot | None, Depends(get_snapshot)],
-    source: Annotated[VendoredProfileSource, Depends(get_policy_profile_source)],
-    request: Request,
-    _user_id: uuid.UUID = current_admin,
-) -> PolicyAdminView:
-    policy = store.load()
-    candidate = ProfilePolicy(
-        material_defaults=policy.material_defaults,
-        filament_overrides={
-            **policy.filament_overrides,
-            body.spoolman_filament_ref: FilamentOverride(
-                orca_filament_profile_ref=body.orca_filament_profile_ref,
-                enabled=body.enabled,
-            ),
-        },
-    )
-
-    known_refs = _known_filament_profile_refs(source)
-    unknown = unknown_profile_refs(candidate, known_refs)
-    if unknown:
-        raise _reject(
-            422,
-            "unknown_profile_ref",
-            f"profile ref(s) not in vendored system tree: {sorted(unknown)}",
-        )
-
-    store.save(candidate)
-    record_event(
-        get_engine(),
-        action="slicer_policy.filament_override_upsert",
-        entity_type="slicer_profile",
-        entity_id=_policy_entity_id(f"filament_override:{body.spoolman_filament_ref}"),
-        actor_user_id=_user_id,
-        after={
-            "material_or_ref": body.spoolman_filament_ref,
-            "orca_filament_profile_ref": body.orca_filament_profile_ref,
-            "enabled": body.enabled,
-        },
-        request_id=request.headers.get("x-request-id"),
-    )
-    return _build_policy_admin_view(store.load(), snapshot, source)
-
-
-# --- DELETE /api/admin/policy/filament-overrides ------------------------------
-
-
-@router.delete(
-    "/policy/filament-overrides",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Remove a per-filament override entry from the policy (admin only)",
-    description=(
-        "POLICY-ADMIN-1 (AC-8/AC-12). Body carries the spoolman_filament_ref (contains "
-        "U+001F — not suitable as path param). 204 on success; 404 not_found when the "
-        "ref was absent. Admin-gated; CSRF enforced by middleware."
-    ),
-    responses={
-        204: {"description": "Filament override removed"},
-        404: {"description": "Filament override ref not found in policy"},
-    },
-)
-async def delete_filament_override(
-    body: FilamentOverrideDeleteRequest,
-    store: Annotated[ProfilePolicyStore, Depends(get_policy_store)],
-    request: Request,
-    _user_id: uuid.UUID = current_admin,
-) -> None:
-    policy = store.load()
-
-    if body.spoolman_filament_ref not in policy.filament_overrides:
-        raise _reject(
-            404,
-            "not_found",
-            f"filament override {body.spoolman_filament_ref!r} not found in policy",
-        )
-
-    updated = ProfilePolicy(
-        material_defaults=policy.material_defaults,
-        filament_overrides={
-            k: v for k, v in policy.filament_overrides.items() if k != body.spoolman_filament_ref
-        },
-    )
-    store.save(updated)
-    record_event(
-        get_engine(),
-        action="slicer_policy.filament_override_delete",
-        entity_type="slicer_profile",
-        entity_id=_policy_entity_id(f"filament_override:{body.spoolman_filament_ref}"),
-        actor_user_id=_user_id,
-        after={
-            "material_or_ref": body.spoolman_filament_ref,
-            "orca_filament_profile_ref": None,
-            "enabled": None,
-        },
-        request_id=request.headers.get("x-request-id"),
-    )

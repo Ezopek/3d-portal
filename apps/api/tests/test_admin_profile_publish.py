@@ -413,7 +413,7 @@ def _set_offer_publish_state(
 
 
 @pytest.mark.asyncio
-async def test_offer_recompute_dry_run_counts_without_material_defaults(seam) -> None:
+async def test_offer_recompute_dry_run_counts_without_legacy_policy(seam) -> None:
     ac, root, _content_dir, admin_id, _pool = seam
     await _login_admin(ac, admin_id)
     offer_1 = _seed_offer(root)
@@ -565,7 +565,7 @@ async def test_offer_recompute_max_cells_rejects_before_enqueue(seam) -> None:
 
 
 @pytest.mark.asyncio
-async def test_publish_hook_uses_offer_bundle_without_material_defaults(seam, monkeypatch) -> None:
+async def test_publish_hook_uses_offer_bundle_without_legacy_policy(seam, monkeypatch) -> None:
     """40.1: successful publish triggers offer-driven enumeration for the published offer."""
     enumerate_calls: list = []
 
@@ -573,18 +573,10 @@ async def test_publish_hook_uses_offer_bundle_without_material_defaults(seam, mo
         enumerate_calls.append((offers, visible_only, offer_id))
         return []
 
-    def _old_path_must_not_run(*args, **kwargs):
-        raise AssertionError("legacy material-default matrix path must not run")
-
     monkeypatch.setattr(
         "app.modules.slicer.matrix_backfill.enumerate_offer_cells",
         _fake_enumerate,
     )
-    monkeypatch.setattr(
-        "app.modules.slicer.matrix_backfill.enumerate_matrix_cells",
-        _old_path_must_not_run,
-    )
-
     ac, root, _content_dir, admin_id, _pool = seam
     await _login_admin(ac, admin_id)
     offer_id = _seed_offer(root)

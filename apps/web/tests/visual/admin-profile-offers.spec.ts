@@ -129,20 +129,6 @@ const OFFER_STALE = {
 
 const MIXED = [OFFER_USABLE, OFFER_STALE, OFFER_ATTENTION, OFFER_INVALID];
 
-// Curated policy view for the expanded-panel baseline: one enabled PLA default (so the backfill
-// controls are enabled and the "no enabled defaults" warning is absent) + a couple of Orca
-// profile names for the datalist. No raw Orca JSON — curated metadata only.
-const POLICY_VIEW = {
-  policy: {
-    material_defaults: {
-      PLA: { orca_filament_profile_ref: "Generic PLA @System", enabled: true },
-    },
-    filament_overrides: {},
-  },
-  spoolman_materials: [],
-  spoolman_filaments: [],
-  orca_filament_profile_names: ["Generic PLA @System", "Generic PETG @System"],
-};
 
 test.describe("/admin/profile-offers baselines", () => {
   test("offer list — usable + stale + requires_attention + invalid", async ({
@@ -200,29 +186,6 @@ test.describe("/admin/profile-offers baselines", () => {
     await waitForReady(page);
     // baseline-reviewed:
     await expect(page).toHaveScreenshot("offers-create-rejected.png", {
-      fullPage: true,
-    });
-  });
-
-  test("advanced legacy panel expanded — material defaults + backfill controls", async ({
-    page,
-  }) => {
-    await stubProfileOffers(page, {
-      offers: [OFFER_USABLE],
-      library: LIBRARY,
-      policy: POLICY_VIEW,
-    });
-    await page.goto("/admin/profile-offers");
-    await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
-    // The panel is collapsed by default; expand it (pl visual locale label).
-    await page.getByRole("button", { name: "Pokaż zaawansowane" }).click();
-    // Wait for the policy table + backfill controls to render (the run-backfill primary button).
-    await page
-      .getByRole("button", { name: "Uruchom backfill" })
-      .waitFor({ state: "visible" });
-    await waitForReady(page);
-    // baseline-reviewed:
-    await expect(page).toHaveScreenshot("offers-policy-expanded.png", {
       fullPage: true,
     });
   });
