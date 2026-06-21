@@ -753,6 +753,7 @@ export interface MemberPublishedOfferView {
   quality_tier: string | null; // "aesthetic"|"standard"|"strong"; null if block unavailable
   compatible_material_categories: string[];
   printer_name: string | null; // null if machine block unavailable
+  is_default: boolean;
 }
 
 export interface MemberPublishedOfferListResponse {

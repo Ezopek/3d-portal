@@ -70,6 +70,7 @@ export function FilesTab({
 
   // Story 36.3 (AC-6) — ephemeral offer selection; null = preset mode (§D.3).
   const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null);
+  const [userClearedOfferSelection, setUserClearedOfferSelection] = useState(false);
   const tierAvailability = useQualityTierAvailability(
     preset.material_class,
     CATALOG_ESTIMATE_PRINTER_REF,
@@ -97,14 +98,35 @@ export function FilesTab({
     hasStlFiles: active === "stl",
   });
 
-  // AC-9: when the offer list settles and no longer contains the selected offer,
-  // deselect (material changed or offer was unpublished). useEffect to avoid
-  // side-effects during render.
+  // Story 40.3 — after the visible-only published-offer list loads, select the
+  // first default offer; fall back to the first visible offer. Preserve a still-valid
+  // manual selection and preserve explicit manual fallback to preset mode (null).
+  // useEffect keeps selection changes out of render.
   useEffect(() => {
-    if (selectedOfferId === null || !publishedOffers.isSuccess) return;
-    const ids = new Set(publishedOffers.data.offers.map((o) => o.offer_id));
-    if (!ids.has(selectedOfferId)) setSelectedOfferId(null);
-  }, [publishedOffers.isSuccess, publishedOffers.data, selectedOfferId]);
+    if (!publishedOffers.isSuccess) return;
+
+    const offers = publishedOffers.data.offers;
+    if (offers.length === 0) {
+      if (selectedOfferId !== null) setSelectedOfferId(null);
+      if (userClearedOfferSelection) setUserClearedOfferSelection(false);
+      return;
+    }
+
+    const ids = new Set(offers.map((offer) => offer.offer_id));
+    if (selectedOfferId !== null && ids.has(selectedOfferId)) return;
+    if (selectedOfferId === null && userClearedOfferSelection) return;
+
+    const nextOffer = offers.find((offer) => offer.is_default) ?? offers[0];
+    if (nextOffer) {
+      setSelectedOfferId(nextOffer.offer_id);
+      setUserClearedOfferSelection(false);
+    }
+  }, [publishedOffers.isSuccess, publishedOffers.data, selectedOfferId, userClearedOfferSelection]);
+
+  const handleOfferSelect = (offerId: string | null) => {
+    setUserClearedOfferSelection(offerId === null);
+    setSelectedOfferId(offerId);
+  };
 
   const stlFiles: StlFile[] = useMemo(
     () =>
@@ -230,7 +252,7 @@ export function FilesTab({
           <PublishedOfferPicker
             offers={publishedOffers.data?.offers ?? (publishedOffers.isSuccess ? [] : null)}
             selectedOfferId={selectedOfferId}
-            onSelect={setSelectedOfferId}
+            onSelect={handleOfferSelect}
             isLoading={publishedOffers.isPending}
             isError={publishedOffers.isError}
             onRetry={() => void publishedOffers.refetch()}

@@ -1,5 +1,5 @@
 generated: 2026-05-09
-last_updated: 2026-06-19T14:30Z
+last_updated: 2026-06-21T15:19Z
 project: 3d-portal
 project_key: NOKEY
 tracking_system: file-system
@@ -271,5 +271,6 @@ development_status:
   epic-40: in-progress
   40-1-profile-offer-estimate-sot: done
   40-2-admin-offer-recompute-ui: done
-  40-3-member-visible-default-offer-selection: backlog
+  40-3-member-visible-default-offer-selection: done
+  # 40.4 intentionally deferred/gated after assessment; legacy removal is not safe in Epic 40 closeout.
   40-4-demote-legacy-profile-grid: backlog

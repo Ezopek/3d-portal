@@ -59,7 +59,7 @@ interface RouterOpts {
   estimateError?: boolean;
   unavailableTiers?: string[];
   unavailableTiersByMaterial?: Partial<Record<string, string[]>>;
-  publishedOffers?: Array<{ offer_id: string; portal_label: string; quality_tier: string | null; compatible_material_categories: string[]; printer_name: string | null }>;
+  publishedOffers?: Array<{ offer_id: string; portal_label: string; quality_tier: string | null; compatible_material_categories: string[]; printer_name: string | null; is_default: boolean }>;
 }
 
 // Route fetch by URL so the order of the (always-mounted) preset-bar `/spools/summary` read,
@@ -279,6 +279,7 @@ describe("FilesTab — EST-DISPLAY-1 estimate surface", () => {
           quality_tier: "standard",
           compatible_material_categories: ["PLA"],
           printer_name: "K1 Max",
+          is_default: false,
         },
       ],
     });
@@ -288,6 +289,64 @@ describe("FilesTab — EST-DISPLAY-1 estimate surface", () => {
     );
     // The picker select is present.
     expect(screen.getByRole("combobox")).toBeTruthy();
+  });
+
+  it("preselects the default published offer when offers load", async () => {
+    mockUseAuth.mockReturnValue({ isAdmin: false, isAuthenticated: true });
+    installRouter({
+      publishedOffers: [
+        {
+          offer_id: "offer-first",
+          portal_label: "First visible offer",
+          quality_tier: "standard",
+          compatible_material_categories: ["PLA"],
+          printer_name: "K1 Max",
+          is_default: false,
+        },
+        {
+          offer_id: "offer-default",
+          portal_label: "Default visible offer",
+          quality_tier: "standard",
+          compatible_material_categories: ["PLA"],
+          printer_name: "K1 Max",
+          is_default: true,
+        },
+      ],
+    });
+
+    render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
+
+    const select = (await screen.findByRole("combobox")) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe("offer-default"));
+  });
+
+  it("falls back to the first published offer when none is default", async () => {
+    mockUseAuth.mockReturnValue({ isAdmin: false, isAuthenticated: true });
+    installRouter({
+      publishedOffers: [
+        {
+          offer_id: "offer-first",
+          portal_label: "First visible offer",
+          quality_tier: "standard",
+          compatible_material_categories: ["PLA"],
+          printer_name: "K1 Max",
+          is_default: false,
+        },
+        {
+          offer_id: "offer-second",
+          portal_label: "Second visible offer",
+          quality_tier: "strong",
+          compatible_material_categories: ["PLA"],
+          printer_name: "K1 Max",
+          is_default: false,
+        },
+      ],
+    });
+
+    render(<FilesTab modelId={MODEL_ID} files={FILES} />, { wrapper: wrap() });
+
+    const select = (await screen.findByRole("combobox")) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe("offer-first"));
   });
 
   it("PublishedOfferPicker is not rendered on non-STL tabs", async () => {
@@ -300,6 +359,7 @@ describe("FilesTab — EST-DISPLAY-1 estimate surface", () => {
           quality_tier: "standard",
           compatible_material_categories: ["PLA"],
           printer_name: "K1 Max",
+          is_default: false,
         },
       ],
     });
@@ -321,6 +381,7 @@ describe("FilesTab — EST-DISPLAY-1 estimate surface", () => {
           quality_tier: "standard",
           compatible_material_categories: ["PLA"],
           printer_name: null,
+          is_default: false,
         },
       ],
     });

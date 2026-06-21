@@ -30,6 +30,7 @@ const OFFER_A: MemberPublishedOfferView = {
   quality_tier: "standard",
   compatible_material_categories: ["PLA"],
   printer_name: "K1 Max",
+  is_default: false,
 };
 
 const OFFER_B: MemberPublishedOfferView = {
@@ -38,6 +39,7 @@ const OFFER_B: MemberPublishedOfferView = {
   quality_tier: "aesthetic",
   compatible_material_categories: ["PLA"],
   printer_name: null,
+  is_default: false,
 };
 
 describe("PublishedOfferPicker (compact select)", () => {

@@ -70,7 +70,7 @@ def _printer_name(machine_manifest: dict | None) -> str | None:
     summary="List published print profile offers (member view)",
     description=(
         "Story 36.1 — returns the safe member DTO for every published print profile offer. "
-        "Only offers with publish_state=published are included. "
+        "Only offers with publish_state=published and visibility=visible are included. "
         "Optional ?material=<key> filter (case-insensitive) restricts results by "
         "compatible_material_categories. "
         "Requires authentication (any role); anonymous requests return 401. "
@@ -89,8 +89,13 @@ async def list_published_offers(
 
     all_sidecars = list_offers(root)
 
-    # Filter to published offers only (AC-6/AC-7).
-    published = [s for s in all_sidecars if s.get("publish_state") == PUBLISH_STATE_PUBLISHED]
+    # Filter to member-visible published offers only. Hidden published offers are
+    # admin/internal and must not reach the member catalog surface.
+    published = [
+        s
+        for s in all_sidecars
+        if s.get("publish_state") == PUBLISH_STATE_PUBLISHED and s.get("visibility") == "visible"
+    ]
 
     # Optional material filter — normalize to uppercase to match stored categories (AC-8).
     if material is not None:
@@ -133,6 +138,7 @@ async def list_published_offers(
                     sidecar.get("compatible_material_categories") or []
                 ),
                 printer_name=_printer_name(machine_manifest),
+                is_default=bool(sidecar.get("is_default", False)),
             )
         )
 

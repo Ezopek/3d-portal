@@ -26,6 +26,7 @@ describe("usePublishedOffers", () => {
               quality_tier: "standard",
               compatible_material_categories: ["PLA"],
               printer_name: "K1 Max",
+              is_default: false,
             },
           ],
         }),

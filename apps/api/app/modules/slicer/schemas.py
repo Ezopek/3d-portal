@@ -378,7 +378,7 @@ class PrintProfileOfferListResponse(BaseModel):
 class MemberPublishedOfferView(BaseModel):
     """Safe member projection of one published print profile offer (Story 36.1, AC-10/11).
 
-    Exposes ONLY the five fields needed by the member picker. ``quality_tier`` and
+    Exposes ONLY the safe fields needed by the member picker. ``quality_tier`` and
     ``printer_name`` are nullable because they are derived from library block manifests
     that may be unavailable (chain validation failure does not block the member surface
     — the offer was already published). Fields absent from this DTO: bundle_hash,
@@ -391,6 +391,7 @@ class MemberPublishedOfferView(BaseModel):
     quality_tier: str | None = None
     compatible_material_categories: list[str] = Field(default_factory=list)
     printer_name: str | None = None
+    is_default: bool = False
 
 
 class MemberPublishedOfferListResponse(BaseModel):

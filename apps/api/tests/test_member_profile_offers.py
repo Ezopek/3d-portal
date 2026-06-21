@@ -44,7 +44,6 @@ _FORBIDDEN_FIELDS = (
     "validation_state",
     "reasons",
     "visibility",
-    "is_default",
     "description",
     "created_at",
     "created_by",
@@ -74,6 +73,8 @@ def _make_published_sidecar(
     label: str = "K1 Max Standard PLA",
     categories: list[str] | None = None,
     offer_id: str | None = None,
+    visibility: str = "visible",
+    is_default: bool = False,
 ) -> dict:
     """Build a sidecar dict with publish_state=published, using fake block IDs."""
     oid = offer_id or profile_offer.mint_offer_id()
@@ -86,8 +87,8 @@ def _make_published_sidecar(
             process_block_id="b" * 32,
             filament_block_id="c" * 32,
         ),
-        visibility="visible",
-        is_default=False,
+        visibility=visibility,
+        is_default=is_default,
         compatible_material_categories=categories if categories is not None else ["PLA"],
         validation_state="usable",
         reasons=[],
@@ -250,6 +251,24 @@ async def test_returns_only_published_offers(seam) -> None:
 
 
 @pytest.mark.asyncio
+async def test_hidden_published_offers_are_omitted(seam) -> None:
+    """Story 40.3 — published but hidden offers stay admin/internal."""
+    ac, root, member_id = seam
+    visible_offer = _make_published_sidecar(label="Visible Offer", visibility="visible")
+    hidden_offer = _make_published_sidecar(label="Hidden Offer", visibility="hidden")
+    profile_offer.store_offer(root, visible_offer)
+    profile_offer.store_offer(root, hidden_offer)
+
+    ac.cookies.set("portal_access", _token("member", str(member_id)))
+    r = await ac.get("/api/profiles/offers/published")
+    assert r.status_code == 200
+    ids = {o["offer_id"] for o in r.json()["offers"]}
+    assert visible_offer["offer_id"] in ids
+    assert hidden_offer["offer_id"] not in ids
+    assert len(ids) == 1
+
+
+@pytest.mark.asyncio
 async def test_multiple_published_offers_returned(seam) -> None:
     """AC-9 — all published offers returned without material filter."""
     ac, root, member_id = seam
@@ -343,8 +362,7 @@ async def test_material_filter_not_applied_without_param(seam) -> None:
 
 @pytest.mark.asyncio
 async def test_response_contains_required_safe_fields(seam) -> None:
-    """AC-11 — each item exposes offer_id, portal_label, quality_tier,
-    compatible_material_categories, printer_name."""
+    """AC-11 — each item exposes the safe member fields, including is_default."""
     ac, root, member_id = seam
     published = _make_published_sidecar(label="Test Offer", categories=["PLA"])
     profile_offer.store_offer(root, published)
@@ -361,6 +379,24 @@ async def test_response_contains_required_safe_fields(seam) -> None:
     assert "compatible_material_categories" in item
     assert item["compatible_material_categories"] == ["PLA"]
     assert "printer_name" in item  # may be null when blocks unavailable
+    assert item["is_default"] is False
+
+
+@pytest.mark.asyncio
+async def test_response_includes_is_default_for_visible_published_offer(seam) -> None:
+    """Story 40.3 — member DTO carries safe default-selection flag."""
+    ac, root, member_id = seam
+    published = _make_published_sidecar(label="Default Offer", is_default=True)
+    profile_offer.store_offer(root, published)
+
+    ac.cookies.set("portal_access", _token("member", str(member_id)))
+    r = await ac.get("/api/profiles/offers/published")
+    assert r.status_code == 200
+    items = r.json()["offers"]
+    assert len(items) == 1
+    assert items[0]["offer_id"] == published["offer_id"]
+    assert items[0]["is_default"] is True
+    assert "visibility" not in items[0]
 
 
 # === negative leak-fence (AC-12, AC-13) =====================================
