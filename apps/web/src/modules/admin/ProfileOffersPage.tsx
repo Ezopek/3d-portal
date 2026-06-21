@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import type {
   DefaultMatrixBackfillResponse,
   MaterialClass,
+  OfferEstimateRecomputeResponse,
   OfferValidationState,
   OfferVisibility,
   PrintProfileOffer,
@@ -34,6 +35,7 @@ import { useProfileOffers } from "@/modules/admin/hooks/useProfileOffers";
 import {
   useDefaultMatrixBackfill,
   useDeleteMaterialDefault,
+  useOfferEstimateRecompute,
   useProfilePolicy,
   useUpsertMaterialDefault,
 } from "@/modules/admin/hooks/useProfilePolicy";
@@ -724,7 +726,7 @@ function FilterChip({
 function BackfillSummary({
   summary,
 }: {
-  summary: DefaultMatrixBackfillResponse;
+  summary: DefaultMatrixBackfillResponse | OfferEstimateRecomputeResponse;
 }) {
   const { t } = useTranslation();
   const counters = [
@@ -754,6 +756,74 @@ function BackfillSummary({
         </div>
       ))}
     </dl>
+  );
+}
+
+function OfferEstimateRecomputePanel() {
+  const { t } = useTranslation();
+  const recompute = useOfferEstimateRecompute();
+  const [confirmRun, setConfirmRun] = useState(false);
+
+  function runRecompute(dryRun: boolean) {
+    recompute.mutate({ dry_run: dryRun, visible_only: true });
+  }
+
+  return (
+    <section className="flex flex-col gap-3 rounded-md border border-primary/30 bg-card p-4">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-sm font-semibold text-foreground">
+          {t("modules.admin.profileOffers.recompute.title")}
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          {t("modules.admin.profileOffers.recompute.description")}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {t("modules.admin.profileOffers.recompute.counterHelp")}
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={recompute.isPending}
+          onClick={() => runRecompute(true)}
+        >
+          {t("modules.admin.profileOffers.recompute.inspect")}
+        </Button>
+        <Button
+          variant="default"
+          size="sm"
+          disabled={recompute.isPending}
+          onClick={() => setConfirmRun(true)}
+        >
+          {t("modules.admin.profileOffers.recompute.run")}
+        </Button>
+        <Link
+          to="/admin/queues"
+          className="inline-flex h-7 items-center rounded-md px-2.5 text-[0.8rem] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          {t("modules.admin.profileOffers.recompute.queues")}
+        </Link>
+      </div>
+      {recompute.isError ? (
+        <p className="text-xs text-destructive" role="alert">
+          {t("modules.admin.profileOffers.recompute.error")}
+        </p>
+      ) : null}
+      {recompute.data ? <BackfillSummary summary={recompute.data} /> : null}
+
+      <ConfirmDialog
+        open={confirmRun}
+        onOpenChange={setConfirmRun}
+        title={t("modules.admin.profileOffers.recompute.confirmTitle")}
+        description={t("modules.admin.profileOffers.recompute.confirmDescription")}
+        pending={recompute.isPending}
+        onConfirm={() => {
+          runRecompute(false);
+          setConfirmRun(false);
+        }}
+      />
+    </section>
   );
 }
 
@@ -1025,7 +1095,7 @@ export function ProfilePolicyPanel() {
               </Link>
             </div>
             {backfill.isError ? (
-              <p className="text-xs text-destructive">
+              <p className="text-xs text-destructive" role="alert">
                 {t("modules.admin.profileOffers.policy.backfill.error")}
               </p>
             ) : null}
@@ -1109,6 +1179,7 @@ export function ProfileOffersPage() {
         </p>
       </header>
 
+      <OfferEstimateRecomputePanel />
       <ProfilePolicyPanel />
 
       <div className="flex flex-wrap items-center justify-between gap-2">

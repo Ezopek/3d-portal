@@ -178,6 +178,9 @@ interface FetchState {
   policy?: PolicyAdminView;
   /** Mocked `POST /api/admin/policy/default-matrix-backfill` summary. */
   backfill?: DefaultMatrixBackfillResponse;
+  /** Mocked `POST /api/admin/profiles/offers/recompute-estimates` summary. */
+  recompute?: DefaultMatrixBackfillResponse;
+  recomputeStatus?: number;
 }
 
 /** Install a stateful `fetch` stub — we intercept the network, never mock `api()` (T6). */
@@ -186,6 +189,12 @@ function installFetch(state: FetchState) {
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
       const method = (init?.method ?? "GET").toUpperCase();
+      if (url.includes("/api/admin/profiles/offers/recompute-estimates")) {
+        return new Response(JSON.stringify(state.recompute ?? backfillResponse()), {
+          status: state.recomputeStatus ?? 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       if (url.includes("/api/admin/profiles/offers")) {
         if (method === "GET") {
           return new Response(JSON.stringify({ offers: state.offers }), {
@@ -296,6 +305,88 @@ function mount(node: ReactNode) {
 describe("ProfileOffersPage (PROFILE-OFFER-1)", () => {
   beforeEach(() => {
     void i18n.changeLanguage("en");
+  });
+
+  it("primary offer recompute dry-run posts visible current offers and renders counters", async () => {
+    const fetchMock = installFetch({
+      offers: [offer()],
+      recompute: backfillResponse({ would_enqueue: 3, inspected: 2 }),
+    });
+    mount(<ProfileOffersPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /inspect current offers/i }),
+    );
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          (typeof url === "string" ? url : String(url)).includes(
+            "/api/admin/profiles/offers/recompute-estimates",
+          ) && (init?.method ?? "GET").toUpperCase() === "POST",
+      );
+      expect(post).toBeTruthy();
+      expect(JSON.parse((post?.[1]?.body as string) ?? "{}")).toEqual({
+        dry_run: true,
+        visible_only: true,
+      });
+    });
+    expect(await screen.findAllByText(/would enqueue/i)).toHaveLength(2);
+    expect(screen.getByText("3")).toBeTruthy();
+  });
+
+  it("primary offer recompute confirmed run posts dry_run:false visible_only:true", async () => {
+    const fetchMock = installFetch({
+      offers: [offer()],
+      recompute: backfillResponse({ dry_run: false, would_enqueue: 0, enqueued: 4 }),
+    });
+    mount(<ProfileOffersPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /run recompute/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^confirm$/i }));
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          (typeof url === "string" ? url : String(url)).includes(
+            "/api/admin/profiles/offers/recompute-estimates",
+          ) && (init?.method ?? "GET").toUpperCase() === "POST",
+      );
+      expect(post).toBeTruthy();
+      expect(JSON.parse((post?.[1]?.body as string) ?? "{}")).toEqual({
+        dry_run: false,
+        visible_only: true,
+      });
+    });
+    expect(await screen.findAllByText(/enqueued/i)).toHaveLength(2);
+    expect(screen.getAllByText("4").length).toBeGreaterThan(0);
+  });
+
+  it("primary offer recompute errors surface visibly", async () => {
+    installFetch({ offers: [offer()], recomputeStatus: 500 });
+    mount(<ProfileOffersPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /inspect current offers/i }),
+    );
+    expect(await screen.findByText(/recompute request failed/i)).toBeTruthy();
+  });
+
+  it("advanced policy fetch is gated until the legacy panel is opened", async () => {
+    const fetchMock = installFetch({ offers: [] });
+    mount(<ProfileOffersPage />);
+    await screen.findByText(/no offers composed yet/i);
+    expect(
+      fetchMock.mock.calls.some(([url]) =>
+        (typeof url === "string" ? url : String(url)).includes("/api/admin/policy"),
+      ),
+    ).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: /show advanced/i }));
+    await screen.findByText(/advanced \/ legacy material defaults/i);
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([url]) =>
+          (typeof url === "string" ? url : String(url)).includes("/api/admin/policy"),
+        ),
+      ).toBe(true),
+    );
   });
 
   it("renders offers with validation badges across all three states", async () => {
@@ -634,9 +725,9 @@ describe("ProfileOffersPage (PROFILE-OFFER-1)", () => {
     installFetch({ offers: [] });
     mount(<ProfileOffersPage />);
     // The panel is collapsed by default — expand it to reveal the table + backfill controls.
-    fireEvent.click(await screen.findByRole("button", { name: /configure/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /show advanced/i }));
     // Panel header proves the policy view resolved (no undefined material_defaults).
-    expect(await screen.findByText(/material filament defaults/i)).toBeTruthy();
+    expect(await screen.findByText(/advanced \/ legacy material defaults/i)).toBeTruthy();
     // Empty material_defaults → the backfill matrix would be empty, so warn.
     expect(
       await screen.findByText(/no enabled material defaults/i),
@@ -646,7 +737,7 @@ describe("ProfileOffersPage (PROFILE-OFFER-1)", () => {
   it("saving a material default PUTs to /material-defaults/PLA with the expected body", async () => {
     const fetchMock = installFetch({ offers: [] });
     mount(<ProfileOffersPage />);
-    fireEvent.click(await screen.findByRole("button", { name: /configure/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /show advanced/i }));
     const input = await screen.findByLabelText("Orca filament profile for PLA");
     fireEvent.change(input, { target: { value: "Generic PLA @System" } });
     const row = input.closest("tr") as HTMLElement;
@@ -684,7 +775,7 @@ describe("ProfileOffersPage (PROFILE-OFFER-1)", () => {
       backfill: backfillResponse({ would_enqueue: 5, inspected: 4 }),
     });
     mount(<ProfileOffersPage />);
-    fireEvent.click(await screen.findByRole("button", { name: /configure/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /show advanced/i }));
     const inspect = await screen.findByRole("button", {
       name: /inspect backfill/i,
     });
@@ -707,7 +798,7 @@ describe("ProfileOffersPage (PROFILE-OFFER-1)", () => {
       });
     });
     // Counter grid surfaces the returned summary (label + value).
-    expect(await screen.findByText(/would enqueue/i)).toBeTruthy();
+    expect(await screen.findAllByText(/would enqueue/i)).toHaveLength(2);
     expect(screen.getByText("5")).toBeTruthy();
   });
 });

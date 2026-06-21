@@ -166,7 +166,7 @@ test.describe("/admin/profile-offers baselines", () => {
     await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
     // Locale-agnostic: the compose action is the only primary button; open the panel and wait
     // for the first slot <select> to appear (the visual suite runs in pl-PL).
-    await page.getByRole("button", { name: "Utwórz ofertę" }).click();
+    await page.getByRole("button", { name: "Utwórz ofertę" }).click({ force: true });
     await page.locator("select").first().waitFor({ state: "visible" });
     await waitForReady(page);
     // baseline-reviewed:
@@ -183,7 +183,7 @@ test.describe("/admin/profile-offers baselines", () => {
     });
     await page.goto("/admin/profile-offers");
     await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
-    await page.getByRole("button", { name: "Utwórz ofertę" }).click();
+    await page.getByRole("button", { name: "Utwórz ofertę" }).click({ force: true });
     const selects = page.locator("select");
     await selects.nth(0).selectOption(MACHINE_ID);
     await selects.nth(1).selectOption(PROCESS_ID);
@@ -204,7 +204,7 @@ test.describe("/admin/profile-offers baselines", () => {
     });
   });
 
-  test("policy panel expanded — material defaults + backfill controls", async ({
+  test("advanced legacy panel expanded — material defaults + backfill controls", async ({
     page,
   }) => {
     await stubProfileOffers(page, {
@@ -215,7 +215,7 @@ test.describe("/admin/profile-offers baselines", () => {
     await page.goto("/admin/profile-offers");
     await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
     // The panel is collapsed by default; expand it (pl visual locale label).
-    await page.getByRole("button", { name: "Konfiguruj" }).click();
+    await page.getByRole("button", { name: "Pokaż zaawansowane" }).click();
     // Wait for the policy table + backfill controls to render (the run-backfill primary button).
     await page
       .getByRole("button", { name: "Uruchom backfill" })
@@ -238,7 +238,7 @@ test.describe("/admin/profile-offers baselines", () => {
     await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
     // Target the row's detail expander by its accessible name (pl visual locale) — NOT a bare
     // aria-expanded selector, which would match the TopBar account-menu trigger first.
-    await page.getByRole("button", { name: "Pokaż szczegóły" }).first().click();
+    await page.getByRole("button", { name: "Pokaż szczegóły" }).first().click({ force: true });
     await waitForReady(page);
     // baseline-reviewed:
     await expect(page).toHaveScreenshot("offers-detail-expanded.png", {

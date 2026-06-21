@@ -735,6 +735,15 @@ export interface DefaultMatrixBackfillResponse {
   would_enqueue: number;
 }
 
+export interface OfferEstimateRecomputeRequest {
+  dry_run?: boolean;
+  visible_only?: boolean;
+  offer_id?: string | null;
+  max_cells?: number | null;
+}
+
+export type OfferEstimateRecomputeResponse = DefaultMatrixBackfillResponse;
+
 // --- Story 36.1 — member-facing published offer DTOs ---
 // Mirrors slicer/schemas.py MemberPublishedOfferView.
 // NFR24-LEAKFENCE-1: bundle_hash / raw chain block IDs / sidecar paths ABSENT.

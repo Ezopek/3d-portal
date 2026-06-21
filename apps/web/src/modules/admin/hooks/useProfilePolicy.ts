@@ -5,6 +5,8 @@ import type {
   DefaultMatrixBackfillRequest,
   DefaultMatrixBackfillResponse,
   MaterialDefaultUpsert,
+  OfferEstimateRecomputeRequest,
+  OfferEstimateRecomputeResponse,
   PolicyAdminView,
 } from "@/lib/api-types";
 
@@ -76,6 +78,23 @@ export function useDefaultMatrixBackfill() {
     mutationFn: (body) =>
       api<DefaultMatrixBackfillResponse>(
         "/admin/policy/default-matrix-backfill",
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      ),
+  });
+}
+
+export function useOfferEstimateRecompute() {
+  return useMutation<
+    OfferEstimateRecomputeResponse,
+    Error,
+    OfferEstimateRecomputeRequest
+  >({
+    mutationFn: (body) =>
+      api<OfferEstimateRecomputeResponse>(
+        "/admin/profiles/offers/recompute-estimates",
         {
           method: "POST",
           body: JSON.stringify(body),

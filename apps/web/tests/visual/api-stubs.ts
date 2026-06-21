@@ -443,6 +443,8 @@ export async function stubProfileOffers(
     policy?: unknown;
     /** Curated `POST /api/admin/policy/default-matrix-backfill` summary. */
     backfill?: unknown;
+    /** Curated `POST /api/admin/profiles/offers/recompute-estimates` summary. */
+    recompute?: unknown;
   } = {},
 ) {
   const offers = opts.offers ?? [];
@@ -558,6 +560,30 @@ export async function stubProfileOffers(
       body: "{}",
     });
   });
+  // Registered after the generic offers route because Playwright resolves matching routes in
+  // reverse registration order; the recompute subpath must not be treated as offer create.
+  await page.route(
+    "**/api/admin/profiles/offers/recompute-estimates**",
+    (route: Route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          opts.recompute ?? {
+            dry_run: true,
+            inspected: 0,
+            cells_total: 0,
+            cells_resolved: 0,
+            cells_resolve_failed: 0,
+            would_enqueue: 0,
+            enqueued: 0,
+            already_fresh: 0,
+            missing_stl: 0,
+            errors: 0,
+          },
+        ),
+      }),
+  );
 }
 
 /**
