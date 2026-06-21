@@ -3,7 +3,7 @@ story: 40.3
 status: done
 branch: feat/E40.3-member-visible-default-offer-selection
 created: 2026-06-21T15:21Z
-updated: 2026-06-21T15:27Z
+updated: 2026-06-21T15:36Z
 ---
 
 # Story 40.3 — Member visible/default offer selection
@@ -72,6 +72,32 @@ Verdict: APPROVE
 
 infra/scripts/check-all.sh 2>&1 | tee .hermes/run-logs/check-all-E40.3-20260621T152359Z.log
 passed: 16/16; all green.
+```
+
+
+## Deploy / live smoke evidence
+
+Merged to `main`, pushed, and deployed as release `0.1.0+f66c0ed`.
+
+Deploy verification:
+
+```text
+infra/scripts/deploy.sh
+release identity: 0.1.0+f66c0ed
+SLICER_WORKER_SMOKE_OK
+GlitchTip symbolication verify OK — top frame apps/web/src/main.tsx, release 0.1.0+f66c0ed
+runbook fingerprint OK
+Done.
+```
+
+Live smoke on runtime host `.190`:
+
+```text
+GET http://127.0.0.1:8090/ -> HTTP 200
+GET http://127.0.0.1:8090/api/profiles/offers/published unauth -> HTTP 401 {"detail":"missing_access"}
+web bundle: release marker 0.1.0+f66c0ed present
+web bundle: /profiles/offers/published present
+web bundle: is_default present
 ```
 
 ## 40.4 disposition

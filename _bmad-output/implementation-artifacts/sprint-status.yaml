@@ -268,7 +268,7 @@ development_status:
   38-2-admin-offer-stale-badge-resync-action: done
   38-3-filestab-offer-first-ux-cleanup: done
   38-4-member-offer-request-estimate-cta: backlog
-  epic-40: in-progress
+  epic-40: done
   40-1-profile-offer-estimate-sot: done
   40-2-admin-offer-recompute-ui: done
   40-3-member-visible-default-offer-selection: done
