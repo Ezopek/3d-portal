@@ -11,7 +11,7 @@ interface Props {
    */
   offers: MemberPublishedOfferView[] | null;
   selectedOfferId: string | null;
-  onSelect: (offerId: string | null) => void;
+  onSelect: (offerId: string) => void;
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
@@ -26,7 +26,8 @@ interface Props {
  * estimate bar (Story 38.3), no longer embedded inside CatalogEstimateProfileSelector.
  *
  * Replaces the 36.3 large radio/card layout (operator correction 2026-06-14).
- * Fails OPEN: transport error never blocks the existing preset estimate flow.
+ * Fails OPEN for transport errors, but no longer exposes a manual "no profile" option:
+ * Profile Offers are the member estimate SoT after Epic 40.
  * AuthGate discipline: returns null when !isAuthenticated — no redirect, no login prompt.
  * printer_name is intentionally NOT shown (AC-6/AC-14); only portal_label is used.
  */
@@ -73,13 +74,12 @@ export function PublishedOfferPicker({
       <select
         id={selectId}
         className="rounded-md border bg-background px-2 py-1 text-xs text-foreground"
-        value={selectedOfferId ?? ""}
+        value={selectedOfferId ?? offers[0]?.offer_id ?? ""}
         onChange={(e) => {
-          const val = e.target.value;
-          onSelect(val === "" ? null : val);
+          const offerId = e.target.value;
+          if (offerId.length > 0) onSelect(offerId);
         }}
       >
-        <option value="">{t("modules.member.offers.picker.none_option")}</option>
         {offers.map((offer) => (
           // FUTURE: when MemberPublishedOfferView adds a multilingual description field,
           // consider using it here instead of portal_label. printer_name is deliberately

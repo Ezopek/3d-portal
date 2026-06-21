@@ -815,8 +815,6 @@
   "modules.estimates.selector.reason_unavailable": "Not available",
   "modules.member.offers.picker.select_label": "Profile",
   "modules.member.offers.picker.heading": "Published profiles",
-  "modules.member.offers.picker.none_option": "Standard estimate",
-  "modules.member.offers.picker.none_option_aria": "Use standard estimate (no profile selected)",
   "modules.member.offers.picker.offer_aria": "Select profile: {{label}}",
   "modules.member.offers.picker.quality_label": "Quality: {{tier}}",
   "modules.member.offers.picker.printer_label": "Printer: {{printer}}",

@@ -815,8 +815,6 @@
   "modules.estimates.selector.reason_unavailable": "Niedostępny",
   "modules.member.offers.picker.select_label": "Profil",
   "modules.member.offers.picker.heading": "Opublikowane profile",
-  "modules.member.offers.picker.none_option": "Standardowy szacunek",
-  "modules.member.offers.picker.none_option_aria": "Użyj standardowego szacunku (bez wybranego profilu)",
   "modules.member.offers.picker.offer_aria": "Wybierz profil: {{label}}",
   "modules.member.offers.picker.quality_label": "Jakość: {{tier}}",
   "modules.member.offers.picker.printer_label": "Drukarka: {{printer}}",

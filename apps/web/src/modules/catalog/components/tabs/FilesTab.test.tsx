@@ -349,6 +349,32 @@ describe("FilesTab — EST-DISPLAY-1 estimate surface", () => {
     await waitFor(() => expect(select.value).toBe("offer-first"));
   });
 
+
+  it("does not expose a manual standard/no-profile fallback when profile offers exist", async () => {
+    mockUseAuth.mockReturnValue({ isAdmin: false, isAuthenticated: true });
+    installRouter({
+      publishedOffers: [
+        {
+          offer_id: "offer-default",
+          portal_label: "Default profile offer",
+          quality_tier: "standard",
+          compatible_material_categories: ["PLA"],
+          printer_name: "K1 Max",
+          is_default: true,
+        },
+      ],
+    });
+
+    render(<FilesTab modelId={MODEL_ID} files={FILES_WITH_HASH} />, { wrapper: wrap() });
+
+    const select = (await screen.findByRole("combobox")) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe("offer-default"));
+    expect(Array.from(select.options).map((option) => option.value)).toEqual(["offer-default"]);
+    expect(screen.queryByText(/standard estimate|standardowy szacunek/i)).toBeNull();
+    await waitFor(() => expect(estimateCalls().some((url) => url.includes("offer_id=offer-default"))).toBe(true));
+    expect(estimateCalls().some((url) => url.includes("material_class=PLA"))).toBe(false);
+  });
+
   it("PublishedOfferPicker is not rendered on non-STL tabs", async () => {
     mockUseAuth.mockReturnValue({ isAdmin: false, isAuthenticated: true });
     installRouter({

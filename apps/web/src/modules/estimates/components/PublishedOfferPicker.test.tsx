@@ -14,7 +14,7 @@ import { PublishedOfferPicker } from "@/modules/estimates/components/PublishedOf
 // Key new assertions vs 36.3:
 //   - No radiogroup / fieldset; instead a native <select>
 //   - printer_name NOT present in any rendered text (AC-6/AC-14)
-//   - Standard estimate fallback <option> always first
+//   - no manual no-profile fallback option after Epic 40; offers are the SoT
 //   - onSelect called with offer_id on change
 //   - error/fail-open preserved
 //   - i18n parity with updated key list including select_label
@@ -47,11 +47,11 @@ describe("PublishedOfferPicker (compact select)", () => {
     await i18n.changeLanguage("en");
   });
 
-  it("AC-5/AC-6: renders a select with 'Standard estimate' first, then offer portal_labels", () => {
+  it("AC-5/AC-6: renders a select with offer portal_labels only", () => {
     render(
       <PublishedOfferPicker
         offers={[OFFER_A, OFFER_B]}
-        selectedOfferId={null}
+        selectedOfferId={OFFER_B.offer_id}
         onSelect={vi.fn()}
         isLoading={false}
         isError={false}
@@ -63,10 +63,9 @@ describe("PublishedOfferPicker (compact select)", () => {
     const select = screen.getByRole("combobox") as HTMLSelectElement;
     expect(select).toBeTruthy();
     const options = Array.from(select.options);
-    expect(options[0]!.value).toBe("");
-    expect(options[0]!.text).toMatch(/Standard estimate/i);
-    expect(options[1]!.text).toBe("K1 Max / Standard PLA");
-    expect(options[2]!.text).toBe("K1 Max / Aesthetic PLA");
+    expect(options.map((option) => option.value)).toEqual([OFFER_A.offer_id, OFFER_B.offer_id]);
+    expect(options[0]!.text).toBe("K1 Max / Standard PLA");
+    expect(options[1]!.text).toBe("K1 Max / Aesthetic PLA");
   });
 
   it("AC-14: printer_name is NOT shown in any rendered text", () => {
@@ -89,22 +88,6 @@ describe("PublishedOfferPicker (compact select)", () => {
     expect(text).not.toMatch(/Drukarka:/i);
   });
 
-  it("AC-5: 'Standard estimate' option is selected when selectedOfferId is null", () => {
-    render(
-      <PublishedOfferPicker
-        offers={[OFFER_A]}
-        selectedOfferId={null}
-        onSelect={vi.fn()}
-        isLoading={false}
-        isError={false}
-        onRetry={vi.fn()}
-      />,
-      { wrapper },
-    );
-
-    const select = screen.getByRole("combobox") as HTMLSelectElement;
-    expect(select.value).toBe("");
-  });
 
   it("AC-7: onSelect called with offer_id when an offer option is selected", async () => {
     const onSelect = vi.fn();
@@ -113,7 +96,7 @@ describe("PublishedOfferPicker (compact select)", () => {
     render(
       <PublishedOfferPicker
         offers={[OFFER_A, OFFER_B]}
-        selectedOfferId={null}
+        selectedOfferId={OFFER_B.offer_id}
         onSelect={onSelect}
         isLoading={false}
         isError={false}
@@ -127,26 +110,6 @@ describe("PublishedOfferPicker (compact select)", () => {
     expect(onSelect).toHaveBeenCalledWith(OFFER_A.offer_id);
   });
 
-  it("AC-7: onSelect called with null when 'Standard estimate' option is selected", async () => {
-    const onSelect = vi.fn();
-    const user = userEvent.setup();
-
-    render(
-      <PublishedOfferPicker
-        offers={[OFFER_A]}
-        selectedOfferId={OFFER_A.offer_id}
-        onSelect={onSelect}
-        isLoading={false}
-        isError={false}
-        onRetry={vi.fn()}
-      />,
-      { wrapper },
-    );
-
-    const select = screen.getByRole("combobox");
-    await user.selectOptions(select, "");
-    expect(onSelect).toHaveBeenCalledWith(null);
-  });
 
   it("AC-3/AC-8: renders nothing when offers list is empty", () => {
     const { container } = render(
@@ -223,11 +186,9 @@ describe("PublishedOfferPicker (compact select)", () => {
 describe("i18n parity — modules.member.offers.*", () => {
   const REQUIRED_KEYS = [
     "modules.member.offers.picker.select_label",
-    "modules.member.offers.picker.none_option",
     "modules.member.offers.picker.transport_error",
     "modules.member.offers.picker.retry",
     "modules.member.offers.picker.heading",
-    "modules.member.offers.picker.none_option_aria",
     "modules.member.offers.picker.offer_aria",
     "modules.member.offers.picker.no_offers_for_material",
     "modules.member.offers.picker.loading",

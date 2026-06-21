@@ -63,14 +63,14 @@ export function FilesTab({
   const upload = useUploadFile(modelId);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // EST-DISPLAY-1 — frozen default preset; feeds EstimateChip + RowEstimatePanel (preset
-  // prop required by both). When an offer is selected, chips/panels use offer-mode internally
-  // and the preset is not queried. When no offer is selected, the preset drives the estimate.
+  // EST-DISPLAY-1 — frozen default preset retained only for the no-offers/unauth fallback path.
+  // When published offers exist, Profile Offers are the estimate SoT and chips/panels must use
+  // offer mode, starting from the operator-marked default offer.
   const preset: PrintIntentPresetInput = defaultPreset();
 
-  // Story 36.3 (AC-6) — ephemeral offer selection; null = preset mode (§D.3).
+  // Epic 40: ephemeral offer selection; null is only the pre-load/no-offers state.
+  // There is no member-facing "no profile" option anymore.
   const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null);
-  const [userClearedOfferSelection, setUserClearedOfferSelection] = useState(false);
   const tierAvailability = useQualityTierAvailability(
     preset.material_class,
     CATALOG_ESTIMATE_PRINTER_REF,
@@ -108,23 +108,23 @@ export function FilesTab({
     const offers = publishedOffers.data.offers;
     if (offers.length === 0) {
       if (selectedOfferId !== null) setSelectedOfferId(null);
-      if (userClearedOfferSelection) setUserClearedOfferSelection(false);
       return;
     }
 
     const ids = new Set(offers.map((offer) => offer.offer_id));
     if (selectedOfferId !== null && ids.has(selectedOfferId)) return;
-    if (selectedOfferId === null && userClearedOfferSelection) return;
 
     const nextOffer = offers.find((offer) => offer.is_default) ?? offers[0];
-    if (nextOffer) {
-      setSelectedOfferId(nextOffer.offer_id);
-      setUserClearedOfferSelection(false);
-    }
-  }, [publishedOffers.isSuccess, publishedOffers.data, selectedOfferId, userClearedOfferSelection]);
+    if (nextOffer) setSelectedOfferId(nextOffer.offer_id);
+  }, [publishedOffers.isSuccess, publishedOffers.data, selectedOfferId]);
 
-  const handleOfferSelect = (offerId: string | null) => {
-    setUserClearedOfferSelection(offerId === null);
+  const hasPublishedOfferChoices =
+    publishedOffers.isSuccess && publishedOffers.data.offers.length > 0;
+  const canReadFileEstimate = hasPublishedOfferChoices
+    ? selectedOfferId !== null
+    : canReadSelectedEstimate;
+
+  const handleOfferSelect = (offerId: string) => {
     setSelectedOfferId(offerId);
   };
 
@@ -245,8 +245,8 @@ export function FilesTab({
           member-visible. Replaces the legacy Material + Quality selectors. Read-only: selects
           which offer estimate every chip/panel reads; never enqueues, recomputes, or exposes
           ordering / spool semantics. Separate from the admin render controls below.
-          When no offers are published the picker renders nothing; chips/panels fall back to
-          preset mode using defaultPreset. */}
+          When offers are published, the operator default is selected automatically; there is
+          no manual "standard/no profile" option. */}
       {active === "stl" && stlFiles.length > 0 && isAuthenticated && (
         <div className="flex items-center justify-end">
           <PublishedOfferPicker
@@ -341,7 +341,7 @@ export function FilesTab({
                           stlHash={f.sha256}
                           preset={preset}
                           printerRef={CATALOG_ESTIMATE_PRINTER_REF}
-                          enabled={canReadSelectedEstimate}
+                          enabled={canReadFileEstimate}
                           offerId={selectedOfferId}
                         />
                       </div>
@@ -411,7 +411,7 @@ export function FilesTab({
                       stlHash={f.sha256}
                       preset={preset}
                       printerRef={CATALOG_ESTIMATE_PRINTER_REF}
-                      enabled={canReadSelectedEstimate}
+                      enabled={canReadFileEstimate}
                       offerId={selectedOfferId}
                     />
                   </div>
