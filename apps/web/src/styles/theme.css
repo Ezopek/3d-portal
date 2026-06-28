@@ -26,6 +26,8 @@
   --color-muted-foreground: hsl(215 16% 47%);
   --color-primary: hsl(221 83% 53%);
   --color-primary-foreground: hsl(0 0% 100%);
+  --color-secondary: hsl(210 40% 96%);
+  --color-secondary-foreground: hsl(222 47% 11%);
   --color-accent: hsl(210 40% 96%);
   --color-accent-foreground: hsl(222 47% 11%);
   --color-border: hsl(214 32% 91%);
@@ -72,6 +74,8 @@
   --color-muted-foreground: hsl(215 20% 65%);
   --color-primary: hsl(217 91% 60%);
   --color-primary-foreground: hsl(222 47% 11%);
+  --color-secondary: hsl(217 33% 17%);
+  --color-secondary-foreground: hsl(210 40% 98%);
   --color-accent: hsl(217 33% 17%);
   --color-accent-foreground: hsl(210 40% 98%);
   --color-border: hsl(217 33% 20%);

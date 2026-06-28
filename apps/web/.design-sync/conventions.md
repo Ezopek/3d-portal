@@ -36,10 +36,11 @@ border-success/40`, and the same pattern for `warning` and `destructive`.
 
 Radii: `rounded-sm|md|lg` (`--radius-sm|md|lg`). Spacing/typography: standard Tailwind scale.
 
-**Variants** — `Button` and `Badge` take a `variant` prop: `default`, `outline`,
-`destructive`, `ghost`, `link`. ⚠ **Do not use `secondary`** — this theme defines no
-`--color-secondary` token, so `variant="secondary"` renders unstyled. Use `outline` or `ghost`
-instead. `Button` also takes `size`: `xs | sm | default | lg | icon | icon-sm | icon-lg`.
+**Variants** — `Button` and `Badge` take a `variant` prop: `default`, `secondary`, `outline`,
+`destructive`, `ghost`, `link`. `secondary` maps to the `--color-secondary` /
+`--color-secondary-foreground` tokens (a muted neutral fill, with dark-mode values), so
+`bg-secondary text-secondary-foreground` renders accessibly in both themes. `Button` also takes
+`size`: `xs | sm | default | lg | icon | icon-sm | icon-lg`.
 
 ## Where the truth lives
 

@@ -39,12 +39,11 @@ root); `.design-sync/`, `.ds-sync/`, `ds-bundle/` all live under `apps/web/`.
 
 ## DS gaps / findings (surface to maintainers)
 
-- **`--color-secondary` is undefined** in `src/styles/theme.css` (and not in
-  `shadcn/tailwind.css`). So the `secondary` variant of `Button`/`Badge` — and the
-  `SourceBadge` component, which hardcodes `variant="secondary"` — render **unstyled**
-  (transparent bg, default text) in the real app AND in previews. Previews avoid `secondary`
-  in authored compositions; `SourceBadge` is shown faithfully (it has no other option). The
-  conventions header documents this so the design agent doesn't rely on `secondary`.
+- **`--color-secondary` / `--color-secondary-foreground`** are now defined in
+  `src/styles/theme.css` (light + dark, story `t_3894e508`). The `secondary` variant of
+  `Button`/`Badge` — and the `SourceBadge` component, which hardcodes `variant="secondary"` —
+  now render with a muted neutral fill in both themes. Previously undefined (rendered unstyled);
+  the conventions header and previews may safely use `secondary` again.
 
 ## Known render warns
 
