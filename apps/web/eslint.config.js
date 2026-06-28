@@ -19,6 +19,12 @@ export default tseslint.config(
       "test-results/**",
       // Husky hook scripts are Node-side; lint via their own conventions.
       ".husky/**",
+      // /design-sync tooling: staged converter, generated bundle, and authored
+      // preview compositions (which import from the published "portal-web"
+      // bundle, not app source — they are not part of the app's lint surface).
+      ".design-sync/**",
+      ".ds-sync/**",
+      "ds-bundle/**",
     ],
   },
   js.configs.recommended,
