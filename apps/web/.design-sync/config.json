@@ -19,7 +19,9 @@
     "Sheet": { "cardMode": "single", "viewport": "760x480" },
     "ComingSoonStub": { "cardMode": "single", "viewport": "680x460" },
     "ModelCard": { "cardMode": "single", "viewport": "360x520" },
-    "CardCarousel": { "cardMode": "single", "viewport": "320x340" }
+    "CardCarousel": { "cardMode": "single", "viewport": "320x340" },
+    "LoadingState": { "cardMode": "column" },
+    "Tabs": { "cardMode": "column" }
   },
   "componentSrcMap": {
     "Badge": "src/ui/badge.tsx",

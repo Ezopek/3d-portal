@@ -72,6 +72,8 @@ root); `.design-sync/`, `.ds-sync/`, `ds-bundle/` all live under `apps/web/`.
 - **CardCarousel** images come from `/api/models/.../content` (404 offline) — the preview shows
   the carousel chrome (arrows + dots) over the muted placeholder; a small viewport override
   keeps the hover-gated arrows visible.
+- **LoadingState** and **Tabs** use `cardMode: "column"` overrides so their wider stories render
+  at full card width instead of overflowing the default grid cells.
 
 ## Re-sync from a fresh checkout (repo → resync)
 
@@ -83,7 +85,6 @@ Full path on a clean clone:
 ```sh
 cd apps/web
 npm ci                       # app deps (incl. @tanstack/react-router for the provider)
-npm run build                # emits dist/assets/index-<hash>.css that prepare.sh copies
 
 # Stage the converter from the /design-sync skill (it owns the converter; not committed).
 # Easiest: re-run `/design-sync` — it stages .ds-sync/ and installs deps. Or manually:
@@ -91,11 +92,12 @@ mkdir -p .ds-sync && cp -r <skill>/{package-build,package-validate,package-captu
 echo '{"name":"ds-sync-deps","private":true}' > .ds-sync/package.json
 (cd .ds-sync && npm i esbuild ts-morph @types/react)
 
-bash .design-sync/prepare.sh   # regenerate .cache/ds-entry.tsx + .cache/app.css
-DS_CHROMIUM_PATH=/usr/local/bin/chromium \
-  node .ds-sync/resync.mjs --config .design-sync/config.json --node-modules ./node_modules \
-    --out ./ds-bundle --remote .design-sync/.cache/remote-sync.json
+npm run design-sync          # build → prepare.sh → .ds-sync/resync.mjs → ds-bundle + remote-sync
 ```
+
+`npm run design-sync:check` validates paths and prints the planned commands without running the
+build/converter. Set `DS_CHROMIUM_PATH=/usr/local/bin/chromium` if auto-detection ever picks the
+wrong browser.
 
 Fonts are committed under `.design-sync/fonts/`, so a fresh checkout needs **no** `@fontsource`
 install. The app's `eslint.config.js` ignores `.design-sync/`, `.ds-sync/`, `ds-bundle/` so the
