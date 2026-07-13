@@ -129,3 +129,15 @@ infra/.last-deploy-sha
 # the logs reference internal hosts/paths and must not enter history.
 .hermes/
 .claude/.story-automator-active
+.bmad-loop/runs/
+.bmad-loop/cache/
+.bmad-loop/policy.toml
+
+# Agent skill trees — tool-managed, not source of truth.
+# Installed per-CLI by `bmad-method install` + `bmad-loop init` (regenerated on
+# every run); committing them balloons history with churn that no reader outside
+# the local harness needs. A fresh clone re-installs them, so they stay local.
+.claude/skills/
+.agent/skills/
+.agents/skills/
+.junie/skills/
