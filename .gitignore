@@ -133,6 +133,9 @@ infra/.last-deploy-sha
 .bmad-loop/cache/
 .bmad-loop/policy.toml
 
+# Personal BMAD settings — user_name + communication_language (never shared).
+_bmad/config.user.yaml
+
 # Agent skill trees — tool-managed, not source of truth.
 # Installed per-CLI by `bmad-method install` + `bmad-loop init` (regenerated on
 # every run); committing them balloons history with churn that no reader outside
