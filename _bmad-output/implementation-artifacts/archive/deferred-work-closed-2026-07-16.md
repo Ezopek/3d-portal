@@ -1,4 +1,13 @@
-# Deferred Work — quick-dev review backlog
+# Deferred Work — quick-dev review backlog  [ARCHIVED / FROZEN 2026-07-16]
+
+> **FROZEN 2026-07-16 — accepted into the production baseline.**
+> This ledger is closed. `main` as of 2026-07-16 is the production baseline
+> (see `../PRODUCTION-BASELINE-2026-07-16.md`). The open entries below
+> (DSG-1..5, TB-015-D1, SPOOL-PREQ-1-D1, PROFILE-LIB-GUARD-1,
+> PROFILE-OFFER-SYNC-1) are known, non-blocking debt that is **not** carried
+> into the tag-taxonomy / model-catalog rebuild. If any resurfaces as a real
+> problem, re-triage it individually as a fresh item under the new initiative —
+> do not treat this file as a live backlog.
 
 Findings from BMAD reviews that are real but **not blocking** the current story. Each entry has enough context that a future promotion to its own quick-dev story (or absorbing into a related one) can happen without re-deriving context.
 

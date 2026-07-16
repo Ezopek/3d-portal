@@ -5,6 +5,18 @@ project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 
+# ============================================================================
+# PRODUCTION BASELINE — FROZEN 2026-07-16
+# Current `main` is accepted as production. Every epic below is closed (done).
+# Residual unfinished work is cancelled, not carried forward:
+#   - 38-4-member-offer-request-estimate-cta
+#   - 4-6-add-model-from-url-cli
+# Both are superseded by the tag-taxonomy / model-catalog rebuild
+# (docs/design/HANDOFF-tagi-fasetowe.md). The deferred-work ledger was
+# archived to archive/deferred-work-closed-2026-07-16.md.
+# Full closeout: PRODUCTION-BASELINE-2026-07-16.md
+# ============================================================================
+
 development_status:
   epic-1: done
   1-1-phase-0-dry-run-gate: done
@@ -35,7 +47,7 @@ development_status:
   4-3-openapi-surface-enrichment: done
   4-4-legacy-sot-folder-triage-decision: done
   4-5-end-to-end-smoke-test-acceptance: done
-  4-6-add-model-from-url-cli: backlog
+  # 4-6-add-model-from-url-cli: cancelled 2026-07-16 — absorbed into model-catalog rebuild (docs/design/HANDOFF-tagi-fasetowe.md)
   epic-4-retrospective: done
   4-4-followup-drop-legacy-id: done
   tb-003-archive-nginx-180: done
@@ -98,7 +110,7 @@ development_status:
   10-3-atomic-cutover-smoke-rollback-drill: done
   10-4-closing-operations-md-cutover-date: done
   epic-10-retrospective: done
-  epic-11: backlog
+  epic-11: done
   11-1-backend-default-deny-sot-agent-contract: done
   11-2-share-scoped-asset-endpoint: done
   11-3-frontend-shell-authgate-searchstr-fix: done
@@ -106,30 +118,29 @@ development_status:
   11-5-audit-rerun-scenario-4-extended: done
   11-6-cutover-smoke-external-host-probe: done
   11-7-sibling-allowlist-rollback-closing-cutover-date: done
-  epic-11: done
-  epic-11-retrospective: backlog
+  epic-11-retrospective: optional
   tb-015-measure-clear-clickable: done
   epic-14: done
   14-1-vitest-admin-finder-fixes: done
   14-2-pytest-hydrate-isolation-close: done
   14-3-visual-regression-hook-context-flake: done
-  epic-14-retrospective: backlog
+  epic-14-retrospective: optional
   epic-12: done
   12-1-admin-invites-unblock: done
   12-2-admin-users-inactive-filter: done
   12-3-display-name-registration-self-service: done
   12-4-settings-hub-2fa-discoverability: done
   12-5-sessions-ux-pagination-sort-filter: done
-  epic-12-retrospective: backlog
+  epic-12-retrospective: optional
   epic-13: done
   13-1-mobile-carousel-arrows: done
   13-2-thumbnail-pipeline: done
-  epic-13-retrospective: backlog
+  epic-13-retrospective: optional
   epic-15: done
   15-1-pytest-threading-deadlock: done
   15-2-visual-baselines-refresh-batch: done
   15-3-per-file-client-fixture-refactor: done
-  epic-15-retrospective: backlog
+  epic-15-retrospective: optional
   epic-16: done
   16-1-modelnote-bilingual-schema-migration: done
   16-2-generate-description-button: done
@@ -137,13 +148,13 @@ development_status:
   16-4-admin-manual-model-add: done
   16-5-admin-file-upload-to-existing-model: done
   16-6-bulk-stl-download-zip-restore: done
-  epic-16-retrospective: backlog
+  epic-16-retrospective: optional
   epic-17: done
   17-1-admin-tables-fluid-full-width: done
   17-2-visual-baselines-regen-sign-off: done
   17-3-tb-016-runbook-doc-honesty: done
   17-4-doc-drift-2-close-out: done
-  epic-17-retrospective: backlog
+  epic-17-retrospective: optional
   epic-18: done
   18-1-tb-025-add-note-404-fix: done
   18-2-tb-028-users-table-overflow-wrapper: done
@@ -159,35 +170,32 @@ development_status:
   19-5-share-view-description-carousel: done  # close-out 2026-07-16: shipped 822d3c3 + Codex round-2 a28cdde
   19-6-stl-preview-render-job: done  # close-out 2026-07-16: shipped fef96f7 + Codex round-2 2220581 (TB-034 closed in Init 16)
   19-7-share-view-3d-viewer-integration: done
+  epic-19-retrospective: done
   epic-20: done
   20-1-tb-027-catalog-srcset-perf: done
   20-2-tb-029-add-model-cta-modal: done  # close-out 2026-07-16: shipped 7f6dd10 + Codex round-2 83b225a; init-16 retro "status flip only needed"
   20-3-tb-022-viewer3dinline-srcoverride: done
   epic-20-retrospective: done
-  epic-21: in-progress
+  epic-21: done
   21-1-tb-018-hydrate-pollution-fix: done
   21-2-tb-023-credentialless-fixture: done
-  epic-21: done
   epic-21-retrospective: done
   init-15-meta: done
-  epic-19-retrospective: done
-  epic-22: backlog
+  epic-22: done
   22-1-gallery-tier-worker-backfill: done
   22-2-fe-carousel-gallery-tier-consumption: done
   22-3-symmetric-fullscreen-viewer: done
   22-4-post-tier-hygiene: done
-  epic-22: done
   epic-22-retrospective: done
-  epic-23: backlog
+  epic-23: done
   23-1-blob-cache-strictmode-revocation: done
   23-2-stl-preview-source-tracking-lock: done
   23-3-share-per-token-ratelimit: done
-  epic-23: done
   epic-23-retrospective: done
-  epic-24: backlog
-  24-1-centralized-admin-token-helper: done
   epic-24: done
+  24-1-centralized-admin-token-helper: done
   epic-24-retrospective: done
+  epic-25: done
   25-1-mobile-photo-reorder-touch-action: done
   epic-26: done
   26-1-viewer-responsive-scaling: done
@@ -201,6 +209,7 @@ development_status:
   28-1-add-model-button-alignment: done
   28-2-viewer-hidden-strip-coords-guard: done
   epic-28-retrospective: done
+  epic-29: done
   29-1-init-11-15-h2-backfill: done
   epic-30: done
   30-1-share-resolve-endpoint-return-url: done
@@ -262,12 +271,12 @@ development_status:
   epic-37: done
   37-1-stl-file-delete-ui: done
   epic-37-retrospective: done
-  epic-38: in-progress
+  epic-38: done
   # 38-1-member-offer-request-estimate-cta: superseded by E38 decomposition 2026-06-14
   38-1-admin-offer-sync-state-foundation: done
   38-2-admin-offer-stale-badge-resync-action: done
   38-3-filestab-offer-first-ux-cleanup: done
-  38-4-member-offer-request-estimate-cta: backlog
+  # 38-4-member-offer-request-estimate-cta: cancelled 2026-07-16 — superseded by tag-taxonomy/catalog rebuild (docs/design/HANDOFF-tagi-fasetowe.md)
   epic-40: done
   40-1-profile-offer-estimate-sot: done
   40-2-admin-offer-recompute-ui: done
