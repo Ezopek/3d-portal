@@ -1,5 +1,5 @@
 generated: 2026-05-09
-last_updated: 2026-07-16T00:00Z
+last_updated: 2026-07-17T00:00Z
 project: 3d-portal
 project_key: NOKEY
 tracking_system: file-system
@@ -283,3 +283,54 @@ development_status:
   40-3-member-visible-default-offer-selection: done
   # 40.4 reopened by explicit operator decision on 2026-06-21: remove legacy profile systems completely.
   40-4-demote-legacy-profile-grid: done
+
+  # ============================================================================
+  # INITIATIVE 25 — Facet Tag Taxonomy + Category Retirement (Catalog Rebuild)
+  # Seeded 2026-07-17 by bmad-sprint-planning from epics.md § Initiative 25.
+  # Epics E41–E47 (numbering continues 41+ after the frozen baseline top epic-40;
+  # epic-39 was never used — baseline runs ...38 → 40). Everything ≤40 above is
+  # the frozen production baseline and is untouched.
+  # Dependency order (back-to-front): E41 data model → E42 API → E43 FE data →
+  # E44 browse UI → E45 card/detail/edit → E46 admin screen → E47 i18n/visual/docs.
+  # Source SCP: sprint-change-proposal-2026-07-17-tag-taxonomy-catalog-rebuild.md
+  # (APPROVED). Design SoT: docs/design/HANDOFF-tagi-fasetowe.md. Supersedes the
+  # cancelled 38-4 + 4-6. Story splits/IDs are sketch-level — finalised per story
+  # by bmad-create-story at dev-entry; each story still needs explicit operator dev-go.
+  # ============================================================================
+  epic-41: backlog
+  41-1-taggroup-entity-tag-membership-category-removal: backlog
+  41-2-alembic-0018-facet-tags-drop-category: backlog
+  41-3-optional-starter-taxonomy-seed: backlog
+  epic-41-retrospective: optional
+  epic-42: backlog
+  42-1-models-facet-filtering: backlog
+  42-2-tags-tag-groups-read-api: backlog
+  42-3-category-endpoint-removal: backlog
+  42-4-admin-group-governance: backlog
+  42-5-model-create-patch-share-dto-drop-category: backlog
+  epic-42-retrospective: optional
+  epic-43: backlog
+  43-1-api-types: backlog
+  43-2-hooks: backlog
+  43-3-url-state: backlog
+  epic-43-retrospective: optional
+  epic-44: backlog
+  44-1-facetsidebar: backlog
+  44-2-filterribbon: backlog
+  44-3-cataloglist-states: backlog
+  epic-44-retrospective: optional
+  epic-45: backlog
+  45-1-modelcard-untagged-chip: backlog
+  45-2-catalogdetail-grouped-tags: backlog
+  45-3-edittagssheet-grouped-picker-create-form-cutover: backlog
+  epic-45-retrospective: optional
+  epic-46: backlog
+  46-1-group-list-counts: backlog
+  46-2-rename-merge-move: backlog
+  46-3-duplicate-detection: backlog
+  epic-46-retrospective: optional
+  epic-47: backlog
+  47-1-i18n: backlog
+  47-2-visual-specs: backlog
+  47-3-runbook-docs-cutover: backlog
+  epic-47-retrospective: optional

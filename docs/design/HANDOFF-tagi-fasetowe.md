@@ -89,8 +89,13 @@ Zmapowana z obecnych kategorii (makieta 01):
 - **Twórca (premium):** Jarek, …
 - **Poziom:** Premium
 
-## 9. Otwarte pytania (do potwierdzenia przed kodowaniem)
-1. Globalne wyszukiwanie tagu w sidebarze (ponad grupami) — tak/nie?
-2. Twórcy jako osobna faseta czy prefiks tagu?
-3. Ile grup rozwiniętych domyślnie w sidebarze?
-4. Czy `TagGroup` jako tabela (rekomendacja) czy słownik enumów?
+## 9. Decyzje (rozstrzygnięte 2026-07-16 przez właściciela)
+Wcześniej otwarte pytania — teraz zatwierdzone domyślne. Wszystkie ciągną w jedną stronę: **grupa to realny, adminowalny byt, nie konwencja-na-stringu**.
+
+1. **Globalny search tagów w sidebarze — TAK**, ale tani: substring-match po `name_pl`/`name_en` **po stronie klienta**, na już pobranym `useTagGroups`. Bez nowego endpointu, bez fuzzy. (makieta 02)
+2. **Twórcy — osobna faseta**, zero prefiksów tagów. „Twórca (premium)" i „Poziom" to po prostu kolejne grupy w `tag_group`. Prefiksy odrzucone jako powrót do grupowania-na-stringu, które ta zmiana eliminuje.
+3. **Grupy rozwinięte domyślnie — 2 pierwsze wg `position`** (główne osie: *Typ*, *Pomieszczenie*) **+ każda grupa z aktywnym filtrem**; reszta zwinięta. Stan zwinięcia zapamiętany **per user w `localStorage`**. Liczba „ile rozwiniętych" jako stała/konfig, do podkręcenia bez zmiany logiki.
+4. **`TagGroup` — TABELA** (`tag_group`), nie enum. Powód: admin ma zarządzać grupami (rename, kolejność — makieta 06), dwujęzyczność `name_pl`/`name_en`. Relacja: `tag.group_id` jako **nullable FK** → `tag_group.id` (nullable jest wymagane dla tagów bez grupy / pseudo-fasety „Bez tagów" — edge case 08).
+
+## 10. Uwaga techniczna do migracji (weryfikacja w kodzie)
+`Model.category_id` w `apps/api/app/core/db/models/_entities.py` to obecnie **NOT NULL + FK `category.id` ondelete=RESTRICT** (indeksowane). Zdjęcie kategorii to **nie** proste `drop column` — Alembic musi najpierw poluzować/usunąć FK i constraint NOT NULL, a `Category` jest **drzewem** (`parent_id` self-ref RESTRICT), więc kasowanie tabel idzie od liści. Wszystkie istniejące modele mają dziś ustawione `category_id` — po migracji startują bez żadnego tagu (świadomy reset, patrz sekcja 1 + filtr `untagged` z 08B).

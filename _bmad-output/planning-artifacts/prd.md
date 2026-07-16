@@ -138,6 +138,7 @@ This is the living project PRD for **3d-portal**. It grows over time, one **Init
 | 22 | Admin Operational Observability (Worker/Job Console) | 🚧 planning | — | Single epic E34 (1 read-only MVP story, ADMIN-JOBS-1): admin-only worker/job **console** over the three live ARQ pools (API `arq:api`, Render `arq:queue`, Slicer `arq:slicer`) — a backend snapshot endpoint `GET /api/admin/queues` + a frontend `/admin/queues` admin tab. Answers "did my change wake the backend? / is something running ahead of mine? / what are these red jobs?" (UC1-UC3). **Read-only, admin-only; NO retry/kill/purge/pause/resume.** MVP = raw-arq **live snapshot** over the lifespan-owned `app.state` arq/Redis (exact `zcard` queued + bounded `SCAN` in-progress; bounded `SCAN` recent results, **never** unbounded `KEYS`) + reuse of the existing business-keyed status keys (`render:status:{model_id}`, slicer `EstimateStatus`) as the job-context layer. **Durable job-activity ledger DEFERRED** (named later slice, G-LEDGER). Worker liveness is a tri-state derived from the coarse `<queue>:health-check` key (1h interval today) — **coarse liveness accepted for MVP** (running/queued stay exact), interval-lowering deferred (G-LIVENESS). Recent-history panel **labelled Redis-resident / ~last 1h**. Load-bearing **leak fence**: field-allowlist DTO, never raw pickled `args`/`kwargs`/`result`, curated `error_class`/`context`. Three architecture Decisions (AO read-model + location + ledger-deferred, AP coarse-health-key liveness, AQ leak fence / read-only privacy contract). **Sequenced BEFORE G-PUBLISH** (Init 21 PROFILE-OFFER-1 real-resolver publication) so the operator can observe slice/recompute/render queues before publishing effects. API-read-only + FE → SW-DEPLOY-1 NOT triggered. **Implementation BLOCKED until bmad-create-story + dev-go.** Discovery: `spec-admin-jobs-console.md` (commit dcb9df8). Source SCP: `sprint-change-proposal-2026-06-06-init22-admin-jobs-console.md`. See section "Initiative 22" below. |
 | 23 | Spoolman Filament Profile Estimates (Material-Default + Exact-Override Policy) | ✅ shipped | 2026-06-10 | Single epic **E35** (6 stories 35.1–35.6): portal-owned profile-selection policy (`exact filament override > material default > unavailable`), file-backed `ProfilePolicyStore`, resolver/bundle integration, estimate API source metadata (`EstimateProfileSource`), admin policy management surface, user-facing exact/default/unavailable labels, bounded default-matrix backfill guardrails. Architecture: Decision AS. Source SCP: `sprint-change-proposal-2026-06-07-spoolman-filament-profile-estimates.md`. See section "Initiative 23" below. |
 | 24 | Member-Facing Published Profile Offer Surface (PROFILE-PUBLISH-2) | 🚧 planning | — | Single epic **E36** (3 stories 36.1–36.3): member-accessible published-offer list endpoint + safe DTO (36.1), member estimate-by-offer resolution reusing E35 source labels (36.2), member offer picker UI (36.3; gated on G-UXGATE). Realizes the named PROFILE-PUBLISH-2 follow-on from Decision AR / PROFILE-PUBLISH-1. Admin API preserved unchanged; no Alembic/DB change; SW-DEPLOY-1 NOT triggered. Architecture: Decision AT. Source SCP: `sprint-change-proposal-2026-06-13-profile-publish-2-member-offer-surface.md`. See section "Initiative 24" below. |
+| 25 | Facet Tag Taxonomy + Category Retirement (Catalog Rebuild) | 🚧 planning | — | **MAJOR** — retires the shipped `Category` entity and rebuilds catalog browse/filter/detail/admin around **facet-grouped tags**. Seven epics **E41–E47** (backend contract E41–E42 → frontend E43–E46 → cutover E47): `TagGroup` entity + `Tag.group_id` + Alembic `0018` forward-only drop of `Category`/`Model.category_id` (E41); facet filtering (`tag_ids`/`tag_match` AND-between-groups/OR-within-group + `untagged`), group governance, category-endpoint removal, `ShareModelView` category drop (E42); FE data layer + `FacetSidebar`/`FilterRibbon` browse UI + grouped card/detail/edit + admin tag/group screen (E43–E46); i18n + dark-mode token AC + pl-PL visual specs + agent-runbook cutover (E47). **No data migration** — models reset to untagged, triaged via `untagged=true`. Supersedes cancelled residuals `38-4` + `4-6`. Admin-only tag creation. Retires FR0-CAT-1..3, FR0-ADM-1, FR0-SOT-1. Source SCP: `sprint-change-proposal-2026-07-17-tag-taxonomy-catalog-rebuild.md` (APPROVED 2026-07-17). Design: `docs/design/HANDOFF-tagi-fasetowe.md`. See section "Initiative 25" below. |
 
 ## Initiative 0 — Product Foundation: Home 3D-Printing Catalog
 
@@ -333,16 +334,16 @@ These document what the foundation provides. They are not gated by acceptance cr
 
 #### Catalog (apps/web/src/modules/catalog/ + apps/api/app/modules/sot/)
 
-- **FR0-CAT-1.** List view + grid view of models, with thumbnails (rendered server-side by the worker).
-- **FR0-CAT-2.** Free-text search across model name, tags, categories.
-- **FR0-CAT-3.** Filter by tags. Filter by categories.
+- **FR0-CAT-1.** List view + grid view of models, with thumbnails (rendered server-side by the worker). _(Superseded by Initiative 25 — facet tags: the category dimension of catalog browse is retired; see Initiative 25 for the facet-tag replacement.)_
+- **FR0-CAT-2.** Free-text search across model name, tags, categories. _(Superseded by Initiative 25 — facet tags: categories retired; search spans name + facet tags. See Initiative 25.)_
+- **FR0-CAT-3.** Filter by tags. Filter by categories. _(Superseded by Initiative 25 — facet tags: category filtering retired, replaced by facet-tag filtering (AND-between-groups / OR-within-group + `untagged`). See Initiative 25.)_
 - **FR0-CAT-4.** Detail page per model: photos gallery, renders gallery, STL files list with select-for-render toggles, prints log, external links.
 - **FR0-CAT-5.** 3D STL viewer using three.js + react-three-fiber, materials/edges/grid driven by `--color-viewer-*` theme tokens.
 - **FR0-CAT-6.** Responsive layout — desktop + mobile breakpoints, light + dark theme.
 
 #### Admin (apps/api/app/modules/admin/ + apps/web/src/routes/catalog/$id/)
 
-- **FR0-ADM-1.** Edit model metadata: name, description, tags, categories.
+- **FR0-ADM-1.** Edit model metadata: name, description, tags, categories. _(Superseded by Initiative 25 — facet tags: the category field is retired; metadata editing is tag/facet-based (admin-only tag creation). See Initiative 25.)_
 - **FR0-ADM-2.** Manage model files: upload STL/photo/3mf, delete, mark `selected_for_render`, reorder via `position` field (migration `0006`).
 - **FR0-ADM-3.** Add prints to prints log: date, filament, notes, photos.
 - **FR0-ADM-4.** Manage external links: URL (indexed for de-duplication via migration `0011`), label, source.
@@ -364,7 +365,7 @@ These document what the foundation provides. They are not gated by acceptance cr
 
 #### Source-of-truth (apps/api/app/modules/sot/)
 
-- **FR0-SOT-1.** Public read endpoints: list models, get model, list tags, list categories.
+- **FR0-SOT-1.** Public read endpoints: list models, get model, list tags, list categories. _(Superseded by Initiative 25 — facet tags: `GET /api/categories` retired; replaced by `GET /api/tag-groups` (facet groups + tags + counts). See Initiative 25.)_
 - **FR0-SOT-2.** Agent write endpoints (admin role): create model, update metadata, upload file. Auth = cookie + password (NOT bearer token).
 - **FR0-SOT-3.** Reverse-sync support via `scripts/hydrate_local_tree.py` for `.190` → WSL bootstrap.
 
@@ -2155,3 +2156,59 @@ Init 24 gives members the ability to see and choose from admin-published print p
 - Sprint status: `_bmad-output/implementation-artifacts/sprint-status.yaml` § epic-36 (rows seeded 2026-06-13; Story 36.1 is `ready-for-dev`, the remaining rows are `backlog`).
 - Predecessor: Initiative 21 (E33 / PROFILE-PUBLISH-1 backend bridge, Decision AR) + Initiative 23 (E35 filament policy, Decision AS).
 - Process notes: apply [[feedback_scp_pre_enumeration_phase]] discipline to E36 story specs; apply [[reference_web_routetree_regen]] if Story 36.3 adds or changes frontend routes.
+
+## Initiative 25 — Facet Tag Taxonomy + Category Retirement (Catalog Rebuild)
+
+**Status:** 🚧 planning (started 2026-07-17). Source SCP: `sprint-change-proposal-2026-07-17-tag-taxonomy-catalog-rebuild.md` (status **APPROVED** by operator 2026-07-17 — routed Path A: PM/Architect → Sprint Planning). Design source of truth (visual): `docs/design/HANDOFF-tagi-fasetowe.md` (7 mockups + edge states, PL/EN + light/dark). Seven epics **E41–E47** (epics 41+; highest shipped is Initiative 24 / epic-40, production baseline frozen 2026-07-16). Architecture: `architecture.md` § Initiative 25 (data model + migration `0018` + API contract). **Change class: MAJOR** — retires a shipped core entity (`Category`), requires a forward-only schema migration, and amends the catalog browse/filter/detail/admin/share contract.
+
+### Overview
+
+The catalog was built on a **single, hard, mandatory category per model** (`Model.category_id` NOT NULL, FK → `category.id`, organised as a self-referential tree). Operating it exposed the classic taxonomy failure: one model legitimately belongs to several axes at once (a *type*, a *room*, a *system*, a *material*, a *creator*), and a single tree forces a lossy "pick one" plus deep drill-downs. Initiative 25 replaces the hard single category with **many tags grouped into facets**: a tag belongs to one admin-managed **group/facet** (Type, Room, System, Material, Creator, …), tag creation is **admin-only** (users pick from a curated set), and filter combination is a **user-visible AND/OR toggle** (default: AND-between-groups / OR-within-group). The many-to-many `model_tag` already exists and is reused. **No data migration:** old categories are dropped, every model starts **untagged** and is re-tagged from scratch (deliberate owner reset), with `untagged=true` as the post-cutover triage filter. This supersedes and finalises the two residuals cancelled in the frozen baseline (`38-4-member-offer-request-estimate-cta`, `4-6-add-model-from-url-cli`).
+
+> **Supersede note (applied to FR0-CAT-1..3, FR0-ADM-1, FR0-SOT-1 above):** Categories are retired by Initiative 25 (facet tags). Those `category_*` requirements are historical; the facet-tag replacement is defined by the FR25 block below.
+
+### Functional Requirements
+
+- **FR25-TAX-1 — Facet groups are a first-class admin entity.** A `TagGroup` (table `tag_group`: `slug`, `name_en`, `name_pl?`, `position`) organises tags. A tag has a nullable `group_id` FK → `tag_group.id` (nullable required for the "Untagged" pseudo-facet / tags without a group). *Verifiable:* admin creates a group, assigns tags, reorders; a tag with `group_id=NULL` renders under the groupless pseudo-facet.
+- **FR25-TAX-2 — Tag creation is admin-only.** Non-admin surfaces (EditTagsSheet, model-detail inline add) offer selection only; the "create tag" path is admin-gated. *Verifiable:* member EditTagsSheet exposes no create affordance; admin does.
+- **FR25-FILT-1 — Facet filtering replaces category filtering.** `GET /api/models` drops `category_ids`; adds `tag_ids: string[]`, `tag_match: "all" | "any"` (default `all`), `untagged: bool`. Default semantics: **AND between groups, OR within a group**; `tag_match` is the user override (mockup 04). *Verifiable:* AND/OR toggle changes result set; `untagged=true` returns only models with zero tags.
+- **FR25-FILT-2 — Untagged triage.** Every model with zero tags is a valid catalog member (matches no facet filter). `untagged=true` surfaces them; card shows a ghost "Bez tagów" chip (mockup 08A/08B).
+- **FR25-BROWSE-1 — Facet sidebar.** Collapsible groups with multi-select checkboxes + per-tag counts, client-side substring search over `name_pl`/`name_en` on already-fetched groups (no new endpoint, no fuzzy), 2 groups expanded by default (by `position`) + any group with an active filter, collapse state persisted per user in `localStorage` (mockups 02/03).
+- **FR25-DETAIL-1 — Grouped tag rendering on model detail.** Tags render grouped by facet (group label + chips). Empty group: hidden for users, dash + inline "Add" for admin. Tag click → catalog pre-filtered by that tag (mockups 05/08C).
+- **FR25-ADMIN-1 — Tag/group governance screen.** Admin screen lists tags per group with counts; supports rename, **merge** (reuse existing `POST /tags/merge`), move-to-group, duplicate detection, group create/reorder (mockup 06 right).
+- **FR25-SHARE-1 — Share projection drops category.** `ShareModelView` no longer carries `category`; tags continue to flow to anonymous visitors (`ShareModelView.tags: list[str]` already exists — diligence finding SCP §2.4.1).
+- **FR25-AGENT-1 — Agent add-model no longer pre-flights categories.** The runbook pre-flight drops the "category slug exists / `GET /api/categories`" step; model create no longer requires `category_id`.
+
+### Non-Functional Requirements
+
+No new NFR class is required — Initiative 25 reuses the existing observability / i18n-parity / visual-verification / determinism NFR families established by prior initiatives:
+
+- **NFR25-I18N-1** (reuse): all new `catalog.facets.*` / `catalog.filters.matchAll|matchAny|untagged|noTags` / `tags.groupless` / admin merge-rename-newGroup-duplicates keys present in both `en.json` and `pl.json`; retired keys (`catalog.filters.category`, `openCategories`, `a11y.allCategories`) removed.
+- **NFR25-DARKMODE-1** (hard AC per HANDOFF §7 token rule): all new facet surfaces are token-only styled and pass light + dark theme; no color literals (existing ESLint/Stylelint color-literal ban applies).
+- **NFR25-VISUAL-1** (reuse): Playwright visual baselines for the new facet surfaces (sidebar, filter ribbon, grouped detail, admin screen, untagged states), rendered in **pl-PL locale** per project memory; consolidate any overlapping `/api/*` route mocks into a single handler.
+- **NFR25-DETERMINISM-1** (reuse): 3× consecutive identical pytest + vitest pass counts before merge of any story.
+- **NFR25-SCHEMA-MIGRATION-1** (reuse of NFR10-SCHEMA-MIGRATION-1): migration `0018` is **forward-only** (`downgrade` raises `NotImplementedError`); old revision kept for emergency revert; categories + per-model assignment are unrecoverable by design.
+- **NFR25-LEAKFENCE-1** (reuse): the anonymous `ShareModelView` contract must not regress — dropping `category` must not expose any new internal field; verified by a share-DTO test.
+
+### Decisions
+
+- **Decision (owner, 2026-07-16):** replace the hard single category per model with many admin-managed facet-grouped tags; admin-only tag creation; user-visible AND/OR filter (default AND-between / OR-within); **no data migration** (models reset to untagged, triaged via `untagged`). Ratified into the PRD via this Initiative-25 FR block.
+- **Architecture (§ Initiative 25):** `TagGroup` table + `tag.group_id` nullable FK (`ondelete="SET NULL"`) + `group_position`; remove `Category` + `Model.category_id`; Alembic `0018_facet_tags_drop_category` (`down_revision = "0017"`, forward-only, `batch_alter_table` on SQLite for the FK+index drop); API contract change on `GET /api/models` (tag_ids/tag_match/untagged), new `GET /api/tag-groups`, removal of `GET /api/categories` + admin category CRUD, `ModelCreate`/`ModelPatch` drop `category_id`, `ShareModelView` drop `category`. Exact autogenerated FK/index names for `model.category_id` to be introspected at implementation time — do **not** guess.
+
+### Out of scope (intentional)
+
+- **Data migration of existing category assignments** — none; deliberate owner reset to untagged (the `untagged` filter triages the post-cutover state).
+- **Backward `downgrade` of migration 0018** — forward-only by design; categories unrecoverable.
+- **`slicer/*` "category"** — false positive (`reason_category` / warning `code` strings, no `Category` import); explicitly untouched (SCP §2.4.2).
+- **Tag-merge as new build** — `POST /tags/merge` already exists (`admin_router.py:693`); Initiative 25 **reuses** it. New admin work is **group governance** only.
+- **Fuzzy sidebar search / new search endpoint** — client-side substring over already-fetched groups only.
+
+### Cross-references
+
+- Source SCP: `sprint-change-proposal-2026-07-17-tag-taxonomy-catalog-rebuild.md` (APPROVED 2026-07-17).
+- Design (visual SoT): `docs/design/HANDOFF-tagi-fasetowe.md` (mockups 02–08 + edge states; `Katalog — Tagi fasetowe.dc.html`).
+- Architecture: `architecture.md` § Initiative 25 (data model + Alembic `0018` + API contract).
+- Epics: `epics.md` § Initiative 25 (Epics E41–E47, stories per SCP §4.3).
+- Sprint status: `_bmad-output/implementation-artifacts/sprint-status.yaml` — epics 41–47 to be seeded by `bmad-sprint-planning` (NOT modified by this PM handoff).
+- Supersedes: cancelled residuals `38-4-member-offer-request-estimate-cta` + `4-6-add-model-from-url-cli` (named in the frozen baseline).
+- Process notes: dependency order is backend contract (E41–E42) → frontend (E43–E46) → cutover (E47); apply [[feedback_scp_pre_enumeration_phase]] discipline to each story spec; apply [[reference_web_routetree_regen]] if any FE story adds or changes frontend routes; visual specs render pl-PL per [[web-visual-tests-render-pl-pl]].
