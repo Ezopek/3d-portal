@@ -1,5 +1,5 @@
 generated: 2026-05-09
-last_updated: 2026-06-21T15:19Z
+last_updated: 2026-07-16T00:00Z
 project: 3d-portal
 project_key: NOKEY
 tracking_system: file-system
@@ -151,17 +151,17 @@ development_status:
   18-4-tb-021-pytest-two-pre-existing-failures: done
   18-5-tb-016-remaining-drifts-5-16-closure: done
   epic-18-retrospective: done
-  epic-19: in-progress
+  epic-19: done
   19-1-request-rate-middleware: done
-  19-2-throughput-cap-nginx: review
+  19-2-throughput-cap-nginx: done  # close-out 2026-07-16: nginx cap shipped in ~/repos/configs/nginx, operator sync+reload LIVE 2026-05-23 (init-11-15 retro); code-side null here
   19-3-threat-model-doc-decisions-qrst: done
   19-4-share-file-list-endpoint: done
-  19-5-share-view-description-carousel: review
-  19-6-stl-preview-render-job: review
+  19-5-share-view-description-carousel: done  # close-out 2026-07-16: shipped 822d3c3 + Codex round-2 a28cdde
+  19-6-stl-preview-render-job: done  # close-out 2026-07-16: shipped fef96f7 + Codex round-2 2220581 (TB-034 closed in Init 16)
   19-7-share-view-3d-viewer-integration: done
   epic-20: done
   20-1-tb-027-catalog-srcset-perf: done
-  20-2-tb-029-add-model-cta-modal: review
+  20-2-tb-029-add-model-cta-modal: done  # close-out 2026-07-16: shipped 7f6dd10 + Codex round-2 83b225a; init-16 retro "status flip only needed"
   20-3-tb-022-viewer3dinline-srcoverride: done
   epic-20-retrospective: done
   epic-21: in-progress
