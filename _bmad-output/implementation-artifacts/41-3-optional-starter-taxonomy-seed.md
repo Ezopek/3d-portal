@@ -4,7 +4,7 @@ baseline_commit: efc270a
 
 # Story 41.3: Optional starter-taxonomy seed (idempotent admin-run `TagGroup` + `Tag` population; no model assignments)
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -39,29 +39,29 @@ so that after `0018_facet_tags` there is a ready starter set of facets/tags for 
 
 ## Tasks / Subtasks
 
-- [ ] Task 1 — Author the starter dataset constant (AC: #2, #3, #4, #5)
-  - [ ] Add `STARTER_TAXONOMY` to `seed.py` as an ordered structure (list of groups; each group holds an ordered list of tags). Use the values in Dev Notes → Starter dataset. Every `slug` is an explicit ASCII string; `name_en` NOT NULL, `name_pl` set (bilingual); `position`/`group_position` from declared order with `Typ`=0, `Pomieszczenie`=1.
-  - [ ] Add a code comment marking the dataset owner-editable (HANDOFF §8) and stating slugs are hand-authored ASCII (never `_slugify(name_pl)`).
-- [ ] Task 2 — Implement `seed_taxonomy(engine)` (AC: #1, #5, #6, #7, #8, #9)
-  - [ ] Mirror `seed_admin`: `with Session(engine) as session:`; for each group, `select(TagGroup).where(TagGroup.slug == g.slug).first()` → create only if absent; capture the (existing-or-new) group `id`.
-  - [ ] For each tag, `select(Tag).where(Tag.slug == t.slug).first()` → create only if absent, setting `group_id` to the resolved group id + `group_position`.
-  - [ ] `IntegrityError` → `session.rollback()` and continue (concurrent-insert tolerance, per `seed_admin:23-26`). Choose + document the transaction boundary (AC #9) in the docstring.
-  - [ ] Zero references to `Model`, `ModelTag`, `Category`.
-- [ ] Task 3 — Admin-run entrypoint (AC: #11)
-  - [ ] Provide the deliberate invocation (script or documented one-liner). Do NOT add `seed_taxonomy` to `app/main.py` lifespan. Document the exact command.
-- [ ] Task 4 — Tests `apps/api/tests/test_seed_taxonomy.py` (AC: #6, #7, #8, #9, #10)
-  - [ ] Copy the `create_engine_for_url` + `init_schema(tmp_path)` fixture shape from `test_seed.py` verbatim (no live DB).
-  - [ ] `test_seed_taxonomy_populates_full_set` — every group + tag present exactly once; group/tag slug sets unique; `Typ`/`Pomieszczenie` are positions 0/1.
-  - [ ] `test_seed_taxonomy_is_idempotent` — run twice; counts equal; no duplicates.
-  - [ ] `test_seed_taxonomy_does_not_clobber_existing` — pre-insert a group/tag with the seeded slug but different names/positions; re-seed; assert the pre-existing row is unchanged (AC #8).
-  - [ ] `test_seed_taxonomy_no_model_side_effects` — pre-insert a model (or assert `model_tag` empty); seed; assert no `model_tag` rows + `Model` count unchanged (AC #6).
-  - [ ] `test_seed_taxonomy_group_linkage` — every seeded tag has `group_id` pointing at its declared group (AC #5).
-  - [ ] Error-atomicity coverage (AC #9): inject a failure mid-seed (e.g. monkeypatch to raise on the Nth row), then re-run cleanly, assert full set present exactly once.
-- [ ] Task 5 — Verify (AC: #12)
-  - [ ] `ruff check --fix` + `ruff format` on `apps/api`.
-  - [ ] Run backend suite 3× (`uv run pytest -q -p no:cacheprovider`), confirm identical all-green counts (prior count + new `test_seed_taxonomy` nodes).
-  - [ ] Confirm no live DB touched, no commit/push/deploy performed.
-- [ ] Task 6 — Record any residual decisions in `deferred-work.md` if scope shifts (AC: n/a) and answer the Story Creation Questions at hand-off.
+- [x] Task 1 — Author the starter dataset constant (AC: #2, #3, #4, #5)
+  - [x] Add `STARTER_TAXONOMY` to `seed.py` as an ordered structure (list of groups; each group holds an ordered list of tags). Use the values in Dev Notes → Starter dataset. Every `slug` is an explicit ASCII string; `name_en` NOT NULL, `name_pl` set (bilingual); `position`/`group_position` from declared order with `Typ`=0, `Pomieszczenie`=1.
+  - [x] Add a code comment marking the dataset owner-editable (HANDOFF §8) and stating slugs are hand-authored ASCII (never `_slugify(name_pl)`).
+- [x] Task 2 — Implement `seed_taxonomy(engine)` (AC: #1, #5, #6, #7, #8, #9)
+  - [x] Mirror `seed_admin`: `with Session(engine) as session:`; for each group, `select(TagGroup).where(TagGroup.slug == g.slug).first()` → create only if absent; capture the (existing-or-new) group `id`.
+  - [x] For each tag, `select(Tag).where(Tag.slug == t.slug).first()` → create only if absent, setting `group_id` to the resolved group id + `group_position`.
+  - [x] `IntegrityError` → `session.rollback()` and continue (concurrent-insert tolerance, per `seed_admin:23-26`). Choose + document the transaction boundary (AC #9) in the docstring.
+  - [x] Zero references to `Model`, `ModelTag`, `Category`.
+- [x] Task 3 — Admin-run entrypoint (AC: #11)
+  - [x] Provide the deliberate invocation (script or documented one-liner). Do NOT add `seed_taxonomy` to `app/main.py` lifespan. Document the exact command.
+- [x] Task 4 — Tests `apps/api/tests/test_seed_taxonomy.py` (AC: #6, #7, #8, #9, #10)
+  - [x] Copy the `create_engine_for_url` + `init_schema(tmp_path)` fixture shape from `test_seed.py` verbatim (no live DB).
+  - [x] `test_seed_taxonomy_populates_full_set` — every group + tag present exactly once; group/tag slug sets unique; `Typ`/`Pomieszczenie` are positions 0/1.
+  - [x] `test_seed_taxonomy_is_idempotent` — run twice; counts equal; no duplicates.
+  - [x] `test_seed_taxonomy_does_not_clobber_existing` — pre-insert a group/tag with the seeded slug but different names/positions; re-seed; assert the pre-existing row is unchanged (AC #8).
+  - [x] `test_seed_taxonomy_no_model_side_effects` — pre-insert a model (or assert `model_tag` empty); seed; assert no `model_tag` rows + `Model` count unchanged (AC #6).
+  - [x] `test_seed_taxonomy_group_linkage` — every seeded tag has `group_id` pointing at its declared group (AC #5).
+  - [x] Error-atomicity coverage (AC #9): inject a failure mid-seed (e.g. monkeypatch to raise on the Nth row), then re-run cleanly, assert full set present exactly once.
+- [x] Task 5 — Verify (AC: #12)
+  - [x] `ruff check --fix` + `ruff format` on `apps/api`.
+  - [x] Run backend suite 3× (`uv run pytest -q -p no:cacheprovider`), confirm identical all-green counts (prior count + new `test_seed_taxonomy` nodes).
+  - [x] Confirm no live DB touched, no commit/push/deploy performed.
+- [x] Task 6 — Record any residual decisions in `deferred-work.md` if scope shifts (AC: n/a) and answer the Story Creation Questions at hand-off.
 
 ## Dev Notes
 
@@ -157,15 +157,81 @@ All 8 group slugs distinct; all 36 starter tag slugs distinct — 12 type + 7 ro
 
 ### Agent Model Used
 
+claude-opus-4-8[1m] (BMad `bmad-dev-story` workflow)
+
 ### Debug Log References
+
+- RED: `uv run pytest tests/test_seed_taxonomy.py` → `ImportError: cannot import name 'STARTER_TAXONOMY' from 'app.core.db.seed'` (collection error, 1 error) before implementation existed.
+- GREEN: after adding `STARTER_TAXONOMY` + `seed_taxonomy` → `11 passed in 2.73s`.
+- `ruff check` + `ruff format --check` clean on the three touched Python files (one `ruff format` pass applied to `seed.py`).
+- AC12 determinism — full backend suite `uv run pytest -q -p no:cacheprovider` run 3× consecutively:
+  - Run 1/3: `1682 passed, 3 skipped` (369.56s)
+  - Run 2/3: `1682 passed, 3 skipped` (379.22s)
+  - Run 3/3: `1682 passed, 3 skipped` (381.15s)
+  - Baseline before this story: 1671 passed + 3 skipped (1674 collected). Delta = +11 passing nodes (the new `test_seed_taxonomy` module), zero regressions.
+- Post-review [Review][Patch] pass (2026-07-19):
+  - RED (item 5): `test_script_main_prints_truthful_post_condition_count` failed first — `main()` took no `engine` arg and printed nothing. GREEN after `main(engine=None)` + DB-queried count print.
+  - Focused module after all 5 patches: `uv run pytest tests/test_seed_taxonomy.py -q` → `14 passed` (was 11; +2 real-IntegrityError race tests + 1 script test; items 1/2/4 hardened in place).
+  - `ruff check` + `ruff format --check` clean on the 3 touched files.
+  - AC12 re-run (test set changed) — full backend suite `uv run pytest -q -p no:cacheprovider` 3× consecutive: `1685 passed, 3 skipped` ×3 (381.02s / 379.79s / 381.25s) — evidence `.hermes/run-logs/E41.3-final-backend-3x-20260719_002145.log`.
 
 ### Completion Notes List
 
+- Implemented `seed_taxonomy(engine)` in `apps/api/app/core/db/seed.py` mirroring `seed_admin`: create-if-absent by unique `slug`, never updates/deletes an existing row, concurrent-insert `IntegrityError` → `session.rollback()` treated as success. Two private helpers (`_upsert_absent_group`, `_insert_absent_tag`) keep the group/tag loops readable.
+- Transaction boundary (AC #9): **per-row commit** (matches `seed_admin`'s single-entity commit). Documented in the `seed_taxonomy` docstring. Error-atomicity proved by `test_seed_taxonomy_converges_after_midrun_failure` (monkeypatched `Session.commit` raises on the 5th commit; a clean re-run converges to the full 8-group/36-tag set exactly once, no orphans).
+- `STARTER_TAXONOMY` = exact §8 starter set: 8 groups / 36 tags. Group order `Typ`(0)/`Pomieszczenie`(1) primary axes then §8 order; slugs are hand-authored ASCII (never `_slugify(name_pl)`); bilingual names with mechanical EN translations; `group_position` derived dense 0-based from declared tag order. Owner-editable comment added per HANDOFF §8.
+- Zero `Model`/`ModelTag`/`Category` writes (asserted by `test_seed_taxonomy_no_model_side_effects`). No ORM/schema/migration change; `_entities.py`, `app/main.py` lifespan, migrations, `admin_service.py` untouched.
+- AC #11 entrypoint: `apps/api/scripts/seed_taxonomy.py` (`__main__`-guarded, `python -m scripts.seed_taxonomy`) — deliberate admin action, NOT wired into the FastAPI lifespan; documented one-liner alternative in both script + function docstring.
+- No live DB touched; no commit/push/deploy performed. All verification against throwaway tmp_path SQLite (`init_schema` `create_all`, no Alembic).
+- Operator decisions (Story Creation Questions) proceeded on the accepted defaults: #1 no-clobber (create-if-absent, never update), #2 derived owner-editable EN/PL dataset, #3 deliberate admin-run entrypoint (not lifespan), #4 scope = TagGroup+Tag only (no `Category`/destructive DDL; `0019_drop_category` stays owed by E42). No `deferred-work.md` change needed — no scope shift.
+
+**Post-review [Review][Patch] pass (2026-07-19, bounded — no product-scope change):** resolved all 5 unchecked `[Review][Patch]` findings; the 2 `[Review][Defer]` items remain deferred (unchanged). Lifespan/schema/migration/model-assignment behavior untouched.
+- (1) Error-atomicity now injected mid-TAG-phase (11th commit) so the no-orphan property is genuinely exercised — asserts the committed tag subset all link to their parent group, then a clean re-run converges to 8/36 exactly once (`test_seed_taxonomy_converges_after_midtag_failure`).
+- (2) `test_seed_taxonomy_no_model_side_effects` now also asserts `Category` count unchanged (== 1).
+- (3) Added `test_upsert_absent_group_tolerates_real_integrity_error` + `test_insert_absent_tag_tolerates_real_integrity_error`: a "racer" session pre-commits the conflicting slug and the helper's existence-check `session.exec` is monkeypatched to miss, so the real INSERT raises a **genuine** `IntegrityError` — driving the group `.one()` re-query/adopt path and the tag rollback path without threads or a live DB.
+- (4) `test_seed_taxonomy_is_idempotent` now snapshots a standard seeded group + tag and asserts byte-for-byte preservation (same id/names/positions) across the 2nd identical run.
+- (5) `scripts/seed_taxonomy.py::main` prints a DB-queried post-condition count (`seeded taxonomy: N groups / M tags present`, from `select(...)` not constants) and accepts an injectable `engine`; `test_script_main_prints_truthful_post_condition_count` drives it with a temp engine (no live DB).
+- Focused module: 14 passed (was 11; +3 nodes: 2 IntegrityError + 1 script; items 1/2/4 strengthened in place). `ruff check` + `ruff format --check` clean on `seed.py`, `scripts/seed_taxonomy.py`, `tests/test_seed_taxonomy.py`. No commit/push/deploy; no live DB.
+
 ### File List
+
+- `apps/api/app/core/db/seed.py` — MODIFIED (added `STARTER_TAXONOMY` constant + `seed_taxonomy` and helpers; `seed_admin` untouched; imports `uuid`, `Tag`, `TagGroup` added). Post-review pass: unchanged (helpers already correct; only test coverage of their `IntegrityError` branches was added).
+- `apps/api/scripts/seed_taxonomy.py` — CREATED (deliberate admin-run entrypoint). Post-review pass: MODIFIED — `main()` gained an injectable `engine` param and prints a DB-queried post-condition count (`select(TagGroup)`/`select(Tag)`, not constants).
+- `apps/api/tests/test_seed_taxonomy.py` — CREATED then post-review-HARDENED (now 14 tests): full-population, ordering, group-position density, group linkage, idempotency (now + standard-row preservation across 2nd run), no-clobber, no model side-effects (now + `Category` count unchanged), error-atomicity (now mid-TAG-phase, non-orphan-verified), slug uniqueness, dataset shape, uuid ids, **real-`IntegrityError` group + tag race branches**, **script `main` truthful-count**.
+- `_bmad-output/implementation-artifacts/41-3-optional-starter-taxonomy-seed.md` — MODIFIED (task boxes, Dev Agent Record, File List, Change Log, Status)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — MODIFIED (41-3 ready-for-dev → in-progress → review)
 
 ## Change Log
 
 - 2026-07-18 — Story 41.3 created via `bmad-create-story` (Create). Re-scoped back into E41 after the prior premature closeout deferred it to E42 (`DEFER_41_3` reversed). Idempotent admin-run `seed_taxonomy` (TagGroup+Tag only, no model assignments) on `0018_facet_tags`; deterministic explicit-ASCII slugs + declared ordering + bilingual names; idempotency / no-duplicate / no-clobber-update / error-atomicity tests; no live DB in dev. Status → ready-for-dev pending validation.
+- 2026-07-18 — Story 41.3 implemented via `bmad-dev-story` (test-first RED→GREEN). Added `STARTER_TAXONOMY` (8 groups/36 tags) + `seed_taxonomy` (per-row commit, create-if-absent, no-clobber, IntegrityError tolerance) to `seed.py`; added `scripts/seed_taxonomy.py` admin-run entrypoint (not lifespan); added `tests/test_seed_taxonomy.py` (11 tests). ruff clean; backend suite green 3× consecutive (1682 passed, 3 skipped; +11 vs baseline, no regressions). No schema/migration/ORM change, no `Model`/`ModelTag`/`Category` writes, no live DB, no commit/push/deploy. Status → review.
+- 2026-07-19 — Bounded post-review [Review][Patch] pass via `bmad-dev-story`. Resolved all 5 unchecked `[Review][Patch]` findings without expanding product scope; 2 `[Review][Defer]` items remain deferred. Test-hardening only + one script ergonomics change (`scripts/seed_taxonomy.py::main` now injectable-engine + truthful DB-queried post-condition count). `test_seed_taxonomy.py` 11 → 14 tests: mid-TAG-phase error-atomicity with non-orphan verification; `Category`-count assertion; two real-`IntegrityError` race-branch tests (group `.one()` re-query + tag rollback, deterministic, no live DB/threads); standard-row preservation across a 2nd idempotent run; script truthful-count test. No lifespan/schema/migration/ORM/model-assignment change. ruff clean; focused module 14 passed; backend suite 3× consecutive: `1685 passed, 3 skipped` ×3 (evidence `.hermes/run-logs/E41.3-final-backend-3x-20260719_002145.log`; baseline 1671 + 14 new nodes = 1685). No commit/push/deploy, no live DB. Status remains review.
+
+## Review Findings
+
+Independent native BMAD code review (`bmad-code-review`, fresh context, implementer transcript NOT used) — 2026-07-19. Layers run: Acceptance Auditor (full 12-AC audit), Blind Hunter (`bmad-review-adversarial-general`), Edge Case Hunter (`bmad-review-edge-case-hunter`). All 3 layers completed; none failed.
+
+**Verdict: APPROVE.** All 12 acceptance criteria PASS. Dataset is exactly 8 groups / 36 tags (12 type + 7 room + 3 system + 6 use-case + 2 printer + 4 material + 1 creator + 1 level), all slugs ASCII/lowercase/globally-unique, `type`=pos 0 / `room`=pos 1. `seed_taxonomy` faithfully mirrors `seed_admin` (create-if-absent by `slug`, never updates/deletes, `IntegrityError`→`rollback` tolerance — mandated by AC #1). Zero `Model`/`ModelTag`/`Category` references in `seed.py` (verified by grep). NOT wired into `app/main.py` lifespan (verified: `main.py` imports/calls only `seed_admin`). `scripts/__init__.py` exists so `python -m scripts.seed_taxonomy` resolves. No blocking (high) findings. Findings below are test-hardening / ergonomics recommendations — none block the merge; addressing them is at operator discretion.
+
+- [x] [Review][Patch] Error-atomicity test injects the fault in the GROUP phase, not the tag phase — `no-orphan-tags` assertion is vacuously true [apps/api/tests/test_seed_taxonomy.py:183] — `seed_taxonomy` commits all 8 groups first (commits 1-8) then 36 tags (commits 9-44); injecting at `state["n"] == 5` fails on the `printer` group with **zero tags committed**, so the final `assert tag.group_id is not None` (test:202-203) can never fail and the mid-tag-phase convergence path is never exercised. AC #9's letter is still met (post-rerun counts asserted exactly 8/36), and the per-row-commit + create-if-absent code is genuinely convergent — but to actually test the orphan property, inject at commit ~11 (a few tags in) and assert the seeded subset re-converges. Severity: medium (test quality). **RESOLVED 2026-07-19:** renamed to `test_seed_taxonomy_converges_after_midtag_failure`; fault now injected at the **11th commit** (mid-TAG-phase: 8 groups + 2 tags committed). Test now asserts a NON-EMPTY strict subset of tags is present after the fault and that **every committed tag links to its declared parent group** (`group_id_by_slug[_TAG_PARENT_SLUG[...]]`) — the no-orphan property is now genuinely exercised — then re-runs clean and asserts full 8/36 convergence exactly once.
+- [x] [Review][Patch] `test_seed_taxonomy_no_model_side_effects` never asserts `Category` count is unchanged [apps/api/tests/test_seed_taxonomy.py:155-170] — AC #6 calls out zero `Category` writes and the test pre-creates a `Category("root")` fixture specifically to be checked, but only asserts `ModelTag == 0` and `Model == 1`. Add `assert len(s.exec(select(Category)).all()) == 1`. Seed provably never touches `Category`, so this is a missing assertion, not a live bug. Severity: low. **RESOLVED 2026-07-19:** added `assert len(s.exec(select(Category)).all()) == 1` — the pre-created root Category count is now asserted unchanged after seeding.
+- [x] [Review][Patch] Concurrency `IntegrityError` branches have zero test coverage [apps/api/app/core/db/seed.py:208-212, 233-236] — the `.one()` re-query (group helper) and the tag rollback exist solely for the concurrent-insert race, yet no test drives a real `IntegrityError` (the mid-run test raises `RuntimeError`, which bypasses the handler). A regression in the `.one()` path would pass CI. Consistent with the repo's existing `seed_admin` (its `IntegrityError` branch is likewise untested), so low priority. Severity: low. **RESOLVED 2026-07-19:** added two deterministic tests — `test_upsert_absent_group_tolerates_real_integrity_error` and `test_insert_absent_tag_tolerates_real_integrity_error`. Each pre-commits a conflicting slug via a separate "racer" session, then monkeypatches the helper's FIRST `session.exec` (the existence check) to miss the row, so the helper's real INSERT raises a **genuine** unique-constraint `IntegrityError`. The group test proves the post-rollback `.one()` re-query adopts the racer's row id (no duplicate, no clobber); the tag test proves the rollback branch swallows the error (no raise, no duplicate). No threads, no live DB.
+- [x] [Review][Patch] `test_seed_taxonomy_is_idempotent` asserts only counts + slug-sets, not name/position preservation on the 2nd run [apps/api/tests/test_seed_taxonomy.py:100-111] — preservation is covered only for the CUSTOM=99 row in `test_seed_taxonomy_does_not_clobber_existing`, never for a standard seeded row across a second identical run. Low; create-if-absent makes this correct-by-construction. Severity: low. **RESOLVED 2026-07-19:** `test_seed_taxonomy_is_idempotent` now snapshots a standard seeded group (`type`) and tag (`vases`) — `(id, name_en, name_pl, position/group_position)` — after run 1 and asserts the tuples are byte-for-byte identical after run 2 (same `id` → not recreated; same names/positions → not updated).
+- [x] [Review][Patch] Admin-run script emits no success signal / post-condition count [apps/api/scripts/seed_taxonomy.py:29-30] — for a deliberate one-shot admin action, `main()` prints nothing; a partial seed is indistinguishable from a full one to the operator. Consider printing `"seeded N groups / M tags"` or a final `SELECT count`. Ergonomics only. Severity: low. **RESOLVED 2026-07-19:** `main()` now queries the DB after seeding and prints `seeded taxonomy: {N} groups / {M} tags present` — counts are read from `select(TagGroup)`/`select(Tag)` (actual rows), NOT the dataset constants, so a partial seed is visibly distinguishable. `main()` also gained an injectable `engine` param (defaults to `get_engine()`); `test_script_main_prints_truthful_post_condition_count` drives it with a temp SQLite engine (no live DB) and asserts the printed counts equal the real DB totals AND the full `8 groups / 36 tags`.
+- [x] [Review][Defer] Unqualified `except IntegrityError` in both helpers masks non-slug integrity errors [apps/api/app/core/db/seed.py:233-236, 208-212] — `_insert_absent_tag` swallows ANY `IntegrityError` (e.g. an FK violation if a group is concurrently deleted between the group loop and the tag loop) and reports success → silent tag drop that a re-run repeats; `_upsert_absent_group`'s `.one()` re-query can raise `NoResultFound` on a non-slug error. **By-design / spec-mandated:** AC #1 explicitly requires mirroring `seed_admin`'s bare `except IntegrityError: rollback` ("same rationale as seed_admin"). Requires a concurrent group deletion during a single deliberate one-shot admin run — negligible window; the group `TagGroup` schema has only the slug-unique constraint so a non-slug group `IntegrityError` is essentially unreachable with the current dataset. Deferred, not caused by this change's design latitude. Severity: low.
+- [x] [Review][Defer] Idempotency keyed on `slug` only — a DB-side slug rename (not name rename) causes re-seed to recreate a duplicate group with orphaned children [apps/api/app/core/db/seed.py:196,220] — outside the documented governance model (admins rename display names / reorder, not slugs; slug is the stable identity key). Informational. Severity: low.
+
+### Re-review note (native BMAD, focused resolution audit) — 2026-07-19
+
+Fresh `bmad-code-review` re-audit scoped to the five resolved `[Review][Patch]` findings (correctness + no regression). **Verdict: APPROVE — all five resolutions correct, no regression introduced.**
+
+- **(1) Mid-tag failure / non-orphan** — `test_seed_taxonomy_converges_after_midtag_failure` injects the fault on the **11th** commit. `seed_taxonomy` commits 8 groups (commits 1–8) then tags (commits 9+), so commit 11 lands after 8 groups + 2 tags (`decorations`, `vases` under `type`); the 3rd tag's `add` is rolled back when the `RuntimeError` unwinds the `with Session` block. `0 < len(partial_tags) < 36` is deterministic (=2), and the per-committed-tag parent-link assertion is now genuinely exercised. Clean re-run converges to 8/36 exactly once. **Correct.**
+- **(2) Category invariance** — `assert len(select(Category)) == 1` added against the pre-created `root` fixture; `seed_taxonomy` provably never references `Category`. **Correct.**
+- **(3) Real IntegrityError branches** — group test: racer pre-commits `type`, existence check monkeypatched to miss (1st `exec`), real INSERT raises a genuine unique-constraint `IntegrityError`; the `.one()` re-query (2nd `exec`, real) adopts the racer id (1 row, `name_en == "RACER"`). Tag test: racer pre-commits `vases`, INSERT raises, rollback swallows (no raise, 1 row, racer untouched). Instance-level `session.exec` patch shadows the bound method correctly; deterministic, no threads, no live DB. Drives both branches that `RuntimeError` bypassed. **Correct.**
+- **(4) Standard-row preservation** — `test_seed_taxonomy_is_idempotent` snapshots `type`/`vases` tuples after run 1 and asserts byte-for-byte identity (same `id` → not recreated; same names/positions → not updated) after run 2. **Correct.**
+- **(5) Injectable script main + DB-queried count** — `main(engine=None)` defaults to `get_engine()` (real admin-run path preserved), queries counts via `select(TagGroup)`/`select(Tag)` (actual rows, not constants), prints truthful `N groups / M tags`; test drives an injected temp engine and asserts printed == real DB totals == `8 groups / 36 tags`. **Correct.**
+
+Cross-checks: production `seed.py` unchanged in the patch pass (only test coverage + script ergonomics added). No unchecked `[Review][Patch]` remains (all 5 `[x]`; 2 `[Review][Defer]` remain deferred by design). `ruff check` + `ruff format --check` clean on the 3 touched files. Backend evidence 3× `1685 passed, 3 skipped` in `.hermes/run-logs/E41.3-final-backend-3x-20260719_002145.log` (baseline 1671 + 14 nodes = 1685); focused module re-run this session: `14 passed`. Backfilled the two stale `*_COUNTS_PENDING` placeholders above with these figures. No production/test code edited; no commit/push/deploy; no live DB touched.
 
 ## Story Creation Questions / Decisions for Operator
 

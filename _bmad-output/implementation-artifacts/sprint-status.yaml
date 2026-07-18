@@ -1,5 +1,5 @@
 generated: 2026-05-09
-last_updated: 2026-07-18  # E41 reopened + 41.3 authored/validated (ready-for-dev)
+last_updated: 2026-07-19  # 41.3 post-review [Review][Patch] fixes in progress
 project: 3d-portal
 project_key: NOKEY
 tracking_system: file-system
@@ -300,7 +300,7 @@ development_status:
   epic-41: in-progress  # 2026-07-18 REOPENED: prior "done" closeout was premature. Operator scope = finish E41 by IMPLEMENTING 41.3 (not deferring it to E42). 41.1 + 41.2 remain done; 41.3 is in-scope for E41. Retro amended to partial/superseded: epic-41-retro-2026-07-18.md
   41-1-taggroup-entity-tag-membership-category-removal: done  # code review 2026-07-18: 1 patch fixed (slug-uniqueness test), 2 deferred, deploy-coupling dismissed (Question #2)
   41-2-alembic-0018-facet-tags-drop-category: done  # native BMAD + Aider APPROVE 2026-07-18; additive-only 0018_facet_tags, suite 3x 1671p/3s, single head; destructive drop deferred to E42
-  41-3-optional-starter-taxonomy-seed: ready-for-dev  # 2026-07-18 re-scoped INTO E41 (prior DEFER_41_3 reversed). bmad-create-story Create + Validate PASS. Idempotent admin-run seed_taxonomy (TagGroup+Tag only, no model assignments) on 0018_facet_tags; explicit-ASCII slugs, declared order, bilingual; idempotency/no-dup/no-clobber/atomicity tests; no live DB in dev. 4 operator decisions surfaced (no hard blocker). Story: 41-3-optional-starter-taxonomy-seed.md
+  41-3-optional-starter-taxonomy-seed: done  # 2026-07-19 native BMAD + final re-review + Aider APPROVE; all 5 Review Patch findings resolved, 14 focused tests, backend 3x 1685p/3s. Admin-run idempotent seed: 8 groups/36 tags, no model assignments or startup hook. Story: 41-3-optional-starter-taxonomy-seed.md
   epic-41-retrospective: optional  # 2026-07-18 re-opened: prior "done" retro was a premature-closeout artifact; superseded/partial. Re-run at true E41 close once 41.3 lands. See epic-41-retro-2026-07-18.md
   epic-42: backlog
   42-1-models-facet-filtering: backlog
