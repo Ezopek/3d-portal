@@ -118,7 +118,7 @@ claude-opus-4-8[1m] (bmad-dev-story workflow)
 - `TagGroup.slug` uniqueness declared via explicit `Index("uq_tag_group_slug", "slug", unique=True)` in `__table_args__` (not `Field(index=True)`) so the ORM index name matches the migration 41.2 will create.
 - `Tag.group_id` uses `uuid_fk("tag_group.id", ondelete="SET NULL", nullable=True)` with `index` left at its `False` default — matches the 0018 sketch (column + FK, no index).
 - No Alembic migration added (AC #5): `apps/api/migrations/versions/` is untouched; new table/columns appear in tests via `init_schema()` → `create_all()`.
-- Determinism (NFR25-DETERMINISM-1): full backend suite run 3× consecutively — **1669 passed, 3 skipped** each time. `ruff check` + `ruff format` clean (no changes to the new code).
+- Determinism (NFR25-DETERMINISM-1): controller full backend suite run 3× consecutively after the slug-uniqueness review fix — **1670 passed, 3 skipped** each time. `ruff check` + `ruff format` clean (no changes to the new code).
 
 ### File List
 
@@ -128,7 +128,7 @@ claude-opus-4-8[1m] (bmad-dev-story workflow)
 
 ## Change Log
 
-- 2026-07-18 — Implemented additive ORM foundation: added `TagGroup` entity + `Tag.group_id`/`group_position`, re-exported `TagGroup`, added focused entity test. Backend suite 3× green (1669 passed, 3 skipped); ruff clean. Status → review.
+- 2026-07-18 — Implemented additive ORM foundation: added `TagGroup` entity + `Tag.group_id`/`group_position`, re-exported `TagGroup`, added focused entity test. Final controller backend suite after the slug-uniqueness review fix: 3× green (1670 passed, 3 skipped); ruff clean. Status → review.
 
 ## Review Findings
 

@@ -297,11 +297,11 @@ development_status:
   # cancelled 38-4 + 4-6. Story splits/IDs are sketch-level — finalised per story
   # by bmad-create-story at dev-entry; each story still needs explicit operator dev-go.
   # ============================================================================
-  epic-41: in-progress
+  epic-41: done  # closeout 2026-07-18: additive facet-tag foundation delivered (41.1 + 41.2 done); 41.3 formally deferred to E42 (DEFER_41_3). Retro: epic-41-retro-2026-07-18.md
   41-1-taggroup-entity-tag-membership-category-removal: done  # code review 2026-07-18: 1 patch fixed (slug-uniqueness test), 2 deferred, deploy-coupling dismissed (Question #2)
   41-2-alembic-0018-facet-tags-drop-category: done  # native BMAD + Aider APPROVE 2026-07-18; additive-only 0018_facet_tags, suite 3x 1671p/3s, single head; destructive drop deferred to E42
-  41-3-optional-starter-taxonomy-seed: backlog
-  epic-41-retrospective: optional
+  41-3-optional-starter-taxonomy-seed: backlog  # DEFER_41_3 → E42: optional seed; no read API/UI consumer yet (E42 42.2 read API, E43+ UI). Land content + idempotent admin-run seed mechanism with E42 so both are decided against a live consumer. See epic-41-retro-2026-07-18.md + deferred-work.md.
+  epic-41-retrospective: done  # epic-41-retro-2026-07-18.md
   epic-42: backlog
   42-1-models-facet-filtering: backlog
   42-2-tags-tag-groups-read-api: backlog
@@ -334,3 +334,26 @@ development_status:
   47-2-visual-specs: backlog
   47-3-runbook-docs-cutover: backlog
   epic-47-retrospective: optional
+
+# Action items surfaced by epic retrospectives. Source: epic-<N>-retro-*.md.
+action_items:
+  - epic: 41
+    action: "Assign 0019_drop_category (forward-only destructive DDL) to the E42 ORM-removal story; must land in the SAME migration/commit as removal of class Category + Model.category_id from _entities.py. Never on main ahead of the ORM/app Category removal."
+    owner: "E42 sprint-planning / create-story"
+    status: open
+  - epic: 41
+    action: "Land the starter-taxonomy seed (41.3 content) with E42 — decide content + idempotent admin-run seed mechanism once the read API consumer (42.2) exists (DEFER_41_3)."
+    owner: "E42 planning"
+    status: open
+  - epic: 41
+    action: "Add a full ORM-to-migration parity test (compare_metadata / autogenerate diff) at the E42 cut-over, discharging the drift-guard carried since 41.1."
+    owner: "E42 cut-over story"
+    status: open
+  - epic: 41
+    action: "Evaluate an index on tag.group_id when group-scoped queries appear (intentionally unindexed in 41.1)."
+    owner: "E42 42.1 / 42.2"
+    status: open
+  - epic: 41
+    action: "Classify E42 migrations additive vs. destructive up front and couple destructive DDL to its ORM-removal story at planning time, so an unsafe forward-only sequence never reaches a story spec."
+    owner: "E42 sprint-planning"
+    status: open
