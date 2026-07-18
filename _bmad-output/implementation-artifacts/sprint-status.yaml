@@ -299,7 +299,7 @@ development_status:
   # ============================================================================
   epic-41: in-progress
   41-1-taggroup-entity-tag-membership-category-removal: done  # code review 2026-07-18: 1 patch fixed (slug-uniqueness test), 2 deferred, deploy-coupling dismissed (Question #2)
-  41-2-alembic-0018-facet-tags-drop-category: ready-for-dev  # create-story 2026-07-18: scoped ADDITIVE-only (0018_facet_tags); destructive category drop deferred to E42 cut-over (Question #1)
+  41-2-alembic-0018-facet-tags-drop-category: done  # native BMAD + Aider APPROVE 2026-07-18; additive-only 0018_facet_tags, suite 3x 1671p/3s, single head; destructive drop deferred to E42
   41-3-optional-starter-taxonomy-seed: backlog
   epic-41-retrospective: optional
   epic-42: backlog
