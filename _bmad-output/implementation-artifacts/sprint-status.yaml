@@ -1,5 +1,5 @@
 generated: 2026-05-09
-last_updated: 2026-07-19  # 41.3 post-review [Review][Patch] fixes in progress
+last_updated: 2026-07-19  # Epic 41 FINAL closeout: 41.1/41.2/41.3 done; epic-41 + retrospective done
 project: 3d-portal
 project_key: NOKEY
 tracking_system: file-system
@@ -297,11 +297,11 @@ development_status:
   # cancelled 38-4 + 4-6. Story splits/IDs are sketch-level — finalised per story
   # by bmad-create-story at dev-entry; each story still needs explicit operator dev-go.
   # ============================================================================
-  epic-41: in-progress  # 2026-07-18 REOPENED: prior "done" closeout was premature. Operator scope = finish E41 by IMPLEMENTING 41.3 (not deferring it to E42). 41.1 + 41.2 remain done; 41.3 is in-scope for E41. Retro amended to partial/superseded: epic-41-retro-2026-07-18.md
+  epic-41: done  # 2026-07-19 FINAL: all three stories done (41.1/41.2/41.3). Additive facet-tag foundation (ORM + reversible migration 0018_facet_tags + idempotent admin-run starter seed) on main. DEFER_41_3 reversed and discharged (41.3 shipped in E41). Only destructive 0019_drop_category stays owed by E42. Final retro: epic-41-retro-2026-07-18.md
   41-1-taggroup-entity-tag-membership-category-removal: done  # code review 2026-07-18: 1 patch fixed (slug-uniqueness test), 2 deferred, deploy-coupling dismissed (Question #2)
   41-2-alembic-0018-facet-tags-drop-category: done  # native BMAD + Aider APPROVE 2026-07-18; additive-only 0018_facet_tags, suite 3x 1671p/3s, single head; destructive drop deferred to E42
   41-3-optional-starter-taxonomy-seed: done  # 2026-07-19 native BMAD + final re-review + Aider APPROVE; all 5 Review Patch findings resolved, 14 focused tests, backend 3x 1685p/3s. Admin-run idempotent seed: 8 groups/36 tags, no model assignments or startup hook. Story: 41-3-optional-starter-taxonomy-seed.md
-  epic-41-retrospective: optional  # 2026-07-18 re-opened: prior "done" retro was a premature-closeout artifact; superseded/partial. Re-run at true E41 close once 41.3 lands. See epic-41-retro-2026-07-18.md
+  epic-41-retrospective: done  # 2026-07-19 FINAL retro run at true E41 close (all 3 stories done). Converted the prior superseded-partial artifact into the truthful final retrospective. See epic-41-retro-2026-07-18.md
   epic-42: backlog
   42-1-models-facet-filtering: backlog
   42-2-tags-tag-groups-read-api: backlog
@@ -341,10 +341,7 @@ action_items:
     action: "Assign 0019_drop_category (forward-only destructive DDL) to the E42 ORM-removal story; must land in the SAME migration/commit as removal of class Category + Model.category_id from _entities.py. Never on main ahead of the ORM/app Category removal."
     owner: "E42 sprint-planning / create-story"
     status: open
-  - epic: 41
-    action: "SUPERSEDED 2026-07-18 (DEFER_41_3 reversed): the starter-taxonomy seed (41.3) is re-scoped back INTO E41 and implemented there, not deferred to E42. Story 41.3 authored + validated via bmad-create-story; idempotent admin-run seed (TagGroup+Tag only) on 0018_facet_tags. E41 does not close until 41.3 lands."
-    owner: "E41 (41.3)"
-    status: superseded
+  # DEFER_41_3 action item removed 2026-07-19: decision reversed and discharged — 41.3 shipped in E41 (commit cf2ca46), so there is no deferred starter-taxonomy work to track.
   - epic: 41
     action: "Add a full ORM-to-migration parity test (compare_metadata / autogenerate diff) at the E42 cut-over, discharging the drift-guard carried since 41.1."
     owner: "E42 cut-over story"
@@ -356,4 +353,8 @@ action_items:
   - epic: 41
     action: "Classify E42 migrations additive vs. destructive up front and couple destructive DDL to its ORM-removal story at planning time, so an unsafe forward-only sequence never reaches a story spec."
     owner: "E42 sprint-planning"
+    status: open
+  - epic: 41
+    action: "Trust the epic completion check: do not mark an epic done while any story is non-done without an explicit operator scope decision recorded first (guards against the 2026-07-18 premature E41 closeout recurring)."
+    owner: "retrospective / sprint-planning facilitation"
     status: open
