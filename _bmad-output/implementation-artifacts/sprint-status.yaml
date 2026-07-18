@@ -1,5 +1,5 @@
 generated: 2026-05-09
-last_updated: 2026-07-18
+last_updated: 2026-07-18  # E41 reopened + 41.3 authored/validated (ready-for-dev)
 project: 3d-portal
 project_key: NOKEY
 tracking_system: file-system
@@ -297,11 +297,11 @@ development_status:
   # cancelled 38-4 + 4-6. Story splits/IDs are sketch-level — finalised per story
   # by bmad-create-story at dev-entry; each story still needs explicit operator dev-go.
   # ============================================================================
-  epic-41: done  # closeout 2026-07-18: additive facet-tag foundation delivered (41.1 + 41.2 done); 41.3 formally deferred to E42 (DEFER_41_3). Retro: epic-41-retro-2026-07-18.md
+  epic-41: in-progress  # 2026-07-18 REOPENED: prior "done" closeout was premature. Operator scope = finish E41 by IMPLEMENTING 41.3 (not deferring it to E42). 41.1 + 41.2 remain done; 41.3 is in-scope for E41. Retro amended to partial/superseded: epic-41-retro-2026-07-18.md
   41-1-taggroup-entity-tag-membership-category-removal: done  # code review 2026-07-18: 1 patch fixed (slug-uniqueness test), 2 deferred, deploy-coupling dismissed (Question #2)
   41-2-alembic-0018-facet-tags-drop-category: done  # native BMAD + Aider APPROVE 2026-07-18; additive-only 0018_facet_tags, suite 3x 1671p/3s, single head; destructive drop deferred to E42
-  41-3-optional-starter-taxonomy-seed: backlog  # DEFER_41_3 → E42: optional seed; no read API/UI consumer yet (E42 42.2 read API, E43+ UI). Land content + idempotent admin-run seed mechanism with E42 so both are decided against a live consumer. See epic-41-retro-2026-07-18.md + deferred-work.md.
-  epic-41-retrospective: done  # epic-41-retro-2026-07-18.md
+  41-3-optional-starter-taxonomy-seed: ready-for-dev  # 2026-07-18 re-scoped INTO E41 (prior DEFER_41_3 reversed). bmad-create-story Create + Validate PASS. Idempotent admin-run seed_taxonomy (TagGroup+Tag only, no model assignments) on 0018_facet_tags; explicit-ASCII slugs, declared order, bilingual; idempotency/no-dup/no-clobber/atomicity tests; no live DB in dev. 4 operator decisions surfaced (no hard blocker). Story: 41-3-optional-starter-taxonomy-seed.md
+  epic-41-retrospective: optional  # 2026-07-18 re-opened: prior "done" retro was a premature-closeout artifact; superseded/partial. Re-run at true E41 close once 41.3 lands. See epic-41-retro-2026-07-18.md
   epic-42: backlog
   42-1-models-facet-filtering: backlog
   42-2-tags-tag-groups-read-api: backlog
@@ -342,9 +342,9 @@ action_items:
     owner: "E42 sprint-planning / create-story"
     status: open
   - epic: 41
-    action: "Land the starter-taxonomy seed (41.3 content) with E42 — decide content + idempotent admin-run seed mechanism once the read API consumer (42.2) exists (DEFER_41_3)."
-    owner: "E42 planning"
-    status: open
+    action: "SUPERSEDED 2026-07-18 (DEFER_41_3 reversed): the starter-taxonomy seed (41.3) is re-scoped back INTO E41 and implemented there, not deferred to E42. Story 41.3 authored + validated via bmad-create-story; idempotent admin-run seed (TagGroup+Tag only) on 0018_facet_tags. E41 does not close until 41.3 lands."
+    owner: "E41 (41.3)"
+    status: superseded
   - epic: 41
     action: "Add a full ORM-to-migration parity test (compare_metadata / autogenerate diff) at the E42 cut-over, discharging the drift-guard carried since 41.1."
     owner: "E42 cut-over story"
