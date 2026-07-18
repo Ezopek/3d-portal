@@ -104,7 +104,8 @@ Every BMAD story is implemented on its own short-lived branch — *not* in a ser
    - `ruff format --check` + `ruff check` clean on `apps/api/` and `workers/render/`
    - `pytest` full suite green on `apps/api/`
    - `npm run lint --max-warnings=0`, `npm run typecheck`, `npm run test`, and `npm run test:visual` green on `apps/web/`
-   - External review pass: Gemini via `laura-gemini-review` for routine focused review; Codex via `codex review --commit <HEAD-of-branch>` only for fallback, high-stakes, or repo-mandated countersignature (per the review-fix-commit close-out pattern)
+   - Native `bmad-code-review` pass (Blind Hunter + Edge Case Hunter + Acceptance Auditor) with all actionable findings resolved or explicitly deferred
+   - Independent external review pass: Aider via `laura-aider-review-diff` / `laura-aider-review-repo` for routine focused review; Codex only for fallback, high-stakes, explicit-operator request, or repo-mandated countersignature. Reviewer routing is governed by `~/.local/share/laura-agent-ops/LAURA_AGENT_RULEBOOK.md`.
    - Pre-commit hook itself working (it has broken before — verify before relying on it)
 
    One-shot wrapper: `infra/scripts/check-all.sh` runs every gate above (skip
@@ -176,9 +177,9 @@ Direct-to-main is allowed in three narrow cases — everything else goes through
 
 | Case | Commit prefix | Rule |
 |---|---|---|
-| Doc-only | `docs:` | Only `*.md`, `AGENTS.md`, `CLAUDE.md`, and tracked `_bmad-output/` docs (markdown plus `implementation-artifacts/sprint-status.yaml`). Untracked `_bmad-output/` paths (logs, audit-raw, code-reviews, story-automator scratch) cannot land via `docs:` because they cannot land at all — see § BMAD artifact tracking. No code, no config, no infra. |
+| Doc-only | `docs:` | Only `*.md`, `AGENTS.md`, `CLAUDE.md`, and tracked `_bmad-output/` docs (markdown plus `implementation-artifacts/sprint-status.yaml`). Untracked `_bmad-output/` paths (logs, audit-raw, code-reviews, legacy story-automator scratch) cannot land via `docs:` because they cannot land at all — see § BMAD artifact tracking. No code, no config, no infra. |
 | Config-only without runtime effect | `chore:` | E.g. `_bmad/_config/`, `.gitignore`, formatter config. If it changes how the app runs, it's not a chore — it's a fix or feat and goes on a branch. |
-| Hotfix | `fix:` + `# hotfix-rationale: <reason>` in body | Production-level urgency only. Run external review inline immediately after pushing: Gemini by default, Codex when high-stakes/repo-mandated. |
+| Hotfix | `fix:` + `# hotfix-rationale: <reason>` in body | Production-level urgency only. Run external review inline immediately after pushing: `laura-aider-review-diff` by default; Codex when high-stakes/repo-mandated. |
 
 Threshold check before committing direct: *would I want this in its own grouping in `git log` looking back?* If yes — story branch. If no — direct commit OK.
 
@@ -203,22 +204,24 @@ Until then: one story `in-progress` at a time, serial merges.
 
 ## Workflow expectations
 
-BMAD owns planning + execution + review in this repo. Skill catalog: `_bmad/_config/bmad-help.csv`.
+BMAD owns planning + execution + native review in this repo. The installed BMAD version and module set are recorded in `_bmad/_config/manifest.yaml`; lifecycle routing and multi-action entries come from `_bmad/_config/bmad-help.csv`; canonical skill IDs and installed paths come from `_bmad/_config/skill-manifest.csv`.
 
-- **Agents with BMAD skills (e.g. Claude Code) MUST invoke `bmad-help` at the start of every session before any planning or implementation work.** `bmad-help` reads `_bmad/_config/bmad-help.csv` (the skill catalog with `phase` + `after` dependencies) and recommends the canonical entry skill for the current lifecycle stage. Skipping it is the most common BMAD drift trigger and is the single biggest cause of agents reaching for the wrong skill by name-match. **Exempt sessions:** (a) trivial single-shot tasks where no BMAD ceremony applies (typo fix, single-file Q&A); (b) child sessions spawned by `bmad-story-automator` (these execute a single workflow step — create-story / dev-story / automate / code-review / retrospective — already determined by the parent orchestrator inside the canonical chain; re-invoking `bmad-help` would either be redundant or risk routing the child away from the orchestrator-chosen skill). When in doubt outside these exemptions, run it — cost is ~30s.
-- Agents without BMAD skills (e.g. Codex, Gemini) read `_bmad-output/project-context.md` for execution rules and the relevant story spec in `_bmad-output/` before implementing.
+- **Agents with BMAD skills (e.g. Claude Code) MUST invoke `bmad-help` at the start of every session before any planning or implementation work.** `bmad-help` reads the assembled 6.10 manifest catalog and recommends the canonical entry skill for the current lifecycle stage. Skipping it is the most common BMAD drift trigger and is the single biggest cause of agents reaching for the wrong skill by name-match. **Exempt sessions:** (a) trivial single-shot tasks where no BMAD ceremony applies (typo fix, single-file Q&A); (b) automation child sessions launched by `bmad-loop` / `bmad-dev-auto`, whose single workflow step has already been selected by the parent orchestrator. When in doubt outside these exemptions, run it.
+- Agents without BMAD skills (e.g. Aider or Codex) read `_bmad-output/project-context.md` and the relevant story/spec before implementing or reviewing. They do not replace the native BMAD workflow gate.
+- Resolve effective configuration with `uv run --python 3.11 _bmad/scripts/resolve_config.py --project-root .` when paths or language settings matter. `_bmad/config.toml` is installer-managed and read-only; durable team overrides belong in `_bmad/custom/config.toml` or per-skill `_bmad/custom/<skill>.toml` and should be created through `bmad-customize`, not by editing generated skills or base config directly.
 
 Typical routing for Claude Code:
 
-- New feature in **greenfield context** (no prior PRD/architecture artifacts) → full BMAD planning chain (PRD → architecture → epics & stories → sprint planning → story cycle).
-- New feature in **brownfield context** (PRD/architecture already exist — the normal case here) → `bmad-correct-course` FIRST. It analyzes the change and routes to the right ceremony (PRD edit, architecture rerun, new epics, sprint planning update). The full planning chain is for greenfield only — do not invoke `bmad-create-prd` on a finished `prd.md`.
+- New feature in **greenfield context** (no prior PRD/architecture artifacts) → full BMAD planning chain (`bmad-prd` Create → `bmad-ux` when relevant → `bmad-architecture` → epics & stories → readiness → sprint planning → story cycle).
+- New feature in **brownfield context** (PRD/architecture already exist — the normal case here) → `bmad-correct-course` FIRST. It routes the change into the consolidated `bmad-prd` Update intent, `bmad-architecture` Update intent, epics/readiness/sprint updates, or a scoped story path. Do not invoke deprecated `bmad-create-prd`, `bmad-edit-prd`, `bmad-validate-prd`, or `bmad-create-architecture`; they are compatibility shims scheduled for removal in v7.
 - Small change or bugfix → `bmad-quick-dev`.
-- Tests on existing code → BMAD `tea` module (`bmad-testarch-test-design`, `bmad-testarch-framework`, etc.).
+- Story cycle → `bmad-create-story` Create → `bmad-create-story` Validate action (recommended quality gate) → optional `bmad-testarch-atdd` for risk-bearing behavior → `bmad-dev-story` → `bmad-code-review`; review findings loop back to Dev Story, then an independent Aider review runs before merge.
+- Tests on existing code → BMAD `tea` module; use `bmad-qa-generate-e2e-tests` only for E2E generation, never as a substitute for story validation or code review.
 - **Mid-session scope pivot → re-invoke `bmad-help`.** If the work shifts (was planning, now implementing; was bug-fix, now feature; surprised by an unfamiliar artifact state), the session-start call no longer covers the new task — re-run `bmad-help` to confirm the new canonical entry.
 
 ### BMAD artifact tracking
 
-`_bmad-output/` is the working directory for every BMAD skill in this repo. A curated subset of it is tracked in git so that cross-agent context survives between sessions and tools that have no BMAD harness (Codex, Gemini, reviewers landing on a fresh clone) can still read the planning + execution surface AGENTS.md points them at (`_bmad-output/project-context.md`, `_bmad-output/triage-backlog.md`, story specs, retros, sprint-status). The rest stays local — raw transcripts and tool scratch reference internal hosts/paths, balloon repo size, and have no readers outside the session that produced them.
+`_bmad-output/` is the working directory for every BMAD skill in this repo. A curated subset of it is tracked in git so that cross-agent context survives between sessions and tools that have no BMAD harness (Aider, Codex, or reviewers landing on a fresh clone) can still read the planning + execution surface AGENTS.md points them at (`_bmad-output/project-context.md`, `_bmad-output/triage-backlog.md`, story specs, retros, sprint-status). The rest stays local — raw transcripts and tool scratch reference internal hosts/paths, balloon repo size, and have no readers outside the session that produced them.
 
 `.gitignore` is the source of truth for the split. The default rule is `_bmad-output/**` ignored; the explicit `!` unignore lines below it enumerate the tracked surface. The current curated set:
 
@@ -228,13 +231,13 @@ Typical routing for Claude Code:
 | `_bmad-output/triage-backlog.md` | yes | Cross-initiative triage queue consumed by `bmad-correct-course`. |
 | `_bmad-output/planning-artifacts/**/*.md`, `**/*.yaml` | yes | PRD, architecture, epics, product briefs, sprint-change proposals, readiness reports, `_runtime/`, `archive/`. |
 | `_bmad-output/implementation-artifacts/*.md` | yes | Story specs, retros, security audits, spec-tb-*, cutover smoke reports. Top-level only; `codex-review-*.md` is explicitly excluded as transcript noise. |
-| `_bmad-output/implementation-artifacts/sprint-status.yaml` | yes | Sprint state consumed by `bmad-sprint-status` and the story-automator orchestrator. |
-| `_bmad-output/ux/**/*.md` | yes | UX flow specs produced by `bmad-create-ux-design`. |
+| `_bmad-output/implementation-artifacts/sprint-status.yaml` | yes | Sprint state consumed by `bmad-sprint-status`, `bmad-create-story`, `bmad-dev-story`, and `bmad-loop`. |
+| `_bmad-output/ux/**/*.md` | yes | Historical UX artifact surface; BMAD 6.10 `bmad-ux` writes current UX planning artifacts under `planning-artifacts/`. |
 | `_bmad-output/brainstorming/*.md` | yes | Brainstorming session transcripts. |
 | `_bmad-output/implementation-artifacts/codex-review-*.md`, `*.log` | local | Codex review transcripts/logs — large, raw, reference internal SHAs and paths. |
 | `_bmad-output/implementation-artifacts/audit-raw/` | local | Raw audit dumps. |
 | `_bmad-output/implementation-artifacts/code-reviews/` | local | Pre-cutover code-review transcripts (large markdown logs, not story specs). |
-| `_bmad-output/story-automator/` | local | Orchestrator scratch: monitor logs, complexity probes, agent state files. |
+| `_bmad-output/story-automator/` | local | Legacy orchestrator scratch retained for old run evidence; current `bmad-loop` state lives under gitignored `.bmad-loop/runs/`. |
 | `_bmad-output/test-artifacts/` | local | TEA scratch. |
 
 **Workflow rules:**
@@ -248,14 +251,14 @@ Typical routing for Claude Code:
 
 **Vanilla BMAD skill discipline is the default. Any procedural deviation from standard skill flow is treated as a bug** unless there is a documented, operator-approved strong reason. The procedural drifts to avoid: routing-around a protesting skill, direct artifact edits that bypass a `bmad-correct-course` recommendation, skipping mandatory session-start `bmad-help`, treating BMAD as a library of named skills matched by user-verb (e.g. *"create PRD"* → `bmad-create-prd`) rather than as a methodology with phase ordering and routing.
 
-**On doc shape** — vanilla BMAD assumes a single project-wide PRD/architecture/epics model (per `docs.bmad-method.org/llms-full.txt`: *"BMAD assumes a single project-wide PRD model. The documentation does not address multi-initiative brownfield scenarios."*). Every vanilla planning skill hardcodes singular `outputFile = {planning_artifacts}/{prd,architecture,epics}.md`. This repo's `## Initiative N` H2-append pattern in monolithic `prd.md`/`architecture.md`/`epics.md` is the **pragmatic workaround** for that documented methodology gap — it is the closest-to-vanilla shape attainable for multi-initiative brownfield, and IS the pattern new initiatives extend (via `bmad-edit-prd` on `prd.md` + manual edits on architecture/epics, since no `bmad-edit-architecture` or `bmad-edit-epics` skill exists).
+**On doc shape** — vanilla BMAD assumes a single project-wide PRD/architecture/epics model. This repo's `## Initiative N` H2-append pattern in monolithic `prd.md`/`architecture.md`/`epics.md` remains the pragmatic multi-initiative brownfield convention. In 6.10, use `bmad-prd` Update and `bmad-architecture` Update after `bmad-correct-course`; preserve stable requirement/decision IDs and amend the monoliths rather than starting parallel PRD/architecture files. Epics changes still flow through the route selected by `bmad-correct-course`, not ad-hoc edits made to bypass a workflow protest.
 
 **Skill discovery checklist for any non-trivial BMAD task:**
 
 1. Confirm `bmad-help` has been called for the current session (mandatory at session start per the rule above; re-call after any mid-session scope pivot). If somehow skipped, run it NOW before proceeding.
-2. Check `_bmad/_config/bmad-help.csv` for `phase` + `after` dependencies before invoking any skill. Misalignment with current project state → reconsider.
+2. Check `_bmad/_config/bmad-help.csv` for `phase`, `preceded-by`, `followed-by`, `required`, and multi-action `skill:action` entries before invoking any skill. Confirm the canonical ID/path in `_bmad/_config/skill-manifest.csv`. Misalignment with current project state → reconsider.
 3. `bmad-correct-course` is the canonical entry point for ANY post-ship scope change — PRD edits, architecture changes, scope corrections, new features after MVP, mid-sprint adjustments. Per its catalog description: *"May recommend start over, update PRD, redo architecture, sprint planning, or correct epics and stories."* It is not just for emergencies.
-4. If a skill rejects the current state (e.g. `bmad-create-prd` detects `step-12-complete` and refuses), STOP and consult the operator before routing to a different skill. Never silently switch skills to work around a protest.
+4. If a skill rejects the current state, STOP and consult the operator before routing to a different skill. Never silently switch skills or invoke a deprecated compatibility shim to work around a protest.
 
 Background: the 2026-05-18 retro on the (since-reverted) user-accounts initiative caught a recurring drift pattern — the agent treats BMAD as a library of named skills (matching operator verbs to skill names: *"create PRD"* → `bmad-create-prd`) rather than as a methodology with phase ordering and routing. `bmad-help` and `bmad-correct-course` exist precisely to short-circuit that pattern. A subsequent recalibration pass (2026-05-18 v2) corrected an earlier-in-this-section misframing: the H2-append doc pattern is a vanilla-compatible pragmatic workaround, NOT a drift. Only procedural skill-discipline violations are drifts.
 
@@ -270,12 +273,13 @@ When Laura/operator explicitly delegates autonomous execution for an initiative,
 **Tools the agent should reach for autonomously:**
 
 - **Subagents** via the `Agent` tool — `Explore` for codebase recon, `Plan` for multi-file design, `general-purpose` for parallel research, BMAD-domain subagents (dev / architect / TEA) per the skill catalog. Default to spawning when the work is parallelizable or context-isolating; default to inline when the task is small and serial.
-- **Story-automator** (`bmad-story-automator` + `bmad-story-automator-review`) — the canonical multi-story / multi-epic build orchestrator. Run it for "build all stories in initiative N" rather than hand-walking the create-story → dev-story → code-review → retrospective chain. Handles tmux session isolation, programmatic complexity scoring, escalation on non-autonomous decisions, YOLO retrospectives, full resumability via state file.
-- **Gemini CLI** as the default read-only external reviewer / researcher for routine focused diffs (`laura-gemini-review`, plan/read-only mode). It is available in non-interactive shells at `/home/ezop/.local/bin/gemini` (v0.44.1 via the standardized nvm Node v24.16.0 toolchain). Do NOT reuse Gemini Code Assist OAuth tokens in third-party tools — only official Gemini CLI auth (Google account flow) or a dedicated `GEMINI_API_KEY` env var.
-- **Codex** as fallback/high-stakes peer reviewer (`codex review --commit <SHA>` / `codex exec --output-schema ... -` / `laura-codex-review-diff`) or when a repo artifact explicitly mandates Codex countersignature. For NFR-prefixed security gates with countersignature requirements (e.g. Init 5's NFR5-SEC-2 max-3-Mediums-with-codex-review), Codex review remains contractually mandatory, not optional. If Gemini is used where a prior artifact expected Codex, label the deviation explicitly in the commit body or artifact (`# gemini-review: <reason>`).
+- **`bmad-dev-auto` + `bmad-loop`** — the installed unattended path for explicitly delegated multi-story / multi-epic execution. `bmad-dev-auto` performs one bounded implement-and-self-review iteration; `bmad-loop` owns queueing, resumability, escalation resolution, optional independent follow-up review, and deferred-work sweeps. It is not self-triggered merely because stories are ready. Before a run, verify `.bmad-loop/policy.toml`, especially SCM isolation/ff merge, deterministic verification commands, adapter routing, and per-epic gates; never assume installer defaults match this repo's branch policy.
+- **Aider** as the routine independent read-only external reviewer (`laura-aider-review-diff` / `laura-aider-review-repo`) after the native BMAD review passes.
+- **Codex** as fallback/high-stakes peer reviewer or when a repo artifact explicitly mandates Codex countersignature. Contractual Codex gates remain mandatory.
+- **Gemini** is not a default route; use it only for an explicit operator request, repo mandate, or labelled experiment, per the Laura Agent Rulebook.
 - **1M context window** when the work benefits from holding the whole repo + planning artifact set in a single session rather than spawning sub-sessions just for budget.
 
-**Budget discipline stays in force.** Check `laura-agent-usage` / Claude usage before heavyweight autonomous work. At Claude 5h ≥ 80%, sleep through the reset rather than burning `extra_usage` without an explicit operator opt-in. Story-automator's resume mode is the natural pause point — stop, sleep, resume from state file. Check `laura-agent-usage gemini-daily` / `codex-daily` when routing external review; preserve Codex/OpenAI budget for fallback/high-stakes or repo-mandated review.
+**Budget discipline stays in force.** Use the backend-backed Claude quota guard (`~/.claude/bin/check-usage.sh --json` / `laura-claude-preflight --check-only`) before heavyweight autonomous work. `bmad-loop` resumability is the natural quota pause point. Preserve Codex/OpenAI budget for fallback/high-stakes or repo-mandated review; routine review goes to Aider.
 
 **What counts as a "real product blocker" — acceptable to surface mid-flight:**
 
@@ -286,11 +290,11 @@ When Laura/operator explicitly delegates autonomous execution for an initiative,
 - A HARD-GATE failure that contractually blocks downstream work (e.g. Init 5's NFR5-SEC-1 audit gate condition).
 - Initiative completion — full retrospective ready for operator review and sign-off.
 
-**What does NOT count as a blocker** — own it: which skill next (answer via `bmad-help` + `bmad-help.csv` `phase` / `after` columns), commit / merge / deploy timing (AGENTS.md § Branching + § Deploy + the `feedback_auto_deploy_dev.md` memory entry), `bmad-correct-course` now-vs-later (default deferred unless next-story path-collision risk), subagent-vs-inline, external-review-now-vs-after-batch (Gemini default; Codex fallback/high-stakes or repo-mandated), general BMAD methodology routing.
+**What does NOT count as a blocker** — own it: which skill next (answer via `bmad-help` + the manifest catalog), commit / merge / deploy timing, `bmad-correct-course` now-vs-later (default deferred unless next-story path-collision risk), subagent-vs-inline, external-review-now-vs-after-batch (Aider routine; Codex fallback/high-stakes or repo-mandated), general BMAD methodology routing.
 
 **BMAD vanilla-first stays in force, no exceptions.** The autonomy is *operational ownership of when and how to invoke the skills*, not *license to bypass them*. Every action routes through the canonical chain; skill protests still trigger STOP, not route-around; `bmad-correct-course` is still the canonical entry for any post-ship scope change. The mandatory session-start `bmad-help` handshake is the one operator-visible procedural check that survives autonomous mode; everything between session start and initiative close runs autonomously.
 
-Source: 2026-05-19 operator decision after Sesja G of Initiative 5. The pattern being closed: agent dragging operator into procedural micro-decisions (session boundaries, accept/proceed prompts, methodology routing) when business alignment was already settled. Rule applies to every BMAD-aware agent (Claude Code primary; Gemini/Codex/future LLMs inherit via this AGENTS.md entry according to their reviewer/executor role). Cross-referenced in agent-local memory as `feedback_itcm_autonomous_mode.md` for fast recall.
+Source: 2026-05-19 operator decision after Sesja G of Initiative 5. The pattern being closed: agent dragging operator into procedural micro-decisions (session boundaries, accept/proceed prompts, methodology routing) when business alignment was already settled. Rule applies to every BMAD-aware author and external reviewer according to role. Current reviewer selection always comes from the Laura Agent Rulebook, not this historical decision note.
 
 ### Execution discipline
 
