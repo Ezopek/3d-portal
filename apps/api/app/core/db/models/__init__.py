@@ -24,6 +24,7 @@ from ._entities import (
     ModelPrint,
     ModelTag,
     Tag,
+    TagGroup,
 )
 from ._enums import (
     ExternalSource,
@@ -54,6 +55,7 @@ __all__ = [
     "RecoveryCode",
     "RefreshToken",
     "Tag",
+    "TagGroup",
     "UTCDateTime",
     "User",
     "UserRole",

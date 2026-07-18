@@ -1,5 +1,5 @@
 generated: 2026-05-09
-last_updated: 2026-07-17T00:00Z
+last_updated: 2026-07-18
 project: 3d-portal
 project_key: NOKEY
 tracking_system: file-system
@@ -297,9 +297,9 @@ development_status:
   # cancelled 38-4 + 4-6. Story splits/IDs are sketch-level — finalised per story
   # by bmad-create-story at dev-entry; each story still needs explicit operator dev-go.
   # ============================================================================
-  epic-41: backlog
-  41-1-taggroup-entity-tag-membership-category-removal: backlog
-  41-2-alembic-0018-facet-tags-drop-category: backlog
+  epic-41: in-progress
+  41-1-taggroup-entity-tag-membership-category-removal: done  # code review 2026-07-18: 1 patch fixed (slug-uniqueness test), 2 deferred, deploy-coupling dismissed (Question #2)
+  41-2-alembic-0018-facet-tags-drop-category: ready-for-dev  # create-story 2026-07-18: scoped ADDITIVE-only (0018_facet_tags); destructive category drop deferred to E42 cut-over (Question #1)
   41-3-optional-starter-taxonomy-seed: backlog
   epic-41-retrospective: optional
   epic-42: backlog

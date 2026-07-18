@@ -58,6 +58,25 @@ class Category(SQLModel, table=True):
     updated_at: datetime.datetime = Field(default_factory=_now_utc)
 
 
+class TagGroup(SQLModel, table=True):
+    __tablename__ = "tag_group"
+    __table_args__ = (
+        # Explicit index name so the ORM name matches the alembic migration
+        # 41.2 will create (op.create_index("uq_tag_group_slug", ...)) —
+        # Field(index=True) would auto-name it ix_tag_group_slug and drift.
+        # Mirrors the Category explicit-index precedent above.
+        Index("uq_tag_group_slug", "slug", unique=True),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    slug: str
+    name_en: str
+    name_pl: str | None = None
+    position: int = Field(default=0)
+    created_at: datetime.datetime = Field(default_factory=_now_utc)
+    updated_at: datetime.datetime = Field(default_factory=_now_utc)
+
+
 class Tag(SQLModel, table=True):
     __tablename__ = "tag"
 
@@ -65,6 +84,11 @@ class Tag(SQLModel, table=True):
     slug: str = Field(unique=True, index=True)
     name_en: str
     name_pl: str | None = None
+    group_id: uuid.UUID | None = Field(
+        default=None,
+        sa_column=uuid_fk("tag_group.id", ondelete="SET NULL", nullable=True),
+    )
+    group_position: int = Field(default=0)
     created_at: datetime.datetime = Field(default_factory=_now_utc)
     updated_at: datetime.datetime = Field(default_factory=_now_utc)
 
