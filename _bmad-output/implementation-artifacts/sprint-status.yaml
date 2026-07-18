@@ -1,5 +1,5 @@
 generated: 2026-05-09
-last_updated: 2026-07-19  # Epic 41 FINAL closeout: 41.1/41.2/41.3 done; epic-41 + retrospective done
+last_updated: 2026-07-19  # Epic 42 opened: 42.1 models-facet-filtering ready-for-dev (create-story)
 project: 3d-portal
 project_key: NOKEY
 tracking_system: file-system
@@ -302,8 +302,8 @@ development_status:
   41-2-alembic-0018-facet-tags-drop-category: done  # native BMAD + Aider APPROVE 2026-07-18; additive-only 0018_facet_tags, suite 3x 1671p/3s, single head; destructive drop deferred to E42
   41-3-optional-starter-taxonomy-seed: done  # 2026-07-19 native BMAD + final re-review + Aider APPROVE; all 5 Review Patch findings resolved, 14 focused tests, backend 3x 1685p/3s. Admin-run idempotent seed: 8 groups/36 tags, no model assignments or startup hook. Story: 41-3-optional-starter-taxonomy-seed.md
   epic-41-retrospective: done  # 2026-07-19 FINAL retro run at true E41 close (all 3 stories done). Converted the prior superseded-partial artifact into the truthful final retrospective. See epic-41-retro-2026-07-18.md
-  epic-42: backlog
-  42-1-models-facet-filtering: backlog
+  epic-42: in-progress  # 2026-07-19 opened for 42.1 (first story ready-for-dev)
+  42-1-models-facet-filtering: ready-for-dev  # 2026-07-19 story context created (bmad-create-story): GET /api/models drops category_ids; adds tag_ids/tag_match(all|any)/untagged, AND-between-groups/OR-within-group
   42-2-tags-tag-groups-read-api: backlog
   42-3-category-endpoint-removal: backlog
   42-4-admin-group-governance: backlog

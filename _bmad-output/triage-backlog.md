@@ -12,6 +12,19 @@
 
 ## Active candidates
 
+### TB-053 — E42 destructive-removal story ownership gap (`class Category` + `Model.category_id` drop + Alembic `0019_drop_category`)
+
+**Status:** candidate (surfaced 2026-07-19 during `bmad-create-story:validate` of Story 42.1; awaiting E42 sprint-planning/create-story assignment)
+**Surfaced:** 2026-07-19, Story 42.1 validation (`_bmad-output/implementation-artifacts/42-1-models-facet-filtering.md` → Validation Record, concern #6)
+**Flag count:** 1
+**Priority:** P2 (must be resolved before the E42 removal story starts; not a 42.1 blocker)
+
+**Context.** The E41 retrospective action item (`sprint-status.yaml` → `action_items`, epic 41) requires the forward-only destructive DDL `0019_drop_category` to land in the **same migration/commit** as the removal of `class Category` + `Model.category_id` from `apps/api/app/core/db/models/_entities.py`, never on `main` ahead of the ORM/app Category removal. But `epics.md §E42` only names 42.3 (**category-endpoint** removal), 42.4 (admin group governance), and 42.5 (model create/patch + share DTO drop) — **no story is explicitly the owner of the ORM `class Category` drop + `Model.category_id` column drop + Alembic `0019`**, nor of removing the `ModelSummary.category_id` / `ModelDetail.category` response-schema fields + `get_model_detail` category embed. Story 42.1 fences all of this out and is unaffected; the gap is downstream.
+
+**Surface affected:** E42 stories 42.3/42.5 (or a new dedicated 42.x removal story). Also NFR25-SCHEMA-MIGRATION-1 parity-test action item (E41 retro) attaches to the same cut-over.
+
+**Scope estimate (if promoted):** planning-only — `bmad-correct-course` / E42 sprint-planning assigns the ORM+`0019`+response-schema removal to a specific story (recommend a dedicated `42.x-category-orm-and-0019-drop` so the destructive DDL is coupled to the ORM removal in one commit, per the action item), before that story is created. No code change here.
+
 ### TB-052 — Defensive-policy carve-out reversal pattern (codify Init 10 → Init 18 NFR10 reversal)
 
 **Status:** candidate (operator-approved Init 18 retro intake 2026-05-29; awaiting Ezop promotion decision — recommend defer until second-instance trigger)
