@@ -24,10 +24,20 @@ const SORTS: readonly ModelListSort[] = [
   "status",
   "rating",
 ];
+const TAG_MATCHES = ["all", "any"] as const;
+type TagMatch = (typeof TAG_MATCHES)[number];
+
+// Canonical 8-4-4-4-12 UUID, case-insensitive, version-agnostic. Deliberately a
+// narrower subset of pydantic `uuid.UUID` (which also accepts hyphenless/braced/
+// urn forms): validateSearch only ever DROPS an exotic form, never forwards a
+// malformed one, so it cannot induce a backend 422 the wire type wouldn't.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface CatalogSearch {
   category_id?: string;
   tag_ids?: string[];
+  tag_match?: TagMatch;
+  untagged?: boolean;
   status?: ModelStatus;
   source?: ModelSource;
   sort?: ModelListSort;
@@ -42,11 +52,32 @@ export const Route = createFileRoute("/catalog/")({
     if (typeof raw.category_id === "string" && raw.category_id.length > 0) {
       out.category_id = raw.category_id;
     }
+    let tagIdCandidates: string[] | null = null;
     if (Array.isArray(raw.tag_ids)) {
-      const arr = raw.tag_ids.filter((x): x is string => typeof x === "string");
-      if (arr.length > 0) out.tag_ids = arr;
-    } else if (typeof raw.tag_ids === "string" && raw.tag_ids.length > 0) {
-      out.tag_ids = [raw.tag_ids];
+      tagIdCandidates = raw.tag_ids.filter((x): x is string => typeof x === "string");
+    } else if (typeof raw.tag_ids === "string") {
+      tagIdCandidates = [raw.tag_ids];
+    }
+    if (tagIdCandidates !== null) {
+      const seen = new Set<string>();
+      const normalized: string[] = [];
+      for (const candidate of tagIdCandidates) {
+        const trimmed = candidate.trim();
+        if (trimmed.length === 0 || !UUID_RE.test(trimmed) || seen.has(trimmed)) continue;
+        seen.add(trimmed);
+        normalized.push(trimmed);
+      }
+      if (normalized.length > 0) out.tag_ids = normalized;
+    }
+    if (
+      typeof raw.tag_match === "string" &&
+      (TAG_MATCHES as readonly string[]).includes(raw.tag_match) &&
+      raw.tag_match !== "all"
+    ) {
+      out.tag_match = raw.tag_match as TagMatch;
+    }
+    if (raw.untagged === true || raw.untagged === "true") {
+      out.untagged = true;
     }
     if (typeof raw.status === "string" && (STATUSES as readonly string[]).includes(raw.status)) {
       out.status = raw.status as ModelStatus;
