@@ -5,7 +5,7 @@ baseline_commit: 52868c054c999088178cec75baef567869d602f8
 # Story 43.2 — Hooks: `useTagGroups()` + `useTags` re-type (FR25-BROWSE-1, FR25-DETAIL-1)
 
 - **Epic:** E43 — Frontend data layer (Initiative 25 — Facet Tag Taxonomy + Category Retirement)
-- **Status:** `ready-for-dev` — authored via native `bmad-create-story` (Create) after mandatory `bmad-help`; independent native `bmad-create-story:validate` (VS) ran and returned **PASS** on 2026-07-19 (RED strategy empirically verified against expect-type 1.3.0; RED hardened with the framework-independent `model_count` member-access; 0 critical). Next native route: `bmad-dev-story` (controller Laura owns dev-go). Specification only — no production/test code changed by this run.
+- **Status:** `review` — implemented via native `bmad-dev-story` on 2026-07-19 (branch `feat/E43.2-hooks` off `main` @ `1644130`, uncommitted for controller). Strict RED→GREEN: RED captured from BOTH the unresolved `./useTagGroups` import (runtime + `tsc -b`) AND the `.model_count` member-access under old `TagRead[]`; GREEN all gates (focused vitest 9/9, typecheck, lint `--max-warnings=0`, full vitest 662/662, build, `git diff --check`). `useCategoriesTree` + consumers preserved (empty diff). Controller Laura owns `check-all.sh`, `bmad-code-review`, independent Aider review, commit/merge/deploy, and the `review`→`done` flip; epic-43 stays `in-progress`. Prior: authored via native `bmad-create-story` (Create) + independent `bmad-create-story:validate` (VS) **PASS** (0 critical).
 - **Author:** Claude (BMAD create-story). **Controller:** Laura.
 - **Created:** 2026-07-19 via native `bmad-create-story` (Create), phase 4-implementation; preceded-by `bmad-sprint-planning` (done), followed-by `bmad-create-story:validate`.
 - **Scope class:** frontend data-layer **hooks only** (`apps/web/src/modules/catalog/hooks/`). One new hook + one existing-hook re-type + their colocated vitest tests. **No** URL state (43.3), UI/components (E44/E45), backend, migration, locale, route tree, visual baseline, package/lock, or codegen change.
@@ -210,21 +210,34 @@ Expected during `bmad-dev-story`; capture logs to gitignored `.hermes/run-logs/e
 
 ## 11. Tasks / Subtasks — dev execution (native `bmad-dev-story`)
 
-- [ ] **T1 — RED first (TDD).** Author `apps/web/src/modules/catalog/hooks/useTagGroups.test.tsx` (mocked-`fetch`, `QueryClientProvider` `retry:false`, `renderHook`/`waitFor`; mirror `useCategoriesTree.test.tsx`) covering §6.1 + the §6.2 `expectTypeOf` proof. Add the §6.3 net-new `useTags` type/field assertion to `useTags.test.tsx`. Capture RED (`npm run typecheck` unresolved import + type-inequality; `npm run test` module-not-found). Evidence → `.hermes/run-logs/e43.2-red-typecheck.log`.
-- [ ] **T2 — GREEN new hook.** Create `useTagGroups.ts` per §2.1 (no params, `["sot","tag-groups"]`, `api<TagGroupsResponse>("/tag-groups")`, `staleTime: 5*60*1000`, no `select`/`retry`/`onError`).
-- [ ] **T3 — GREEN re-type `useTags`.** Change the three type references (`import type`, `useQuery<TagListItem[]>`, `api<TagListItem[]>`) per §2.2; leave params/key/`staleTime` byte-identical.
-- [ ] **T4 — Preserve category surface.** `useCategoriesTree.ts`/`.test.tsx` and all category consumers untouched (`git diff` proves no edit).
-- [ ] **T5 — Green gates.** Focused vitest (both hook tests) PASS; `npm run typecheck` PASS; `npm run lint` PASS (`--max-warnings=0`); full `npm run test` PASS; `npm run build` PASS. No visual regen. `git diff --check` clean. Evidence → `.hermes/run-logs/e43.2-green-*.log`.
+- [x] **T1 — RED first (TDD).** Authored `apps/web/src/modules/catalog/hooks/useTagGroups.test.tsx` (mocked-`fetch`, `QueryClientProvider` `retry:false`, `renderHook`/`waitFor`; mirrors `useCategoriesTree.test.tsx`) covering §6.1 (endpoint+shape incl. empty-`tags[]` group, groupless `group_id:null`, required nested `model_count`, loading→success, error, same-wrapper single-fetch cache) + the §6.2 `expectTypeOf` proof. Added the §6.3 net-new `useTags` field/type assertion to `useTags.test.tsx`. RED captured — **runtime**: focused vitest → `Failed to resolve import "./useTagGroups" ... Does the file exist?` (`.hermes/run-logs/e43.2-red-runtime.log`); **type** (`tsc -b`): `TS2307 Cannot find module './useTagGroups'` + `TS2339 Property 'model_count' does not exist on type 'TagRead'` + `TS2554` on the `toEqualTypeOf` mismatch (`.hermes/run-logs/e43.2-red-typecheck.log`). RED proven from BOTH the unresolved new-hook import AND the direct `.model_count` access under `TagRead[]` — not from `expectTypeOf` alone.
+- [x] **T2 — GREEN new hook.** Created `useTagGroups.ts` per §2.1 (no params, `["sot","tag-groups"]`, `api<TagGroupsResponse>("/tag-groups")`, `staleTime: 5*60*1000`, no `select`/`retry`/`onError`/key factory).
+- [x] **T3 — GREEN re-type `useTags`.** Changed exactly the three type references (`import type { TagListItem }`, `useQuery<TagListItem[]>`, `api<TagListItem[]>`) per §2.2; params/key/`staleTime` byte-identical (`git diff`: 3 insertions / 3 deletions, no `with_counts` added).
+- [x] **T4 — Preserve category surface.** `useCategoriesTree.ts`/`.test.tsx` and all category consumers untouched — `git diff -- useCategoriesTree.ts useCategoriesTree.test.tsx` is empty; no category component or `api-types.ts` edit.
+- [x] **T5 — Green gates.** Focused vitest (both hook tests) PASS (2 files / 9 tests); `npm run typecheck` PASS; `npm run lint` PASS (`--max-warnings=0`); full `npm run test` PASS (124 files / 662 tests); `npm run build` PASS (3071 modules, built 10.08s). No visual regen (no UI). `git diff --check` clean. Evidence → `.hermes/run-logs/e43.2-green-*.log`.
 
 ## 12. Dev Agent Record
 
 ### 12.1 Debug Log
 
-_(populated by `bmad-dev-story`)_
+Branch `feat/E43.2-hooks` cut from `main` @ `1644130` (exact spec baseline). Native `bmad-dev-story` RED→GREEN, logs teed to gitignored `.hermes/run-logs/e43.2-*.log`:
+
+- **RED (runtime)** — `e43.2-red-runtime.log`: `npx vitest run useTagGroups.test.tsx` → 1 suite failed, `success:false`, `Failed to resolve import "./useTagGroups" from ".../useTagGroups.test.tsx". Does the file exist?` (module-not-found before the hook exists).
+- **RED (type, `tsc -b`)** — `e43.2-red-typecheck.log` (exit 1), three meaningful errors:
+  - `useTagGroups.test.tsx(8,30): error TS2307: Cannot find module './useTagGroups'` — unresolved new-hook import.
+  - `useTags.test.tsx(67,38): error TS2339: Property 'model_count' does not exist on type 'TagRead'` — the framework-independent primary re-type RED (`model_count` is the only structural TagRead↔TagListItem difference).
+  - `useTags.test.tsx(70,39): error TS2554` on `expectTypeOf(...).toEqualTypeOf<TagListItem[] | undefined>()` — the DeepBrand strict-equality confirmation RED. RED does NOT rest on `expectTypeOf` alone.
+- **GREEN** — created `useTagGroups.ts`; re-typed `useTags` (3 type refs). `e43.2-green-focused.log`: focused vitest 2 files / 9 tests PASS. `e43.2-green-typecheck.log`: exit 0. `e43.2-green-lint.log`: `eslint --max-warnings=0` + stylelint exit 0. `e43.2-green-full-vitest.log`: 124 files / 662 tests PASS. `e43.2-green-build.log`: `tsc -b && vite build` — 3071 modules, built 10.08s, exit 0. `git diff --check` clean.
 
 ### 12.2 Completion Notes
 
-_(populated by `bmad-dev-story`)_
+All 5 ACs / 5 tasks satisfied. Delivered the additive hook layer of E43 with the smallest correct diff (two ~12-line hooks + colocated tests; no factory/`select`/`with_counts`/MSW/`api()`-mock/error-policy).
+
+- **`useTagGroups()`** — new, param-less, `useQuery<TagGroupsResponse>` on `["sot","tag-groups"]`, `api<TagGroupsResponse>("/tag-groups")` (emits `/api/tag-groups` via `api()`'s `/api` base), `staleTime` 5 min. Mirrors `useCategoriesTree` byte-for-byte in shape. Test proves endpoint hit, populated group + empty-`tags[]` group, groupless tag with `group_id:null`, required nested `model_count`, loading→success, error (`retry:false` deterministic), and single-fetch-across-two-mounts cache (observers unmounted in cleanup, no leak). Type proof: `expectTypeOf(result.current.data).toEqualTypeOf<TagGroupsResponse | undefined>()`.
+- **`useTags`** — return/query type only `TagRead[]`→`TagListItem[]` (`import type` + both generics); URL/query-key/`staleTime`/runtime byte-identical; no `with_counts` introduced. The three pre-existing URL/cache tests stay green untouched; one net-new test asserts `data?.[0]?.model_count` (primary RED) + `toEqualTypeOf<TagListItem[] | undefined>()`.
+- **`useCategoriesTree` preserved** — `git diff -- useCategoriesTree.ts useCategoriesTree.test.tsx` empty; no category consumer, `api-types.ts`, backend, migration, locale, route-tree, visual-baseline, or package/lock file touched. Deletion remains 47.4-owned.
+- **Controller-owned closeout:** branch left uncommitted (no commit/push/merge/deploy per delegation). epic-43 stays `in-progress`; the 43.2 `review`→`done` flip remains controller-owned after integration/live verification.
+- **Controller reviews/gates:** native BMAD adversarial review **APPROVE** (`0 critical`, `0 important`, `2 minor` non-blocking); Aider full tracked+untracked diff **APPROVE** with no missing tests. Controller rerun typecheck + focused **9/9** + lint PASS. Full `infra/scripts/check-all.sh` **16/16 green**, including web Vitest **662 passed** and visual **464 passed / 24 skipped**. Native-review-generated untracked declaration byproducts were verified by timestamp/size and removed before staging; explicit file-list staging is required.
 
 ## 13. File List (expected)
 
@@ -238,7 +251,14 @@ Changed:
 - `apps/web/src/modules/catalog/hooks/useTags.ts` — `TagRead[]` → `TagListItem[]` on `useQuery`/`api` + `import type` (type-only re-type; request behaviour unchanged).
 - `apps/web/src/modules/catalog/hooks/useTags.test.tsx` — one net-new `TagListItem[]`/field assertion; three existing URL/cache tests untouched.
 
-Docs (tracked): this story artifact; `sprint-status.yaml` (43-2-hooks → ready-for-validation).
+Actual (as implemented — matches expected exactly):
+
+- **New:** `apps/web/src/modules/catalog/hooks/useTagGroups.ts`, `apps/web/src/modules/catalog/hooks/useTagGroups.test.tsx`.
+- **Changed:** `apps/web/src/modules/catalog/hooks/useTags.ts` (3 type refs), `apps/web/src/modules/catalog/hooks/useTags.test.tsx` (one net-new assertion; three URL/cache tests untouched).
+- **Docs (tracked):** this story artifact; `_bmad-output/implementation-artifacts/sprint-status.yaml` (43-2-hooks → `in-progress` → `review`).
+- **Untracked evidence (gitignored):** `.hermes/run-logs/e43.2-red-runtime.log`, `e43.2-red-typecheck.log`, `e43.2-green-focused.log`, `e43.2-green-typecheck.log`, `e43.2-green-lint.log`, `e43.2-green-full-vitest.log`, `e43.2-green-build.log`.
+
+Docs (tracked): this story artifact; `sprint-status.yaml` (43-2-hooks → review).
 
 Explicitly NOT changed: `useCategoriesTree.ts`/`.test.tsx`, any category consumer, `api-types.ts` (types already shipped in 43.1), any backend/migration/locale/route-tree/visual/package file.
 
@@ -247,4 +267,6 @@ Explicitly NOT changed: `useCategoriesTree.ts`/`.test.tsx`, any category consume
 | Date | Change |
 |---|---|
 | 2026-07-19 | Native `bmad-create-story` (Create) authored the additive 43.2 hooks spec (baseline `main` @ 52868c0): `useTagGroups()` off `GET /api/tag-groups` typed `TagGroupsResponse`; `useTags` re-typed `TagRead[]`→`TagListItem[]` (request behaviour preserved); `useCategoriesTree` preserved (deletion owned by 47.4). Contract Qs resolved code-first (key `["sot","tag-groups"]`, path `/api/tag-groups`, no params, `staleTime` 5 min, shared-`api()` error policy). Cache-coherence table filled. Status → `ready-for-validation`; independent `bmad-create-story:validate` (VS) to follow. |
+| 2026-07-19 | Native `bmad-dev-story` implemented the additive hooks on branch `feat/E43.2-hooks` (off `main` @ `1644130`, uncommitted for controller). RED→GREEN: RED from unresolved `./useTagGroups` import (runtime vitest module-not-found + `tsc -b` TS2307) AND `.model_count` access on `TagRead` (TS2339) + `toEqualTypeOf` mismatch (TS2554). GREEN: created `useTagGroups.ts` (`["sot","tag-groups"]`, `api<TagGroupsResponse>("/tag-groups")`, 5-min `staleTime`, no select/retry/factory); re-typed `useTags` `TagRead[]`→`TagListItem[]` (3 refs, request behaviour byte-identical, no `with_counts`). Gates all green: focused vitest 9/9, typecheck, lint `--max-warnings=0`, full vitest 662/662, build (3071 modules), `git diff --check` clean. `useCategoriesTree`/consumers preserved (empty diff). Status `ready-for-dev` → `review`; sprint 43.2 → `review`; epic-43 stays `in-progress`. Controller owns closeout gates + `review`→`done`. |
 | 2026-07-19 | Independent native `bmad-create-story:validate` (VS) → **PASS** (0 critical). Empirically verified (isolated `tsc` against the repo's expect-type 1.3.0) that the `useTags` re-type RED is real: `expectTypeOf(...).toEqualTypeOf<TagListItem[] | undefined>()` fails to compile against `TagRead[] | undefined` because `toEqualTypeOf` is a DeepBrand strict-equality, **not** mutual assignability (the two arrays are mutually assignable). Hardened §6.3/§7.2 with the framework-independent primary RED — a direct `result.current.data?.[0]?.model_count` type-access (compile error on `TagRead`, GREEN after re-type) — and removed the non-discriminating `group_id` re-type proof (1 important + 1 minor wording, both fixed). Status `ready-for-validation` → `ready-for-dev`; next native route `bmad-dev-story`. Evidence: `.hermes/run-logs/e43.2-validation.md`. |
+| 2026-07-19 | Controller pre-integration gates: native BMAD review APPROVE (0 critical / 0 important / 2 non-blocking minors); Aider APPROVE; focused 9/9 + typecheck/lint PASS; full `check-all` 16/16 (web 662, visual 464/24). Reviewer-generated untracked `.d.ts` byproducts removed after verification; explicit staging only. |
