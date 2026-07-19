@@ -32,6 +32,7 @@ from app.modules.sot.schemas import (
 )
 from app.modules.sot.service import (
     ModelListSort,
+    TagMatch,
     get_model_detail,
     list_categories_tree,
     list_model_files,
@@ -85,9 +86,12 @@ def get_tags(
     "/models",
     summary="List models with filtering, sorting, pagination",
     description=(
-        "Returns `ModelListResponse` (paged). Filters: `category_ids` (OR — model in "
-        "any listed category), `status`, **`tag_ids` (AND — model has ALL listed tags)**, "
-        "`source`, `q` (case-insensitive substring across `name_en` / `name_pl` / `slug`; "
+        "Returns `ModelListResponse` (paged). Facet filters: **`tag_ids`** with "
+        "**`tag_match`** (`all` (default) — AND between facet groups, OR within a "
+        "group; `any` — pure OR across all listed tags, grouping ignored) and "
+        "**`untagged`** (default false; `true` surfaces zero-tag models, OR-unioned "
+        "with `tag_ids` when both are given). Other filters: `status`, `source`, "
+        "`q` (case-insensitive substring across `name_en` / `name_pl` / `slug`; "
         "**does NOT search tag names**), `external_url` (exact match against any of the "
         "model's `model_external_link.url` rows — primary use case is agent-runbook "
         "dedup-by-source-URL pre-flight; typically 0 or 1 result), `include_deleted` "
@@ -100,9 +104,10 @@ def get_tags(
 )
 def get_models(
     session: Annotated[Session, Depends(get_session)],
-    category_ids: Annotated[list[uuid.UUID] | None, Query()] = None,
     status: ModelStatus | None = None,
     tag_ids: Annotated[list[uuid.UUID] | None, Query()] = None,
+    tag_match: TagMatch = TagMatch.all,
+    untagged: bool = False,
     source: ModelSource | None = None,
     q: str | None = None,
     external_url: str | None = None,
@@ -114,9 +119,10 @@ def get_models(
 ) -> ModelListResponse:
     return list_models(
         session,
-        category_ids=category_ids,
         status=status,
         tag_ids=tag_ids,
+        tag_match=tag_match,
+        untagged=untagged,
         source=source,
         q=q,
         external_url=external_url,

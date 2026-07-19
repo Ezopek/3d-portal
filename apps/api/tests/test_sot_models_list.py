@@ -12,6 +12,7 @@ from app.core.db.models import (
     ModelStatus,
     ModelTag,
     Tag,
+    TagGroup,
 )
 from app.core.db.session import get_engine
 
@@ -65,6 +66,14 @@ def _seed_tag(session, slug):
     return t
 
 
+def _seed_tag_group(session, slug):
+    g = TagGroup(slug=slug, name_en=slug)
+    session.add(g)
+    session.commit()
+    session.refresh(g)
+    return g
+
+
 def test_list_models_returns_envelope(client):
     r = client.get("/api/models")
     assert r.status_code == 200
@@ -82,33 +91,16 @@ def test_list_models_includes_seeded_model_with_tags(client):
         cat = _seed_cat(s, "cat-4-decorum")
         tag = _seed_tag(s, "tag-4-dragon")
         m = _seed_model(s, "model-4-x", category_id=cat.id, tags=[tag])
-        cat_id: uuid.UUID = cat.id
+        tag_id: uuid.UUID = tag.id
         model_id: uuid.UUID = m.id
 
-    r = client.get(f"/api/models?category_ids={cat_id}")
+    r = client.get(f"/api/models?tag_ids={tag_id}&limit=200")
     body = r.json()
     items = [i for i in body["items"] if i["id"] == str(model_id)]
     assert len(items) == 1
     item = items[0]
     assert item["slug"] == "model-4-x"
     assert {t["slug"] for t in item["tags"]} == {"tag-4-dragon"}
-
-
-def test_list_models_filter_by_category(client):
-    engine = get_engine()
-    with Session(engine) as s:
-        cat_a = _seed_cat(s, "cat-4-cat-a")
-        cat_b = _seed_cat(s, "cat-4-cat-b")
-        m_a = _seed_model(s, "model-4-cat-a", category_id=cat_a.id)
-        m_b = _seed_model(s, "model-4-cat-b", category_id=cat_b.id)
-        cat_a_id: uuid.UUID = cat_a.id
-        m_a_id: uuid.UUID = m_a.id
-        m_b_id: uuid.UUID = m_b.id
-
-    r = client.get(f"/api/models?category_ids={cat_a_id}")
-    ids = {item["id"] for item in r.json()["items"]}
-    assert str(m_a_id) in ids
-    assert str(m_b_id) not in ids
 
 
 def test_list_models_filter_by_status(client):
@@ -196,21 +188,23 @@ def test_list_models_include_deleted_returns_soft_deleted(client):
 
 
 def test_list_models_pagination(client):
+    """Pagination + total stay correct under a tag filter (count subquery includes it)."""
     engine = get_engine()
     with Session(engine) as s:
         cat = _seed_cat(s, "cat-4-page-cat")
+        page_tag = _seed_tag(s, "tag-4-page")
         for i in range(5):
-            _seed_model(s, f"model-4-page-{i:02d}", category_id=cat.id)
-        cat_id: uuid.UUID = cat.id
+            _seed_model(s, f"model-4-page-{i:02d}", category_id=cat.id, tags=[page_tag])
+        tag_id: uuid.UUID = page_tag.id
 
-    r = client.get(f"/api/models?category_ids={cat_id}&limit=2&offset=0")
+    r = client.get(f"/api/models?tag_ids={tag_id}&limit=2&offset=0")
     body = r.json()
     assert body["limit"] == 2
     assert body["offset"] == 0
     assert len(body["items"]) == 2
     assert body["total"] == 5
 
-    r2 = client.get(f"/api/models?category_ids={cat_id}&limit=2&offset=2")
+    r2 = client.get(f"/api/models?tag_ids={tag_id}&limit=2&offset=2")
     body2 = r2.json()
     assert len(body2["items"]) == 2
     # No overlap with first page
@@ -221,7 +215,11 @@ def test_list_models_pagination(client):
 
 @pytest.fixture(scope="module")
 def seeded_listing():
-    """Seed: 2 categories (A,B), 3 tags (x,y,z), 5 models with assorted filter axes.
+    """Seed: 2 categories (A,B), 2 tag groups + a groupless tag, 5 models.
+
+    Facet layout (D1 groupless-tag = own AND-bucket):
+    - group A = {tag_x, tag_y}; group B = {tag_z}; tag_w is groupless (group_id=None).
+    - Model tag-sets: m1=x,y,w | m2=x | m3=z,w | m4=x,y,z | m5=none.
 
     Returns a dict with category/tag/model id lookups for assertions.
 
@@ -233,14 +231,23 @@ def seeded_listing():
     with Session(get_engine()) as s:
         cat_a = _seed_cat(s, "list-cat-a")
         cat_b = _seed_cat(s, "list-cat-b")
+        grp_a = _seed_tag_group(s, "list-grp-a")
+        grp_b = _seed_tag_group(s, "list-grp-b")
         tag_x = _seed_tag(s, "list-tag-x")
         tag_y = _seed_tag(s, "list-tag-y")
         tag_z = _seed_tag(s, "list-tag-z")
+        tag_w = _seed_tag(s, "list-tag-w")  # groupless (group_id stays None)
+        # x,y share group A (OR-within); z is group B (AND-between); w is groupless.
+        tag_x.group_id = grp_a.id
+        tag_y.group_id = grp_a.id
+        tag_z.group_id = grp_b.id
+        s.add_all([tag_x, tag_y, tag_z])
+        s.commit()
 
         from app.core.db.models import ModelSource
 
-        # model 1: cat_a, tag x+y, source printables, status printed, rating 5
-        m1 = _seed_model(s, "m-list-1", category_id=cat_a.id, tags=(tag_x, tag_y))
+        # model 1: cat_a, tag x+y+w, source printables, status printed, rating 5
+        m1 = _seed_model(s, "m-list-1", category_id=cat_a.id, tags=(tag_x, tag_y, tag_w))
         m1.source = ModelSource.printables
         m1.status = ModelStatus.printed
         m1.rating = 5
@@ -251,8 +258,8 @@ def seeded_listing():
         m2.status = ModelStatus.not_printed
         m2.rating = 3
         s.add(m2)
-        # model 3: cat_a, tag z, source own, printed, rating 4
-        m3 = _seed_model(s, "m-list-3", category_id=cat_a.id, tags=(tag_z,))
+        # model 3: cat_a, tag z+w, source own, printed, rating 4
+        m3 = _seed_model(s, "m-list-3", category_id=cat_a.id, tags=(tag_z, tag_w))
         m3.source = ModelSource.own
         m3.status = ModelStatus.printed
         m3.rating = 4
@@ -276,6 +283,7 @@ def seeded_listing():
             "tag_x": tag_x.id,
             "tag_y": tag_y.id,
             "tag_z": tag_z.id,
+            "tag_w": tag_w.id,
             "m1": m1.id,
             "m2": m2.id,
             "m3": m3.id,
@@ -284,26 +292,160 @@ def seeded_listing():
         }
 
 
-def test_list_filter_by_category_ids_multi(client, seeded_listing):
-    """category_ids=A,B returns models in either category (OR semantics)."""
+def _slugs(resp):
+    return {it["slug"] for it in resp.json()["items"]}
+
+
+def test_list_all_and_between_groups(client, seeded_listing):
+    """(a) tag_match=all, x (grp A) + z (grp B) → AND across groups → only m4."""
     r = client.get(
-        f"/api/models?category_ids={seeded_listing['cat_a']}&category_ids={seeded_listing['cat_b']}"
+        f"/api/models?tag_ids={seeded_listing['tag_x']}&tag_ids={seeded_listing['tag_z']}"
     )
     assert r.status_code == 200
-    items = r.json()["items"]
-    slugs = {it["slug"] for it in items}
-    assert {"m-list-1", "m-list-2", "m-list-3", "m-list-4", "m-list-5"} <= slugs
+    # m4 has x+z; m1/m2 have x but no z; m3 has z but no x.
+    assert _slugs(r) == {"m-list-4"}
 
 
-def test_list_filter_by_tag_ids_and_semantics(client, seeded_listing):
-    """tag_ids=x,y returns only models that have BOTH tags (AND semantics)."""
+def test_list_all_or_within_group(client, seeded_listing):
+    """(b) tag_match=all, x + y (both grp A) → OR within group → m1,m2,m4."""
     r = client.get(
         f"/api/models?tag_ids={seeded_listing['tag_x']}&tag_ids={seeded_listing['tag_y']}"
     )
     assert r.status_code == 200
-    slugs = {it["slug"] for it in r.json()["items"]}
-    # m1 has x+y, m4 has x+y+z. m2 has only x. m3 only z. m5 none.
-    assert slugs == {"m-list-1", "m-list-4"}
+    assert _slugs(r) == {"m-list-1", "m-list-2", "m-list-4"}
+
+
+def test_list_all_and_between_or_within_combined(client, seeded_listing):
+    """(c) tag_match=all, x+y (grp A) + z (grp B) → (x OR y) AND z → only m4."""
+    r = client.get(
+        f"/api/models?tag_ids={seeded_listing['tag_x']}"
+        f"&tag_ids={seeded_listing['tag_y']}&tag_ids={seeded_listing['tag_z']}"
+    )
+    assert r.status_code == 200
+    assert _slugs(r) == {"m-list-4"}
+
+
+def test_list_all_groupless_tag_is_own_and_bucket(client, seeded_listing):
+    """(d) D1: groupless tag w is its own AND-bucket. x (grp A) + w (groupless) → only m1.
+
+    m1 has x and w; m3 has w but no x → excluded. Distinct from `untagged`.
+    """
+    r = client.get(
+        f"/api/models?tag_ids={seeded_listing['tag_x']}&tag_ids={seeded_listing['tag_w']}"
+    )
+    assert r.status_code == 200
+    assert _slugs(r) == {"m-list-1"}
+
+
+def test_list_any_is_pure_or_across_tags(client, seeded_listing):
+    """(e) tag_match=any, x + z → pure OR, grouping ignored → m1,m2,m3,m4."""
+    r = client.get(
+        f"/api/models?tag_match=any"
+        f"&tag_ids={seeded_listing['tag_x']}&tag_ids={seeded_listing['tag_z']}"
+    )
+    assert r.status_code == 200
+    assert _slugs(r) == {"m-list-1", "m-list-2", "m-list-3", "m-list-4"}
+
+
+def test_list_any_empty_tag_ids_is_unfiltered(client, seeded_listing):
+    """tag_match=any with no tag_ids is NOT a filter → all seeded models present."""
+    r = client.get("/api/models?tag_match=any&limit=200")
+    assert r.status_code == 200
+    slugs = _slugs(r)
+    assert {"m-list-1", "m-list-2", "m-list-3", "m-list-4", "m-list-5"} <= slugs
+
+
+def _authed(c):
+    """Mint + set an admin access cookie on a fresh isolated_client."""
+    token = encode_token(
+        subject=str(uuid.uuid4()), role="admin", secret="test-secret-not-real", ttl_minutes=30
+    )
+    c.cookies.set(ACCESS_COOKIE, token)
+    return c
+
+
+def test_list_untagged_returns_zero_tag_models(isolated_client):
+    """(f) untagged=true standalone → only zero-tag models; a groupless-tag model is NOT.
+
+    Uses an isolated DB because `untagged` is a DB-wide predicate — a controlled
+    seed is the only way to assert the exact result set (the session-shared DB
+    carries tag-less models from every other test file).
+    """
+    c, _ = isolated_client
+    _authed(c)
+    engine = get_engine()
+    with Session(engine) as s:
+        cat = _seed_cat(s, "u-cat")
+        grp = _seed_tag_group(s, "u-grp")
+        tag = _seed_tag(s, "u-tag")
+        groupless = _seed_tag(s, "u-groupless")  # group_id stays None
+        tag.group_id = grp.id
+        s.add(tag)
+        s.commit()
+        _seed_model(s, "u-tagged", category_id=cat.id, tags=(tag,))
+        _seed_model(s, "u-has-groupless", category_id=cat.id, tags=(groupless,))
+        _seed_model(s, "u-zero", category_id=cat.id, tags=())
+
+    r = c.get("/api/models?untagged=true&limit=200")
+    assert r.status_code == 200
+    # A groupless *tag* still tags a model → u-has-groupless is not untagged.
+    assert _slugs(r) == {"u-zero"}
+
+
+def test_list_untagged_with_tag_ids_is_union(isolated_client):
+    """(g) D2: untagged=true + tag_ids=x → union of x-matches and zero-tag models.
+
+    Isolated DB for the same DB-wide-predicate reason as the standalone case.
+    """
+    c, _ = isolated_client
+    _authed(c)
+    engine = get_engine()
+    with Session(engine) as s:
+        cat = _seed_cat(s, "uu-cat")
+        tag_x = _seed_tag(s, "uu-x")
+        tag_o = _seed_tag(s, "uu-other")
+        _seed_model(s, "uu-x-match", category_id=cat.id, tags=(tag_x,))
+        _seed_model(s, "uu-other-tagged", category_id=cat.id, tags=(tag_o,))
+        _seed_model(s, "uu-zero", category_id=cat.id, tags=())
+        x_id: uuid.UUID = tag_x.id
+
+    r = c.get(f"/api/models?untagged=true&tag_ids={x_id}&limit=200")
+    assert r.status_code == 200
+    # union: x-matches {uu-x-match} + zero-tag {uu-zero}; uu-other-tagged excluded.
+    assert _slugs(r) == {"uu-x-match", "uu-zero"}
+
+
+def test_list_no_tag_filter_returns_all(client, seeded_listing):
+    """(h) empty tag_ids + untagged=false → all models (AC #6, no regression)."""
+    r = client.get("/api/models?limit=200")
+    assert r.status_code == 200
+    slugs = _slugs(r)
+    assert {"m-list-1", "m-list-2", "m-list-3", "m-list-4", "m-list-5"} <= slugs
+
+
+def test_list_tag_match_rejects_unknown_value(client, seeded_listing):
+    """(i) ?tag_match=both → 422 (enum validation, mirrors source/sort)."""
+    r = client.get(f"/api/models?tag_match=both&tag_ids={seeded_listing['tag_x']}")
+    assert r.status_code == 422
+
+
+def test_list_all_unknown_tag_id_is_empty(client, seeded_listing):
+    """(j) D3 all-mode: an unknown tag_id → own zero-member bucket → empty result."""
+    unknown = uuid.uuid4()
+    r = client.get(f"/api/models?tag_ids={unknown}&tag_ids={seeded_listing['tag_x']}&limit=200")
+    assert r.status_code == 200
+    assert r.json()["items"] == []
+
+
+def test_list_any_unknown_tag_id_is_ignored(client, seeded_listing):
+    """(k) D3 any-mode: unknown tag_id never matches → ignored; known ids still match."""
+    unknown = uuid.uuid4()
+    r = client.get(
+        f"/api/models?tag_match=any&tag_ids={unknown}&tag_ids={seeded_listing['tag_x']}&limit=200"
+    )
+    assert r.status_code == 200
+    # same as x alone: {m1,m2,m4}
+    assert _slugs(r) == {"m-list-1", "m-list-2", "m-list-4"}
 
 
 def test_list_filter_by_source(client, seeded_listing):
@@ -333,10 +475,10 @@ def test_list_sort_name_asc(client, seeded_listing):
 
 def test_list_sort_rating_puts_nulls_last(client, seeded_listing):
     """rating sort = rating desc, NULLS last (per SQL standard for NULLS LAST hint)."""
-    r = client.get("/api/models?sort=rating&category_ids=" + str(seeded_listing["cat_a"]))
+    # Scope to source=printables (m1=5, m2=3) — a null-free slice to assert descending.
+    r = client.get("/api/models?sort=rating&source=printables")
     items = r.json()["items"]
     ratings = [it["rating"] for it in items if it["slug"].startswith("m-list-")]
-    # cat_a: m1=5, m3=4, m2=3 — descending; no nulls in this slice. Just check ordering.
     assert ratings == sorted(ratings, reverse=True)
 
 
@@ -346,11 +488,10 @@ def test_list_sort_rejects_unknown_value(client, seeded_listing):
 
 
 def test_list_combined_filters(client, seeded_listing):
-    """category_ids=A AND tag_ids=x → m1 + m2."""
-    r = client.get(
-        f"/api/models?category_ids={seeded_listing['cat_a']}&tag_ids={seeded_listing['tag_x']}"
-    )
+    """source=printables AND tag_ids=x → m1 + m2 (tag predicate AND-combines with source)."""
+    r = client.get(f"/api/models?source=printables&tag_ids={seeded_listing['tag_x']}")
     slugs = {it["slug"] for it in r.json()["items"]}
+    # x-matches = {m1,m2,m4}; source=printables = {m1,m2}; AND → {m1,m2}.
     assert slugs == {"m-list-1", "m-list-2"}
 
 

@@ -303,7 +303,7 @@ development_status:
   41-3-optional-starter-taxonomy-seed: done  # 2026-07-19 native BMAD + final re-review + Aider APPROVE; all 5 Review Patch findings resolved, 14 focused tests, backend 3x 1685p/3s. Admin-run idempotent seed: 8 groups/36 tags, no model assignments or startup hook. Story: 41-3-optional-starter-taxonomy-seed.md
   epic-41-retrospective: done  # 2026-07-19 FINAL retro run at true E41 close (all 3 stories done). Converted the prior superseded-partial artifact into the truthful final retrospective. See epic-41-retro-2026-07-18.md
   epic-42: in-progress  # 2026-07-19 opened for 42.1 (first story ready-for-dev)
-  42-1-models-facet-filtering: review  # 2026-07-19 dev-story done + native BMAD/Aider APPROVE on branch feat/E42.1-models-facet-filtering (commit 88b6a92; true story state = review). merge_blocked_by: TB-054 (pre-existing web-gate debt on main — stylelint hex + 11 stale light visual baselines block the mandatory full gate; 42.1's own work is complete/approved and is NOT blocked — external repo debt only). NOTE: this ledger row is annotated by TB-054 on branch fix/TB-054-restore-web-gates, whose base main (21b66f8) still carried the stale ready-for-dev; reconciled to the true review state here. No 42.1 artifact/AC change. Note to be cleared on 42.1 rebase per gate-debt plan.
+  42-1-models-facet-filtering: review  # 2026-07-19 dev-story complete; native BMAD + independent Aider APPROVE; focused tests 32p, backend 3x 1694p/3s. External merge dependency TB-054 resolved on main as fbe2f45 and deployed in c42fa24; branch rebased onto the repaired main. Fresh full closeout gate pending before ff-merge.
   42-2-tags-tag-groups-read-api: backlog
   42-3-category-endpoint-removal: backlog
   42-4-admin-group-governance: backlog

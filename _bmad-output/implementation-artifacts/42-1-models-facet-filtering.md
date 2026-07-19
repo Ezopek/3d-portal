@@ -1,6 +1,6 @@
 # Story 42.1: `GET /api/models` facet filtering
 
-Status: ready-for-dev
+Status: review
 
 <!-- Validated 2026-07-19 via bmad-create-story:validate — VERDICT: PASS. All three prior open questions resolved into ratified decisions against approved sources (FR25-FILT-1/2, mockup 04/08B/08D, HANDOFF §3/§5). See "## Validation Record" at the end. No dev-start open questions remain. -->
 
@@ -28,38 +28,24 @@ Traces: **FR25-FILT-1**, **FR25-FILT-2** (Epic E42; SCP `sprint-change-proposal-
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Service layer: rewrite tag filtering in `list_models`** (`apps/api/app/modules/sot/service.py`) (AC: #1, #3, #4, #5, #6, #7, #8)
-  - [ ] Add a `TagMatch(StrEnum)` next to `ModelListSort` with members `all = "all"`, `any = "any"`.
-  - [ ] Remove the `category_ids` parameter and the `if category_ids: base = base.where(Model.category_id.in_(category_ids))` block. Do **not** touch `Model.category_id` elsewhere (it stays a valid column).
-  - [ ] Add params `tag_match: TagMatch = TagMatch.all` and `untagged: bool = False`; keep `tag_ids: list[uuid.UUID] | None = None`.
-  - [ ] **Add `and_` to the sqlalchemy import** at `service.py:12` (currently `from sqlalchemy import func, nullslast, or_` — `and_` is NOT imported yet). The `all`-mode tag predicate must be a **single** boolean object `and_(*bucket_clauses)`, NOT a series of `base.where()` calls, so it can be OR-combined with the untagged predicate.
-  - [ ] Replace the current per-tag AND loop with the group-aware algorithm (see **Dev Notes → Filter algorithm**). Build the tag predicate as a standalone SQLAlchemy boolean, then combine with `untagged` per AC #5 (`or_(tag_predicate, Model.id.notin_(select(ModelTag.model_id)))` when both are present; tag predicate alone when only `tag_ids`; `Model.id.notin_(...)` alone when only `untagged=true`). Apply the final predicate with a single `base = base.where(predicate)` **before** the total-count subquery (AC #7).
-  - [ ] Update the `list_models` docstring to the new contract (AC #8). Delete the stale `category_ids: OR filter` and `tag_ids: AND filter (model has ALL listed tags)` docstring lines at `service.py:156-157`.
-- [ ] **Task 2 — Router: update `get_models` signature + OpenAPI description** (`apps/api/app/modules/sot/router.py`) (AC: #1, #2, #8)
-  - [ ] Drop the `category_ids: Annotated[list[uuid.UUID] | None, Query()] = None` param and its pass-through.
-  - [ ] Add `tag_match: TagMatch = TagMatch.all` and `untagged: bool = False`; pass `tag_ids`, `tag_match`, `untagged` through to `list_models`. Import `TagMatch` from `app.modules.sot.service` (same source as `ModelListSort`).
-  - [ ] Rewrite the route `description=` string (AC #8).
-- [ ] **Task 3 — Tests: migrate category tests, extend tag semantics** (`apps/api/tests/test_sot_models_list.py`) (AC: #2–#7, #9)
-  - [ ] Remove/replace the three category-filter tests (`test_list_models_filter_by_category` @ line 97, `test_list_filter_by_category_ids_multi` @ line 287, and the `category_ids` usages in `test_list_models_includes_seeded_model_with_tags` @ 88, `test_list_models_pagination` @ 206/213, `test_list_sort_rating_puts_nulls_last` @ 336, `test_list_combined_filters` @ 351). Where a filter was only a convenience to scope a result set (e.g. pagination/sort tests), switch to `tag_ids`/`status`/`q` or drop the filter and assert membership instead. **Do NOT stop passing `category_id` to `_seed_model`** — the column is still `NOT NULL` this story, so every seed keeps a category; only the *query-param* usages go.
-  - [ ] Extend `seeded_listing` in place (module-scoped, unique slugs — docstring at line 224) with **two `TagGroup` rows + one groupless tag**, so grouping is real and the groupless pseudo-group is exercised distinctly from `untagged`. Concrete layout that keeps existing model tag-sets intact:
-    - Add `TagGroup` `list-grp-a` and `list-grp-b` (import/seed like tags; give unique slugs).
-    - Assign `tag_x.group_id = grp_a`, `tag_y.group_id = grp_a` (same group → OR-within), `tag_z.group_id = grp_b` (different group). Add a new groupless tag `tag_w` (`group_id = None`) on `m1` and `m3`.
-    - Resulting truth table (unchanged model tag-sets: m1=x,y(+w); m2=x; m3=z(+w); m4=x,y,z; m5=none).
-  - [ ] Add/rewrite tests (name them so **groupless-tag** vs **untagged** never collide):
-    - (a) **AND-between-groups**, `tag_match=all`, `tag_ids=x,z` (grp_a + grp_b) → `{m4}` — replaces `test_list_filter_by_tag_ids_and_semantics` (which today uses x,y and asserts `{m1,m4}`; x,y are now same-group OR, so this pair no longer means AND — switch it to x,z).
-    - (b) **OR-within-group**, `tag_match=all`, `tag_ids=x,y` (both grp_a) → `{m1,m2,m4}`.
-    - (c) **AND-between + OR-within combined**, `tag_match=all`, `tag_ids=x,y,z` → `(x∨y)∧z` → `{m4}`.
-    - (d) **groupless pseudo-group**, `tag_match=all`, `tag_ids=x,w` (grp_a + groupless) → different buckets → AND → models with an x-tag **and** a groupless tag → `{m1}` (m1 has x and w; m3 has w but no x). Name e.g. `test_list_all_groupless_tag_is_own_and_bucket`.
-    - (e) **`tag_match=any`** → pure OR: `tag_ids=x,z` → `{m1,m2,m3,m4}`.
-    - (f) **untagged standalone** `untagged=true` → only zero-tag model `{m-list-5}`. Name e.g. `test_list_untagged_returns_zero_tag_models` (NOT "groupless").
-    - (g) **untagged + tag_ids union** `untagged=true&tag_ids=x` → `{m1,m2,m4,m5}` (x-matches ∪ zero-tag).
-    - (h) **empty `tag_ids`, `untagged=false`** → all models (guards AC #6; keep `test_list_models_returns_envelope` green).
-    - (i) **`?tag_match=both`** → 422 (mirror `test_list_filter_by_source_rejects_unknown_value` @ line 315).
-    - (j) **unknown `tag_id` in `all` mode** → empty result (D3 strict-AND).
-    - (k) **unknown `tag_id` in `any` mode** → unknown ignored, known ids still match: `tag_match=any&tag_ids=<unknown>&tag_ids=x` → same as `x` alone `{m1,m2,m4}` (D3 any-mode consistency).
-- [ ] **Task 4 — Verify gates** (AC: #9)
-  - [ ] `cd apps/api && uv run ruff check . && uv run ruff format --check .` clean.
-  - [ ] Run the backend suite 3× (`uv run pytest -q -p no:cacheprovider`), confirm identical all-green counts (prior baseline **1685 passed, 3 skipped** as of Story 41.3 — expect that count minus removed category tests plus the new tag/untagged tests; record the exact numbers in the Dev Agent Record).
+- [x] **Task 1 — Service layer: rewrite tag filtering in `list_models`** (`apps/api/app/modules/sot/service.py`) (AC: #1, #3, #4, #5, #6, #7, #8)
+  - [x] Add a `TagMatch(StrEnum)` next to `ModelListSort` with members `all = "all"`, `any = "any"`.
+  - [x] Remove the `category_ids` parameter and the `if category_ids: base = base.where(Model.category_id.in_(category_ids))` block. `Model.category_id` untouched elsewhere.
+  - [x] Add params `tag_match: TagMatch = TagMatch.all` and `untagged: bool = False`; keep `tag_ids: list[uuid.UUID] | None = None`.
+  - [x] **Added `and_` to the sqlalchemy import.** `all`-mode predicate is a single `and_(*clauses)` boolean object.
+  - [x] Replaced the per-tag AND loop with the group-aware algorithm; composed with `untagged` per AC #5 and applied as a single `base = base.where(predicate)` **before** the total-count subquery.
+  - [x] Updated the `list_models` docstring to the new contract; stale category/tag-AND lines removed.
+- [x] **Task 2 — Router: update `get_models` signature + OpenAPI description** (`apps/api/app/modules/sot/router.py`) (AC: #1, #2, #8)
+  - [x] Dropped the `category_ids` param and its pass-through.
+  - [x] Added `tag_match: TagMatch = TagMatch.all` and `untagged: bool = False`; pass `tag_ids`/`tag_match`/`untagged` through; imported `TagMatch` from `app.modules.sot.service`.
+  - [x] Rewrote the route `description=` string.
+- [x] **Task 3 — Tests: migrate category tests, extend tag semantics** (`apps/api/tests/test_sot_models_list.py`) (AC: #2–#7, #9)
+  - [x] Removed `test_list_models_filter_by_category` + `test_list_filter_by_category_ids_multi`; migrated `category_ids` usages in `test_list_models_includes_seeded_model_with_tags` (→ `tag_ids`), `test_list_models_pagination` (→ `tag_ids`, now proves tag-filtered count/paging), `test_list_sort_rating_puts_nulls_last` (→ `source=printables`), `test_list_combined_filters` (→ `source=printables`+`tag_ids`). `_seed_model` still passes `category_id` (column stays `NOT NULL`).
+  - [x] Extended `seeded_listing` in place with `TagGroup` `list-grp-a`/`list-grp-b` + groupless `tag_w`; assigned x,y→grp_a, z→grp_b, w groupless on m1/m3. Truth table: m1=x,y,w | m2=x | m3=z,w | m4=x,y,z | m5=none.
+  - [x] Added tests (a)–(k). (f)/(g) untagged tests use `isolated_client` (fresh per-test DB) — see Completion Notes deviation: `untagged` is a DB-wide predicate, so exact "only zero-tag" is only assertable on a controlled seed, not the session-shared DB. Also added `test_list_any_empty_tag_ids_is_unfiltered` (external-review suggestion: `tag_match=any` + no ids is unfiltered).
+- [x] **Task 4 — Verify gates** (AC: #9)
+  - [x] `cd apps/api && uv run ruff check . && uv run ruff format --check .` clean.
+  - [x] Full backend suite 3× (`uv run pytest -q -p no:cacheprovider`): **1694 passed, 3 skipped** all three times (370.65s / 379.93s / 384.70s). Baseline 1685→1694 = −2 removed category tests +11 new facet tests.
 
 ## Dev Notes
 
@@ -163,16 +149,29 @@ All three prior open questions were resolved against approved sources during `bm
 
 ### Agent Model Used
 
-_(filled by dev-story)_
+claude-opus-4-8[1m] (native BMAD `bmad-dev-story`, Claude author; Laura controller).
 
 ### Debug Log References
+
+- RED (focused, `test_sot_models_list.py`): 6 failed / 26 passed — `test_list_all_or_within_group`, `test_list_any_is_pure_or_across_tags`, `test_list_untagged_returns_zero_tag_models`, `test_list_untagged_with_tag_ids_is_union`, `test_list_tag_match_rejects_unknown_value`, `test_list_any_unknown_tag_id_is_ignored`. Confirmed the old strict-AND path fails the new semantics before writing production code.
+- GREEN (focused): 32 passed.
+- Ruff: `ruff check .` → All checks passed; `ruff format --check .` → clean (266 files). One RUF002/RUF003 ambiguous-unicode hit (`∨`/`∧`/`∪` in docstring/comment) fixed to ASCII.
+- Full suite 3×: 1694 passed, 3 skipped every run (370.65s / 379.93s / 384.70s). `git diff --check` clean.
 
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created.
 - Validated 2026-07-19 via `bmad-create-story:validate` (see Validation Record below) — PASS.
+- Implemented 2026-07-19 via native `bmad-dev-story` (strict RED→GREEN). Predicate applied once (`base.where(...)`) before the total-count subquery per AC #7; `all`-mode uses `and_(*bucket_clauses)` (AND between buckets, `in_(bucket_ids)` OR within); groupless tags share one bucket (D1); unknown ids become singleton zero-member buckets (D3 all → empty); `any`-mode is a single `in_(tag_ids)` OR (D3 any → unknown ignored); `untagged` = `Model.id.notin_(select(ModelTag.model_id))`, OR-unioned with the tag predicate when both present (D2).
+- **Deviation (documented):** the two `untagged` tests (f)/(g) use the existing `isolated_client` fixture (fresh per-test DB) instead of the module-scoped `seeded_listing`. Reason: `untagged` is a DB-wide predicate and the session-scoped shared test DB (`conftest.py::_isolated_db`, `scope="session"`) carries tag-less models from all 31 model-seeding test files, so an exact "only zero-tag models" assertion is only sound on a controlled seed. All other new tests stay on `client` + `seeded_listing` as the story predicted. No new fixture plumbing added (reused `isolated_client` + `encode_token`).
+- **External-review suggestions incorporated:** explicit `tag_match=any` + empty tag_ids is-unfiltered coverage (`test_list_any_empty_tag_ids_is_unfiltered`); explicit `untagged=true` + `tag_ids` union (`test_list_untagged_with_tag_ids_is_union`); tag-filtered pagination/count now concretely proven (`test_list_models_pagination` migrated from `category_ids` to `tag_ids`, asserting `total==5` under the tag predicate).
+- Scope fences honored: `Category`/`Model.category_id`/schemas/`0019` untouched; no Alembic migration; no frontend; only the 3 predicted files changed.
 
 ### File List
+
+- `apps/api/app/modules/sot/service.py` — `TagMatch` enum, `and_` import, `list_models` signature (drop `category_ids`, add `tag_match`/`untagged`), group-aware tag predicate + untagged union, docstring rewrite.
+- `apps/api/app/modules/sot/router.py` — `get_models` signature (drop `category_ids`, add `tag_match`/`untagged`), `TagMatch` import, OpenAPI `description` rewrite.
+- `apps/api/tests/test_sot_models_list.py` — category-test migration, `seeded_listing` extended (2 groups + groupless tag), facet tests (a)–(k) + `any`-empty-unfiltered coverage.
 
 ## Validation Record
 

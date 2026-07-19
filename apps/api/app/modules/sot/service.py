@@ -9,7 +9,7 @@ import uuid
 from collections.abc import Sequence
 from enum import StrEnum
 
-from sqlalchemy import func, nullslast, or_
+from sqlalchemy import and_, func, nullslast, or_
 from sqlmodel import Session, select
 
 from app.core.db.models import (
@@ -48,6 +48,11 @@ class ModelListSort(StrEnum):
     name_desc = "name_desc"
     status = "status"
     rating = "rating"
+
+
+class TagMatch(StrEnum):
+    all = "all"
+    any = "any"
 
 
 def list_categories_tree(session: Session) -> CategoryTree:
@@ -140,9 +145,10 @@ def list_tags(
 def list_models(
     session: Session,
     *,
-    category_ids: list[uuid.UUID] | None = None,
     status: ModelStatus | None = None,
     tag_ids: list[uuid.UUID] | None = None,
+    tag_match: TagMatch = TagMatch.all,
+    untagged: bool = False,
     source: ModelSource | None = None,
     q: str | None = None,
     external_url: str | None = None,
@@ -153,8 +159,20 @@ def list_models(
 ) -> ModelListResponse:
     """List models with optional filters; tags eagerly attached per item.
 
-    - category_ids: OR filter (model is in any of the listed categories).
-    - tag_ids: AND filter (model has ALL listed tags).
+    Facet-tag filtering (Initiative 25):
+
+    - tag_ids + tag_match=all (default): AND between facet groups, OR within a
+      group. The requested ids are partitioned by `Tag.group_id`; groupless
+      tags (`group_id IS NULL`) form one shared "groupless" bucket; a requested
+      id absent from the DB becomes its own zero-member bucket → unsatisfiable
+      AND → empty result.
+    - tag_ids + tag_match=any: pure OR across all listed tags, grouping ignored;
+      an unknown id simply never matches and is silently dropped.
+    - untagged=true: surfaces zero-tag models (`Model.id NOT IN model_tag`).
+      Combined with tag_ids it is OR-unioned with the tag predicate (a model can
+      never be both, so AND would be always-empty).
+    - The composed tag/untagged predicate is applied to `base` once, before the
+      total-count subquery, so `total` and pagination stay filter-correct.
     - source: exact match.
     - external_url: exact match against a model's `ModelExternalLink.url`
       (any source). Primary use case is agent-runbook dedup-by-source-URL
@@ -165,14 +183,50 @@ def list_models(
     base = select(Model)
     if not include_deleted:
         base = base.where(Model.deleted_at.is_(None))
-    if category_ids:
-        base = base.where(Model.category_id.in_(category_ids))
     if status is not None:
         base = base.where(Model.status == status)
+
+    tag_predicate = None
     if tag_ids:
-        # AND semantics: model_id must appear in ModelTag for every tag_id given.
-        for tid in tag_ids:
-            base = base.where(Model.id.in_(select(ModelTag.model_id).where(ModelTag.tag_id == tid)))
+        if tag_match == TagMatch.any:
+            # Pure OR across all selected tags; grouping ignored. Unknown ids
+            # contribute no rows and are thus silently ignored.
+            tag_predicate = Model.id.in_(
+                select(ModelTag.model_id).where(ModelTag.tag_id.in_(tag_ids))
+            )
+        else:
+            # tag_match=all: AND between groups, OR within a group. Partition the
+            # requested ids by Tag.group_id; groupless tags share one bucket; an
+            # unknown id becomes its own zero-member bucket (unsatisfiable AND).
+            group_of = dict(
+                session.exec(select(Tag.id, Tag.group_id).where(Tag.id.in_(tag_ids))).all()
+            )
+            buckets: dict[object, set[uuid.UUID]] = {}
+            for tid in tag_ids:
+                if tid not in group_of:
+                    key: object = ("missing", tid)
+                elif group_of[tid] is None:
+                    key = "groupless"
+                else:
+                    key = group_of[tid]
+                buckets.setdefault(key, set()).add(tid)
+            clauses = [
+                Model.id.in_(select(ModelTag.model_id).where(ModelTag.tag_id.in_(bucket_ids)))
+                for bucket_ids in buckets.values()
+            ]
+            tag_predicate = and_(*clauses)
+
+    untagged_predicate = None
+    if untagged:
+        untagged_predicate = Model.id.notin_(select(ModelTag.model_id))
+
+    if tag_predicate is not None and untagged_predicate is not None:
+        base = base.where(or_(tag_predicate, untagged_predicate))
+    elif tag_predicate is not None:
+        base = base.where(tag_predicate)
+    elif untagged_predicate is not None:
+        base = base.where(untagged_predicate)
+
     if source is not None:
         base = base.where(Model.source == source)
     if q:
