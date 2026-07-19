@@ -2,8 +2,9 @@
 title: 'Story 44.1 — FacetSidebar'
 type: 'feature'
 created: '2026-07-19'
-status: 'in-review'
+status: 'done'
 baseline_revision: '903795fd798a5bc1298379b158f7556f84a4f30f'
+final_revision: '607bfc41fbd7fb6a5e36df4232e57a71b336bc03'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:

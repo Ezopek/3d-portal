@@ -315,7 +315,7 @@ development_status:
   43-3-url-state: done  # 2026-07-19 CLOSED by controller. Impl 877223e ff-only merged/pushed/deployed to .190 as 0.1.0+877223e; native BMAD APPROVE 0c/0i, Aider APPROVE; check-all 16/16 (web 681p, visual 464p/24s); live health 200, six services running, symbolication/runbook fingerprint OK. Additive tag_match + untagged URL state and canonical-UUID tag_ids hardening shipped; category_id/unrelated branches and E44 wiring fences preserved; no destructive-go. This story closed E43; the epic was finalized by native bmad-retrospective 2026-07-19 (epic-43=done, epic-43-retrospective=done; earlier operator-requested pause resolved).
   epic-43-retrospective: done  # 2026-07-19 native bmad-retrospective (Claude author; Laura controller). Truthful final retro for the additive scope (43.1/43.2/43.3 all done; category surface preserved as zero-code bridge; destructive removal owned by/deferred to 47.4/47.5, un-granted). Artifact: epic-43-retro-2026-07-19.md.
   epic-44: backlog
-  44-1-facetsidebar: backlog
+  44-1-facetsidebar: done
   44-2-filterribbon: backlog
   44-3-cataloglist-states: backlog
   epic-44-retrospective: optional
