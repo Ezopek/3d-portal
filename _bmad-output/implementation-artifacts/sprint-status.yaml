@@ -1,5 +1,5 @@
 generated: 2026-05-09
-last_updated: 2026-07-19  # Story 42.4 admin-group-governance → review (dev-story)
+last_updated: 2026-07-19  # E42 closeout: 42.4 → done, epic-42 → done, epic-42-retrospective → done (native bmad-retrospective; retro epic-42-retro-2026-07-19.md)
 project: 3d-portal
 project_key: NOKEY
 tracking_system: file-system
@@ -302,13 +302,13 @@ development_status:
   41-2-alembic-0018-facet-tags-drop-category: done  # native BMAD + Aider APPROVE 2026-07-18; additive-only 0018_facet_tags, suite 3x 1671p/3s, single head; destructive drop deferred to E42
   41-3-optional-starter-taxonomy-seed: done  # 2026-07-19 native BMAD + final re-review + Aider APPROVE; all 5 Review Patch findings resolved, 14 focused tests, backend 3x 1685p/3s. Admin-run idempotent seed: 8 groups/36 tags, no model assignments or startup hook. Story: 41-3-optional-starter-taxonomy-seed.md
   epic-41-retrospective: done  # 2026-07-19 FINAL retro run at true E41 close (all 3 stories done). Converted the prior superseded-partial artifact into the truthful final retrospective. See epic-41-retro-2026-07-18.md
-  epic-42: in-progress  # 2026-07-19 opened for 42.1. RE-SCOPED 2026-07-19 by bmad-correct-course (SCP sprint-change-proposal-2026-07-19-e42-deferred-coupled-cutover.md) to the ADDITIVE backend contract only (42.1/42.2/42.4). CLOSES after 42.4 (flip epic-42→done once 42-4 is done). Destructive category retirement relocated to E47 (47.4/47.5).
+  epic-42: done  # 2026-07-19 CLOSED at native bmad-retrospective (controller Laura) once 42.4 done. RE-SCOPED 2026-07-19 by bmad-correct-course (SCP sprint-change-proposal-2026-07-19-e42-deferred-coupled-cutover.md) to the ADDITIVE backend contract only (42.1/42.2/42.4). Achieved additive facet backend contract; deployed 0.1.0+d291283 to .190. Destructive category retirement relocated to E47 (47.4/47.5), deferred + un-granted. Historical 42-3/42-5 stay backlog (superseded, not owed). Retro: epic-42-retro-2026-07-19.md.
   42-1-models-facet-filtering: done  # 2026-07-19 native BMAD + Aider APPROVE; TB-054 gate debt resolved/deployed first; rebased commit 0d9c2d4; backend 3x 1694p/3s; full check-all 16/16 all green (visual 464p/24s). Ready for controller ff-merge/push/deploy.
   42-2-tags-tag-groups-read-api: done  # 2026-07-19 native BMAD + Aider APPROVE; implementation 3cf5a4b; focused 56p; backend 3x 1718p/3s; full check-all 16/16 all green (visual 464p/24s). Auth default-deny, honest TagListItem OpenAPI, constant-query no-N+1 proven; TB-055 tracks architecture auth-doc drift. Ready for ff-merge/push/deploy.
   42-3-category-endpoint-removal: backlog  # SUPERSEDED / RELOCATED → 47-4 by bmad-correct-course 2026-07-19 (SCP sprint-change-proposal-2026-07-19-e42-deferred-coupled-cutover.md). Kept as historical backlog key (not deleted). Category API-surface retirement is destructive to a live surface and must land after E43-E45 FE + 47.3 hydrate/runbook consumers are gone (main auto-deploys to .190 → live 404 otherwise). Do NOT dev this key. See 47-4-category-api-surface-retirement + 42-3-category-endpoint-removal.md.
-  42-4-admin-group-governance: review  # 2026-07-19 native bmad-create-story (Claude author; Laura controller). Additive-only admin tag-group governance: new current_admin router POST/PATCH/DELETE /api/admin/tag-groups (dedicated, not agent-write); move via extended PATCH /api/admin/tags/{id} group_id; POST /tags tightened to current_admin (FR25-TAX-2, agent excluded); group delete = FK SET NULL (tags groupless, never deleted); tag_group entity_type + tag_group.* audit actions. E41 tag.group_id index action item discharged code-first (no index/no migration). All 10 contract Qs resolved; no dev-start blockers. E42 CLOSES after this story is done (controller-owned closeout).
+  42-4-admin-group-governance: done  # 2026-07-19 CLOSED by controller at E42 retrospective (review → done). Impl d291283 (HEAD=origin/main); native review APPROVE 0c/0i; Aider REQUEST_CHANGES evidence-triaged invalid (no code owed); check-all 16/16; deployed 0.1.0+d291283 to .190; live default-deny 401 missing_access on all 4 write ops. Additive-only admin tag-group governance: new current_admin router POST/PATCH/DELETE /api/admin/tag-groups (dedicated, not agent-write); move via extended PATCH /api/admin/tags/{id} group_id; POST /tags tightened to current_admin (FR25-TAX-2, agent excluded); group delete = FK SET NULL (tags groupless, never deleted); tag_group entity_type + tag_group.* audit actions. E41 tag.group_id index action item discharged code-first (no index/no migration). All 10 contract Qs resolved; no dev-start blockers. E42 CLOSES after this story is done (controller-owned closeout).
   42-5-model-create-patch-share-dto-drop-category: backlog  # SUPERSEDED / RELOCATED → 47-5 by bmad-correct-course 2026-07-19 (same SCP). Kept as historical backlog key (not deleted). DTO drop is irreducibly atomic with the ORM + 0019_drop_category removal (one commit; TB-053). Do NOT dev this key. See 47-5-category-orm-dto-0019-atomic-cutover.
-  epic-42-retrospective: optional
+  epic-42-retrospective: done  # 2026-07-19 native bmad-retrospective (Claude author; Laura controller). Truthful final retro for the corrected additive scope (42.1/42.2/42.4 done; 42.3/42.5 superseded→47.4/47.5, backlog, not owed). Artifact: epic-42-retro-2026-07-19.md.
   epic-43: backlog
   43-1-api-types: backlog
   43-2-hooks: backlog
@@ -359,4 +359,16 @@ action_items:
   - epic: 41
     action: "Trust the epic completion check: do not mark an epic done while any story is non-done without an explicit operator scope decision recorded first (guards against the 2026-07-18 premature E41 closeout recurring)."
     owner: "retrospective / sprint-planning facilitation"
+    status: open  # HONORED at E42 closeout 2026-07-19: epic-42 flipped done only because the operator-approved SCP recorded the 42.3/42.5 relocation as an explicit scope decision; 42-3/42-5 kept backlog, not force-flipped. Item stays open as standing facilitation discipline.
+  - epic: 42
+    action: "Set group_position explicitly when E46 moves a groupless tag into a group, to avoid the position-0 collision surprise (42.4 native-review Minor #2; harmless today as the 42.2 read tie-breaks by slug)."
+    owner: "E46 (46-2-rename-merge-move)"  # coordination note, not a new story; evidence .hermes/run-logs/e42.4-native-review.md Minor #2
+    status: open
+  - epic: 42
+    action: "Re-evaluate the unbounded detached_tag_ids delete-audit payload only if tag-group membership can grow large (42.4 native-review Minor #1; bounded in practice by the small admin-rare tag table, detached_tag_count carried alongside)."
+    owner: "E46 / fresh triage if triggered"  # informational; no change owed at current scale
+    status: open
+  - epic: 42
+    action: "Classify migrations additive vs. destructive at epic decomposition (not per story): the E41 action-item #4 guard still reached a story spec via E42's sketch (42.3/42.5 ordered ahead of their FE/hydrate prerequisites), caught only by the create-story dependency audit."
+    owner: "sprint-planning facilitation"  # standing; concrete E42-instance already discharged via correct-course (0018 additive / 0019 destructive coupled to 47.5)
     status: open

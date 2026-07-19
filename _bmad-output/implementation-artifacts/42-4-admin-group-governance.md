@@ -3,9 +3,10 @@ baseline_commit: 5d0be6aef3ca1631817a3020797aca7a9760faf1
 ---
 # Story 42.4: Admin group governance
 
-Status: review
+Status: done
 
 <!-- Authored + self-validated 2026-07-19 via native bmad-help → bmad-sprint-status → bmad-create-story (Claude author; Laura controller). Additive-only per SCP sprint-change-proposal-2026-07-19-e42-deferred-coupled-cutover.md — this story CLOSES E42 (additive backend contract). All ten controller contract questions resolved code-first against approved sources + live code; no dev-start open questions. See "## Resolved Decisions" and "## Validation Record". -->
+<!-- CLOSED 2026-07-19 by controller (Laura) at E42 retrospective/closeout: review → done. Implementation commit d291283 (HEAD=origin/main); native BMAD review APPROVE 0c/0i; Aider REQUEST_CHANGES evidence-triaged as invalid assumptions (no code owed); check-all 16/16; deployed 0.1.0+d291283 to .190; live default-deny verified. E42 closed (epic-42 → done). See "## Controller Closeout (E42)" and epic-42-retro-2026-07-19.md. -->
 
 ## Story
 
@@ -306,3 +307,19 @@ claude-opus-4-8[1m] (Claude Opus 4.8, 1M context) — native BMAD `bmad-dev-stor
 | Date | Change |
 |---|---|
 | 2026-07-19 | Native `bmad-dev-story` implementation (Claude author; Laura controller). Added admin-only tag-group governance router (`POST/PATCH/DELETE /api/admin/tag-groups`) + relocated admin-only `POST /api/admin/tags`; extended tag `PATCH` for group move; `tag_group` audit entity + actions; D-NULLSEM-1 null-reject validators; group delete via FK SET NULL. Discharged E41 `tag.group_id` index action item (no index / no migration). Strict RED→GREEN TDD: RED 36-fail → GREEN 131-pass focused; full backend suite 3× identical `1761p/3s`; ruff clean. Story + sprint → `review`. Epic-42 closeout left to controller. |
+| 2026-07-19 | **Controller closeout (Laura) at E42 retrospective: `review` → `done`.** Implementation `d291283` (HEAD=origin/main). Controller focused rerun 153p; native `bmad-code-review` APPROVE (0 critical / 0 important / 2 informational minors); Aider `REQUEST_CHANGES` evidence-triaged as invalid assumptions (atomic tx → no orphan audit; intentional groupless ordering; ratified 400) — no code change warranted. `check-all` 16/16 (visual 464p/24s). Deployed via `infra/scripts/deploy.sh` to `.190`, release `0.1.0+d291283` (slicer smoke / symbolication / runbook fingerprint OK). Live: `/api/health` 200; `/api/openapi.json` shows governance ops + stable `admin_create_tag_api_admin_tags_post`; anonymous write (with `X-Portal-Client: web`) → 401 `missing_access` on all four operations. E42 closed (`epic-42` → `done`; `epic-42-retrospective` → `done`). Retro: `epic-42-retro-2026-07-19.md`. |
+
+## Controller Closeout (E42)
+
+**Closed 2026-07-19 by controller (Laura) as part of the native `bmad-retrospective` E42 closeout.** Status `review` → `done`; this story closes Epic 42 (additive backend contract).
+
+**Verification evidence (controller-verified; retrospective performed no code/deploy action):**
+
+- **Commit:** `d291283`; `HEAD == origin/main == d291283`; working tree clean.
+- **Gates:** RED `36f/82p` → focused GREEN `131p` (implementer) → controller focused rerun **`153p`**; ruff clean. Full backend suite **3× identical `1761p/3s`** (`e42.4-backend-run{1,2,3}.log`). `git diff --check` clean.
+- **Reviews:** native `bmad-code-review` **APPROVE — 0 critical / 0 important / 2 minor** (informational, pre-acknowledged; `.hermes/run-logs/e42.4-native-review.md`). Aider `REQUEST_CHANGES` **triaged invalid** (atomic model+audit tx → no orphan-audit window; `group_position` intentionally orders groupless tags in the 42.2 read; unknown move target → 400 is ratified D-MOVE-1) — no change warranted.
+- **Full gate:** `infra/scripts/check-all.sh` **16/16 green**, visual regression **464p/24s**.
+- **Deploy:** `infra/scripts/deploy.sh` → `.190`; release **`0.1.0+d291283`**; slicer smoke OK; symbolication OK; runbook fingerprint OK; containers running.
+- **Live (.190):** `/api/health` 200; public `/api/openapi.json` proves the governance operations/tags + **stable operation ID `admin_create_tag_api_admin_tags_post`**; anonymous write boundary sent with `X-Portal-Client: web` reaches auth and returns **401 `missing_access`** for all four write operations (`POST/PATCH/DELETE /api/admin/tag-groups` + `POST /api/admin/tags`) — CSRF/client gate passes to auth; default-deny holds.
+
+**Scope integrity at closeout:** additive-only fences held (no category symbol/route/ORM/schema/DTO, no migration/`0019`, no `ModelCreate/Patch`/`ShareModelView`, no `apps/web/*`, no `_PUBLIC_ROUTES` edit). Historical keys `42-3`/`42-5` remain `backlog` (superseded/relocated → 47.4/47.5); destructive category retirement stays deferred and un-granted (47.5 dev-go, backup-gated). See `epic-42-retro-2026-07-19.md`.
