@@ -21,8 +21,8 @@ function withQuery(node: ReactNode) {
 }
 
 const TAGS = [
-  { id: "t1", slug: "dragon", name_en: "Dragon", name_pl: "Smok" },
-  { id: "t2", slug: "articulated", name_en: "Articulated", name_pl: null },
+  { id: "t1", slug: "dragon", name_en: "Dragon", name_pl: "Smok", group_id: null, group_position: 0 },
+  { id: "t2", slug: "articulated", name_en: "Articulated", name_pl: null, group_id: null, group_position: 0 },
 ];
 
 describe("FilterRibbon", () => {

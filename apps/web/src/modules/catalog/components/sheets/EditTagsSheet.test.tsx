@@ -59,6 +59,8 @@ function makeTag(over: Partial<TagRead> = {}): TagRead {
     slug: "resin",
     name_en: "Resin",
     name_pl: null,
+    group_id: null,
+    group_position: 0,
     ...over,
   };
 }

@@ -1,7 +1,11 @@
+---
+baseline_commit: 5b5da8c4f0aa3f03a05f2c25eb0ca45d43f7177a
+---
+
 # Story 43.1 — `api-types` facet-tag data types (FR25-FILT-1, FR25-TAX-1)
 
 - **Epic:** E43 — Frontend data layer (Initiative 25 — Facet Tag Taxonomy + Category Retirement)
-- **Status:** `ready-for-dev` — **validated 2026-07-19 via native `bmad-create-story:validate` (VS) → PASS** (see § 8 Validation record; 1 important + 2 minor findings fixed in-place). The planning correction that blocked this story is **APPLIED** (operator-approved `bmad-correct-course` 2026-07-19; SCP `sprint-change-proposal-2026-07-19-e43-fe-data-additive-correction.md`, status APPROVED/APPLIED). The `epics.md` E43 sketches + `architecture.md` Decision AW § Frontend types now match the shipped 42.2 wire and the additive scope; every category symbol is preserved (owners: 47.4 tree types + `useCategoriesTree`, 47.5 model DTO/field). The additive spec in §3–§4 is the source of truth. Next native step: `bmad-dev-story` (dev-go — validation PASS recorded in § 8). **History note:** this story was authored `BLOCKED_PROCEDURAL` (see § Procedural block, retained below as audit history); that block is now **RESOLVED** by the applied correction — the SoT contradiction it flagged no longer exists.
+- **Status:** `review` — **DEV COMPLETE 2026-07-19 via native `bmad-dev-story` (author Claude/BMAD; controller Laura owns review/commit/merge/push/deploy). Branch `feat/E43.1-api-types` from `main` @ 5b5da8c, left uncommitted for controller review. All ACs green (typecheck/lint/vitest/build); see § 9 Dev Agent Record. Was:** `ready-for-dev` — **validated 2026-07-19 via native `bmad-create-story:validate` (VS) → PASS** (see § 8 Validation record; 1 important + 2 minor findings fixed in-place). The planning correction that blocked this story is **APPLIED** (operator-approved `bmad-correct-course` 2026-07-19; SCP `sprint-change-proposal-2026-07-19-e43-fe-data-additive-correction.md`, status APPROVED/APPLIED). The `epics.md` E43 sketches + `architecture.md` Decision AW § Frontend types now match the shipped 42.2 wire and the additive scope; every category symbol is preserved (owners: 47.4 tree types + `useCategoriesTree`, 47.5 model DTO/field). The additive spec in §3–§4 is the source of truth. Next native step: `bmad-dev-story` (dev-go — validation PASS recorded in § 8). **History note:** this story was authored `BLOCKED_PROCEDURAL` (see § Procedural block, retained below as audit history); that block is now **RESOLVED** by the applied correction — the SoT contradiction it flagged no longer exists.
 - **Author:** Claude (BMAD create-story). **Controller:** Laura.
 - **Created:** 2026-07-19 via native `bmad-create-story` (Create) after mandatory `bmad-help`.
 - **Scope class:** frontend data types only (`apps/web/src/lib/api-types.ts` + a type-level test). No hooks / URL / UI / backend / migration.
@@ -201,5 +205,61 @@ No destructive-go, no data decision, and no code change is requested by this sto
 - **Name collisions**: `grep` across `apps/web/src` — none of `TagListItem`/`TagReadWithCount`/`TagGroupRead`/`TagGroupsResponse`/`TagGroupSummary`/`useTagGroups` exist yet; names match the backend exactly.
 - **Scope fences**: deliverables limited to `api-types.ts` + one new type-test (`api-types-tags.test.ts`) + story/status — no hooks (`useTagGroups` = 43.2), no URL state (43.3), no UI, no backend, no migration.
 - **Gates**: `git diff --check` clean; `sprint-status.yaml` well-formed. Validation edits are tracked-doc only (story artifact + sprint-status), per the VS remit.
-</content>
-</invoke>
+
+---
+
+## 9. Tasks / Subtasks — dev execution (native `bmad-dev-story`, 2026-07-19)
+
+- [x] **T1 — RED first (TDD).** Author `apps/web/src/lib/api-types-tags.test.ts` (type-level, `expectTypeOf`; no `as`/`any`/unsafe cast) before any production change. Assert `TagRead["group_id"]`=`string|null`, `TagRead["group_position"]`=`number`, `TagListItem["model_count"]`=`number|undefined`, `TagReadWithCount["model_count"]`=`number`, `TagGroupRead` shape, `TagGroupsResponse` structural equality, flat `TagGroupSummary` (no `tags[]`), plus a literal `satisfies TagGroupsResponse` 42.2 wire fixture.
+  - [x] Capture RED under `npm run typecheck` (`tsc -b`): 5 unresolved-export errors (`TagListItem`/`TagReadWithCount`/`TagGroupRead`/`TagGroupsResponse`/`TagGroupSummary`, TS2305) + 2 missing-field errors on `TagRead` (`group_id`/`group_position`, TS2339). Evidence `.hermes/run-logs/e43.1-red-typecheck.log`.
+- [x] **T2 — GREEN production types (additive).** In `apps/web/src/lib/api-types.ts`: extend `TagRead` with `group_id: string | null` and `group_position: number` (NO embedded `group`, per 42.2 D-SHAPE-1); add exported `TagListItem` (`model_count?: number`), `TagReadWithCount` (`model_count: number`), `TagGroupRead`, `TagGroupsResponse`, `TagGroupSummary` (flat) — each field-for-field against `sot/schemas.py:35-101`.
+- [x] **T3 — Preserve category surface.** `CategorySummary`, `CategoryNode`, `CategoryTree`, `ModelSummary.category_id`, `ModelDetail.category` unchanged (only a non-behavioural Initiative-25 retention marker comment added on the Categories header, permitted by §3.4).
+- [x] **T4 — Green gates.** Focused vitest PASS (8); `npm run typecheck` PASS; `npm run lint` PASS (`--max-warnings=0`); full `npm run test` PASS (123 files / 656 tests); full web production build (`npm run build`, `tsc -b && vite build`) PASS. No visual-baseline regen (no UI change).
+
+## 10. Dev Agent Record
+
+### 10.1 Debug Log
+
+| Phase | Command | Result |
+|---|---|---|
+| RED | `npm run typecheck` | FAIL — TS2305 ×5 (missing exports) + TS2339 ×2 (missing `TagRead.group_id`/`group_position`). Meaningful RED. |
+| GREEN focused | `npx vitest run src/lib/api-types-tags.test.ts` | PASS (8) |
+| GREEN typecheck | `npm run typecheck` (`tsc -b`) | PASS |
+| Lint | `npm run lint` | PASS — "ESLint: No issues found" |
+| Full unit | `npm run test` (`vitest run`) | PASS — 123 files / 656 tests |
+| Build | `npm run build` (`tsc -b && vite build`) | PASS (exit 0; only pre-existing route-file/sentry/chunk-size warnings) |
+
+Logs under `.hermes/run-logs/e43.1-*.log` (gitignored).
+
+### 10.2 Completion Notes
+
+- Additive-only per §3–§4. `TagRead` gains `group_id`/`group_position` **only**; five tag/tag-group interfaces added; all five category symbols preserved. Manual typing, no codegen.
+- **Required mechanical fallout (scope note for controller):** making `TagRead.group_id`/`group_position` REQUIRED (matching the non-optional backend wire) forces every hand-constructed `TagRead` literal to supply the two new keys, else `tsc -b` is RED (AC #5 mandates green). `tsc` enumerated exactly **five** such construction sites — four test fixtures (`ModelHero.test.tsx`, `ModelCard.test.tsx`, `FilterRibbon.test.tsx`, `EditTagsSheet.test.tsx`) and one dev-only showcase route (`routes/dev/components.tsx`, `/dev/components` mock `FAKE_MODEL`). **No** production hook/component/route builds a `TagRead` literal, so no feature surface was touched. Each site received data-only `group_id: null, group_position: 0` (faithful "groupless" defaults). This is the unavoidable tail of the sanctioned additive type change, not scope expansion (no hooks / URL state / feature UI / locales / backend / migration / generated route tree). Flagged for controller veto if a different resolution is preferred.
+- RED gate is `tsc` (compile-time), not `vitest run` — esbuild erases `import type`/`expectTypeOf` at runtime (per AC #6 + Story 35.5 precedent).
+- Controller rerun: `npm run typecheck`, focused type test **8/8**, and `npm run lint` all PASS; explicit source guard confirmed all category compatibility exports/fields remain and no embedded `group` exists.
+- Fresh native BMAD adversarial review: **APPROVE** (`critical=0`, `important=0`, `minor=2` non-blocking type-test hardening notes). Report: `.hermes/run-logs/e43.1-native-review.md`; independent focused review rerun **36/36**.
+- Aider full-diff review found no concrete defect but ended `REQUEST_CHANGES` asking for a manual audit of direct `TagRead` constructions. Controller triage closed it with full `tsc -b` plus explicit source search: only the updated fixture/dev sites construct `TagRead`; no code change owed.
+- Full repo `infra/scripts/check-all.sh`: **16/16 green**, including web Vitest **656 passed** and visual regression **464 passed / 24 skipped**. Evidence: `.hermes/run-logs/e43.1-check-all.log`.
+
+## 11. File List
+
+Changed (tracked, uncommitted on `feat/E43.1-api-types`):
+
+- `apps/web/src/lib/api-types.ts` — additive `TagRead` fields + 5 new tag-group interfaces + Categories retention comment (core deliverable).
+- `apps/web/src/routes/dev/components.tsx` — dev-showcase mock `TagRead` literals: +`group_id`/`group_position` (required fallout).
+- `apps/web/src/modules/catalog/components/ModelHero.test.tsx` — test fixture tags: +2 fields (required fallout).
+- `apps/web/src/modules/catalog/components/FilterRibbon.test.tsx` — test fixture tags: +2 fields (required fallout).
+- `apps/web/src/modules/catalog/components/sheets/EditTagsSheet.test.tsx` — `makeTag` fixture: +2 default fields (required fallout).
+- `apps/web/src/ui/custom/ModelCard.test.tsx` — test fixture tags: +2 fields (required fallout).
+
+New (untracked, intended):
+
+- `apps/web/src/lib/api-types-tags.test.ts` — RED-first type-level test (the story's mandated deliverable).
+
+Docs (tracked): this story artifact; `sprint-status.yaml` (epic-43 → in-progress, 43-1-api-types → review).
+
+## 12. Change Log
+
+| Date | Change |
+|---|---|
+| 2026-07-19 | Native `bmad-dev-story` executed on branch `feat/E43.1-api-types` (baseline `main` @ 5b5da8c). Additive facet-tag FE types implemented RED→GREEN; five required-fallout `TagRead` construction sites updated; all gates green (typecheck/lint/vitest 656/build). Status → `review`; left uncommitted for controller review. |

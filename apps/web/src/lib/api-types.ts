@@ -39,6 +39,10 @@ export interface VerifyRequest {
 }
 
 // --- Categories ---
+// Initiative 25: CategorySummary / CategoryNode / CategoryTree (and
+// ModelSummary.category_id / ModelDetail.category below) still match the live
+// wire and have live consumers; retained until their owning cutover stories
+// remove them (47.4 tree types, 47.5 model DTO/field + backend drop).
 
 export interface CategorySummary {
   id: string;
@@ -65,6 +69,51 @@ export interface TagRead {
   slug: string;
   name_en: string;
   name_pl: string | null;
+  // Initiative 25 (Story 42.2) — facet membership, read straight off the Tag
+  // ORM columns. Additive: existing consumers ignore these, and because
+  // ModelSummary/ModelDetail embed TagRead they also appear on every model
+  // response (FR25-DETAIL-1). The human group label/slug is NOT embedded here —
+  // it is delivered authoritatively by GET /api/tag-groups (42.2 D-SHAPE-1).
+  group_id: string | null; // facet-group FK; null = groupless
+  group_position: number; // order within the group
+}
+
+// GET /api/tags item — TagRead plus an OPT-IN model_count. Present only when the
+// caller passes ?with_counts=true; the backend serializer DROPS the key when
+// absent (42.2 D-RESPONSEMODEL-1), so it is optional, never `| null`.
+export interface TagListItem extends TagRead {
+  model_count?: number;
+}
+
+// Per-tag entry inside GET /api/tag-groups — model_count is always computed, so
+// it is REQUIRED here (distinct from TagListItem's optional count).
+export interface TagReadWithCount extends TagRead {
+  model_count: number;
+}
+
+export interface TagGroupRead {
+  id: string;
+  slug: string;
+  name_en: string;
+  name_pl: string | null;
+  position: number;
+  tags: TagReadWithCount[];
+}
+
+// GET /api/tag-groups response.
+export interface TagGroupsResponse {
+  groups: TagGroupRead[];
+  groupless: TagReadWithCount[];
+}
+
+// Flat write-response for the admin tag-group governance endpoints (Story 42.4).
+// Mirrors CategorySummary; does NOT embed `tags[]` — that is TagGroupRead's job.
+export interface TagGroupSummary {
+  id: string;
+  slug: string;
+  name_en: string;
+  name_pl: string | null;
+  position: number;
 }
 
 // --- Files ---

@@ -26,9 +26,9 @@ function makeSummary(over: Partial<ModelSummary> = {}): ModelSummary {
     created_at: "2026-04-12T00:00:00Z",
     updated_at: "2026-04-12T00:00:00Z",
     tags: [
-      { id: "33", slug: "dragon", name_en: "Dragon", name_pl: "Smok" },
-      { id: "34", slug: "articulated", name_en: "Articulated", name_pl: null },
-      { id: "35", slug: "extra-tag", name_en: "Extra", name_pl: null },
+      { id: "33", slug: "dragon", name_en: "Dragon", name_pl: "Smok", group_id: null, group_position: 0 },
+      { id: "34", slug: "articulated", name_en: "Articulated", name_pl: null, group_id: null, group_position: 0 },
+      { id: "35", slug: "extra-tag", name_en: "Extra", name_pl: null, group_id: null, group_position: 0 },
     ],
     gallery_file_ids: [],
     image_count: 0,
