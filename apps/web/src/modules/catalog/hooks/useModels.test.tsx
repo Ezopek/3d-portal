@@ -114,6 +114,29 @@ describe("useModels", () => {
     expect(fetchMock.mock.calls[3]?.[0] as string).not.toContain("tag_match");
   });
 
+  it("emits untagged=true when untagged is set", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EMPTY), { status: 200 }));
+    renderHook(() => useModels({ untagged: true }), { wrapper: wrap() });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const url = fetchMock.mock.calls[0]?.[0] as string;
+    expect(url).toContain("untagged=true");
+  });
+
+  it("omits untagged when false or undefined", async () => {
+    // false → omitted
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EMPTY), { status: 200 }));
+    const { unmount } = renderHook(() => useModels({ untagged: false }), { wrapper: wrap() });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0]?.[0] as string).not.toContain("untagged");
+    unmount();
+
+    // undefined → omitted
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EMPTY), { status: 200 }));
+    renderHook(() => useModels({}), { wrapper: wrap() });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls[1]?.[0] as string).not.toContain("untagged");
+  });
+
   it("computes offset from page (1-indexed)", async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EMPTY), { status: 200 }));
     renderHook(() => useModels({ page: 3 }), { wrapper: wrap() });

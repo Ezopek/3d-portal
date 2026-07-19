@@ -34,7 +34,6 @@ export type TagMatch = (typeof TAG_MATCHES)[number];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface CatalogSearch {
-  category_id?: string;
   tag_ids?: string[];
   tag_match?: TagMatch;
   untagged?: boolean;
@@ -49,9 +48,6 @@ export const Route = createFileRoute("/catalog/")({
   component: CatalogList,
   validateSearch: (raw: Record<string, unknown>): CatalogSearch => {
     const out: CatalogSearch = {};
-    if (typeof raw.category_id === "string" && raw.category_id.length > 0) {
-      out.category_id = raw.category_id;
-    }
     let tagIdCandidates: string[] | null = null;
     if (Array.isArray(raw.tag_ids)) {
       tagIdCandidates = raw.tag_ids.filter((x): x is string => typeof x === "string");

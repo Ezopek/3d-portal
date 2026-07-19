@@ -2,12 +2,11 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { CategoryNode, CategoryTree } from "@/lib/api-types";
 import { AddModelButton } from "@/modules/admin/AddModelButton";
-import { CategoryTreeSidebar } from "@/modules/catalog/components/CategoryTreeSidebar";
+import { FacetSidebar } from "@/modules/catalog/components/FacetSidebar";
 import { FilterRibbon, type FilterRibbonState } from "@/modules/catalog/components/FilterRibbon";
-import { useCategoriesTree } from "@/modules/catalog/hooks/useCategoriesTree";
 import { useModels } from "@/modules/catalog/hooks/useModels";
+import { useTagGroups } from "@/modules/catalog/hooks/useTagGroups";
 import { useTags } from "@/modules/catalog/hooks/useTags";
 import type { CatalogSearch } from "@/routes/catalog/index";
 import { Button } from "@/ui/button";
@@ -28,9 +27,9 @@ export function CatalogList() {
   const { t } = useTranslation();
   const search = useSearch({ from: "/catalog/" });
   const navigate = useNavigate({ from: "/catalog/" });
-  const [mobileCategoriesOpen, setMobileCategoriesOpen] = useState(false);
+  const [mobileTagsOpen, setMobileTagsOpen] = useState(false);
 
-  const tree = useCategoriesTree();
+  const tagGroups = useTagGroups();
   const tags = useTags();
   const tagsData = tags.data;
   const tagsById = useMemo(() => {
@@ -39,15 +38,10 @@ export function CatalogList() {
     return m;
   }, [tagsData]);
 
-  const categoryIds = useMemo(
-    () => expandCategoryIds(tree.data, search.category_id),
-    [tree.data, search.category_id],
-  );
-
   const models = useModels({
-    category_ids: categoryIds,
     tag_ids: search.tag_ids,
     tag_match: search.tag_match,
+    untagged: search.untagged,
     status: search.status,
     source: search.source,
     q: search.q,
@@ -87,11 +81,30 @@ export function CatalogList() {
     });
   }
 
-  function setCategoryId(id: string | null) {
+  function toggleTag(id: string) {
+    void navigate({
+      search: (prev: CatalogSearch): CatalogSearch => {
+        const current = prev.tag_ids ?? [];
+        const next = current.includes(id)
+          ? current.filter((tid) => tid !== id)
+          : [...current, id];
+        return {
+          ...prev,
+          // Let validateSearch normalize a now-stranded tag_match (a non-default
+          // value only survives with ≥2 tags — E44.2 enforcement layer).
+          tag_ids: next.length > 0 ? next : undefined,
+          page: undefined,
+        };
+      },
+      replace: true,
+    });
+  }
+
+  function toggleUntagged() {
     void navigate({
       search: (prev: CatalogSearch): CatalogSearch => ({
         ...prev,
-        category_id: id === null ? undefined : id,
+        untagged: prev.untagged ? undefined : true,
         page: undefined,
       }),
       replace: true,
@@ -110,9 +123,9 @@ export function CatalogList() {
 
   // Guard on data presence rather than `isLoading`: on the very first render
   // TanStack Query has not yet mounted the queries, so `isLoading` is still
-  // false. Without this, CategoryTreeSidebar paints with empty subtree counts
-  // before `tree.data` resolves (QA round 2 issue 3).
-  if (tree.isError || models.isError) {
+  // false. Without this, FacetSidebar paints with empty group data before
+  // `tagGroups.data` resolves.
+  if (tagGroups.isError || models.isError) {
     return (
       <EmptyState
         messageKey="errors.network"
@@ -120,14 +133,14 @@ export function CatalogList() {
         action={{
           labelKey: "common.retry",
           onClick: () => {
-            void tree.refetch();
+            void tagGroups.refetch();
             void models.refetch();
           },
         }}
       />
     );
   }
-  if (tree.data === undefined || models.data === undefined) {
+  if (tagGroups.data === undefined || models.data === undefined) {
     return <LoadingState variant="skeleton-grid" cols={5} rows={3} />;
   }
 
@@ -139,49 +152,59 @@ export function CatalogList() {
   const lastPage = Math.max(1, Math.ceil(total / limit));
 
   const filtersActive =
-    search.category_id !== undefined ||
     (search.tag_ids?.length ?? 0) > 0 ||
     search.status !== undefined ||
     search.source !== undefined ||
-    (search.q?.length ?? 0) > 0;
+    (search.q?.length ?? 0) > 0 ||
+    search.untagged === true;
+
+  // AND intersection that yields nothing is recoverable by switching to OR:
+  // ≥2 tags selected with an effective AND (tag_match unset or "all") and the
+  // whole filtered set (not just this page) is empty (HANDOFF mockup 08D). Key
+  // on `total === 0`, not `items.length === 0`, so a stale `?page=2` overshoot
+  // that still has matches on page 1 falls through to the Clear-filters branch
+  // instead of falsely offering "Switch to OR" (review 2026-07-20).
+  const andTooNarrow =
+    total === 0 &&
+    (search.tag_ids?.length ?? 0) >= 2 &&
+    (search.tag_match ?? "all") === "all";
 
   return (
     <div className="flex">
-      {tree.data !== undefined && (
-        <CategoryTreeSidebar
-          tree={tree.data}
-          selectedId={search.category_id ?? null}
-          onSelect={setCategoryId}
-        />
-      )}
+      <FacetSidebar
+        groups={tagGroups.data.groups}
+        groupless={tagGroups.data.groupless}
+        selectedTagIds={search.tag_ids ?? []}
+        onToggleTag={toggleTag}
+        untaggedActive={search.untagged ?? false}
+        onToggleUntagged={toggleUntagged}
+      />
       <div className="min-w-0 flex-1">
-        {tree.data !== undefined && (
-          <div className="border-b border-border bg-background/95 px-3 pt-3 lg:hidden">
-            <Sheet open={mobileCategoriesOpen} onOpenChange={setMobileCategoriesOpen}>
-              <SheetTrigger
-                render={
-                  <Button variant="outline" size="sm" className="w-full justify-start">
-                    {t("catalog.filters.openCategories")}
-                  </Button>
-                }
+        <div className="border-b border-border bg-background/95 px-3 pt-3 lg:hidden">
+          <Sheet open={mobileTagsOpen} onOpenChange={setMobileTagsOpen}>
+            <SheetTrigger
+              render={
+                <Button variant="outline" size="sm" className="w-full justify-start">
+                  {t("catalog.filters.openTags")}
+                </Button>
+              }
+            />
+            <SheetContent side="left" className="w-80 max-w-[85vw] overflow-y-auto p-0">
+              <SheetHeader>
+                <SheetTitle>{t("catalog.filters.openTags")}</SheetTitle>
+              </SheetHeader>
+              <FacetSidebar
+                groups={tagGroups.data.groups}
+                groupless={tagGroups.data.groupless}
+                selectedTagIds={search.tag_ids ?? []}
+                onToggleTag={toggleTag}
+                untaggedActive={search.untagged ?? false}
+                onToggleUntagged={toggleUntagged}
+                mobile
               />
-              <SheetContent side="left" className="w-80 max-w-[85vw] overflow-y-auto p-0">
-                <SheetHeader>
-                  <SheetTitle>{t("catalog.filters.openCategories")}</SheetTitle>
-                </SheetHeader>
-                <CategoryTreeSidebar
-                  tree={tree.data}
-                  selectedId={search.category_id ?? null}
-                  onSelect={(id) => {
-                    setCategoryId(id);
-                    setMobileCategoriesOpen(false);
-                  }}
-                  mobile
-                />
-              </SheetContent>
-            </Sheet>
-          </div>
-        )}
+            </SheetContent>
+          </Sheet>
+        </div>
         {/* Initiative 13 Story 20.2 — admin-only "Add Model" CTA in the
             catalog toolbar. Operator-aligned 2026-05-23: top-right placement
             next to filter controls. AddModelButton role-gates on isAdmin
@@ -204,19 +227,44 @@ export function CatalogList() {
           </div>
         </div>
         {items.length === 0 ? (
-          <EmptyState
-            messageKey="catalog.empty"
-            action={
-              filtersActive
-                ? {
-                    labelKey: "catalog.actions.clear_filters",
-                    onClick: () => {
-                      void navigate({ search: {}, replace: true });
-                    },
-                  }
-                : undefined
-            }
-          />
+          andTooNarrow ? (
+            <EmptyState
+              messageKey="catalog.empty"
+              action={{
+                labelKey: "catalog.actions.switch_to_or",
+                onClick: () => {
+                  void navigate({
+                    search: (prev: CatalogSearch): CatalogSearch => ({
+                      ...prev,
+                      tag_match: "any",
+                      page: undefined,
+                    }),
+                    replace: true,
+                  });
+                },
+              }}
+              secondaryAction={{
+                labelKey: "catalog.actions.clear_filters",
+                onClick: () => {
+                  void navigate({ search: {}, replace: true });
+                },
+              }}
+            />
+          ) : (
+            <EmptyState
+              messageKey="catalog.empty"
+              action={
+                filtersActive
+                  ? {
+                      labelKey: "catalog.actions.clear_filters",
+                      onClick: () => {
+                        void navigate({ search: {}, replace: true });
+                      },
+                    }
+                  : undefined
+              }
+            />
+          )
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3 p-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
@@ -250,44 +298,4 @@ export function CatalogList() {
       </div>
     </div>
   );
-}
-
-/**
- * Expand a selected category id to the list of ids the API should match.
- *
- * Backend `/api/models?category_ids=...` filters by exact match, so picking a
- * parent like "Practical" without expansion returns 0 models even when its
- * children (e.g. "Practical → Cables") have plenty. This walks the loaded
- * tree and returns the selected id plus all descendant ids.
- *
- * Returns `undefined` (no filter) when the user has not selected a category.
- * Returns `[selectedId]` as a degenerate fallback when the tree is not yet
- * loaded or the id is not found — that matches pre-fix behavior so we never
- * silently widen the result set.
- */
-function expandCategoryIds(
-  tree: CategoryTree | undefined,
-  selectedId: string | undefined,
-): string[] | undefined {
-  if (selectedId === undefined) return undefined;
-  if (tree === undefined) return [selectedId];
-  const root = findNode(tree.roots, selectedId);
-  if (root === null) return [selectedId];
-  const ids: string[] = [];
-  const stack: CategoryNode[] = [root];
-  while (stack.length > 0) {
-    const node = stack.pop() as CategoryNode;
-    ids.push(node.id);
-    for (const child of node.children) stack.push(child);
-  }
-  return ids;
-}
-
-function findNode(roots: CategoryNode[], id: string): CategoryNode | null {
-  for (const node of roots) {
-    if (node.id === id) return node;
-    const found = findNode(node.children, id);
-    if (found !== null) return found;
-  }
-  return null;
 }

@@ -8,10 +8,11 @@ interface Props {
   messageKey: string;
   icon?: ReactNode;
   action?: { labelKey: string; onClick: () => void };
+  secondaryAction?: { labelKey: string; onClick: () => void };
   tone?: "muted" | "error";
 }
 
-export function EmptyState({ messageKey, icon, action, tone = "muted" }: Props) {
+export function EmptyState({ messageKey, icon, action, secondaryAction, tone = "muted" }: Props) {
   const { t } = useTranslation();
   const toneClass = tone === "error" ? "text-destructive" : "text-muted-foreground";
   return (
@@ -22,10 +23,15 @@ export function EmptyState({ messageKey, icon, action, tone = "muted" }: Props) 
         )}
         <p className={cn("text-sm", toneClass)}>{t(messageKey)}</p>
         {action !== undefined && (
-          <div className="flex justify-center">
+          <div className="flex justify-center gap-2">
             <Button variant="outline" onClick={action.onClick}>
               {t(action.labelKey)}
             </Button>
+            {secondaryAction !== undefined && (
+              <Button variant="outline" onClick={secondaryAction.onClick}>
+                {t(secondaryAction.labelKey)}
+              </Button>
+            )}
           </div>
         )}
       </div>

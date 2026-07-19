@@ -147,12 +147,11 @@ describe("catalog validateSearch — serialization & omit-default (AC #4, #5)", 
   });
 });
 
-describe("catalog validateSearch — coexistence with category_id + unrelated keys (AC #6)", () => {
-  it("preserves category_id and every unrelated key alongside the new params", () => {
-    const full = {
-      category_id: "cat-1",
-      // Two tags so the non-default `tag_match` survives normalization
-      // (Story 44.2 requires ≥2 tags for `tag_match` to be meaningful).
+describe("catalog validateSearch — category_id stripped + unrelated keys coexist (AC #6)", () => {
+  it("strips category_id but preserves every unrelated key alongside the new params", () => {
+    // Two tags so the non-default `tag_match` survives normalization
+    // (Story 44.2 requires ≥2 tags for `tag_match` to be meaningful).
+    const expected = {
       tag_ids: [UUID_A, UUID_B],
       tag_match: "any",
       untagged: true,
@@ -162,11 +161,12 @@ describe("catalog validateSearch — coexistence with category_id + unrelated ke
       sort: "name_asc",
       page: 2,
     };
-    expect(v(full)).toEqual(full);
+    // `category_id` in the input is now stripped (44.3 migration).
+    expect(v({ category_id: "cat-1", ...expected })).toEqual(expected);
   });
 
-  it("keeps a category-only URL valid", () => {
-    expect(v({ category_id: "cat-1" })).toEqual({ category_id: "cat-1" });
+  it("strips a category-only URL down to empty", () => {
+    expect(v({ category_id: "cat-1" })).toEqual({});
   });
 });
 

@@ -16,6 +16,7 @@ export interface ModelsFilters {
   category_ids?: string[];
   tag_ids?: string[];
   tag_match?: TagMatch;
+  untagged?: boolean;
   status?: ModelStatus;
   source?: ModelSource;
   q?: string;
@@ -62,6 +63,7 @@ function buildParams(f: ModelsFilters): URLSearchParams {
   ) {
     p.set("tag_match", f.tag_match);
   }
+  if (f.untagged) p.set("untagged", "true");
   if (f.status !== undefined) p.set("status", f.status);
   if (f.source !== undefined) p.set("source", f.source);
   if (f.q !== undefined && f.q.length > 0) p.set("q", f.q);
