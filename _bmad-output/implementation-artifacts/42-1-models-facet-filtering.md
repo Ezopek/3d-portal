@@ -1,6 +1,6 @@
 # Story 42.1: `GET /api/models` facet filtering
 
-Status: review
+Status: done
 
 <!-- Validated 2026-07-19 via bmad-create-story:validate — VERDICT: PASS. All three prior open questions resolved into ratified decisions against approved sources (FR25-FILT-1/2, mockup 04/08B/08D, HANDOFF §3/§5). See "## Validation Record" at the end. No dev-start open questions remain. -->
 
@@ -166,6 +166,9 @@ claude-opus-4-8[1m] (native BMAD `bmad-dev-story`, Claude author; Laura controll
 - **Deviation (documented):** the two `untagged` tests (f)/(g) use the existing `isolated_client` fixture (fresh per-test DB) instead of the module-scoped `seeded_listing`. Reason: `untagged` is a DB-wide predicate and the session-scoped shared test DB (`conftest.py::_isolated_db`, `scope="session"`) carries tag-less models from all 31 model-seeding test files, so an exact "only zero-tag models" assertion is only sound on a controlled seed. All other new tests stay on `client` + `seeded_listing` as the story predicted. No new fixture plumbing added (reused `isolated_client` + `encode_token`).
 - **External-review suggestions incorporated:** explicit `tag_match=any` + empty tag_ids is-unfiltered coverage (`test_list_any_empty_tag_ids_is_unfiltered`); explicit `untagged=true` + `tag_ids` union (`test_list_untagged_with_tag_ids_is_union`); tag-filtered pagination/count now concretely proven (`test_list_models_pagination` migrated from `category_ids` to `tag_ids`, asserting `total==5` under the tag predicate).
 - Scope fences honored: `Category`/`Model.category_id`/schemas/`0019` untouched; no Alembic migration; no frontend; only the 3 predicted files changed.
+- Native BMAD `bmad-code-review`: **APPROVE**, 0 Critical / 0 Important. Independent Aider review: **APPROVE**; its spec-gate false positives were rejected against the explicit story text, while useful edge coverage was incorporated.
+- Pre-existing repo gate debt was routed truthfully through BMAD party-mode as **TB-054** (triage-backlog + `bmad-quick-dev`), repaired on its own branch, reviewed, gated 16/16, ff-merged and deployed before this story resumed. No TB-054 web change entered the 42.1 story commit.
+- Post-TB-054 rebase onto `main` completed as `0d9c2d4`; the expected sprint-ledger conflict was reconciled by retaining `review` and clearing the resolved dependency. Fresh post-rebase evidence: backend full suite **3× 1694 passed / 3 skipped** and `infra/scripts/check-all.sh` **16/16 all green** (visual **464 passed / 24 skipped**). Story closeout approved.
 
 ### File List
 
