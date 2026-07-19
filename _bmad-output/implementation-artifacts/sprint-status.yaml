@@ -1,5 +1,5 @@
 generated: 2026-05-09
-last_updated: 2026-07-19  # Story 42.2 tags-tag-groups-read-api → review (dev-story)
+last_updated: 2026-07-19  # Story 42.4 admin-group-governance → ready-for-dev (create-story)
 project: 3d-portal
 project_key: NOKEY
 tracking_system: file-system
@@ -306,7 +306,7 @@ development_status:
   42-1-models-facet-filtering: done  # 2026-07-19 native BMAD + Aider APPROVE; TB-054 gate debt resolved/deployed first; rebased commit 0d9c2d4; backend 3x 1694p/3s; full check-all 16/16 all green (visual 464p/24s). Ready for controller ff-merge/push/deploy.
   42-2-tags-tag-groups-read-api: done  # 2026-07-19 native BMAD + Aider APPROVE; implementation 3cf5a4b; focused 56p; backend 3x 1718p/3s; full check-all 16/16 all green (visual 464p/24s). Auth default-deny, honest TagListItem OpenAPI, constant-query no-N+1 proven; TB-055 tracks architecture auth-doc drift. Ready for ff-merge/push/deploy.
   42-3-category-endpoint-removal: backlog  # SUPERSEDED / RELOCATED → 47-4 by bmad-correct-course 2026-07-19 (SCP sprint-change-proposal-2026-07-19-e42-deferred-coupled-cutover.md). Kept as historical backlog key (not deleted). Category API-surface retirement is destructive to a live surface and must land after E43-E45 FE + 47.3 hydrate/runbook consumers are gone (main auto-deploys to .190 → live 404 otherwise). Do NOT dev this key. See 47-4-category-api-surface-retirement + 42-3-category-endpoint-removal.md.
-  42-4-admin-group-governance: backlog  # NEXT E42 story. Additive-only (admin tag-group governance + reuse POST /tags/merge); no category coupling; may enter create-story now in parallel with the correct-course edit. E42 CLOSES after this story is done.
+  42-4-admin-group-governance: ready-for-dev  # 2026-07-19 native bmad-create-story (Claude author; Laura controller). Additive-only admin tag-group governance: new current_admin router POST/PATCH/DELETE /api/admin/tag-groups (dedicated, not agent-write); move via extended PATCH /api/admin/tags/{id} group_id; POST /tags tightened to current_admin (FR25-TAX-2, agent excluded); group delete = FK SET NULL (tags groupless, never deleted); tag_group entity_type + tag_group.* audit actions. E41 tag.group_id index action item discharged code-first (no index/no migration). All 10 contract Qs resolved; no dev-start blockers. E42 CLOSES after this story is done (controller-owned closeout).
   42-5-model-create-patch-share-dto-drop-category: backlog  # SUPERSEDED / RELOCATED → 47-5 by bmad-correct-course 2026-07-19 (same SCP). Kept as historical backlog key (not deleted). DTO drop is irreducibly atomic with the ORM + 0019_drop_category removal (one commit; TB-053). Do NOT dev this key. See 47-5-category-orm-dto-0019-atomic-cutover.
   epic-42-retrospective: optional
   epic-43: backlog
@@ -351,7 +351,7 @@ action_items:
   - epic: 41
     action: "Evaluate an index on tag.group_id when group-scoped queries appear (intentionally unindexed in 41.1)."
     owner: "42.4 (evaluate if admin group-scoped queries need it)"  # 42.1/42.2 done without needing it; re-point to remaining additive story 2026-07-19
-    status: open
+    status: open  # EVALUATED 2026-07-19 in 42.4 create-story (D-INDEX-1): discharge = NO index / NO migration. No per-group hot query exists (42.2 buckets all tags in memory, no WHERE group_id=?; 42.4 move is by-PK; group delete's only group_id access is the rare FK ON DELETE SET NULL child-scan over a small tag table). 0019 is reserved for the destructive cutover and 42.4 adds no migration; sources don't approve a speculative index. Flip to done at 42.4 close; re-open as fresh triage only if a future hot per-group query (e.g. E46 server-side filtering) appears.
   - epic: 41
     action: "Classify E42 migrations additive vs. destructive up front and couple destructive DDL to its ORM-removal story at planning time, so an unsafe forward-only sequence never reaches a story spec."
     owner: "E42 sprint-planning"
