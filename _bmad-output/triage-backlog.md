@@ -14,7 +14,7 @@
 
 ### TB-054 — Restore green web gates: de-hex 3 theme.css tokens + refresh 11 stale light-project visual baselines
 
-**Status:** review (implementation, scoped verification, native BMAD/Aider reviews, and full `check-all.sh` closeout gate green on `fix/TB-054-restore-web-gates`; awaiting controller ff-merge to `main`. Route selected by `bmad-help`/party-mode 2026-07-19 — see `.hermes/run-logs/e42-42.1-gate-debt-party.md`)
+**Status:** done — ff-merged to `main` as `fbe2f45` on 2026-07-19 after scoped verification, native BMAD/Aider APPROVE, and full `check-all.sh` 16/16 green. Route selected by `bmad-help`/party-mode — see `.hermes/run-logs/e42-42.1-gate-debt-party.md`.
 **Type:** triage-backlog item implemented via `bmad-quick-dev` — **not** a BMAD story, **not** `bmad-correct-course`.
 **Branch:** `fix/TB-054-restore-web-gates` (cut from local `main` `21b66f8`, the direct parent of Story 42.1).
 **Surfaced:** 2026-07-19, gate-debt party-mode roundtable during E42/Story 42.1 merge-readiness check.
@@ -55,7 +55,7 @@ Both are pre-existing repo hygiene, unrelated to 42.1's ACs. Story 42.1 stays `r
 - **AC6 DONE.** Working-tree change set = `_bmad-output/triage-backlog.md` + `_bmad-output/implementation-artifacts/sprint-status.yaml` (42.1 `merge_blocked_by` annotation) + `apps/web/src/styles/theme.css` (3 lines) + the 11 baseline PNGs. Nothing else.
 - **Reviews DONE.** Native `bmad-code-review`: APPROVE (0 Critical / 0 Important; `.hermes/run-logs/tb054-native-review.md`). Independent Aider diff review: APPROVE (0 Critical / 0 Important).
 - **Full closeout gate DONE.** `infra/scripts/check-all.sh`: **16/16 stages passed, all green**; visual stage 464 passed / 24 skipped. Evidence: `.hermes/run-logs/tb054-check-all.log`.
-- **Remaining (controller-owned):** commit, ff-merge to `main`, then 42.1 rebase + fresh gate.
+- **Merge DONE.** Commit `fbe2f45` ff-merged to local `main`; TB-054 is closed. Story 42.1 must now rebase onto this fixed main, clear `merge_blocked_by`, and earn a fresh full gate before its own ff-merge.
 
 ### TB-053 — E42 destructive-removal story ownership gap (`class Category` + `Model.category_id` drop + Alembic `0019_drop_category`)
 
