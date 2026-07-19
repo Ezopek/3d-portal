@@ -4249,21 +4249,23 @@ The catalog was built on a single, hard, mandatory category per model (`Model.ca
 
 #### Epic E43 — Frontend data layer
 
-**Goal:** land the typed data layer + hooks + URL state the browse/detail/admin UIs consume, with no category types remaining.
+**Goal:** land the **additive** typed data layer + hooks + URL state the browse/detail/admin UIs consume — the frontend-data-layer compatibility foundation for the facet surfaces. E43 is **purely additive**: it adds the tag/tag-group types, `useTagGroups()`, and the tag-based URL params **alongside** the still-live category types/hook/param. **No category type, hook, or field is removed in E43** — the category surface is a zero-code compatibility bridge that stays until its last consumer migrates (E44/E45) and the terminal E47 cutover (47.4 FE types + hook / 47.5 model DTO + ORM) retires it.
 
-**Depends on:** E42 **additive** (42.1/42.2/42.4) on `main` — NOT on the category removal, which is relocated to the terminal E47 cutover (47.4/47.5). E43 coexists with the still-live category API (the zero-code compatibility bridge) while it retires `useCategoriesTree` on the FE side.
+**Depends on:** E42 **additive** (42.1/42.2/42.4) on `main` — NOT on the category removal, which is relocated to the terminal E47 cutover (47.4/47.5). E43 **coexists with the still-live category API** (the zero-code compatibility bridge); it does **not** retire `useCategoriesTree` — that deletion follows the last consumer migration and lands in 47.4 (see the correct-course note below).
+
+> **Re-scoped additive via `bmad-correct-course` 2026-07-19** (SCP `sprint-change-proposal-2026-07-19-e43-fe-data-additive-correction.md`, operator-approved). The pre-relocation E43 sketches still prescribed destructive category-type removals that the 2026-07-19 E42→E47 correct-course had already relocated to 47.4/47.5 — impossible to implement green (backend still ships `category` on the wire; six live FE consumers remain) and inconsistent with the shipped 42.2 `TagRead` wire (which carries `group_id` + `group_position` only — no embedded `group`). This note re-scopes 43.1/43.2/43.3 to additive-only and preserves every category symbol until its owning consumer-migration / cutover story. No new story IDs, no FR/NFR change.
 
 ##### Story 43.1 — `api-types` (FR25-FILT-1, FR25-TAX-1)
 
-**Sketch:** `apps/web/src/lib/api-types.ts`: `TagRead` gains `group`/`group_id`/`group_position`; `ModelSummary`/`ModelDetail` drop `category_id` and `category`; remove `CategorySummary`/`CategoryNode`/`CategoryTree`.
+**Sketch (additive):** `apps/web/src/lib/api-types.ts`: `TagRead` gains **`group_id` + `group_position` only** (mirrors the shipped 42.2 wire, `sot/schemas.py:35-47`; the human group label/slug is **not** embedded — `GET /api/tag-groups` delivers it, D-SHAPE-1). Add the shipped read/response types `TagListItem` (`TagRead` + optional `model_count?`), `TagReadWithCount` (`TagRead` + required `model_count`), `TagGroupRead`, `TagGroupsResponse`, and `TagGroupSummary` (flat admin write-response). **Preserve** `CategorySummary`/`CategoryNode`/`CategoryTree` and `ModelSummary.category_id`/`ModelDetail.category` unchanged — all still match the live wire and have live consumers; their removal is owned by 47.4 (types) / 47.5 (model DTO/field). A type-level `expectTypeOf` test proves the exact additive shapes (no `as`/`any`).
 
 ##### Story 43.2 — Hooks (FR25-BROWSE-1, FR25-DETAIL-1)
 
-**Sketch:** add `useTagGroups()`; retire `useCategoriesTree`; `useTags` keeps `group`.
+**Sketch (additive):** add `useTagGroups()` (backs the facet sidebar off `GET /api/tag-groups`); type `useTags` for `TagListItem`. **Preserve `useCategoriesTree`** — its consumers (`CatalogList` 44.3, `ModelHero`/`CatalogDetail` 45.2, `AddModelForm` 45.3) survive E43, so the hook deletion is deferred to 47.4 after the last consumer migrates (was "retire `useCategoriesTree`" pre-correction — blocked by the same live-consumer coupling).
 
 ##### Story 43.3 — URL state (FR25-FILT-1)
 
-**Sketch:** URL state for `tag_ids` / `tag_match` / `untagged` (replacing `category_id`); apply [[reference_web_routetree_regen]] if route params change.
+**Sketch (additive):** add URL state for `tag_ids` / `tag_match` / `untagged`; apply [[reference_web_routetree_regen]] if route params change. **Preserve the `category_id` URL param** until `CatalogList` migrates in 44.3 and the terminal category cleanup lands (was "replacing `category_id`" pre-correction — the param stays live alongside the new tag params through E43).
 
 #### Epic E44 — Catalog browse UI
 
@@ -4341,11 +4343,13 @@ The catalog was built on a single, hard, mandatory category per model (`Model.ca
 
 **Sketch:** update the agent add-model runbook (`docs/agents-add-model-runbook.md`) to drop the "category slug exists / `GET /api/categories`" pre-flight; model create no longer requires `category_id`; update any category-referencing docs.
 
-##### Story 47.4 — Category API-surface retirement (FR25-FILT-1, FR25-SOT retirement) — *relocated from 42.3*
+##### Story 47.4 — Category API-surface retirement + FE category-tree type/hook cleanup (FR25-FILT-1, FR25-SOT retirement) — *relocated from 42.3; FE type/hook cleanup assigned here by the 2026-07-19 E43 correct-course*
 
 **Depends on:** 44.3 + 45.x (no remaining FE category read) + 47.3 (hydrate/runbook cutover). Destructive to an API surface but **reversible by code revert** — standard review/gate path + explicit note, not the full destructive gate.
 
-**Sketch:** Remove `GET /api/categories` (`sot/router.py:48-64`), admin `POST/PATCH/DELETE /api/admin/categories` (`admin_router.py:774-861`), `create/update/delete_category` + `_would_cycle` (`admin_service.py:1134-1306`), `list_categories_tree` (`service.py:63-124`), and route-only schemas `CategoryNode`/`CategoryTree`/`CategoryCreate`/`CategoryPatch` — **NOT** `CategorySummary` (still embedded in the retained `ModelDetail`/`ShareModelView`; belongs to 47.5). Delete `test_sot_categories.py`, `test_sot_admin_categories.py`; update `test_sot_auth_boundary.py` category assertions; migrate `test_bootstrap_agent.py:79-95` off the admin-CRUD POST to ORM-seed. **No `_PUBLIC_ROUTES` edit** — category routes are authenticated, never in the allowlist (TB-055); the enumeration test self-heals off the live route table. **Keeps alive:** `CategorySummary`, `ModelCreate/Patch/Summary/Detail.category(_id)`, `create_model`/`update_model` Category validation, `class Category`, `Model.category_id` — `main` stays green. (Do NOT create the implementation-ready story yet — `bmad-create-story` runs at 47.4's turn.)
+**Sketch (backend API surface):** Remove `GET /api/categories` (`sot/router.py:48-64`), admin `POST/PATCH/DELETE /api/admin/categories` (`admin_router.py:774-861`), `create/update/delete_category` + `_would_cycle` (`admin_service.py:1134-1306`), `list_categories_tree` (`service.py:63-124`), and route-only schemas `CategoryNode`/`CategoryTree`/`CategoryCreate`/`CategoryPatch` — **NOT** `CategorySummary` (still embedded in the retained `ModelDetail`/`ShareModelView`; belongs to 47.5). Delete `test_sot_categories.py`, `test_sot_admin_categories.py`; update `test_sot_auth_boundary.py` category assertions; migrate `test_bootstrap_agent.py:79-95` off the admin-CRUD POST to ORM-seed. **No `_PUBLIC_ROUTES` edit** — category routes are authenticated, never in the allowlist (TB-055); the enumeration test self-heals off the live route table. **Keeps alive:** `CategorySummary`, `ModelCreate/Patch/Summary/Detail.category(_id)`, `create_model`/`update_model` Category validation, `class Category`, `Model.category_id` — `main` stays green. (Do NOT create the implementation-ready story yet — `bmad-create-story` runs at 47.4's turn.)
+
+**Sketch (frontend category-tree type + hook cleanup — assigned by the 2026-07-19 E43 correct-course, operator-approved):** After the last FE consumer of the category tree is gone (`CatalogList` migrated in 44.3, `ModelHero`/`CatalogDetail` in 45.2, `AddModelForm` in 45.3), delete the frontend **`CategoryNode`** and **`CategoryTree`** types (`apps/web/src/lib/api-types.ts`) and the **`useCategoriesTree`** hook (`apps/web/src/modules/*/hooks/useCategoriesTree.ts`) plus its test — the symmetric FE half of removing the route-only `CategoryNode`/`CategoryTree` backend schemas above (FE↔BE parity). This is a plain reversible code delete, gated on zero remaining consumers, in the same 47.4 review path. **This does NOT move the `ModelSummary.category_id` / `ModelDetail.category` / `CategorySummary` type/field drops out of 47.5** — those stay in the atomic 47.5 cutover coupled to the backend ORM + `0019` drop; 47.4 owns only the category-**tree** type + hook.
 
 ##### Story 47.5 — Category ORM + DTO + `0019` atomic cutover (FR25-SHARE-1, FR25-AGENT-1, NFR25-LEAKFENCE-1, NFR25-SCHEMA-MIGRATION-1) — *relocated from 42.5 + orphaned ORM/`0019` drop (TB-053)*
 
