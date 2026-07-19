@@ -89,6 +89,18 @@ class TagGroupsResponse(BaseModel):
     groupless: list[TagReadWithCount]
 
 
+class TagGroupSummary(_OrmBase):
+    """Flat write-response for the admin tag-group governance endpoints
+    (Story 42.4). Mirrors `CategorySummary`; does NOT embed `tags[]` — that
+    is the read-side `TagGroupRead`'s job (GET /api/tag-groups)."""
+
+    id: uuid.UUID
+    slug: str
+    name_en: str
+    name_pl: str | None
+    position: int
+
+
 class ModelFileRead(_OrmBase):
     id: uuid.UUID
     model_id: uuid.UUID

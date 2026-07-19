@@ -7,7 +7,7 @@ everything the admin router accepts as input (body payloads).
 import datetime
 import uuid
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.db.models import ExternalSource, ModelFileKind, ModelSource, ModelStatus, NoteKind
 
@@ -187,6 +187,7 @@ class TagPatch(BaseModel):
         json_schema_extra={
             "examples": [
                 {"name_pl": "Figurki kolekcjonerskie"},
+                {"group_id": "88888888-8888-8888-8888-888888888888", "group_position": 0},
             ]
         },
     )
@@ -194,6 +195,22 @@ class TagPatch(BaseModel):
     slug: str | None = Field(default=None, min_length=1)
     name_en: str | None = Field(default=None, min_length=1)
     name_pl: str | None = None
+    # Story 42.4 (D-MOVE-1) — move-to-group surface. `group_id` is the one
+    # intentionally-nullable FK: explicit null makes the tag groupless. An
+    # omitted field is untouched (not in exclude_unset).
+    group_id: uuid.UUID | None = None
+    group_position: int | None = None
+
+    @field_validator("group_position")
+    @classmethod
+    def _reject_null_group_position(cls, v: int | None) -> int | None:
+        # `Tag.group_position` is NOT NULL. Pydantic v2 skips validators for
+        # omitted defaults, so this rejects ONLY an explicit `group_position:
+        # null` → 422 (never a raw IntegrityError → 500; D-NULLSEM-1). `group_id`
+        # gets no validator — null is meaningful (groupless).
+        if v is None:
+            raise ValueError("group_position may not be null")
+        return v
 
 
 class TagMerge(BaseModel):
@@ -210,6 +227,60 @@ class TagMerge(BaseModel):
 
     from_id: uuid.UUID
     to_id: uuid.UUID
+
+
+# ---------------------------------------------------------------------------
+# Tag groups (Story 42.4 — admin governance)
+# ---------------------------------------------------------------------------
+
+
+class TagGroupCreate(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "slug": "materials",
+                    "name_en": "Materials",
+                    "name_pl": "Materiały",
+                    "position": 0,
+                }
+            ]
+        }
+    )
+
+    slug: str = Field(min_length=1)
+    name_en: str = Field(min_length=1)
+    name_pl: str | None = None
+    position: int = 0
+
+
+class TagGroupPatch(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {"name_pl": "Materiały i wykończenie"},
+                {"position": 2},
+            ]
+        },
+    )
+
+    slug: str | None = Field(default=None, min_length=1)
+    name_en: str | None = Field(default=None, min_length=1)
+    name_pl: str | None = None
+    position: int | None = None
+
+    @field_validator("slug", "name_en", "position")
+    @classmethod
+    def _reject_explicit_null(cls, v: object) -> object:
+        # `TagGroup.slug/name_en/position` are NOT NULL. Pydantic v2 skips
+        # validators for omitted defaults, so this rejects ONLY an explicit
+        # `null` on these fields → 422 (never a NOT NULL violation surfacing as
+        # the wrong 409/500; D-NULLSEM-1). `name_pl` gets no validator — null
+        # clears it.
+        if v is None:
+            raise ValueError("field may not be null")
+        return v
 
 
 # ---------------------------------------------------------------------------

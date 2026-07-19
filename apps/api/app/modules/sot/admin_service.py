@@ -36,6 +36,7 @@ from app.core.db.models import (
     ModelTag,
     NoteKind,
     Tag,
+    TagGroup,
 )
 from app.core.db.session import get_engine
 from app.modules.sot.admin_schemas import (
@@ -51,6 +52,8 @@ from app.modules.sot.admin_schemas import (
     PrintCreate,
     PrintPatch,
     TagCreate,
+    TagGroupCreate,
+    TagGroupPatch,
     TagMerge,
     TagPatch,
     TagsReplace,
@@ -127,6 +130,20 @@ def _audit_entity(
             after_json=json.dumps(after, default=str) if after is not None else None,
         )
     )
+
+
+def _tag_snapshot(tag: Tag) -> dict:
+    """Full bounded before/after snapshot for a `tag.*` audit row (Story 42.4).
+
+    Always carries the two facet-membership fields so the move surface (D-MOVE-1)
+    is auditable; UUIDs/strings/ints only — no PII (D-AUDIT-2)."""
+    return {
+        "slug": tag.slug,
+        "name_en": tag.name_en,
+        "name_pl": tag.name_pl,
+        "group_id": str(tag.group_id) if tag.group_id is not None else None,
+        "group_position": tag.group_position,
+    }
 
 
 def _model_snapshot(m: Model) -> dict:
@@ -996,7 +1013,7 @@ def update_tag(
     if tag is None:
         raise LookupError("tag not found")
 
-    before = {"slug": tag.slug, "name_en": tag.name_en, "name_pl": tag.name_pl}
+    before = _tag_snapshot(tag)
     data = patch.model_dump(exclude_unset=True)
 
     if "slug" in data and data["slug"] is not None and data["slug"] != tag.slug:
@@ -1006,11 +1023,17 @@ def update_tag(
         if collision is not None:
             raise ValueError("slug_conflict")
 
+    # Story 42.4 (D-MOVE-1) — validate a non-null move target group. A null
+    # group_id is intentional (groupless); an explicit null group_position was
+    # already rejected as 422 at the schema layer.
+    if data.get("group_id") is not None and session.get(TagGroup, data["group_id"]) is None:
+        raise ValueError("tag group not found")
+
     for field, value in data.items():
         setattr(tag, field, value)
 
     tag.updated_at = datetime.datetime.now(datetime.UTC)
-    after = {"slug": tag.slug, "name_en": tag.name_en, "name_pl": tag.name_pl}
+    after = _tag_snapshot(tag)
 
     session.add(tag)
     session.flush()
@@ -1124,6 +1147,156 @@ def merge_tags(
     session.commit()
     session.refresh(to_tag)
     return to_tag
+
+
+# ---------------------------------------------------------------------------
+# Tag groups (Story 42.4 — admin governance)
+# ---------------------------------------------------------------------------
+
+
+def _tag_group_snapshot(tg: TagGroup) -> dict:
+    """Full bounded before/after snapshot for a `tag_group.*` audit row."""
+    return {
+        "slug": tg.slug,
+        "name_en": tg.name_en,
+        "name_pl": tg.name_pl,
+        "position": tg.position,
+    }
+
+
+def create_tag_group(
+    session: Session,
+    *,
+    payload: TagGroupCreate,
+    actor_user_id: uuid.UUID,
+) -> TagGroup:
+    """Create a new TagGroup.
+
+    Raises:
+        ValueError("slug_conflict") — slug already in use (uq_tag_group_slug).
+    """
+    now = datetime.datetime.now(datetime.UTC)
+    tg = TagGroup(
+        slug=payload.slug,
+        name_en=payload.name_en,
+        name_pl=payload.name_pl,
+        position=payload.position,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(tg)
+
+    try:
+        session.flush()
+    except IntegrityError as exc:
+        session.rollback()
+        raise ValueError("slug_conflict") from exc
+
+    _audit_entity(
+        session,
+        action="tag_group.create",
+        entity_type="tag_group",
+        entity_id=tg.id,
+        actor_user_id=actor_user_id,
+        after=_tag_group_snapshot(tg),
+    )
+
+    session.commit()
+    session.refresh(tg)
+    return tg
+
+
+def update_tag_group(
+    session: Session,
+    *,
+    group_id: uuid.UUID,
+    patch: TagGroupPatch,
+    actor_user_id: uuid.UUID,
+) -> TagGroup:
+    """Partially update a TagGroup.
+
+    Explicit null on the NOT NULL fields (slug/name_en/position) is rejected as
+    422 at the schema layer (D-NULLSEM-1), so it never reaches `setattr` here;
+    the only remaining IntegrityError path is a genuine slug race → 409. An
+    empty patch is a no-op that still writes one `tag_group.update` row with
+    before == after (unconditional audit, mirroring update_category).
+
+    Raises:
+        LookupError("tag group not found")
+        ValueError("slug_conflict")
+    """
+    tg = session.get(TagGroup, group_id)
+    if tg is None:
+        raise LookupError("tag group not found")
+
+    before = _tag_group_snapshot(tg)
+    data = patch.model_dump(exclude_unset=True)
+
+    for field, value in data.items():
+        setattr(tg, field, value)
+
+    tg.updated_at = datetime.datetime.now(datetime.UTC)
+    after = _tag_group_snapshot(tg)
+
+    session.add(tg)
+
+    try:
+        session.flush()
+    except IntegrityError as exc:
+        session.rollback()
+        raise ValueError("slug_conflict") from exc
+
+    _audit_entity(
+        session,
+        action="tag_group.update",
+        entity_type="tag_group",
+        entity_id=tg.id,
+        actor_user_id=actor_user_id,
+        before=before,
+        after=after,
+    )
+
+    session.commit()
+    session.refresh(tg)
+    return tg
+
+
+def delete_tag_group(
+    session: Session,
+    *,
+    group_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+) -> None:
+    """Delete a TagGroup. Member tags survive as groupless via the FK
+    `ON DELETE SET NULL` (Decision AU / D-SETNULL-1) — no per-tag update, no
+    ORM cascade, no 409 in-use path. Member ids are read first for the audit
+    snapshot.
+
+    Raises:
+        LookupError("tag group not found")
+    """
+    tg = session.get(TagGroup, group_id)
+    if tg is None:
+        raise LookupError("tag group not found")
+
+    member_ids = list(session.exec(select(Tag.id).where(Tag.group_id == group_id)).all())
+
+    _audit_entity(
+        session,
+        action="tag_group.delete",
+        entity_type="tag_group",
+        entity_id=tg.id,
+        actor_user_id=actor_user_id,
+        before={
+            "slug": tg.slug,
+            "name_en": tg.name_en,
+            "detached_tag_ids": [str(i) for i in member_ids],
+            "detached_tag_count": len(member_ids),
+        },
+    )
+
+    session.delete(tg)
+    session.commit()  # FK ON DELETE SET NULL nulls member tags' group_id
 
 
 # ---------------------------------------------------------------------------

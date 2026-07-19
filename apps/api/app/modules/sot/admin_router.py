@@ -44,7 +44,6 @@ from app.modules.sot.admin_schemas import (
     PrintPatch,
     RenderRequest,
     TagAdd,
-    TagCreate,
     TagMerge,
     TagPatch,
     TagsReplace,
@@ -57,7 +56,6 @@ from app.modules.sot.admin_service import (
     create_model,
     create_note,
     create_print,
-    create_tag,
     delete_category,
     delete_external_link,
     delete_model_file,
@@ -664,29 +662,12 @@ def admin_remove_model_tag(
 # ---------------------------------------------------------------------------
 
 
-@router.post(
-    "/tags",
-    summary="Create a new global tag",
-    description=(
-        "Creates a new `Tag` row visible to all models. Returns 201 + `TagRead`. 409 on "
-        "slug conflict (tag slugs are globally unique). 422 on other validation."
-    ),
-    response_model=TagRead,
-    status_code=status.HTTP_201_CREATED,
-    tags=["agent-write"],
-)
-def admin_create_tag(
-    payload: TagCreate,
-    session: Annotated[Session, Depends(get_session)],
-    actor_user_id: uuid.UUID = _current_principal,
-) -> TagRead:
-    try:
-        tag = create_tag(session, payload=payload, actor_user_id=actor_user_id)
-    except ValueError as exc:
-        if "slug_conflict" in str(exc):
-            raise HTTPException(409, "slug already exists") from exc
-        raise HTTPException(422, str(exc)) from exc
-    return TagRead.model_validate(tag)
+# NOTE: `POST /tags` (tag creation) was relocated to the admin-only governance
+# router `sot/tag_group_admin_router.py` in Story 42.4 (D-ADMINONLY-1 /
+# FR25-TAX-2). Its method/path/function-name/request/response/status/service
+# contract are unchanged there — only the auth tier tightened from admin-or-agent
+# to admin-only, and it left the `agent-write` surface. Tag rename / delete /
+# merge below stay admin-or-agent (agent-write).
 
 
 @router.post(
@@ -715,10 +696,16 @@ def admin_merge_tags(
 
 @router.patch(
     "/tags/{tag_id}",
-    summary="Patch a global tag's fields",
+    summary="Patch a global tag's fields (incl. facet group membership)",
     description=(
-        "Updates the tag's `slug` / `name_en` / `name_pl`. Returns 200 + `TagRead`. 404 "
-        "if tag not found. 409 on slug conflict. 422 on other validation."
+        "Updates the tag's `slug` / `name_en` / `name_pl`, and — Story 42.4 "
+        "(D-MOVE-1) — its facet membership via `group_id` / `group_position`. "
+        "`group_id=<uuid>` moves the tag into that group (400 `tag group not "
+        "found` if it does not exist); `group_id=null` makes it groupless; an "
+        "omitted field is untouched. `group_position` sets intra-group order "
+        "(an explicit `group_position: null` is a 422 — the column is NOT NULL). "
+        "Returns 200 + `TagRead`. 404 if tag not found. 409 on slug conflict. "
+        "422 on other validation."
     ),
     response_model=TagRead,
     tags=["agent-write"],
@@ -734,9 +721,13 @@ def admin_patch_tag(
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
-        if "slug_conflict" in str(exc):
+        msg = str(exc)
+        if "slug_conflict" in msg:
             raise HTTPException(409, "slug already exists") from exc
-        raise HTTPException(422, str(exc)) from exc
+        # Story 42.4 (D-MOVE-1) — moving a tag to a non-existent group.
+        if "tag group not found" in msg:
+            raise HTTPException(400, "tag group not found") from exc
+        raise HTTPException(422, msg) from exc
     return TagRead.model_validate(tag)
 
 

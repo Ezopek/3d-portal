@@ -10,6 +10,7 @@ Covers:
   POST   /api/admin/tags/merge                    — merge from→to
 """
 
+import json
 import uuid
 
 from sqlmodel import Session, select
@@ -20,11 +21,12 @@ from app.core.db.models import (
     Model,
     ModelTag,
     Tag,
+    TagGroup,
     User,
     UserRole,
 )
 from app.core.db.session import get_engine
-from tests._test_helpers import admin_token
+from tests._test_helpers import admin_token, agent_token
 
 
 def _seed_admin(session: Session) -> uuid.UUID:
@@ -614,3 +616,195 @@ def test_merge_tags_audit(client):
         ).all()
     assert len(logs) == 1
     assert str(from_id) in (logs[0].after_json or "")
+
+
+# ---------------------------------------------------------------------------
+# Story 42.4 — tag-create tightened to admin-only (D-ADMINONLY-1 / FR25-TAX-2)
+# ---------------------------------------------------------------------------
+
+
+def test_create_tag_agent_403(client):
+    """The agent service role can no longer mint tags (curated vocabulary)."""
+    client.cookies.set("portal_access", agent_token(uuid.uuid4()))
+    r = client.post(
+        "/api/admin/tags",
+        json={"slug": f"agent-blocked-{uuid.uuid4().hex[:8]}", "name_en": "Nope"},
+    )
+    assert r.status_code == 403, r.text
+
+
+def test_create_tag_anonymous_401(client):
+    client.cookies.delete("portal_access")
+    r = client.post(
+        "/api/admin/tags",
+        json={"slug": f"anon-{uuid.uuid4().hex[:8]}", "name_en": "Nope"},
+    )
+    assert r.status_code == 401, r.text
+
+
+def test_create_tag_member_403(client):
+    from tests._test_helpers import member_token
+
+    client.cookies.set("portal_access", member_token(uuid.uuid4()))
+    r = client.post(
+        "/api/admin/tags",
+        json={"slug": f"member-{uuid.uuid4().hex[:8]}", "name_en": "Nope"},
+    )
+    assert r.status_code == 403, r.text
+
+
+def test_patch_tag_agent_still_allowed(client):
+    """Retained tag PATCH stays admin-or-agent (agent-write) — only create tightened."""
+    engine = get_engine()
+    with Session(engine) as s:
+        # A real agent user — the tag.update audit row FKs user.id.
+        agent = User(
+            email=f"agent-tags-{uuid.uuid4().hex[:6]}@test.local",
+            display_name="Agent",
+            role=UserRole.agent,
+            password_hash="x",
+        )
+        s.add(agent)
+        s.flush()
+        agent_id = agent.id
+        tag_id = _seed_tag(s)
+        s.commit()
+
+    client.cookies.set("portal_access", agent_token(agent_id))
+    r = client.patch(f"/api/admin/tags/{tag_id}", json={"name_en": "Agent Renamed"})
+    assert r.status_code == 200, r.text
+
+
+# ---------------------------------------------------------------------------
+# Story 42.4 — move a tag into / out of a group via PATCH (AC #4, D-MOVE-1)
+# ---------------------------------------------------------------------------
+
+
+def _seed_tag_group(session: Session) -> uuid.UUID:
+    g = TagGroup(slug=f"grp-move-{uuid.uuid4().hex[:8]}", name_en="Move Grp")
+    session.add(g)
+    session.flush()
+    return g.id
+
+
+def test_patch_tag_move_into_group(client):
+    engine = get_engine()
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        tag_id = _seed_tag(s)
+        group_id = _seed_tag_group(s)
+        s.commit()
+
+    client.cookies.set("portal_access", admin_token(admin_id))
+    r = client.patch(
+        f"/api/admin/tags/{tag_id}",
+        json={"group_id": str(group_id), "group_position": 2},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["group_id"] == str(group_id)
+    assert body["group_position"] == 2
+    with Session(get_engine()) as s:
+        tag = s.get(Tag, tag_id)
+        assert tag.group_id == group_id
+        assert tag.group_position == 2
+
+
+def test_patch_tag_move_records_group_in_audit(client):
+    engine = get_engine()
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        tag_id = _seed_tag(s)
+        group_id = _seed_tag_group(s)
+        s.commit()
+
+    client.cookies.set("portal_access", admin_token(admin_id))
+    r = client.patch(f"/api/admin/tags/{tag_id}", json={"group_id": str(group_id)})
+    assert r.status_code == 200
+
+    with Session(get_engine()) as s:
+        logs = s.exec(
+            select(AuditLog).where(
+                AuditLog.action == "tag.update",
+                AuditLog.entity_id == tag_id,
+            )
+        ).all()
+    assert len(logs) == 1
+    after = json.loads(logs[0].after_json)
+    before = json.loads(logs[0].before_json)
+    # Full snapshot always carries the two group fields on both sides.
+    assert set(after.keys()) == {"slug", "name_en", "name_pl", "group_id", "group_position"}
+    assert set(before.keys()) == {"slug", "name_en", "name_pl", "group_id", "group_position"}
+    assert after["group_id"] == str(group_id)
+    assert before["group_id"] is None
+
+
+def test_patch_tag_move_to_groupless_null(client):
+    engine = get_engine()
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        group_id = _seed_tag_group(s)
+        tag = Tag(slug=f"tag-gl-{uuid.uuid4().hex[:8]}", name_en="X", group_id=group_id)
+        s.add(tag)
+        s.flush()
+        tag_id = tag.id
+        s.commit()
+
+    client.cookies.set("portal_access", admin_token(admin_id))
+    r = client.patch(f"/api/admin/tags/{tag_id}", json={"group_id": None})
+    assert r.status_code == 200, r.text
+    assert r.json()["group_id"] is None
+    with Session(get_engine()) as s:
+        assert s.get(Tag, tag_id).group_id is None
+
+
+def test_patch_tag_move_unknown_group_400(client):
+    engine = get_engine()
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        tag_id = _seed_tag(s)
+        s.commit()
+
+    client.cookies.set("portal_access", admin_token(admin_id))
+    r = client.patch(f"/api/admin/tags/{tag_id}", json={"group_id": str(uuid.uuid4())})
+    assert r.status_code == 400, r.text
+
+
+def test_patch_tag_group_position_explicit_null_422(client):
+    """group_position is NOT NULL — an explicit null is a 422, never a 500 (D-NULLSEM-1)."""
+    engine = get_engine()
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        tag_id = _seed_tag(s)
+        s.commit()
+
+    client.cookies.set("portal_access", admin_token(admin_id))
+    r = client.patch(f"/api/admin/tags/{tag_id}", json={"group_position": None})
+    assert r.status_code == 422, r.text
+
+
+def test_patch_tag_move_read_after_write(client):
+    """AC #8 — move surfaces the tag under its group / back to groupless in GET /api/tag-groups."""
+    engine = get_engine()
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        group_id = _seed_tag_group(s)
+        tag_id = _seed_tag(s)
+        s.commit()
+
+    client.cookies.set("portal_access", admin_token(admin_id))
+    # Move into group G.
+    r = client.patch(
+        f"/api/admin/tags/{tag_id}", json={"group_id": str(group_id), "group_position": 0}
+    )
+    assert r.status_code == 200
+    body = client.get("/api/tag-groups").json()
+    grp = next(g for g in body["groups"] if g["id"] == str(group_id))
+    assert str(tag_id) in {t["id"] for t in grp["tags"]}
+    assert str(tag_id) not in {t["id"] for t in body["groupless"]}
+
+    # Move back to groupless.
+    r = client.patch(f"/api/admin/tags/{tag_id}", json={"group_id": None})
+    assert r.status_code == 200
+    body = client.get("/api/tag-groups").json()
+    assert str(tag_id) in {t["id"] for t in body["groupless"]}

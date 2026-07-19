@@ -26,7 +26,16 @@ from sqlmodel import Session
 from app.core.auth.cookies import ACCESS_COOKIE
 from app.core.auth.jwt import encode_token
 from app.core.config import get_settings
-from app.core.db.models import Category, Model, ModelFile, ModelFileKind, ModelStatus
+from app.core.db.models import (
+    Category,
+    Model,
+    ModelFile,
+    ModelFileKind,
+    ModelStatus,
+    TagGroup,
+    User,
+    UserRole,
+)
 from app.core.db.session import get_engine
 from tests._test_helpers import admin_token, agent_token, member_token
 
@@ -304,3 +313,76 @@ def test_sot_categories_unknown_role_returns_403(client):
     r = client.get("/api/categories")
     assert r.status_code == 403, r.text
     assert "forbidden_role" in r.text
+
+
+# ---------------------------------------------------------------------------
+# Story 42.4 — admin-only tag-group governance write routes.
+# anonymous → 401, member → 403, agent → 403, admin → 2xx (AC #7).
+# ---------------------------------------------------------------------------
+
+
+def _seed_tag_group_id() -> uuid.UUID:
+    with Session(get_engine()) as s:
+        g = TagGroup(slug=f"grp-ab-{uuid.uuid4().hex[:8]}", name_en="AB")
+        s.add(g)
+        s.commit()
+        s.refresh(g)
+        return g.id
+
+
+def _mint_real_admin_cookie(client) -> None:
+    """Set an admin cookie backed by a real User row.
+
+    The admin 2xx branch of each governance boundary test performs a write
+    that inserts an audit_log row whose `actor_user_id` FKs `user.id`, so a
+    bare random-uuid admin token would trip the FK under PRAGMA
+    foreign_keys=ON.
+    """
+    with Session(get_engine()) as s:
+        u = User(
+            email=f"admin-ab-{uuid.uuid4().hex[:6]}@test.local",
+            display_name="Admin",
+            role=UserRole.admin,
+            password_hash="x",
+        )
+        s.add(u)
+        s.commit()
+        s.refresh(u)
+        admin_id = u.id
+    client.cookies.set(ACCESS_COOKIE, admin_token(admin_id))
+
+
+def test_tag_groups_create_auth_boundary(client):
+    body = {"slug": f"grp-ab-{uuid.uuid4().hex[:8]}", "name_en": "AB"}
+    _clear_cookie(client)
+    assert client.post("/api/admin/tag-groups", json=body).status_code == 401
+    _mint_cookie(client, "member")
+    assert client.post("/api/admin/tag-groups", json=body).status_code == 403
+    _mint_cookie(client, "agent")
+    assert client.post("/api/admin/tag-groups", json=body).status_code == 403
+    _mint_real_admin_cookie(client)
+    assert client.post("/api/admin/tag-groups", json=body).status_code == 201
+
+
+def test_tag_groups_patch_auth_boundary(client):
+    gid = _seed_tag_group_id()
+    body = {"name_en": "Renamed"}
+    _clear_cookie(client)
+    assert client.patch(f"/api/admin/tag-groups/{gid}", json=body).status_code == 401
+    _mint_cookie(client, "member")
+    assert client.patch(f"/api/admin/tag-groups/{gid}", json=body).status_code == 403
+    _mint_cookie(client, "agent")
+    assert client.patch(f"/api/admin/tag-groups/{gid}", json=body).status_code == 403
+    _mint_real_admin_cookie(client)
+    assert client.patch(f"/api/admin/tag-groups/{gid}", json=body).status_code == 200
+
+
+def test_tag_groups_delete_auth_boundary(client):
+    _clear_cookie(client)
+    assert client.delete(f"/api/admin/tag-groups/{_seed_tag_group_id()}").status_code == 401
+    _mint_cookie(client, "member")
+    assert client.delete(f"/api/admin/tag-groups/{_seed_tag_group_id()}").status_code == 403
+    _mint_cookie(client, "agent")
+    assert client.delete(f"/api/admin/tag-groups/{_seed_tag_group_id()}").status_code == 403
+    _mint_real_admin_cookie(client)
+    assert client.delete(f"/api/admin/tag-groups/{_seed_tag_group_id()}").status_code == 204

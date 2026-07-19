@@ -16,6 +16,7 @@ from app.modules.slicer.member_router import router as slicer_member_router
 from app.modules.slicer.router import router as estimates_router
 from app.modules.sot.admin_router import router as sot_admin_router
 from app.modules.sot.router import router as sot_router
+from app.modules.sot.tag_group_admin_router import router as sot_tag_group_admin_router
 from app.modules.spools.router import router as spools_router
 
 api_router = APIRouter()
@@ -26,6 +27,7 @@ api_router.include_router(invite_admin_router)
 api_router.include_router(password_reset_public_router)
 api_router.include_router(password_reset_admin_router)
 api_router.include_router(sot_admin_router)
+api_router.include_router(sot_tag_group_admin_router)
 api_router.include_router(queue_admin_router)
 api_router.include_router(admin_router)
 api_router.include_router(share_admin_router)

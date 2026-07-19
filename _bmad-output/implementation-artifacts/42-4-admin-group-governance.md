@@ -3,7 +3,7 @@ baseline_commit: 5d0be6aef3ca1631817a3020797aca7a9760faf1
 ---
 # Story 42.4: Admin group governance
 
-Status: ready-for-dev
+Status: review
 
 <!-- Authored + self-validated 2026-07-19 via native bmad-help → bmad-sprint-status → bmad-create-story (Claude author; Laura controller). Additive-only per SCP sprint-change-proposal-2026-07-19-e42-deferred-coupled-cutover.md — this story CLOSES E42 (additive backend contract). All ten controller contract questions resolved code-first against approved sources + live code; no dev-start open questions. See "## Resolved Decisions" and "## Validation Record". -->
 
@@ -43,45 +43,45 @@ Traces: **FR25-TAX-2** (tag creation admin-only), **FR25-ADMIN-1** (tag/group go
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Read-side schema: `TagGroupSummary`** (`apps/api/app/modules/sot/schemas.py`) (AC: #1, #2)
-  - [ ] Add `class TagGroupSummary(_OrmBase): id: uuid.UUID; slug: str; name_en: str; name_pl: str | None; position: int` (flat write-response, mirrors `CategorySummary`; do **not** reuse `TagGroupRead` — it embeds `tags[]` for the read endpoint). Keep `from_attributes` via `_OrmBase`.
-- [ ] **Task 2 — Write-request schemas** (`apps/api/app/modules/sot/admin_schemas.py`) (AC: #1, #2, #4)
-  - [ ] Add `class TagGroupCreate(BaseModel)`: `slug: str = Field(min_length=1)`, `name_en: str = Field(min_length=1)`, `name_pl: str | None = None`, `position: int = 0`. Add a `json_schema_extra` example (repo convention).
-  - [ ] Add `class TagGroupPatch(BaseModel)` with `model_config = ConfigDict(extra="forbid")`: `slug: str | None = Field(default=None, min_length=1)`, `name_en: str | None = Field(default=None, min_length=1)`, `name_pl: str | None = None`, `position: int | None = None`.
-  - [ ] **D-NULLSEM-1 — reject explicit null on NOT NULL fields (Independent Validation C1).** Add a `@field_validator("slug", "name_en", "position")` (classmethod) that raises `ValueError` when the value `is None` → Pydantic surfaces it as **422**. Because Pydantic v2 does **not** run field validators for omitted fields (they take the default without validation), this rejects only an *explicit* `slug/name_en/position: null` while leaving an omitted field untouched. `name_pl` gets **no** validator (null = clear). Rationale: `TagGroup.slug/name_en/position` are NOT NULL; without this, an explicit null flows through `exclude_unset` → `setattr` → NOT NULL violation → wrong `409 slug_conflict` (or `500`). Rejecting at the schema layer keeps `update_tag_group`'s body identical to `update_category`.
-  - [ ] Extend `TagPatch` (existing) with `group_id: uuid.UUID | None = None` and `group_position: int | None = None` (keep `extra="forbid"`). This is the move surface (AC #4). Add a `@field_validator("group_position")` that rejects an explicit null → **422** (NOT NULL column; `group_id` is intentionally nullable so it gets **no** validator — null = groupless). D-NULLSEM-1.
-- [ ] **Task 3 — Audit registry** (`apps/api/app/core/audit.py`) (AC: #6)
-  - [ ] Add `"tag_group"` to `KNOWN_ENTITY_TYPES`; add a one-line docstring entry next to `tag` describing `tag_group.create/update/delete` (entity_id = tag_group.id).
-- [ ] **Task 4 — Service: tag-group CRUD + move validation** (`apps/api/app/modules/sot/admin_service.py`) (AC: #1–#4, #6, #9)
-  - [ ] `create_tag_group(session, *, payload: TagGroupCreate, actor_user_id) -> TagGroup`: build row; `flush()` inside `try/except IntegrityError → raise ValueError("slug_conflict")` (mirror `create_category`); `_audit_entity(action="tag_group.create", entity_type="tag_group", entity_id=tg.id, after={slug, name_en, name_pl, position})`; commit; refresh. (Pre-check slug optional; the constraint is the guarantee — AC #9.)
-  - [ ] `update_tag_group(session, *, group_id, patch: TagGroupPatch, actor_user_id) -> TagGroup`: `session.get(TagGroup, group_id)` or `raise LookupError("tag group not found")`; snapshot `before`; `data = patch.model_dump(exclude_unset=True)`; apply fields (incl. `name_pl=None` clear, `position`; explicit null on `slug`/`name_en`/`position` is already rejected as 422 by the schema, so it never reaches `setattr`); `updated_at = now`; `flush()` with `IntegrityError → slug_conflict`; audit `tag_group.update` with the **full field snapshot** `before`/`after` = `{slug, name_en, name_pl, position}` (mirror `update_category`, which snapshots the full fixed field set — **not** a changed-only diff); commit. An empty `{}` patch still emits this row with `before == after`.
-  - [ ] `delete_tag_group(session, *, group_id, actor_user_id) -> None`: `session.get` or `LookupError`; **collect member tag ids** `select(Tag.id).where(Tag.group_id == group_id)` for the snapshot; `_audit_entity(action="tag_group.delete", entity_type="tag_group", entity_id=group_id, before={slug, name_en, detached_tag_ids, detached_tag_count})`; `session.delete(tg)`; `session.commit()` → FK `SET NULL` nulls members (AC #3, D-SETNULL-1). No 409 path.
-  - [ ] Extend `update_tag` (existing) to handle `group_id` / `group_position` from the patch: if `"group_id" in data` and non-null → `session.get(TagGroup, data["group_id"]) or raise ValueError("tag group not found")`; assign (null allowed → groupless; explicit `group_position: null` is already 422'd by the schema). Extend the existing `tag.update` full before/after snapshot to `{slug, name_en, name_pl, group_id, group_position}` (always both new keys, matching the full-snapshot idiom — not changed-only). Do **not** rebuild rename/slug logic.
-  - [ ] Import `TagGroup` from `app.core.db.models` and the new schemas.
-- [ ] **Task 5 — New governance router** (`apps/api/app/modules/sot/tag_group_admin_router.py` — NEW) (AC: #1, #2, #3, #7)
-  - [ ] `router = APIRouter(prefix="/api/admin", tags=["sot-admin-governance"])` (a tag distinct from `agent-write`).
-  - [ ] `POST /tag-groups` → `create_tag_group`; `current_admin` dep; `status_code=201`, `response_model=TagGroupSummary`; map `ValueError("slug_conflict")` → `HTTPException(409, "slug already exists")`, else 422; full `summary`/`description`.
-  - [ ] `PATCH /tag-groups/{group_id}` → `update_tag_group`; `current_admin`; `response_model=TagGroupSummary`; `LookupError` → 404, `slug_conflict` → 409, else 422.
-  - [ ] `DELETE /tag-groups/{group_id}` → `delete_tag_group`; `current_admin`; `status_code=204`; `LookupError` → 404.
-  - [ ] Relocate `admin_create_tag` here at the unchanged `POST /tags` path, preserving its function name/request/response/status contract; gate with `current_admin`; tag as governance (not `agent-write`); reuse existing `create_tag` service.
-  - [ ] Import `current_admin` from `app.core.auth.dependencies`.
-- [ ] **Task 6 — Register router + relocate tag-create registration** (`apps/api/app/router.py`, `apps/api/app/modules/sot/admin_router.py`) (AC: #1, #5, #7)
-  - [ ] `app/router.py`: import + `api_router.include_router(tag_group_admin_router)`.
-  - [ ] Remove only the `admin_create_tag` route registration/function from `admin_router.py` after recreating the same method/path/name/contract on the governance router. Leave `PATCH /tags/{id}` (rename+move), `DELETE /tags/{id}`, `POST /tags/merge` on `_current_principal` and `agent-write`.
-- [ ] **Task 7 — Tests** (AC: #1–#10, #12)
-  - [ ] `tests/test_sot_admin_tag_groups.py` (**new**): create 201 + `TagGroupSummary` shape; create 409 slug conflict; patch 200 (rename, reorder, `name_pl` clear, no-op empty body); patch 404; patch 409 slug conflict; delete 204; delete 404; **delete SET-NULL** (seed group + member tags, delete, assert tags survive with `group_id IS NULL`); audit rows for create/update/delete (action names, entity_type `tag_group`, entity_id, full before/after snapshot keys only).
-  - [ ] `tests/test_sot_admin_tag_groups.py` **null-semantics (D-NULLSEM-1)**: `PATCH` with explicit `{"slug": null}` → **422**, `{"name_en": null}` → **422**, `{"position": null}` → **422** (NOT 409/500); `{"name_pl": null}` → **200** and clears `name_pl`; assert the 422 cases leave the group row unchanged and write **no** audit row.
-  - [ ] `tests/test_sot_admin_tag_groups.py` **empty-PATCH audit**: `PATCH {}` → 200 unchanged **and** exactly one `tag_group.update` audit row with `before == after` (full snapshot).
-  - [ ] `tests/test_sot_admin_tag_groups.py` **auth matrix**: for POST/PATCH/DELETE `/api/admin/tag-groups` — anonymous 401, member 403, **agent 403**, admin 2xx.
-  - [ ] `tests/test_sot_admin_tags.py`: **tag-create tightening** — admin 201; **agent 403** (regression for D-ADMINONLY-1); assert `PATCH`/`DELETE`/`merge` still accept admin (unchanged). **Move via PATCH**: `group_id=<uuid>` moves (audit `tag.update` shows `group_id`); `group_id=null` → groupless; `group_id=<unknown>` → 400; `group_position` set; explicit `{"group_position": null}` → **422** (D-NULLSEM-1; not 500).
-  - [ ] `tests/test_sot_tag_groups.py` (or the new file) **read-after-write** (AC #8): create → empty group in `GET /api/tag-groups` at `(position, slug)`; move → tag under group; null → groupless; delete → members in `groupless`; patch position → re-sort.
-  - [ ] `tests/test_sot_auth_boundary.py`: extend for the three governance routes (anonymous 401 / member 403 / agent 403 / admin 2xx) following the existing table idiom. (The new routes are writes — seed nothing; use minimal valid bodies / a seeded group id.)
-  - [ ] `tests/test_openapi_agent_surface.py`: confirm the governance routes **including `POST /tags`** are absent from the `agent-write` set, while retained PATCH/DELETE/merge tag routes remain present; new routes carry summary+description; assert the existing `POST /tags` operation ID remains stable if it is a contract consumed anywhere. Adjust the `>= 30` operation-count expectation only if it is an exact-count assertion (it is a floor — new ops only raise it).
-- [ ] **Task 8 — Sprint-status + action item** (`_bmad-output/implementation-artifacts/sprint-status.yaml`) (AC: #11, #12)
-  - [ ] (create-story already flipped `42-4-admin-group-governance` → `ready-for-dev`.) At **dev/close** time: flip the epic-41 `tag.group_id` index `action_item` → `done` with the D-INDEX-1 discharge note. Do **not** flip `epic-42` (controller closes E42 after this story is `done`).
-- [ ] **Task 9 — Verify gates** (AC: #12)
-  - [ ] `cd apps/api && uv run ruff check . && uv run ruff format --check .` clean.
-  - [ ] Focused suites green, then **full backend suite 3× consecutive identical** (`uv run pytest -q -p no:cacheprovider`); record pass/skip counts + durations (42.2 baseline = 1718p/3s; expect +N new tests, identical across all three runs). `git diff --check` clean. Full repo `check-all` after reviews.
+- [x] **Task 1 — Read-side schema: `TagGroupSummary`** (`apps/api/app/modules/sot/schemas.py`) (AC: #1, #2)
+  - [x] Add `class TagGroupSummary(_OrmBase): id: uuid.UUID; slug: str; name_en: str; name_pl: str | None; position: int` (flat write-response, mirrors `CategorySummary`; do **not** reuse `TagGroupRead` — it embeds `tags[]` for the read endpoint). Keep `from_attributes` via `_OrmBase`.
+- [x] **Task 2 — Write-request schemas** (`apps/api/app/modules/sot/admin_schemas.py`) (AC: #1, #2, #4)
+  - [x] Add `class TagGroupCreate(BaseModel)`: `slug: str = Field(min_length=1)`, `name_en: str = Field(min_length=1)`, `name_pl: str | None = None`, `position: int = 0`. Add a `json_schema_extra` example (repo convention).
+  - [x] Add `class TagGroupPatch(BaseModel)` with `model_config = ConfigDict(extra="forbid")`: `slug: str | None = Field(default=None, min_length=1)`, `name_en: str | None = Field(default=None, min_length=1)`, `name_pl: str | None = None`, `position: int | None = None`.
+  - [x] **D-NULLSEM-1 — reject explicit null on NOT NULL fields (Independent Validation C1).** Add a `@field_validator("slug", "name_en", "position")` (classmethod) that raises `ValueError` when the value `is None` → Pydantic surfaces it as **422**. Because Pydantic v2 does **not** run field validators for omitted fields (they take the default without validation), this rejects only an *explicit* `slug/name_en/position: null` while leaving an omitted field untouched. `name_pl` gets **no** validator (null = clear). Rationale: `TagGroup.slug/name_en/position` are NOT NULL; without this, an explicit null flows through `exclude_unset` → `setattr` → NOT NULL violation → wrong `409 slug_conflict` (or `500`). Rejecting at the schema layer keeps `update_tag_group`'s body identical to `update_category`.
+  - [x] Extend `TagPatch` (existing) with `group_id: uuid.UUID | None = None` and `group_position: int | None = None` (keep `extra="forbid"`). This is the move surface (AC #4). Add a `@field_validator("group_position")` that rejects an explicit null → **422** (NOT NULL column; `group_id` is intentionally nullable so it gets **no** validator — null = groupless). D-NULLSEM-1.
+- [x] **Task 3 — Audit registry** (`apps/api/app/core/audit.py`) (AC: #6)
+  - [x] Add `"tag_group"` to `KNOWN_ENTITY_TYPES`; add a one-line docstring entry next to `tag` describing `tag_group.create/update/delete` (entity_id = tag_group.id).
+- [x] **Task 4 — Service: tag-group CRUD + move validation** (`apps/api/app/modules/sot/admin_service.py`) (AC: #1–#4, #6, #9)
+  - [x] `create_tag_group(session, *, payload: TagGroupCreate, actor_user_id) -> TagGroup`: build row; `flush()` inside `try/except IntegrityError → raise ValueError("slug_conflict")` (mirror `create_category`); `_audit_entity(action="tag_group.create", entity_type="tag_group", entity_id=tg.id, after={slug, name_en, name_pl, position})`; commit; refresh. (Pre-check slug optional; the constraint is the guarantee — AC #9.)
+  - [x] `update_tag_group(session, *, group_id, patch: TagGroupPatch, actor_user_id) -> TagGroup`: `session.get(TagGroup, group_id)` or `raise LookupError("tag group not found")`; snapshot `before`; `data = patch.model_dump(exclude_unset=True)`; apply fields (incl. `name_pl=None` clear, `position`; explicit null on `slug`/`name_en`/`position` is already rejected as 422 by the schema, so it never reaches `setattr`); `updated_at = now`; `flush()` with `IntegrityError → slug_conflict`; audit `tag_group.update` with the **full field snapshot** `before`/`after` = `{slug, name_en, name_pl, position}` (mirror `update_category`, which snapshots the full fixed field set — **not** a changed-only diff); commit. An empty `{}` patch still emits this row with `before == after`.
+  - [x] `delete_tag_group(session, *, group_id, actor_user_id) -> None`: `session.get` or `LookupError`; **collect member tag ids** `select(Tag.id).where(Tag.group_id == group_id)` for the snapshot; `_audit_entity(action="tag_group.delete", entity_type="tag_group", entity_id=group_id, before={slug, name_en, detached_tag_ids, detached_tag_count})`; `session.delete(tg)`; `session.commit()` → FK `SET NULL` nulls members (AC #3, D-SETNULL-1). No 409 path.
+  - [x] Extend `update_tag` (existing) to handle `group_id` / `group_position` from the patch: if `"group_id" in data` and non-null → `session.get(TagGroup, data["group_id"]) or raise ValueError("tag group not found")`; assign (null allowed → groupless; explicit `group_position: null` is already 422'd by the schema). Extend the existing `tag.update` full before/after snapshot to `{slug, name_en, name_pl, group_id, group_position}` (always both new keys, matching the full-snapshot idiom — not changed-only). Do **not** rebuild rename/slug logic.
+  - [x] Import `TagGroup` from `app.core.db.models` and the new schemas.
+- [x] **Task 5 — New governance router** (`apps/api/app/modules/sot/tag_group_admin_router.py` — NEW) (AC: #1, #2, #3, #7)
+  - [x] `router = APIRouter(prefix="/api/admin", tags=["sot-admin-governance"])` (a tag distinct from `agent-write`).
+  - [x] `POST /tag-groups` → `create_tag_group`; `current_admin` dep; `status_code=201`, `response_model=TagGroupSummary`; map `ValueError("slug_conflict")` → `HTTPException(409, "slug already exists")`, else 422; full `summary`/`description`.
+  - [x] `PATCH /tag-groups/{group_id}` → `update_tag_group`; `current_admin`; `response_model=TagGroupSummary`; `LookupError` → 404, `slug_conflict` → 409, else 422.
+  - [x] `DELETE /tag-groups/{group_id}` → `delete_tag_group`; `current_admin`; `status_code=204`; `LookupError` → 404.
+  - [x] Relocate `admin_create_tag` here at the unchanged `POST /tags` path, preserving its function name/request/response/status contract; gate with `current_admin`; tag as governance (not `agent-write`); reuse existing `create_tag` service.
+  - [x] Import `current_admin` from `app.core.auth.dependencies`.
+- [x] **Task 6 — Register router + relocate tag-create registration** (`apps/api/app/router.py`, `apps/api/app/modules/sot/admin_router.py`) (AC: #1, #5, #7)
+  - [x] `app/router.py`: import + `api_router.include_router(tag_group_admin_router)`.
+  - [x] Remove only the `admin_create_tag` route registration/function from `admin_router.py` after recreating the same method/path/name/contract on the governance router. Leave `PATCH /tags/{id}` (rename+move), `DELETE /tags/{id}`, `POST /tags/merge` on `_current_principal` and `agent-write`.
+- [x] **Task 7 — Tests** (AC: #1–#10, #12)
+  - [x] `tests/test_sot_admin_tag_groups.py` (**new**): create 201 + `TagGroupSummary` shape; create 409 slug conflict; patch 200 (rename, reorder, `name_pl` clear, no-op empty body); patch 404; patch 409 slug conflict; delete 204; delete 404; **delete SET-NULL** (seed group + member tags, delete, assert tags survive with `group_id IS NULL`); audit rows for create/update/delete (action names, entity_type `tag_group`, entity_id, full before/after snapshot keys only).
+  - [x] `tests/test_sot_admin_tag_groups.py` **null-semantics (D-NULLSEM-1)**: `PATCH` with explicit `{"slug": null}` → **422**, `{"name_en": null}` → **422**, `{"position": null}` → **422** (NOT 409/500); `{"name_pl": null}` → **200** and clears `name_pl`; assert the 422 cases leave the group row unchanged and write **no** audit row.
+  - [x] `tests/test_sot_admin_tag_groups.py` **empty-PATCH audit**: `PATCH {}` → 200 unchanged **and** exactly one `tag_group.update` audit row with `before == after` (full snapshot).
+  - [x] `tests/test_sot_admin_tag_groups.py` **auth matrix**: for POST/PATCH/DELETE `/api/admin/tag-groups` — anonymous 401, member 403, **agent 403**, admin 2xx.
+  - [x] `tests/test_sot_admin_tags.py`: **tag-create tightening** — admin 201; **agent 403** (regression for D-ADMINONLY-1); assert `PATCH`/`DELETE`/`merge` still accept admin (unchanged). **Move via PATCH**: `group_id=<uuid>` moves (audit `tag.update` shows `group_id`); `group_id=null` → groupless; `group_id=<unknown>` → 400; `group_position` set; explicit `{"group_position": null}` → **422** (D-NULLSEM-1; not 500).
+  - [x] `tests/test_sot_tag_groups.py` (or the new file) **read-after-write** (AC #8): create → empty group in `GET /api/tag-groups` at `(position, slug)`; move → tag under group; null → groupless; delete → members in `groupless`; patch position → re-sort.
+  - [x] `tests/test_sot_auth_boundary.py`: extend for the three governance routes (anonymous 401 / member 403 / agent 403 / admin 2xx) following the existing table idiom. (The new routes are writes — seed nothing; use minimal valid bodies / a seeded group id.)
+  - [x] `tests/test_openapi_agent_surface.py`: confirm the governance routes **including `POST /tags`** are absent from the `agent-write` set, while retained PATCH/DELETE/merge tag routes remain present; new routes carry summary+description; assert the existing `POST /tags` operation ID remains stable if it is a contract consumed anywhere. Adjust the `>= 30` operation-count expectation only if it is an exact-count assertion (it is a floor — new ops only raise it).
+- [x] **Task 8 — Sprint-status + action item** (`_bmad-output/implementation-artifacts/sprint-status.yaml`) (AC: #11, #12)
+  - [x] (create-story already flipped `42-4-admin-group-governance` → `ready-for-dev`.) At **dev/close** time: flip the epic-41 `tag.group_id` index `action_item` → `done` with the D-INDEX-1 discharge note. Do **not** flip `epic-42` (controller closes E42 after this story is `done`).
+- [x] **Task 9 — Verify gates** (AC: #12)
+  - [x] `cd apps/api && uv run ruff check . && uv run ruff format --check .` clean.
+  - [x] Focused suites green, then **full backend suite 3× consecutive identical** (`uv run pytest -q -p no:cacheprovider`); record pass/skip counts + durations (42.2 baseline = 1718p/3s; expect +N new tests, identical across all three runs). `git diff --check` clean. Full repo `check-all` after reviews.
 
 ## Dev Notes
 
@@ -250,10 +250,59 @@ The validator's I3 accepted retaining `agent-write` as non-blocking. Controller 
 
 ### Agent Model Used
 
-_(to be filled by `bmad-dev-story`)_
+claude-opus-4-8[1m] (Claude Opus 4.8, 1M context) — native BMAD `bmad-dev-story`, Claude author; Laura controller.
 
 ### Debug Log References
 
+- Focused RED (before production code): `36 failed, 82 passed` across the new + extended test files — routes / schemas / `tag_group` audit type absent as expected. Real RED captured.
+- Test-only correction after RED: `audit_log.actor_user_id` FKs `user.id` (`ondelete=SET NULL`), so every write-path test seeds a real admin/agent `User` row (matches the `test_sot_admin_tags.py` repo pattern) — otherwise the audit INSERT trips the FK under `PRAGMA foreign_keys=ON`.
+- Focused GREEN: `131 passed` (new tag-group file + extended tag/auth-boundary/OpenAPI + 42.2 read + route-enforcement gate).
+- Guard-test updates (direct consequence of AC #6 / Task 3 adding `tag_group` to `KNOWN_ENTITY_TYPES`): `test_2fa_schema.py` count 15→16; `test_audit.py` coverage set gains `tag_group`.
+- Full backend suite 3× consecutive **identical**: `1761 passed, 3 skipped` each (392s / 398s / 399s). Logs: `.hermes/run-logs/e42.4-backend-run{1,2,3}.log` (42.2 baseline was 1718p; +43 new/relocated tests). `git diff --check` clean.
+- Ruff: `ruff check .` all checks passed; `ruff format --check .` 269 files already formatted.
+- Controller focused rerun: **153 passed** across governance/tag/read/auth/OpenAPI/route-enforcement/audit guards; Ruff still clean. Live route inspection proved exactly one `POST /api/admin/tags`, governance-tagged, with stable generated operation ID.
+- Fresh native BMAD adversarial code review: **APPROVE** (`critical=0`, `important=0`, `minor=2` informational); report `.hermes/run-logs/e42.4-native-review.md`.
+- Aider full-diff review received all **1575 diff lines** and returned `REQUEST_CHANGES`; controller triage rejected its findings as assumption errors: model+audit are atomically committed in one transaction (no orphan audit), `group_position` intentionally orders groupless tags in the 42.2 read, and unknown move target → 400 is ratified D-MOVE-1. No code change warranted.
+- Full repo `infra/scripts/check-all.sh`: **16/16 green**, including backend/web/workers/infra and visual regression **464 passed, 24 skipped**.
+
 ### Completion Notes List
 
+- **New governance router** `sot/tag_group_admin_router.py` (`current_admin`, tag `sot-admin-governance`, NOT `agent-write`) owns `POST/PATCH/DELETE /api/admin/tag-groups` + the relocated admin-only `POST /api/admin/tags`. The `test_openapi_agent_surface.py::test_every_sot_admin_route_has_agent_write_tag` invariant stays green on both sides (missing/extra) because the router is off the `sot-admin` surface entirely (D-ROUTER-1).
+- **`POST /api/admin/tags` tightened to admin-only** (D-ADMINONLY-1 / FR25-TAX-2): same method/path/function-name (`admin_create_tag`)/request/response/status/service (`create_tag`) — only the auth tier changed (agent now 403) and the `agent-write` tag dropped. FastAPI operation ID `admin_create_tag_api_admin_tags_post` verified stable (asserted in test). Rename/delete/**merge** remain admin-or-agent on the old router.
+- **D-NULLSEM-1**: `@field_validator` on `TagGroupPatch.{slug,name_en,position}` and `TagPatch.group_position` rejects an *explicit* null → 422 (Pydantic v2 skips validators for omitted defaults, so omitted = untouched). `name_pl` (clear) and `group_id` (groupless) intentionally have no validator. Service bodies stay identical to the `update_category`/`update_tag` idiom; audit snapshots are the full bounded field set on both `before`/`after`.
+- **Empty `{}` PATCH** → 200 no-op + exactly one `tag_group.update` audit with `before == after` (unconditional, mirrors `update_category`).
+- **Group delete** relies on FK `ON DELETE SET NULL` — member tags survive groupless, one bounded `tag_group.delete` audit row (`slug,name_en,detached_tag_ids,detached_tag_count`), no per-tag writes/audits. Verified by the SET-NULL read-after-write test.
+- **Move-to-group** extends `PATCH /api/admin/tags/{id}` via `TagPatch.group_id`/`group_position`; unknown group → 400 `tag group not found` (new mapping in `admin_patch_tag`); the `tag.update` snapshot always carries both group fields (`_tag_snapshot`). Read-after-write against `GET /api/tag-groups` (42.2) verified for create/move/null/delete/reorder.
+- **Audit registry**: `tag_group` added to `KNOWN_ENTITY_TYPES` with a docstring entry.
+- **D-INDEX-1 discharged** at dev completion — no `tag.group_id` index, no migration (schema stays at `0018`; `0019` reserved for 47.5). `action_items` (epic 41) flipped `open → done` with the discharge note.
+- **Scope fences held**: no category symbol/route/ORM/schema/DTO, no migration/`0019`, no `ModelCreate/Patch`/`ShareModelView`, no `apps/web/*`, no `_PUBLIC_ROUTES`/`main.py` edit (route-enforcement gate self-healed via `_current_admin_dep`), no merge/rename/delete rebuild. `epic-42` NOT flipped — controller-owned closeout.
+
 ### File List
+
+**New:**
+- `apps/api/app/modules/sot/tag_group_admin_router.py` — admin-only governance router.
+- `apps/api/tests/test_sot_admin_tag_groups.py` — CRUD / null-semantics / no-op audit / SET-NULL / auth matrix / read-after-write.
+
+**Modified (source):**
+- `apps/api/app/modules/sot/schemas.py` — add `TagGroupSummary`.
+- `apps/api/app/modules/sot/admin_schemas.py` — add `TagGroupCreate` / `TagGroupPatch` (+ null-reject validators); extend `TagPatch` with `group_id` / `group_position` (+ validator).
+- `apps/api/app/modules/sot/admin_service.py` — add `create_tag_group` / `update_tag_group` / `delete_tag_group` + `_tag_group_snapshot`; extend `update_tag` for group move + `_tag_snapshot` full snapshot; import `TagGroup` + new schemas.
+- `apps/api/app/core/audit.py` — add `tag_group` to `KNOWN_ENTITY_TYPES` + docstring.
+- `apps/api/app/modules/sot/admin_router.py` — remove `admin_create_tag` (relocated); map `tag group not found` → 400 in `admin_patch_tag`; honesty doc + import cleanup.
+- `apps/api/app/router.py` — register `sot_tag_group_admin_router`.
+
+**Modified (tests):**
+- `apps/api/tests/test_sot_admin_tags.py` — tag-create tightening (agent/member 403, anon 401); move via PATCH (into/out/unknown-400/position/null-422); move read-after-write; agent-still-can-PATCH.
+- `apps/api/tests/test_sot_auth_boundary.py` — auth matrix for the three governance routes.
+- `apps/api/tests/test_openapi_agent_surface.py` — governance routes off agent-write + governance-tagged + summary/description; retained tag routes stay agent-write; `POST /tags` operation-ID stability.
+- `apps/api/tests/test_2fa_schema.py` — `KNOWN_ENTITY_TYPES` count 15→16.
+- `apps/api/tests/test_audit.py` — coverage set gains `tag_group`.
+
+**Modified (planning):**
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — `42-4` → `review`; epic-41 `tag.group_id` index action item → `done` (D-INDEX-1 discharge).
+
+## Change Log
+
+| Date | Change |
+|---|---|
+| 2026-07-19 | Native `bmad-dev-story` implementation (Claude author; Laura controller). Added admin-only tag-group governance router (`POST/PATCH/DELETE /api/admin/tag-groups`) + relocated admin-only `POST /api/admin/tags`; extended tag `PATCH` for group move; `tag_group` audit entity + actions; D-NULLSEM-1 null-reject validators; group delete via FK SET NULL. Discharged E41 `tag.group_id` index action item (no index / no migration). Strict RED→GREEN TDD: RED 36-fail → GREEN 131-pass focused; full backend suite 3× identical `1761p/3s`; ruff clean. Story + sprint → `review`. Epic-42 closeout left to controller. |

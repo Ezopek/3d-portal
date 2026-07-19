@@ -243,6 +243,71 @@ def test_every_agent_write_json_body_has_examples(openapi_spec):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Story 42.4 — admin tag-group governance router contract
+# ---------------------------------------------------------------------------
+
+# The three governance group routes + the relocated admin-only tag-create,
+# keyed (method, path) as they appear in the generated OpenAPI doc.
+_GOVERNANCE_ROUTES = {
+    ("POST", "/api/admin/tag-groups"),
+    ("PATCH", "/api/admin/tag-groups/{group_id}"),
+    ("DELETE", "/api/admin/tag-groups/{group_id}"),
+    ("POST", "/api/admin/tags"),
+}
+
+# Retained tag write routes that MUST stay on the agent-write surface.
+_RETAINED_AGENT_WRITE_TAG_ROUTES = {
+    ("PATCH", "/api/admin/tags/{tag_id}"),
+    ("DELETE", "/api/admin/tags/{tag_id}"),
+    ("POST", "/api/admin/tags/merge"),
+}
+
+
+def _op(spec: dict, method: str, path: str) -> dict:
+    return spec["paths"][path][method.lower()]
+
+
+def test_governance_routes_absent_from_agent_write_set(openapi_spec):
+    """D-ROUTER-1 / D-ADMINONLY-1: the governance routes — including the
+    relocated admin-only `POST /api/admin/tags` — must NOT carry the
+    `agent-write` tag. An admin-only operation must not advertise an agent
+    capability."""
+    for method, path in _GOVERNANCE_ROUTES:
+        op = _op(openapi_spec, method, path)
+        tags = op.get("tags") or []
+        assert "agent-write" not in tags, f"{method} {path} must not be agent-write; tags={tags}"
+        assert "sot-admin-governance" in tags, (
+            f"{method} {path} must carry the sot-admin-governance tag; tags={tags}"
+        )
+
+
+def test_governance_routes_have_summary_and_description(openapi_spec):
+    """Honesty convention — the governance tag is outside the summary/description
+    enforcement scope (_iter_target_operations keys off {admin,sot-admin,sot-read}),
+    so assert it here explicitly."""
+    for method, path in _GOVERNANCE_ROUTES:
+        op = _op(openapi_spec, method, path)
+        assert (op.get("summary") or "").strip(), f"{method} {path} missing summary"
+        assert (op.get("description") or "").strip(), f"{method} {path} missing description"
+
+
+def test_retained_tag_routes_stay_agent_write(openapi_spec):
+    """PATCH/DELETE /tags/{id} + POST /tags/merge remain admin-or-agent
+    (agent-write). Only tag CREATE was tightened."""
+    for method, path in _RETAINED_AGENT_WRITE_TAG_ROUTES:
+        op = _op(openapi_spec, method, path)
+        assert "agent-write" in (op.get("tags") or []), f"{method} {path} lost agent-write"
+
+
+def test_post_tags_operation_id_is_stable(openapi_spec):
+    """Relocating `POST /api/admin/tags` preserves the FastAPI-generated operation
+    ID (function name + path + method unchanged), so any generated client keying
+    off it stays compatible."""
+    op = _op(openapi_spec, "POST", "/api/admin/tags")
+    assert op.get("operationId") == "admin_create_tag_api_admin_tags_post"
+
+
 @pytest.mark.parametrize("model_name", ENRICHED_REQUEST_MODELS)
 def test_enriched_request_model_has_examples_in_components(openapi_spec, model_name):
     """Each Story-4.3-enriched request model is present in components.schemas

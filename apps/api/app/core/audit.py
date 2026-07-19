@@ -33,6 +33,8 @@ from app.core.db.models import AuditLog
 #                          slicer_profile.offer_publish / .offer_unpublish
 #                          (PROFILE-PUBLISH-1 publish-state bridge; entity_id = offer_id UUID)
 #   tag                  — future tag CRUD (Slice 2C.x)
+#   tag_group            — tag_group.create/update/delete (Story 42.4 admin group
+#                          governance; entity_id = tag_group.id UUID)
 #   thumbnail_override   — admin.thumbnail.set/unset (entity_id None: legacy str model_id)
 #   user                 — auth.login.success/fail; auth.totp.enrolled (Story 7.2);
 #                          auth.totp.verify.success/auth.totp.verify.fail (Story 7.3 +
@@ -62,6 +64,7 @@ KNOWN_ENTITY_TYPES: frozenset[str] = frozenset(
         "share_token",
         "slicer_profile",
         "tag",
+        "tag_group",
         "thumbnail_override",
         "user",
     }

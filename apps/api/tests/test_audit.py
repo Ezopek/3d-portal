@@ -78,6 +78,7 @@ def test_known_entity_types_covers_all_call_site_resources():
         "share_token",
         "slicer_profile",
         "tag",
+        "tag_group",
         "thumbnail_override",
         "user",
     }
