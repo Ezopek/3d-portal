@@ -12,6 +12,25 @@
 
 ## Active candidates
 
+### TB-055 — architecture.md §3211 (Init 25 Decision AW) mislabels authenticated SoT reads as "public" + wrong `_PUBLIC_ROUTES` claim
+
+**Status:** open — documentation-correction candidate for a `bmad-correct-course` / `bmad-architecture` Update pass. Not code work.
+**Type:** planning-artifact drift (architecture doc contradicts live code). Resolved code-first in-story; filed here per AGENTS.md ("code-grounded drifts encoded in-story + filed, not escalated").
+**Surfaced:** 2026-07-19, during native `bmad-create-story` for Story 42.2 (tags + tag-groups read API), auth-posture contract question.
+**Priority:** P3 (doc-only; no runtime effect — the code and story already do the right thing).
+
+**Trigger.** `architecture.md` §Initiative 25 Decision AW, "Default-deny auth posture" paragraph (line 3211), states: (a) `GET /api/tag-groups`, `GET /api/tags`, `GET /api/models` are "**public catalog reads**" that "**must be added to `_PUBLIC_ROUTES`**"; and (b) "the removed `GET /api/categories` entry **must be deleted from the allowlist**". All three claims are **code-falsifiable**:
+1. `apps/api/app/main.py:50-61` `_PUBLIC_ROUTES` = `/api/health`, `/api/auth/*`, `/api/share/*` **only** — `GET /api/categories`/`/api/tags`/`/api/models` were **never** in it.
+2. `apps/api/tests/test_sot_auth_boundary.py` (Init 6 Story 11.1 gate) asserts **anonymous → 401** for all six SoT reads under Decision M default-deny; adding any of them to `_PUBLIC_ROUTES` would flip anonymous to 200 and **break** `test_sot_tags_anonymous_returns_401`.
+3. Story 42.1 (done) kept `GET /api/models` on `current_user`, outside `_PUBLIC_ROUTES` — the authoritative recent precedent for this epic.
+
+**Resolution already applied (no code owed).** Story 42.2 (D-AUTH-1) keeps `GET /api/tags` + new `GET /api/tag-groups` on `current_user` (any role), outside `_PUBLIC_ROUTES`, and adds anonymous-401 / role-200 auth-boundary tests. Only the **architecture doc prose** is wrong.
+
+**Acceptance criteria (doc-only):**
+- Correct §3211 to state the SoT catalog reads are **authenticated default-deny (`current_user`, any role), outside `_PUBLIC_ROUTES`** (Init 6 Decision M), and that admin group-governance routes stay `current_admin`-gated. Remove the "add to `_PUBLIC_ROUTES`" instruction and the false "categories is in the allowlist" claim.
+- Preserve the (correct) point that a *genuinely new anonymous* route would need a `_PUBLIC_ROUTES` entry + the enumeration test — but note none of the Init 25 reads are anonymous.
+- Land as a `docs(bmad):` / architecture Update edit via `bmad-correct-course` when the Init 25 doc surface is next touched (e.g. alongside 42.3/42.5). No sprint-status story required.
+
 ### TB-054 — Restore green web gates: de-hex 3 theme.css tokens + refresh 11 stale light-project visual baselines
 
 **Status:** done — ff-merged to `main` as `fbe2f45` on 2026-07-19 after scoped verification, native BMAD/Aider APPROVE, and full `check-all.sh` 16/16 green. Route selected by `bmad-help`/party-mode — see `.hermes/run-logs/e42-42.1-gate-debt-party.md`.
