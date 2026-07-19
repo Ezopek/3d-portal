@@ -124,8 +124,11 @@ export function CatalogList() {
   // Guard on data presence rather than `isLoading`: on the very first render
   // TanStack Query has not yet mounted the queries, so `isLoading` is still
   // false. Without this, FacetSidebar paints with empty group data before
-  // `tagGroups.data` resolves.
-  if (tagGroups.isError || models.isError) {
+  // `tagGroups.data` resolves. `tags` is guarded alongside the browse-surface
+  // deps because it feeds the FilterRibbon chip-label map (`tagsById`): on a
+  // tags failure the selected-tag chips would otherwise fall back to truncated
+  // UUIDs, so its error/retry/loading is folded in here too.
+  if (tagGroups.isError || models.isError || tags.isError) {
     return (
       <EmptyState
         messageKey="errors.network"
@@ -135,12 +138,17 @@ export function CatalogList() {
           onClick: () => {
             void tagGroups.refetch();
             void models.refetch();
+            void tags.refetch();
           },
         }}
       />
     );
   }
-  if (tagGroups.data === undefined || models.data === undefined) {
+  if (
+    tagGroups.data === undefined ||
+    models.data === undefined ||
+    tags.data === undefined
+  ) {
     return <LoadingState variant="skeleton-grid" cols={5} rows={3} />;
   }
 
