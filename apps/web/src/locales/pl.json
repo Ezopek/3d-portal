@@ -282,6 +282,8 @@
   "catalog.filters.openCategories": "Kategorie",
   "catalog.filters.openFilters": "Filtry",
   "catalog.filters.title": "Filtry",
+  "catalog.filters.ungrouped": "Bez grupy",
+  "catalog.filters.untagged": "Modele bez tagów",
   "catalog.sort.recent": "Najnowsze",
   "catalog.sort.oldest": "Najstarsze",
   "catalog.sort.name_asc": "Nazwa A–Z",
