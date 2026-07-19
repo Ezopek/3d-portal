@@ -5,7 +5,7 @@ baseline_commit: 5b5da8c4f0aa3f03a05f2c25eb0ca45d43f7177a
 # Story 43.1 — `api-types` facet-tag data types (FR25-FILT-1, FR25-TAX-1)
 
 - **Epic:** E43 — Frontend data layer (Initiative 25 — Facet Tag Taxonomy + Category Retirement)
-- **Status:** `review` — **DEV COMPLETE 2026-07-19 via native `bmad-dev-story` (author Claude/BMAD; controller Laura owns review/commit/merge/push/deploy). Branch `feat/E43.1-api-types` from `main` @ 5b5da8c, left uncommitted for controller review. All ACs green (typecheck/lint/vitest/build); see § 9 Dev Agent Record. Was:** `ready-for-dev` — **validated 2026-07-19 via native `bmad-create-story:validate` (VS) → PASS** (see § 8 Validation record; 1 important + 2 minor findings fixed in-place). The planning correction that blocked this story is **APPLIED** (operator-approved `bmad-correct-course` 2026-07-19; SCP `sprint-change-proposal-2026-07-19-e43-fe-data-additive-correction.md`, status APPROVED/APPLIED). The `epics.md` E43 sketches + `architecture.md` Decision AW § Frontend types now match the shipped 42.2 wire and the additive scope; every category symbol is preserved (owners: 47.4 tree types + `useCategoriesTree`, 47.5 model DTO/field). The additive spec in §3–§4 is the source of truth. Next native step: `bmad-dev-story` (dev-go — validation PASS recorded in § 8). **History note:** this story was authored `BLOCKED_PROCEDURAL` (see § Procedural block, retained below as audit history); that block is now **RESOLVED** by the applied correction — the SoT contradiction it flagged no longer exists.
+- **Status:** `done` — **CLOSED 2026-07-19 by controller Laura.** Implementation `a76db35` merged ff-only to `main`, pushed (`HEAD == origin/main`), deployed to `.190` as release `0.1.0+a76db35`, and live-verified. Native BMAD review APPROVE; full repo gate 16/16. See §13 Controller Closeout. The operator-approved additive correct-course remains binding; no category compatibility symbol was removed and no destructive-go was granted.
 - **Author:** Claude (BMAD create-story). **Controller:** Laura.
 - **Created:** 2026-07-19 via native `bmad-create-story` (Create) after mandatory `bmad-help`.
 - **Scope class:** frontend data types only (`apps/web/src/lib/api-types.ts` + a type-level test). No hooks / URL / UI / backend / migration.
@@ -263,3 +263,12 @@ Docs (tracked): this story artifact; `sprint-status.yaml` (epic-43 → in-progre
 | Date | Change |
 |---|---|
 | 2026-07-19 | Native `bmad-dev-story` executed on branch `feat/E43.1-api-types` (baseline `main` @ 5b5da8c). Additive facet-tag FE types implemented RED→GREEN; five required-fallout `TagRead` construction sites updated; all gates green (typecheck/lint/vitest 656/build). Status → `review`; left uncommitted for controller review. |
+| 2026-07-19 | Controller closeout: native review APPROVE (0 critical / 0 important), Aider concrete findings none, `check-all` 16/16 (visual 464/24), implementation `a76db35` ff-only merged/pushed/deployed. Live release `0.1.0+a76db35`; health 200; six stack services running; symbolication + runbook fingerprint OK. Status `review` → `done`. |
+
+## 13. Controller Closeout
+
+- **Commit/integration:** `a76db35`; ff-only to `main`; `HEAD == origin/main`; clean tree.
+- **Reviews:** native BMAD **APPROVE** (`0 critical`, `0 important`, `2 minor` non-blocking); Aider reported no concrete defect and its construction-site audit request was discharged by full `tsc -b` plus explicit source search.
+- **Gates:** controller focused 8/8; web Vitest 656 passed; full `infra/scripts/check-all.sh` **16/16 green**; visual 464 passed / 24 skipped.
+- **Deploy/live:** `.190` release `0.1.0+a76db35`; `/api/health` 200; API, arq-worker, Redis, slicer-worker, web, and render worker running; symbolication verify OK; runbook fingerprint OK. Slicer overlay correctly skipped because the deployed range contained no API/slicer-adjacent change.
+- **Scope:** additive frontend types only plus mechanically required typed fixtures/dev showcase; category compatibility bridge preserved; no hooks/URL/UI/backend/migration/category deletion/destructive-go.
