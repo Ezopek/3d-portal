@@ -4215,11 +4215,13 @@ The catalog was built on a single, hard, mandatory category per model (`Model.ca
 
 **Sketch:** Optional/separate seed of the SCP §8 starter taxonomy as `tag_group` + `tag` rows (recommended as a separate admin-run seed story, keeping the destructive migration minimal — SCP open item). Idempotent; no per-model assignment (models stay untagged).
 
-#### Epic E42 — API: facet filtering + group governance + category retirement
+#### Epic E42 — API: additive facet backend contract
 
-**Goal:** replace the category API contract with facet filtering + group governance + category-endpoint removal, and drop `category` from model create/patch and the share projection — the complete backend contract the frontend consumes.
+> **Re-scoped 2026-07-19** by `bmad-correct-course` (SCP `sprint-change-proposal-2026-07-19-e42-deferred-coupled-cutover.md`, operator-approved). E42 now owns the **additive** backend contract only (42.1/42.2/42.4). The category-**destructive** work (routes/schema/DTO/ORM/`0019` removal) is **relocated to the terminal cutover epic E47** (stories 47.4 + 47.5) — it can only complete once the FE + hydrate/runbook consumers are gone, and the live category API is kept as a zero-code compatibility bridge until then. **E42 CLOSES after 42.4.** Former stories 42.3 → 47.4 and 42.5 → 47.5 (see below; history preserved, not deleted).
 
-**Depends on:** E41 on `main`.
+**Goal:** stand up the additive facet-tag backend contract — `GET /api/models` facet filtering, tags/tag-groups read API, and admin group governance — the additive contract the frontend consumes. Category **retirement** is NOT in this epic (relocated to E47).
+
+**Depends on:** E41 on `main`. **Closes after:** 42.4 (`epic-42` → `done` once 42.4 is `done`).
 
 ##### Story 42.1 — `GET /api/models` facet filtering (FR25-FILT-1, FR25-FILT-2)
 
@@ -4229,23 +4231,27 @@ The catalog was built on a single, hard, mandatory category per model (`Model.ca
 
 **Sketch:** `GET /api/tags` returns `group`/`group_id`; add `?with_counts=true`. **New** `GET /api/tag-groups` (groups + tags + per-tag counts) backing `useTagGroups()`. Outside `_PUBLIC_ROUTES` per existing auth posture (confirm at create-story).
 
-##### Story 42.3 — Category-endpoint removal (FR25-FILT-1, FR25-SOT retirement)
+##### Story 42.3 — Category-endpoint removal — **SUPERSEDED / RELOCATED → 47.4** (2026-07-19)
 
-**Sketch:** Remove `GET /api/categories` (`sot/router.py`), admin `POST/PATCH/DELETE /categories` (`admin_router.py:770+`), `create/update/delete_category` service fns, and `Category*` schemas. Route-enforcement pytest gate updated. No 404-drift on retained routes.
+> **Superseded** by `bmad-correct-course` (SCP `sprint-change-proposal-2026-07-19-e42-deferred-coupled-cutover.md`). Category API-surface retirement is **destructive to a live surface** and must land **after** all `GET /api/categories` consumers (E43 FE hooks, E44 browse, E45 admin add, hydrate/runbook) are gone, else `main` auto-deploys a live 404 to `.190`. Relocated to terminal story **47.4**. `CategorySummary` cannot be removed here (it is embedded in the retained `ModelDetail`/`ShareModelView`) — that belongs to 47.5. The original sketch below is retained for history; do **not** build it as an E42 story. Blocked-artifact audit: `_bmad-output/implementation-artifacts/42-3-category-endpoint-removal.md`.
+
+**Sketch (historical — relocated to 47.4):** Remove `GET /api/categories` (`sot/router.py`), admin `POST/PATCH/DELETE /categories` (`admin_router.py:770+`), `create/update/delete_category` service fns, and route-only `Category*` schemas (`CategoryNode`/`CategoryTree`/`CategoryCreate`/`CategoryPatch` — NOT `CategorySummary`). Route-enforcement pytest gate self-heals (category routes are authenticated, not in `_PUBLIC_ROUTES`). No 404-drift on retained routes.
 
 ##### Story 42.4 — Admin group governance (FR25-TAX-2, FR25-ADMIN-1)
 
 **Sketch:** `POST/PATCH/DELETE /api/admin/tag-groups`; tag `move-to-group` (PATCH tag `group_id`); admin-only tag create. **Reuse** existing `POST /tags/merge` (rename/patch/delete siblings — already present, not new build). Audit rows on every write.
 
-##### Story 42.5 — Model create/patch + share DTO drop category (FR25-SHARE-1, FR25-AGENT-1, NFR25-LEAKFENCE-1)
+##### Story 42.5 — Model create/patch + share DTO drop category — **SUPERSEDED / RELOCATED → 47.5** (2026-07-19)
 
-**Sketch:** `ModelCreate`/`ModelPatch` drop required `category_id` (tagging optional-at-create; admin manual-add form + `ModelCreate` 400-on-category-not-found removed). `ShareModelView` drops `category` (adjust `share/router.py:144/228`); tags continue to flow. Negative share-DTO test: no `category`, no new leaked field.
+> **Superseded** by `bmad-correct-course` (SCP `sprint-change-proposal-2026-07-19-e42-deferred-coupled-cutover.md`). The DTO drop is **irreducibly atomic** with the ORM removal (`class Category` + `Model.category_id` NOT NULL) and the forward-only `0019_drop_category` migration — dropping `ModelCreate.category_id` or the column each requires the other in the **same commit** (E41 retro action item #1; TB-053). Relocated to terminal atomic story **47.5**, which also owns the orphaned ORM+`0019` drop and the 45.3 create-form handshake. The original sketch below is retained for history; do **not** build it as an E42 story.
+
+**Sketch (historical — relocated to 47.5):** `ModelCreate`/`ModelPatch` drop required `category_id` (tagging optional-at-create; admin manual-add form + `ModelCreate` 400-on-category-not-found removed). `ModelSummary.category_id` + `ModelDetail.category` + `CategorySummary` dropped. `ShareModelView` drops `category` (adjust `share/router.py:144/228`); tags continue to flow. Negative share-DTO test: no `category`, no new leaked field.
 
 #### Epic E43 — Frontend data layer
 
 **Goal:** land the typed data layer + hooks + URL state the browse/detail/admin UIs consume, with no category types remaining.
 
-**Depends on:** E42 on `main`.
+**Depends on:** E42 **additive** (42.1/42.2/42.4) on `main` — NOT on the category removal, which is relocated to the terminal E47 cutover (47.4/47.5). E43 coexists with the still-live category API (the zero-code compatibility bridge) while it retires `useCategoriesTree` on the FE side.
 
 ##### Story 43.1 — `api-types` (FR25-FILT-1, FR25-TAX-1)
 
@@ -4295,6 +4301,8 @@ The catalog was built on a single, hard, mandatory category per model (`Model.ca
 
 **Sketch:** `components/sheets/EditTagsSheet.tsx` — grouped-by-facet picker; remove non-admin create affordance (selection only). Admin `routes/admin/models/new.tsx` drops the category selector; tagging optional-at-create.
 
+> **45.3 ↔ 47.5 handshake (2026-07-19 correct-course):** the admin create-form **category-selector removal** cannot land while backend `ModelCreate.category_id` stays required — it is **deferred into the cutover and must deploy in the same `main` HEAD** as 47.5's `ModelCreate.category_id` drop (single-host deploy flips api+web from one commit consistently). Until then 45.3 keeps the selector; the grouped **tag** picker can still ship. The grouped-tag-picker portion of 45.3 has no such coupling and proceeds with E45.
+
 #### Epic E46 — Admin tag/group management screen
 
 **Goal:** give admins a governance surface for tags and groups — the one net-new admin screen in this initiative (merge is reuse, not build).
@@ -4313,11 +4321,13 @@ The catalog was built on a single, hard, mandatory category per model (`Model.ca
 
 **Sketch:** duplicate-tag detection surfaced in the admin screen for operator cleanup.
 
-#### Epic E47 — i18n + theming + visual regression + runbook/docs cutover
+#### Epic E47 — i18n + theming + visual regression + runbook/docs cutover + terminal category retirement
 
-**Goal:** finish the cutover — i18n key swap, dark-mode token AC, pl-PL visual baselines for the new surfaces, and the agent-runbook/docs edits that drop category references.
+**Goal:** finish the cutover — i18n key swap, dark-mode token AC, pl-PL visual baselines for the new surfaces, the agent-runbook/docs edits that drop category references, **and the terminal category retirement relocated here from E42** (47.4 API-surface retirement, then 47.5 ORM+DTO+`0019` atomic cutover). This is the only epic where the destructive category work lands; the live category API is a zero-code compatibility bridge until 47.4/47.5.
 
-**Depends on:** E44–E46 UI landed (visual specs need real surfaces).
+**Depends on:** E44–E46 UI landed (visual specs need real surfaces). 47.4/47.5 additionally depend on **all `GET /api/categories` + `category_id` consumers being gone** (E43–E45 FE + 47.3 hydrate/runbook).
+
+> **Relocated in via `bmad-correct-course` 2026-07-19** (SCP `sprint-change-proposal-2026-07-19-e42-deferred-coupled-cutover.md`, operator-approved). 47.4 = former 42.3; 47.5 = former 42.5 + the orphaned ORM/`0019` drop (TB-053). **Destructive-go for 47.5 is DEFERRED to its dev-go** (see 47.5) — not granted by the correct-course.
 
 ##### Story 47.1 — i18n (NFR25-I18N-1)
 
@@ -4330,6 +4340,20 @@ The catalog was built on a single, hard, mandatory category per model (`Model.ca
 ##### Story 47.3 — Runbook + docs cutover (FR25-AGENT-1)
 
 **Sketch:** update the agent add-model runbook (`docs/agents-add-model-runbook.md`) to drop the "category slug exists / `GET /api/categories`" pre-flight; model create no longer requires `category_id`; update any category-referencing docs.
+
+##### Story 47.4 — Category API-surface retirement (FR25-FILT-1, FR25-SOT retirement) — *relocated from 42.3*
+
+**Depends on:** 44.3 + 45.x (no remaining FE category read) + 47.3 (hydrate/runbook cutover). Destructive to an API surface but **reversible by code revert** — standard review/gate path + explicit note, not the full destructive gate.
+
+**Sketch:** Remove `GET /api/categories` (`sot/router.py:48-64`), admin `POST/PATCH/DELETE /api/admin/categories` (`admin_router.py:774-861`), `create/update/delete_category` + `_would_cycle` (`admin_service.py:1134-1306`), `list_categories_tree` (`service.py:63-124`), and route-only schemas `CategoryNode`/`CategoryTree`/`CategoryCreate`/`CategoryPatch` — **NOT** `CategorySummary` (still embedded in the retained `ModelDetail`/`ShareModelView`; belongs to 47.5). Delete `test_sot_categories.py`, `test_sot_admin_categories.py`; update `test_sot_auth_boundary.py` category assertions; migrate `test_bootstrap_agent.py:79-95` off the admin-CRUD POST to ORM-seed. **No `_PUBLIC_ROUTES` edit** — category routes are authenticated, never in the allowlist (TB-055); the enumeration test self-heals off the live route table. **Keeps alive:** `CategorySummary`, `ModelCreate/Patch/Summary/Detail.category(_id)`, `create_model`/`update_model` Category validation, `class Category`, `Model.category_id` — `main` stays green. (Do NOT create the implementation-ready story yet — `bmad-create-story` runs at 47.4's turn.)
+
+##### Story 47.5 — Category ORM + DTO + `0019` atomic cutover (FR25-SHARE-1, FR25-AGENT-1, NFR25-LEAKFENCE-1, NFR25-SCHEMA-MIGRATION-1) — *relocated from 42.5 + orphaned ORM/`0019` drop (TB-053)*
+
+**Depends on:** 47.4 + 45.3 (create-form category-selector removal, **same `main` HEAD deploy**). **ONE commit** (irreducibly atomic). **DESTRUCTIVE + forward-only — operator destructive-go DEFERRED to dev-go** (see gate below).
+
+**Sketch:** Drop `ModelCreate.category_id` + `ModelPatch.category_id`; drop `ModelSummary.category_id`; drop `ModelDetail.category` + `CategorySummary`; drop `ShareModelView.category` (live projection). Remove `Category` validation + `Category*` imports from `create_model`/`update_model` (`admin_service.py:29,42-43,161-167,220-230`). Remove `class Category` (`_entities.py:29-58`) + `Model.category_id` + FK + `ix_model_category_id` (`_entities.py:109-111`). Migration **`0019_drop_category`** — `down_revision = "0018_facet_tags"`, forward-only, `downgrade()` raises `NotImplementedError`; `batch_alter_table("model")` drop index + column (**no** `drop_constraint` — the `category.id` FK is an unnamed inline, per Decision AV), then `op.drop_table("category")`. Tests: ORM↔migration **parity test** (`compare_metadata`, discharges E41 retro action #2); NFR25-LEAKFENCE-1 negative share-DTO test; fix ~25 fixtures that ORM-seed `Model(category_id=...)`. FE coordination (same HEAD): 45.3 selector removal. Docs/scripts: `hydrate_local_tree.py` category path-map removal (coordinated w/ 47.3). **Closes TB-053.**
+
+> **Destructive gate (MANDATORY before any 47.5 dev-go / deploy — DEFERRED, not yet granted).** Operator destructive-go must acknowledge: (1) `0019` is forward-only, `downgrade()` raises — irreversible by Alembic; (2) category rows + per-model assignment permanently lost by design (accepted in the 2026-07-17 SCP — models start untagged); (3) rollback = verified pre-`0019` `.190` DB backup restore + `git revert` of the 47.5 commit + redeploy; (4) a verified pre-`0019` DB backup exists on `.190`, taken under the deploy lock immediately before merge/deploy; (5) 47.5 is the only substantive change in its deploy; (6) single Alembic head after `0019`. Spec validation may proceed; dev-story/deploy may not, until the destructive-go is recorded. (Do NOT create the implementation-ready story yet.)
 
 #### Standalone stories — none for Init 25
 

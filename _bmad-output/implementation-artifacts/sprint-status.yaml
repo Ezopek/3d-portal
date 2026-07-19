@@ -302,12 +302,12 @@ development_status:
   41-2-alembic-0018-facet-tags-drop-category: done  # native BMAD + Aider APPROVE 2026-07-18; additive-only 0018_facet_tags, suite 3x 1671p/3s, single head; destructive drop deferred to E42
   41-3-optional-starter-taxonomy-seed: done  # 2026-07-19 native BMAD + final re-review + Aider APPROVE; all 5 Review Patch findings resolved, 14 focused tests, backend 3x 1685p/3s. Admin-run idempotent seed: 8 groups/36 tags, no model assignments or startup hook. Story: 41-3-optional-starter-taxonomy-seed.md
   epic-41-retrospective: done  # 2026-07-19 FINAL retro run at true E41 close (all 3 stories done). Converted the prior superseded-partial artifact into the truthful final retrospective. See epic-41-retro-2026-07-18.md
-  epic-42: in-progress  # 2026-07-19 opened for 42.1 (first story ready-for-dev)
+  epic-42: in-progress  # 2026-07-19 opened for 42.1. RE-SCOPED 2026-07-19 by bmad-correct-course (SCP sprint-change-proposal-2026-07-19-e42-deferred-coupled-cutover.md) to the ADDITIVE backend contract only (42.1/42.2/42.4). CLOSES after 42.4 (flip epic-42→done once 42-4 is done). Destructive category retirement relocated to E47 (47.4/47.5).
   42-1-models-facet-filtering: done  # 2026-07-19 native BMAD + Aider APPROVE; TB-054 gate debt resolved/deployed first; rebased commit 0d9c2d4; backend 3x 1694p/3s; full check-all 16/16 all green (visual 464p/24s). Ready for controller ff-merge/push/deploy.
   42-2-tags-tag-groups-read-api: done  # 2026-07-19 native BMAD + Aider APPROVE; implementation 3cf5a4b; focused 56p; backend 3x 1718p/3s; full check-all 16/16 all green (visual 464p/24s). Auth default-deny, honest TagListItem OpenAPI, constant-query no-N+1 proven; TB-055 tracks architecture auth-doc drift. Ready for ff-merge/push/deploy.
-  42-3-category-endpoint-removal: backlog
-  42-4-admin-group-governance: backlog
-  42-5-model-create-patch-share-dto-drop-category: backlog
+  42-3-category-endpoint-removal: backlog  # SUPERSEDED / RELOCATED → 47-4 by bmad-correct-course 2026-07-19 (SCP sprint-change-proposal-2026-07-19-e42-deferred-coupled-cutover.md). Kept as historical backlog key (not deleted). Category API-surface retirement is destructive to a live surface and must land after E43-E45 FE + 47.3 hydrate/runbook consumers are gone (main auto-deploys to .190 → live 404 otherwise). Do NOT dev this key. See 47-4-category-api-surface-retirement + 42-3-category-endpoint-removal.md.
+  42-4-admin-group-governance: backlog  # NEXT E42 story. Additive-only (admin tag-group governance + reuse POST /tags/merge); no category coupling; may enter create-story now in parallel with the correct-course edit. E42 CLOSES after this story is done.
+  42-5-model-create-patch-share-dto-drop-category: backlog  # SUPERSEDED / RELOCATED → 47-5 by bmad-correct-course 2026-07-19 (same SCP). Kept as historical backlog key (not deleted). DTO drop is irreducibly atomic with the ORM + 0019_drop_category removal (one commit; TB-053). Do NOT dev this key. See 47-5-category-orm-dto-0019-atomic-cutover.
   epic-42-retrospective: optional
   epic-43: backlog
   43-1-api-types: backlog
@@ -329,31 +329,33 @@ development_status:
   46-2-rename-merge-move: backlog
   46-3-duplicate-detection: backlog
   epic-46-retrospective: optional
-  epic-47: backlog
+  epic-47: backlog  # 2026-07-19 correct-course: E47 also owns the relocated terminal category retirement (47.4 + 47.5). Live category API is the zero-code compatibility bridge until then.
   47-1-i18n: backlog
   47-2-visual-specs: backlog
   47-3-runbook-docs-cutover: backlog
+  47-4-category-api-surface-retirement: backlog  # RELOCATED from 42.3 by bmad-correct-course 2026-07-19. Category route/service/route-only-schema removal; reversible by code revert; after all GET /api/categories consumers gone. Not implementation-ready — bmad-create-story runs at 47.4's turn.
+  47-5-category-orm-dto-0019-atomic-cutover: backlog  # RELOCATED from 42.5 + orphaned ORM/0019 drop (TB-053) by bmad-correct-course 2026-07-19. ONE atomic commit: ModelCreate/Patch/Summary.category(_id) + ModelDetail.category + CategorySummary + ShareModelView.category + class Category + Model.category_id + 0019_drop_category (down_revision=0018_facet_tags, forward-only). Same main HEAD deploy as 45.3 selector removal. DESTRUCTIVE-GO DEFERRED to dev-go (verified pre-0019 .190 DB backup required). Not implementation-ready.
   epic-47-retrospective: optional
 
 # Action items surfaced by epic retrospectives. Source: epic-<N>-retro-*.md.
 action_items:
   - epic: 41
-    action: "Assign 0019_drop_category (forward-only destructive DDL) to the E42 ORM-removal story; must land in the SAME migration/commit as removal of class Category + Model.category_id from _entities.py. Never on main ahead of the ORM/app Category removal."
-    owner: "E42 sprint-planning / create-story"
-    status: open
+    action: "Assign 0019_drop_category (forward-only destructive DDL) to the ORM-removal story; must land in the SAME migration/commit as removal of class Category + Model.category_id from _entities.py. Never on main ahead of the ORM/app Category removal."
+    owner: "47.5 (category-orm-dto-0019-atomic-cutover)"  # concrete owner assigned 2026-07-19 by bmad-correct-course (SCP sprint-change-proposal-2026-07-19-e42-deferred-coupled-cutover.md); closes TB-053; destructive-go DEFERRED to 47.5 dev-go
+    status: open  # owner now concrete; work still open until 47.5 delivers
   # DEFER_41_3 action item removed 2026-07-19: decision reversed and discharged — 41.3 shipped in E41 (commit cf2ca46), so there is no deferred starter-taxonomy work to track.
   - epic: 41
-    action: "Add a full ORM-to-migration parity test (compare_metadata / autogenerate diff) at the E42 cut-over, discharging the drift-guard carried since 41.1."
-    owner: "E42 cut-over story"
+    action: "Add a full ORM-to-migration parity test (compare_metadata / autogenerate diff) at the category cut-over, discharging the drift-guard carried since 41.1."
+    owner: "47.5 (category-orm-dto-0019-atomic-cutover)"  # concrete owner assigned 2026-07-19 by bmad-correct-course (parity test lands in the atomic 0019 commit)
     status: open
   - epic: 41
     action: "Evaluate an index on tag.group_id when group-scoped queries appear (intentionally unindexed in 41.1)."
-    owner: "E42 42.1 / 42.2"
+    owner: "42.4 (evaluate if admin group-scoped queries need it)"  # 42.1/42.2 done without needing it; re-point to remaining additive story 2026-07-19
     status: open
   - epic: 41
     action: "Classify E42 migrations additive vs. destructive up front and couple destructive DDL to its ORM-removal story at planning time, so an unsafe forward-only sequence never reaches a story spec."
     owner: "E42 sprint-planning"
-    status: open
+    status: done  # DISCHARGED 2026-07-19 by bmad-correct-course (SCP sprint-change-proposal-2026-07-19-e42-deferred-coupled-cutover.md): 0018_facet_tags classified additive (shipped E41), 0019_drop_category classified destructive/forward-only and coupled to the ORM removal in the atomic 47.5 story before any spec is created
   - epic: 41
     action: "Trust the epic completion check: do not mark an epic done while any story is non-done without an explicit operator scope decision recorded first (guards against the 2026-07-18 premature E41 closeout recurring)."
     owner: "retrospective / sprint-planning facilitation"

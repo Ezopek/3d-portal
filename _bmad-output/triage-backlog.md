@@ -14,7 +14,9 @@
 
 ### TB-055 — architecture.md §3211 (Init 25 Decision AW) mislabels authenticated SoT reads as "public" + wrong `_PUBLIC_ROUTES` claim
 
-**Status:** open — documentation-correction candidate for a `bmad-correct-course` / `bmad-architecture` Update pass. Not code work.
+**Status:** resolved 2026-07-19 — the §3211 "Default-deny auth posture" paragraph was corrected in `_bmad-output/planning-artifacts/architecture.md` (Decision AW) by the E42 `bmad-correct-course` APPLY pass (SCP `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-19-e42-deferred-coupled-cutover.md`). The prose now states the SoT catalog reads (`GET /api/models`/`/api/tags`/`/api/tag-groups`) are **authenticated default-deny (`current_user`, any role), outside `_PUBLIC_ROUTES`**, that category-route removal needs **no** allowlist edit, and that no Init 25 read is anonymous (with the correct general-rule caveat retained). The AW Update block + the top "Last updated" marker also record it. Doc-only; no code was ever owed. **Prior status preserved below for history.**
+
+**Prior status:** open — documentation-correction candidate for a `bmad-correct-course` / `bmad-architecture` Update pass. Not code work.
 **Type:** planning-artifact drift (architecture doc contradicts live code). Resolved code-first in-story; filed here per AGENTS.md ("code-grounded drifts encoded in-story + filed, not escalated").
 **Surfaced:** 2026-07-19, during native `bmad-create-story` for Story 42.2 (tags + tag-groups read API), auth-posture contract question.
 **Priority:** P3 (doc-only; no runtime effect — the code and story already do the right thing).
@@ -78,7 +80,9 @@ Both are pre-existing repo hygiene, unrelated to 42.1's ACs. Story 42.1 stays `r
 
 ### TB-053 — E42 destructive-removal story ownership gap (`class Category` + `Model.category_id` drop + Alembic `0019_drop_category`)
 
-**Status:** candidate (surfaced 2026-07-19 during `bmad-create-story:validate` of Story 42.1; awaiting E42 sprint-planning/create-story assignment)
+**Status:** promoted 2026-07-19 — owner assigned to **Story 47.5** (`47-5-category-orm-dto-0019-atomic-cutover`) by the E42 `bmad-correct-course` APPLY pass (SCP `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-19-e42-deferred-coupled-cutover.md`; `epics.md` §E47 Story 47.5; `sprint-status.yaml` `47-5-…` key + E41 `action_items` items #1/#2 re-pointed to 47.5). The orphaned ORM `class Category` + `Model.category_id` drop + `0019_drop_category` (`down_revision = "0018_facet_tags"`, forward-only) + the `ModelSummary.category_id`/`ModelDetail.category`/`CategorySummary` response-schema removal are all coupled into the **one atomic 47.5 commit**, per E41 retro action item #1. **NOT closed until 47.5 delivers** (destructive-go DEFERRED to 47.5 dev-go, verified pre-`0019` `.190` DB backup required). Ownership gap closed; implementation still owed. **Prior status preserved below for history.**
+
+**Prior status:** candidate (surfaced 2026-07-19 during `bmad-create-story:validate` of Story 42.1; awaiting E42 sprint-planning/create-story assignment)
 **Surfaced:** 2026-07-19, Story 42.1 validation (`_bmad-output/implementation-artifacts/42-1-models-facet-filtering.md` → Validation Record, concern #6)
 **Flag count:** 1
 **Priority:** P2 (must be resolved before the E42 removal story starts; not a 42.1 blocker)
