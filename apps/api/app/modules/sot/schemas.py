@@ -8,7 +8,7 @@ so they can be built directly from SQLModel rows.
 import datetime
 import uuid
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_serializer
 
 
 class _OrmBase(BaseModel):
@@ -37,6 +37,56 @@ class TagRead(_OrmBase):
     slug: str
     name_en: str
     name_pl: str | None
+    # Initiative 25 (Story 42.2) — facet membership, read straight off the Tag
+    # ORM columns (zero query cost via from_attributes). Additive: existing
+    # consumers ignore the new keys, and because ModelSummary/ModelDetail embed
+    # TagRead these two fields also appear on every model response (intended,
+    # FR25-DETAIL-1). The human group label/slug is NOT embedded here — it is
+    # delivered authoritatively by GET /api/tag-groups (D-SHAPE-1).
+    group_id: uuid.UUID | None
+    group_position: int
+
+
+class TagListItem(TagRead):
+    """Standalone GET /api/tags item — TagRead plus an OPT-IN model_count.
+
+    Story 42.2 D-RESPONSEMODEL-1: model_count is present only when the caller
+    passes ?with_counts=true. The wrap serializer drops the key when it is
+    None so the count-free shape carries no model_count key, while genuine
+    null fields (group_id / name_pl) are preserved. Declared with a concrete
+    optional-int field (not response_model=None) so OpenAPI advertises an
+    honest named component.
+    """
+
+    model_count: int | None = None
+
+    @model_serializer(mode="wrap")
+    def _drop_none_count(self, handler):
+        data = handler(self)
+        if data.get("model_count") is None:
+            data.pop("model_count", None)
+        return data
+
+
+class TagReadWithCount(TagRead):
+    """TagRead with a REQUIRED model_count — used by GET /api/tag-groups where
+    the count is always computed (distinct from TagListItem's optional count)."""
+
+    model_count: int
+
+
+class TagGroupRead(_OrmBase):
+    id: uuid.UUID
+    slug: str
+    name_en: str
+    name_pl: str | None
+    position: int
+    tags: list[TagReadWithCount]
+
+
+class TagGroupsResponse(BaseModel):
+    groups: list[TagGroupRead]
+    groupless: list[TagReadWithCount]
 
 
 class ModelFileRead(_OrmBase):

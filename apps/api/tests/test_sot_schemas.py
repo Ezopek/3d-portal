@@ -1,6 +1,7 @@
 import uuid
 
 import pytest
+from pydantic import ValidationError
 from sqlmodel import Session
 
 from app.core.db.models import (
@@ -16,6 +17,7 @@ from app.core.db.models import (
     ModelStatus,
     NoteKind,
     Tag,
+    TagGroup,
 )
 from app.core.db.session import create_engine_for_url, init_schema
 from app.modules.sot.schemas import (
@@ -29,7 +31,11 @@ from app.modules.sot.schemas import (
     ModelSummary,
     NoteRead,
     PrintRead,
+    TagGroupRead,
+    TagGroupsResponse,
+    TagListItem,
     TagRead,
+    TagReadWithCount,
 )
 
 
@@ -51,6 +57,103 @@ def test_tag_read_from_orm(engine):
         assert schema.slug == "dragon"
         assert schema.name_pl == "Smok"
         assert isinstance(schema.id, uuid.UUID)
+        # Story 42.2 — facet membership fields round-trip (groupless defaults).
+        assert schema.group_id is None
+        assert schema.group_position == 0
+
+
+def test_tag_read_from_orm_with_group(engine):
+    """Story 42.2 — group_id + group_position read from ORM columns (AC #1)."""
+    with Session(engine) as session:
+        g = TagGroup(slug="material", name_en="Material", position=1)
+        session.add(g)
+        session.commit()
+        session.refresh(g)
+        t = Tag(slug="pla", name_en="PLA", group_id=g.id, group_position=3)
+        session.add(t)
+        session.commit()
+        session.refresh(t)
+        schema = TagRead.model_validate(t)
+        assert schema.group_id == g.id
+        assert schema.group_position == 3
+
+
+def test_tag_list_item_drops_model_count_when_none():
+    """Story 42.2 — TagListItem omits model_count only when None; keeps null
+    group_id / name_pl (D-RESPONSEMODEL-1)."""
+    no_count = TagListItem(
+        id=uuid.uuid4(), slug="a", name_en="A", name_pl=None, group_id=None, group_position=0
+    )
+    dumped = no_count.model_dump()
+    assert "model_count" not in dumped
+    assert dumped["group_id"] is None
+    assert dumped["name_pl"] is None
+
+    with_count = TagListItem(
+        id=uuid.uuid4(),
+        slug="b",
+        name_en="B",
+        name_pl="Be",
+        group_id=None,
+        group_position=0,
+        model_count=0,
+    )
+    # count of 0 is a real value and must be kept.
+    assert with_count.model_dump()["model_count"] == 0
+
+
+def test_tag_read_with_count_requires_count():
+    """Story 42.2 — TagReadWithCount carries a required int model_count (AC #4)."""
+    item = TagReadWithCount(
+        id=uuid.uuid4(),
+        slug="c",
+        name_en="C",
+        name_pl=None,
+        group_id=None,
+        group_position=0,
+        model_count=7,
+    )
+    assert item.model_count == 7
+    with pytest.raises(ValidationError):
+        TagReadWithCount(
+            id=uuid.uuid4(),
+            slug="d",
+            name_en="D",
+            name_pl=None,
+            group_id=None,
+            group_position=0,
+        )
+
+
+def test_tag_group_read_and_envelope_shape():
+    """Story 42.2 — TagGroupRead nests TagReadWithCount; envelope has
+    groups + groupless (AC #4)."""
+    gid = uuid.uuid4()
+    tag = TagReadWithCount(
+        id=uuid.uuid4(),
+        slug="pla",
+        name_en="PLA",
+        name_pl=None,
+        group_id=gid,
+        group_position=0,
+        model_count=2,
+    )
+    group = TagGroupRead(
+        id=gid, slug="material", name_en="Material", name_pl=None, position=0, tags=[tag]
+    )
+    lone = TagReadWithCount(
+        id=uuid.uuid4(),
+        slug="wip",
+        name_en="WIP",
+        name_pl=None,
+        group_id=None,
+        group_position=0,
+        model_count=0,
+    )
+    resp = TagGroupsResponse(groups=[group], groupless=[lone])
+    assert resp.groups[0].tags[0].model_count == 2
+    assert resp.groupless[0].group_id is None
+    assert set(resp.model_dump().keys()) == {"groups", "groupless"}
 
 
 def test_category_node_recursive_shape():

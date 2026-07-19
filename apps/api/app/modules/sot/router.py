@@ -28,7 +28,8 @@ from app.modules.sot.schemas import (
     FileListResponse,
     ModelDetail,
     ModelListResponse,
-    TagRead,
+    TagGroupsResponse,
+    TagListItem,
 )
 from app.modules.sot.service import (
     ModelListSort,
@@ -37,6 +38,7 @@ from app.modules.sot.service import (
     list_categories_tree,
     list_model_files,
     list_models,
+    list_tag_groups,
     list_tags,
 )
 
@@ -64,22 +66,59 @@ def get_categories(
 
 @router.get(
     "/tags",
-    summary="List global tags (optional fuzzy search)",
+    summary="List global tags (optional fuzzy search, opt-in per-tag counts)",
     description=(
         "Returns up to `limit` tags, optionally filtered by substring match against "
         "`q` over `slug`/`name_en`/`name_pl`. Default `limit=50`, max `limit=200`. "
-        "Requires authenticated user (any role: admin / member / agent). Initiative 6 "
-        "default-deny posture (architecture.md § Initiative 6 Decision M)."
+        "Each item carries the base key set `{id, slug, name_en, name_pl, group_id, "
+        "group_position}` — `group_id` is the tag's facet-group FK (null for groupless "
+        "tags) and `group_position` its intra-group order; the human group label is "
+        "delivered by `GET /api/tag-groups`, not embedded here (Initiative 25). "
+        "**`with_counts`** (default false): when `true`, each item additionally carries "
+        "`model_count` (integer) = the number of distinct non-deleted models carrying "
+        "that tag; when false the `model_count` key is **absent** (genuine null fields "
+        "such as `group_id`/`name_pl` are still present). `with_counts` composes with "
+        "`q` and `limit`. Requires authenticated user (any role: admin / member / "
+        "agent). Initiative 6 default-deny posture (architecture.md § Initiative 6 "
+        "Decision M)."
     ),
-    response_model=list[TagRead],
+    response_model=list[TagListItem],
 )
 def get_tags(
     session: Annotated[Session, Depends(get_session)],
     q: str | None = None,
     limit: int = Query(default=50, ge=1, le=200),
+    with_counts: bool = False,
     _user_id: uuid.UUID = current_user,
-) -> list[TagRead]:
-    return list_tags(session, q=q, limit=limit)
+) -> list[TagListItem]:
+    return list_tags(session, q=q, limit=limit, with_counts=with_counts)
+
+
+@router.get(
+    "/tag-groups",
+    summary="List facet tag-groups with their tags and per-tag model counts",
+    description=(
+        "Returns the facet taxonomy in one round-trip as `{groups, groupless}` "
+        "(Initiative 25, Story 42.2). `groups` is every `TagGroup` — **including empty "
+        "groups**, returned with `tags: []` — ordered by `(position, slug)`; each group "
+        "is `{id, slug, name_en, name_pl, position, tags}` where `tags` is ordered "
+        "`(group_position, slug)` and each tag carries a required `model_count` "
+        "(distinct non-deleted models). `groupless` is every tag with `group_id IS "
+        "NULL` (the single 'Inne' pseudo-facet the sidebar renders), same tag shape and "
+        "ordering. Note: `groupless` is about tags without a facet group — it is "
+        "unrelated to *untagged models* (`GET /api/models?untagged=true`). All groups "
+        "and tags are live (neither entity has a lifecycle/hidden flag). Counts are "
+        "identical to `GET /api/tags?with_counts=true` by construction (shared helper). "
+        "Requires authenticated user (any role: admin / member / agent). Initiative 6 "
+        "default-deny posture (architecture.md § Initiative 6 Decision M)."
+    ),
+    response_model=TagGroupsResponse,
+)
+def get_tag_groups(
+    session: Annotated[Session, Depends(get_session)],
+    _user_id: uuid.UUID = current_user,
+) -> TagGroupsResponse:
+    return list_tag_groups(session)
 
 
 @router.get(

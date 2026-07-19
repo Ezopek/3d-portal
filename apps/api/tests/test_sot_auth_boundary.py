@@ -127,6 +127,13 @@ def test_sot_tags_anonymous_returns_401(client):
     assert r.status_code == 401
 
 
+def test_sot_tag_groups_anonymous_returns_401(client):
+    # Story 42.2 — new GET /api/tag-groups stays outside _PUBLIC_ROUTES (AC #6/#7).
+    _clear_cookie(client)
+    r = client.get("/api/tag-groups")
+    assert r.status_code == 401
+
+
 def test_sot_models_list_anonymous_returns_401(client):
     _clear_cookie(client)
     r = client.get("/api/models")
@@ -171,6 +178,12 @@ def test_sot_tags_agent_authenticated_returns_200(client):
     assert r.status_code == 200, r.text
 
 
+def test_sot_tag_groups_agent_authenticated_returns_200(client):
+    _mint_cookie(client, "agent")
+    r = client.get("/api/tag-groups")
+    assert r.status_code == 200, r.text
+
+
 def test_sot_models_list_agent_authenticated_returns_200(client):
     _mint_cookie(client, "agent")
     r = client.get("/api/models")
@@ -212,6 +225,18 @@ def test_sot_categories_member_authenticated_returns_200(client):
 def test_sot_tags_member_authenticated_returns_200(client):
     _mint_cookie(client, "member")
     r = client.get("/api/tags")
+    assert r.status_code == 200, r.text
+
+
+def test_sot_tag_groups_member_authenticated_returns_200(client):
+    _mint_cookie(client, "member")
+    r = client.get("/api/tag-groups")
+    assert r.status_code == 200, r.text
+
+
+def test_sot_tag_groups_admin_authenticated_returns_200(client):
+    _mint_cookie(client, "admin")
+    r = client.get("/api/tag-groups")
     assert r.status_code == 200, r.text
 
 

@@ -1,3 +1,4 @@
+import datetime
 import uuid
 
 import pytest
@@ -5,7 +6,7 @@ from sqlmodel import Session
 
 from app.core.auth.cookies import ACCESS_COOKIE
 from app.core.auth.jwt import encode_token
-from app.core.db.models import Tag
+from app.core.db.models import Category, Model, ModelStatus, ModelTag, Tag, TagGroup
 from app.core.db.session import get_engine
 
 
@@ -83,3 +84,163 @@ def test_get_tags_default_limit_is_200(client):
     assert r.status_code == 200
     r2 = client.get("/api/tags?limit=201")
     assert r2.status_code == 422  # over max
+
+
+# --- Story 42.2 — facet membership fields (AC #1/#2) -----------------------
+
+
+def test_get_tags_includes_group_fields(client):
+    """Every tag item carries group_id + group_position (additive, AC #1/#2)."""
+    engine = get_engine()
+    with Session(engine) as s:
+        g = TagGroup(slug=f"tg-fields-grp-{uuid.uuid4().hex[:6]}", name_en="Grp", position=2)
+        s.add(g)
+        s.commit()
+        s.refresh(g)
+        grouped = Tag(
+            slug=f"tg-grouped-{uuid.uuid4().hex[:6]}",
+            name_en="Grouped",
+            group_id=g.id,
+            group_position=5,
+        )
+        groupless = Tag(slug=f"tg-groupless-{uuid.uuid4().hex[:6]}", name_en="Solo", name_pl=None)
+        s.add(grouped)
+        s.add(groupless)
+        s.commit()
+        gid = str(g.id)
+        grouped_slug, groupless_slug = grouped.slug, groupless.slug
+
+    body = client.get("/api/tags?limit=200").json()
+    by_slug = {t["slug"]: t for t in body}
+
+    gt = by_slug[grouped_slug]
+    assert gt["group_id"] == gid
+    assert gt["group_position"] == 5
+
+    ut = by_slug[groupless_slug]
+    # groupless tag: group_id present as explicit null; name_pl null preserved
+    assert "group_id" in ut and ut["group_id"] is None
+    assert "name_pl" in ut and ut["name_pl"] is None
+    assert ut["group_position"] == 0
+
+
+def test_get_tags_no_counts_omits_model_count_key(client):
+    """Without with_counts, NO item carries a model_count key (AC #2)."""
+    engine = get_engine()
+    with Session(engine) as s:
+        s.add(Tag(slug=f"tg-nocount-{uuid.uuid4().hex[:6]}", name_en="NoCount"))
+        s.commit()
+
+    body = client.get("/api/tags?limit=200").json()
+    assert body, "expected at least one tag"
+    for item in body:
+        assert "model_count" not in item
+
+
+def test_get_tags_with_counts_includes_int_model_count(client):
+    """with_counts=true adds model_count = distinct non-deleted models (AC #3)."""
+    engine = get_engine()
+    with Session(engine) as s:
+        cat = Category(slug=f"cat-tgc-{uuid.uuid4().hex[:6]}", name_en="C")
+        s.add(cat)
+        s.commit()
+        s.refresh(cat)
+        tag = Tag(slug=f"tg-wc-{uuid.uuid4().hex[:6]}", name_en="WithCount")
+        s.add(tag)
+        s.commit()
+        s.refresh(tag)
+        for _ in range(2):
+            m = Model(
+                slug=f"m-{uuid.uuid4().hex[:10]}",
+                name_en="M",
+                category_id=cat.id,
+                status=ModelStatus.not_printed,
+            )
+            s.add(m)
+            s.commit()
+            s.refresh(m)
+            s.add(ModelTag(model_id=m.id, tag_id=tag.id))
+            s.commit()
+        tag_slug = tag.slug
+
+    body = client.get("/api/tags?with_counts=true&limit=200").json()
+    item = next(t for t in body if t["slug"] == tag_slug)
+    assert item["model_count"] == 2
+    assert isinstance(item["model_count"], int)
+
+
+def test_get_tags_with_counts_excludes_soft_deleted(client):
+    engine = get_engine()
+    with Session(engine) as s:
+        cat = Category(slug=f"cat-tgd-{uuid.uuid4().hex[:6]}", name_en="C")
+        s.add(cat)
+        s.commit()
+        s.refresh(cat)
+        tag = Tag(slug=f"tg-del-{uuid.uuid4().hex[:6]}", name_en="Del")
+        s.add(tag)
+        s.commit()
+        s.refresh(tag)
+        live = Model(
+            slug=f"m-{uuid.uuid4().hex[:10]}",
+            name_en="Live",
+            category_id=cat.id,
+            status=ModelStatus.not_printed,
+        )
+        dead = Model(
+            slug=f"m-{uuid.uuid4().hex[:10]}",
+            name_en="Dead",
+            category_id=cat.id,
+            status=ModelStatus.not_printed,
+            deleted_at=datetime.datetime.now(datetime.UTC),
+        )
+        s.add(live)
+        s.add(dead)
+        s.commit()
+        s.refresh(live)
+        s.refresh(dead)
+        s.add(ModelTag(model_id=live.id, tag_id=tag.id))
+        s.add(ModelTag(model_id=dead.id, tag_id=tag.id))
+        s.commit()
+        tag_slug = tag.slug
+
+    body = client.get("/api/tags?with_counts=true&limit=200").json()
+    item = next(t for t in body if t["slug"] == tag_slug)
+    assert item["model_count"] == 1  # soft-deleted model excluded
+
+
+def test_get_tags_with_counts_zero_for_unused_tag(client):
+    engine = get_engine()
+    with Session(engine) as s:
+        tag = Tag(slug=f"tg-unused-{uuid.uuid4().hex[:6]}", name_en="Unused")
+        s.add(tag)
+        s.commit()
+        tag_slug = tag.slug
+
+    body = client.get("/api/tags?with_counts=true&limit=200").json()
+    item = next(t for t in body if t["slug"] == tag_slug)
+    assert item["model_count"] == 0
+
+
+def test_get_tags_openapi_response_schema_is_honest(client):
+    """AC #9 — the 200 response schema is a non-empty named component, and
+    model_count is advertised as an OPTIONAL integer. Regression guard proving
+    response_model=None (empty `schema: {}`) was NOT used (D-RESPONSEMODEL-1)."""
+    spec = client.get("/api/openapi.json").json()
+    op = spec["paths"]["/api/tags"]["get"]
+    schema = op["responses"]["200"]["content"]["application/json"]["schema"]
+    assert schema != {}
+    assert schema.get("type") == "array"
+    ref = schema["items"].get("$ref", "")
+    assert ref.endswith("/TagListItem"), ref
+
+    comp = spec["components"]["schemas"]["TagListItem"]
+    props = comp["properties"]
+    assert "model_count" in props
+    assert "model_count" not in comp.get("required", [])  # optional
+
+    def _types(node):
+        if "type" in node:
+            return {node["type"]}
+        return {sub.get("type") for sub in node.get("anyOf", [])}
+
+    assert "integer" in _types(props["model_count"])

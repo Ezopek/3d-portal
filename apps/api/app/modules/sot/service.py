@@ -24,6 +24,7 @@ from app.core.db.models import (
     ModelStatus,
     ModelTag,
     Tag,
+    TagGroup,
 )
 from app.modules.sot.schemas import (
     CategoryNode,
@@ -37,7 +38,11 @@ from app.modules.sot.schemas import (
     ModelSummary,
     NoteRead,
     PrintRead,
+    TagGroupRead,
+    TagGroupsResponse,
+    TagListItem,
     TagRead,
+    TagReadWithCount,
 )
 
 
@@ -119,13 +124,42 @@ def list_categories_tree(session: Session) -> CategoryTree:
     return CategoryTree(roots=roots)
 
 
+def _tag_model_counts(session: Session) -> dict[uuid.UUID, int]:
+    """Distinct non-deleted models per tag (Story 42.2 D-COUNT-1).
+
+    One GROUP BY over model_tag joined to model, filtered to live rows
+    (`Model.deleted_at IS NULL`) — mirrors the list_categories_tree count
+    scope. Hits the ix_model_tag_tag_model covering index. ModelTag's
+    composite PK (model_id, tag_id) means each row is a distinct model per
+    tag, so func.count() is the distinct-model count without DISTINCT. No
+    N+1: one query feeds both /api/tags?with_counts and /api/tag-groups.
+    """
+    rows = session.exec(
+        select(ModelTag.tag_id, func.count())
+        .select_from(ModelTag)
+        .join(Model, Model.id == ModelTag.model_id)
+        .where(Model.deleted_at.is_(None))
+        .group_by(ModelTag.tag_id)
+    ).all()
+    return {tag_id: n for tag_id, n in rows}
+
+
 def list_tags(
     session: Session,
     *,
     q: str | None = None,
     limit: int = 200,
-) -> list[TagRead]:
-    """Return tags ordered by slug, optionally filtered by q in name_en/name_pl/slug."""
+    with_counts: bool = False,
+) -> list[TagListItem]:
+    """Return tags ordered by slug, optionally filtered by q in name_en/name_pl/slug.
+
+    Each item is a TagListItem: the enriched TagRead shape (incl. group_id /
+    group_position) plus an opt-in model_count. When with_counts is False the
+    count stays None and the TagListItem serializer omits the key entirely;
+    when True, one aggregate query (`_tag_model_counts`) attaches the
+    distinct-non-deleted-model count to whichever tags the q/limit filter
+    returned (Story 42.2 AC #2/#3).
+    """
     stmt = select(Tag)
     if q:
         like = f"%{q.lower()}%"
@@ -139,7 +173,67 @@ def list_tags(
         )
     stmt = stmt.order_by(Tag.slug).limit(limit)
     rows = list(session.exec(stmt).all())
-    return [TagRead.model_validate(r) for r in rows]
+    counts = _tag_model_counts(session) if with_counts else {}
+    items: list[TagListItem] = []
+    for r in rows:
+        item = TagListItem.model_validate(r)
+        if with_counts:
+            item.model_count = counts.get(r.id, 0)
+        items.append(item)
+    return items
+
+
+def list_tag_groups(session: Session) -> TagGroupsResponse:
+    """Return the facet taxonomy: {groups, groupless} with per-tag counts.
+
+    Story 42.2 (D-ENVELOPE-1). Exactly three reads regardless of cardinality
+    (all TagGroup rows, all Tag rows, one `_tag_model_counts` aggregate);
+    groups/tags are bucketed in Python (no per-group query, no N+1). Groups
+    are ordered `(position, slug)` and include empty groups (`tags: []`);
+    within a group tags are ordered `(group_position, slug)`. Tags with
+    `group_id IS NULL` are returned in the sibling `groupless` array (same
+    ordering), each carrying model_count. No lifecycle filtering — neither
+    Tag nor TagGroup has a soft-delete/hidden column (D-LIFECYCLE-1).
+    """
+    groups = list(session.exec(select(TagGroup)).all())
+    tags = list(session.exec(select(Tag)).all())
+    counts = _tag_model_counts(session)
+
+    def _with_count(t: Tag) -> TagReadWithCount:
+        return TagReadWithCount(
+            id=t.id,
+            slug=t.slug,
+            name_en=t.name_en,
+            name_pl=t.name_pl,
+            group_id=t.group_id,
+            group_position=t.group_position,
+            model_count=counts.get(t.id, 0),
+        )
+
+    def _tag_sort_key(t: Tag) -> tuple[int, str]:
+        return (t.group_position, t.slug)
+
+    tags_by_group: dict[uuid.UUID, list[Tag]] = {}
+    groupless_tags: list[Tag] = []
+    for t in tags:
+        if t.group_id is None:
+            groupless_tags.append(t)
+        else:
+            tags_by_group.setdefault(t.group_id, []).append(t)
+
+    group_reads = [
+        TagGroupRead(
+            id=g.id,
+            slug=g.slug,
+            name_en=g.name_en,
+            name_pl=g.name_pl,
+            position=g.position,
+            tags=[_with_count(t) for t in sorted(tags_by_group.get(g.id, []), key=_tag_sort_key)],
+        )
+        for g in sorted(groups, key=lambda g: (g.position, g.slug))
+    ]
+    groupless = [_with_count(t) for t in sorted(groupless_tags, key=_tag_sort_key)]
+    return TagGroupsResponse(groups=group_reads, groupless=groupless)
 
 
 def list_models(
