@@ -1,5 +1,5 @@
 generated: 2026-05-09
-last_updated: 2026-07-19  # Story 42.2 tags-tag-groups-read-api → ready-for-dev (create-story)
+last_updated: 2026-07-19  # Story 42.2 tags-tag-groups-read-api → review (dev-story)
 project: 3d-portal
 project_key: NOKEY
 tracking_system: file-system
@@ -304,7 +304,7 @@ development_status:
   epic-41-retrospective: done  # 2026-07-19 FINAL retro run at true E41 close (all 3 stories done). Converted the prior superseded-partial artifact into the truthful final retrospective. See epic-41-retro-2026-07-18.md
   epic-42: in-progress  # 2026-07-19 opened for 42.1 (first story ready-for-dev)
   42-1-models-facet-filtering: done  # 2026-07-19 native BMAD + Aider APPROVE; TB-054 gate debt resolved/deployed first; rebased commit 0d9c2d4; backend 3x 1694p/3s; full check-all 16/16 all green (visual 464p/24s). Ready for controller ff-merge/push/deploy.
-  42-2-tags-tag-groups-read-api: ready-for-dev  # 2026-07-19 native bmad-create-story + independent bmad-create-story:validate (PASS: 0 critical / 1 important / 3 minor, all resolved in-story). All 8 contract questions resolved code-first (D-SHAPE/COUNT/ENVELOPE/UNTAGGED/AUTH/LIFECYCLE/CONSISTENCY-1) + D-RESPONSEMODEL-1 (probe-validated response_model=list[TagListItem] + drop-when-None serializer; response_model=None rejected — empty OpenAPI schema). Read APIs only: GET /api/tags +group_id/group_position/?with_counts, new GET /api/tag-groups. Auth stays current_user outside _PUBLIC_ROUTES (arch §3211 "public" mislabel filed to triage TB-055). No migration/frontend/category-removal.
+  42-2-tags-tag-groups-read-api: done  # 2026-07-19 native BMAD + Aider APPROVE; implementation 3cf5a4b; focused 56p; backend 3x 1718p/3s; full check-all 16/16 all green (visual 464p/24s). Auth default-deny, honest TagListItem OpenAPI, constant-query no-N+1 proven; TB-055 tracks architecture auth-doc drift. Ready for ff-merge/push/deploy.
   42-3-category-endpoint-removal: backlog
   42-4-admin-group-governance: backlog
   42-5-model-create-patch-share-dto-drop-category: backlog

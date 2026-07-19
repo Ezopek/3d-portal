@@ -1,6 +1,9 @@
+---
+baseline_commit: 6a6a1163425d50447317c2eb4733dd13b7a7d0e4
+---
 # Story 42.2: Tags + tag-groups read API
 
-Status: ready-for-dev
+Status: done
 
 <!-- Authored + self-validated 2026-07-19 via native bmad-help → bmad-sprint-status → bmad-create-story (Claude author; Laura controller). All eight controller contract questions resolved code-first against approved sources + live code; no dev-start open questions remain. See "## Resolved Decisions" and "## Validation Record". -->
 
@@ -45,31 +48,31 @@ Traces: **FR25-TAX-1**, **FR25-BROWSE-1**, **FR25-DETAIL-1**; **NFR25-DETERMINIS
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Schemas: enrich `TagRead`, add `TagReadWithCount`, `TagGroupRead`, `TagGroupsResponse`** (`apps/api/app/modules/sot/schemas.py`) (AC: #1, #2, #3, #4)
-  - [ ] Add `group_id: uuid.UUID | None` and `group_position: int` to `TagRead` (keep it `from_attributes`; order fields after `name_pl`).
-  - [ ] Add `class TagListItem(TagRead)` — the **conditional-count** item for `GET /api/tags`: `model_count: int | None = None` **plus** a `@model_serializer(mode="wrap")` that pops `model_count` from the dumped dict **only when it is `None`** (so `with_counts=false` items have no `model_count` key, while `group_id: null` / `name_pl: null` are preserved). See D-RESPONSEMODEL-1 in Dev Notes for why this beats `response_model=None` and `response_model_exclude_none=True` (both probe-falsified). Import `model_serializer` from `pydantic`.
-  - [ ] Add `class TagReadWithCount(TagRead): model_count: int` (subclass, **required** count — used by `GET /api/tag-groups` where the count is always present; distinct from `TagListItem`'s optional count). The base `TagRead` embedded in models stays count-free.
-  - [ ] Add `class TagGroupRead(_OrmBase): id: uuid.UUID; slug: str; name_en: str; name_pl: str | None; position: int; tags: list[TagReadWithCount]`.
-  - [ ] Add `class TagGroupsResponse(BaseModel): groups: list[TagGroupRead]; groupless: list[TagReadWithCount]`.
-- [ ] **Task 2 — Service: count helper + `list_tags(with_counts)` + `list_tag_groups`** (`apps/api/app/modules/sot/service.py`) (AC: #3, #4, #5, #8)
-  - [ ] Add `_tag_model_counts(session) -> dict[uuid.UUID, int]` — the single `GROUP BY` query (D-COUNT-1); import `Model`/`ModelTag` are already imported; `func` already imported.
-  - [ ] Extend `list_tags(session, *, q=None, limit=50, with_counts=False) -> list[TagListItem]` — keep the current query/order/filter; build `TagListItem` items either way (so the route's `response_model=list[TagListItem]` matches). When `with_counts`, fetch `_tag_model_counts` once and set `model_count = counts.get(tag.id, 0)`; when not, leave `model_count` unset (`None`) so the serializer drops the key. (`TagRead` embedded in models is untouched — only the standalone `/api/tags` items become `TagListItem`.) Keep the default `limit` consistent with the router (see Task 3 note on the default-50 discrepancy).
-  - [ ] Add `list_tag_groups(session) -> TagGroupsResponse`: fetch all `TagGroup` (order `position, slug`), all `Tag` (one query), `_tag_model_counts` once; bucket tags by `group_id` in Python; build `TagGroupRead` per group with tags sorted `(group_position, slug)` and `model_count` attached; include empty groups (`tags: []`); collect `group_id IS NULL` tags into `groupless` sorted `(group_position, slug)`. Return the envelope.
-- [ ] **Task 3 — Router: `with_counts` on `GET /api/tags`, new `GET /api/tag-groups`** (`apps/api/app/modules/sot/router.py`) (AC: #2, #3, #4, #6, #9)
-  - [ ] Add `with_counts: bool = False` param to `get_tags`; pass through. **Realization (D-RESPONSEMODEL-1 — probe-validated, do NOT use `response_model=None`):** declare `response_model=list[TagListItem]` and return `list[TagListItem]` from `list_tags`. `TagListItem` carries `model_count: int | None = None`; the service sets `model_count` only when `with_counts=true`, and `TagListItem`'s `@model_serializer` (Task 1) drops the key when it is `None`. This yields the exact AC #2/#3 contract (**no `model_count` key** without counts; `model_count: int` with counts; `group_id: null` and `name_pl: null` **preserved**) **and** a complete, honest OpenAPI schema (a single named `TagListItem` component with `model_count` as an optional integer). Do the `description=` documenting of `with_counts`, the base key set, and both shapes for AC #9.
-  - [ ] **Align the `list_tags` default `limit`.** The router declares `limit=Query(default=50, ...)` (`router.py:79`) but `service.py:list_tags` currently defaults `limit=200`; the router value wins in production, but `test_get_tags_default_limit_is_200` asserts the **200-boundary is the max**, not the default (it requests `?limit=200`). Do not change public behaviour — keep router default 50, service default irrelevant when called via router; only touch the service default if needed for a direct-call test. Leave the boundary test semantics intact.
-  - [ ] Add `get_tag_groups` route (`@router.get("/tag-groups", response_model=TagGroupsResponse, ...)`) with `session` + `_user_id: uuid.UUID = current_user`, full `description=` (AC #9), returning `list_tag_groups(session)`. Import the new schemas/service fn.
-- [ ] **Task 4 — Tests** (AC: #2–#8, #10)
-  - [ ] `tests/test_sot_tags.py`: extend to assert `group_id`/`group_position` keys present (with and without a group; **assert `group_id` is present as an explicit `null` for a groupless tag and `name_pl: null` is preserved** — the D-RESPONSEMODEL-1 exact-key guard against an `exclude_none`-style regression); add `with_counts=true` tests (count matches seeded associations; count excludes a soft-deleted model; count is 0 for an unused tag; `model_count` key absent when `with_counts` omitted).
-  - [ ] `tests/test_sot_tags.py`: **OpenAPI honesty test (AC #9)** — GET `/openapi.json`, assert the `GET /api/tags` 200 response schema is non-empty (references a `TagListItem` component, not `{}`) and that `model_count` is advertised as an optional integer. This is the regression guard proving `response_model=None` was not used.
-  - [ ] `tests/test_sot_tag_groups.py` (**new**): group order by `(position, slug)`; intra-group tag order by `(group_position, slug)`; empty group returned with `tags: []`; groupless tags in the `groupless` array (not under any group); per-tag `model_count` correct + non-deleted scope; envelope keys `{groups, groupless}`; a groupless tag never appears in `groups`.
-  - [ ] `tests/test_sot_tag_groups.py` cross-endpoint consistency test (AC #5): same tag's `model_count` equal from `/api/tags?with_counts=true` and `/api/tag-groups`.
-  - [ ] `tests/test_sot_tag_groups.py` **constant-query-count test (AC #8, no-N+1)**: via a `before_cursor_execute` counter, assert `GET /api/tag-groups` issues the same (bounded) number of queries for a small vs a doubled seed (cardinality-independent), and that `with_counts=true` adds exactly one aggregate query over the no-count path.
-  - [ ] `tests/test_sot_auth_boundary.py`: add `/api/tag-groups` anonymous-401 + agent/member/admin-200 (AC #7).
-  - [ ] `tests/test_sot_schemas.py`: extend `test_tag_read_from_orm` to assert `group_id`/`group_position` round-trip; add a `TagReadWithCount` / `TagGroupRead` / `TagGroupsResponse` shape test.
-- [ ] **Task 5 — Verify gates** (AC: #10)
-  - [ ] `cd apps/api && uv run ruff check . && uv run ruff format --check .` clean.
-  - [ ] Full backend suite **3× consecutive identical** green counts (`uv run pytest -q -p no:cacheprovider`). Record the pass/skip counts and per-run durations. Baseline after 42.1 = **1694 passed, 3 skipped** (~6–7 min/run); expect +N new tests, same across all three runs. `git diff --check` clean.
+- [x] **Task 1 — Schemas: enrich `TagRead`, add `TagReadWithCount`, `TagGroupRead`, `TagGroupsResponse`** (`apps/api/app/modules/sot/schemas.py`) (AC: #1, #2, #3, #4)
+  - [x] Add `group_id: uuid.UUID | None` and `group_position: int` to `TagRead` (keep it `from_attributes`; order fields after `name_pl`).
+  - [x] Add `class TagListItem(TagRead)` — the **conditional-count** item for `GET /api/tags`: `model_count: int | None = None` **plus** a `@model_serializer(mode="wrap")` that pops `model_count` from the dumped dict **only when it is `None`** (so `with_counts=false` items have no `model_count` key, while `group_id: null` / `name_pl: null` are preserved). See D-RESPONSEMODEL-1 in Dev Notes for why this beats `response_model=None` and `response_model_exclude_none=True` (both probe-falsified). Import `model_serializer` from `pydantic`.
+  - [x] Add `class TagReadWithCount(TagRead): model_count: int` (subclass, **required** count — used by `GET /api/tag-groups` where the count is always present; distinct from `TagListItem`'s optional count). The base `TagRead` embedded in models stays count-free.
+  - [x] Add `class TagGroupRead(_OrmBase): id: uuid.UUID; slug: str; name_en: str; name_pl: str | None; position: int; tags: list[TagReadWithCount]`.
+  - [x] Add `class TagGroupsResponse(BaseModel): groups: list[TagGroupRead]; groupless: list[TagReadWithCount]`.
+- [x] **Task 2 — Service: count helper + `list_tags(with_counts)` + `list_tag_groups`** (`apps/api/app/modules/sot/service.py`) (AC: #3, #4, #5, #8)
+  - [x] Add `_tag_model_counts(session) -> dict[uuid.UUID, int]` — the single `GROUP BY` query (D-COUNT-1); import `Model`/`ModelTag` are already imported; `func` already imported.
+  - [x] Extend `list_tags(session, *, q=None, limit=50, with_counts=False) -> list[TagListItem]` — keep the current query/order/filter; build `TagListItem` items either way (so the route's `response_model=list[TagListItem]` matches). When `with_counts`, fetch `_tag_model_counts` once and set `model_count = counts.get(tag.id, 0)`; when not, leave `model_count` unset (`None`) so the serializer drops the key. (`TagRead` embedded in models is untouched — only the standalone `/api/tags` items become `TagListItem`.) Keep the default `limit` consistent with the router (see Task 3 note on the default-50 discrepancy).
+  - [x] Add `list_tag_groups(session) -> TagGroupsResponse`: fetch all `TagGroup` (order `position, slug`), all `Tag` (one query), `_tag_model_counts` once; bucket tags by `group_id` in Python; build `TagGroupRead` per group with tags sorted `(group_position, slug)` and `model_count` attached; include empty groups (`tags: []`); collect `group_id IS NULL` tags into `groupless` sorted `(group_position, slug)`. Return the envelope.
+- [x] **Task 3 — Router: `with_counts` on `GET /api/tags`, new `GET /api/tag-groups`** (`apps/api/app/modules/sot/router.py`) (AC: #2, #3, #4, #6, #9)
+  - [x] Add `with_counts: bool = False` param to `get_tags`; pass through. **Realization (D-RESPONSEMODEL-1 — probe-validated, do NOT use `response_model=None`):** declare `response_model=list[TagListItem]` and return `list[TagListItem]` from `list_tags`. `TagListItem` carries `model_count: int | None = None`; the service sets `model_count` only when `with_counts=true`, and `TagListItem`'s `@model_serializer` (Task 1) drops the key when it is `None`. This yields the exact AC #2/#3 contract (**no `model_count` key** without counts; `model_count: int` with counts; `group_id: null` and `name_pl: null` **preserved**) **and** a complete, honest OpenAPI schema (a single named `TagListItem` component with `model_count` as an optional integer). Do the `description=` documenting of `with_counts`, the base key set, and both shapes for AC #9.
+  - [x] **Align the `list_tags` default `limit`.** The router declares `limit=Query(default=50, ...)` (`router.py:79`) but `service.py:list_tags` currently defaults `limit=200`; the router value wins in production, but `test_get_tags_default_limit_is_200` asserts the **200-boundary is the max**, not the default (it requests `?limit=200`). Do not change public behaviour — keep router default 50, service default irrelevant when called via router; only touch the service default if needed for a direct-call test. Leave the boundary test semantics intact.
+  - [x] Add `get_tag_groups` route (`@router.get("/tag-groups", response_model=TagGroupsResponse, ...)`) with `session` + `_user_id: uuid.UUID = current_user`, full `description=` (AC #9), returning `list_tag_groups(session)`. Import the new schemas/service fn.
+- [x] **Task 4 — Tests** (AC: #2–#8, #10)
+  - [x] `tests/test_sot_tags.py`: extend to assert `group_id`/`group_position` keys present (with and without a group; **assert `group_id` is present as an explicit `null` for a groupless tag and `name_pl: null` is preserved** — the D-RESPONSEMODEL-1 exact-key guard against an `exclude_none`-style regression); add `with_counts=true` tests (count matches seeded associations; count excludes a soft-deleted model; count is 0 for an unused tag; `model_count` key absent when `with_counts` omitted).
+  - [x] `tests/test_sot_tags.py`: **OpenAPI honesty test (AC #9)** — GET `/openapi.json`, assert the `GET /api/tags` 200 response schema is non-empty (references a `TagListItem` component, not `{}`) and that `model_count` is advertised as an optional integer. This is the regression guard proving `response_model=None` was not used.
+  - [x] `tests/test_sot_tag_groups.py` (**new**): group order by `(position, slug)`; intra-group tag order by `(group_position, slug)`; empty group returned with `tags: []`; groupless tags in the `groupless` array (not under any group); per-tag `model_count` correct + non-deleted scope; envelope keys `{groups, groupless}`; a groupless tag never appears in `groups`.
+  - [x] `tests/test_sot_tag_groups.py` cross-endpoint consistency test (AC #5): same tag's `model_count` equal from `/api/tags?with_counts=true` and `/api/tag-groups`.
+  - [x] `tests/test_sot_tag_groups.py` **constant-query-count test (AC #8, no-N+1)**: via a `before_cursor_execute` counter, assert `GET /api/tag-groups` issues the same (bounded) number of queries for a small vs a doubled seed (cardinality-independent), and that `with_counts=true` adds exactly one aggregate query over the no-count path.
+  - [x] `tests/test_sot_auth_boundary.py`: add `/api/tag-groups` anonymous-401 + agent/member/admin-200 (AC #7).
+  - [x] `tests/test_sot_schemas.py`: extend `test_tag_read_from_orm` to assert `group_id`/`group_position` round-trip; add a `TagReadWithCount` / `TagGroupRead` / `TagGroupsResponse` shape test.
+- [x] **Task 5 — Verify gates** (AC: #10)
+  - [x] `cd apps/api && uv run ruff check . && uv run ruff format --check .` clean.
+  - [x] Full backend suite **3× consecutive identical** green counts (`uv run pytest -q -p no:cacheprovider`). Record the pass/skip counts and per-run durations. Baseline after 42.1 = **1694 passed, 3 skipped** (~6–7 min/run); expect +N new tests, same across all three runs. `git diff --check` clean.
 
 ## Dev Notes
 
@@ -235,3 +238,40 @@ None. Story is implementation-ready.
 **Independently verified as already-correct (no change needed):** count scope `Model.deleted_at IS NULL` mirrors `list_categories_tree` (`service.py:101-105`); `ModelTag` composite PK `(model_id, tag_id)` → `func.count()` = distinct models per tag (no double-count); constant query counts (with_counts +1; `/tag-groups` 3); envelope `{groups, groupless}` with empty groups included and groupless as a sibling array matches HANDOFF §9.4 "Inne" pseudo-facet + edge-case-08 nullable `group_id`; ordering `(position, slug)` / `(group_position, slug)`; `Tag`/`TagGroup` carry no lifecycle column (D-LIFECYCLE-1); additive `TagRead` fields are `from_attributes` zero-cost. Auth-boundary test extension (Task 4) and the 3× determinism gate are appropriate.
 
 **Edits made (allowed artifacts only):** this story file (`42-2-tags-tag-groups-read-api.md`) — AC #2/#6/#9, Tasks 1/2/3/4, Dev Notes (D-RESPONSEMODEL-1 added, D-SHAPE-1 expanded), Resolved-Decisions table, this record. No production/test code, sprint-status, or TB-055 change was required (TB-055 already open and accurate; status stays `ready-for-dev`).
+
+## Dev Agent Record
+
+**Agent:** Claude (Opus 4.8, native BMAD `bmad-dev-story`) · **Controller:** Laura (owns review/commit/merge/deploy). **Branch:** `feat/E42.2-tags-tag-groups-read-api` from `main@6a6a116`. **Date:** 2026-07-19.
+
+### Debug Log / execution trace
+
+- Session-start `bmad-help` → canonical entry `bmad-dev-story` (preceded-by `create-story:validate`, done). Read AGENTS.md, CLAUDE.md, managed Ponytail, `project-context.md`, full story, sprint-status, and every named source/test file first-hand.
+- **De-risked the binding D-RESPONSEMODEL-1 with a throwaway runtime probe** (Pydantic 2 / FastAPI): `TagListItem(TagRead)` + `@model_serializer(mode="wrap")` drop-when-None → confirmed exact key sets both ways (no-count omits `model_count`; `group_id`/`name_pl` nulls preserved; `model_count=0` kept) **and** a non-empty honest OpenAPI schema (`array` of `$ref TagListItem`, `model_count` as optional integer). No repo code touched by the probe.
+- **Strict RED→GREEN TDD.** Wrote all tests first; captured RED before any production edit: collection `ImportError` for the new schema/service symbols + 5 behavioral failures (group fields, with_counts, OpenAPI honesty, tag-groups anon 404≠401, tag-groups role-200). Then implemented schemas → service → router; focused suite went green (56 passed). One iteration: OpenAPI test used `/openapi.json`; this app serves it at `/api/openapi.json` — corrected the test (not a product bug).
+- **No-N+1 proven at the service layer** (per story guidance to isolate the read surface from auth/session overhead): `_count_selects` `before_cursor_execute` counter asserts `list_tag_groups` issues the same, ≤3 SELECTs for a 2×2 vs a doubled 4×4 seed (cardinality-independent), and `list_tags(with_counts=True)` = exactly one aggregate over the no-count path (`1 → 2`).
+- Scope fences held: no admin CRUD, no category removal, no migration, no frontend, no model-filter/DTO change. The additive `TagRead` fields flow into `GET /api/models` responses (intended, AC #1) and did not regress any model list/detail test.
+
+### Completion Notes
+
+- **AC #1** — `TagRead` gains `group_id`/`group_position` (zero-cost `from_attributes`); additive, flows into model responses. **AC #2/#3** — `GET /api/tags?with_counts` via `TagListItem` (optional count + drop-when-None serializer): count-free shape omits `model_count`, count shape adds `int`; composes with `q`/`limit`. **AC #4** — new `GET /api/tag-groups` → `{groups, groupless}`, empty groups included (`tags: []`), group order `(position, slug)`, tag order `(group_position, slug)`, groupless sibling array. **AC #5** — single `_tag_model_counts` helper → counts identical across both endpoints (cross-endpoint test). **AC #6/#7** — both routes stay outside `_PUBLIC_ROUTES`; auth-boundary extended for `/api/tag-groups` (anon 401; agent/member/admin 200). **AC #8** — constant/bounded query count proven by SQLAlchemy event counter. **AC #9** — honest `response_model=list[TagListItem]` + OpenAPI-honesty regression test (no `response_model=None`); full `description=`/docstrings, no stale category wording. **AC #10** — ruff clean; backend suite **3× consecutive identical: 1718 passed, 3 skipped** (baseline 1694 + 24 new). Count scope = distinct non-deleted models (`Model.deleted_at IS NULL`, D-COUNT-1).
+- Native BMAD `bmad-code-review`: **APPROVE** (0 Critical / 0 Important / 2 non-blocking Minor). Independent Aider diff review: **APPROVE**; its scale/ordering notes are future concerns, and both claimed missing tests were already present.
+- Full repo closeout gate: `infra/scripts/check-all.sh` **16/16 all green**; visual stage **464 passed / 24 skipped**. Implementation committed as `3cf5a4b` with no scope bleed.
+
+### File List
+
+- `apps/api/app/modules/sot/schemas.py` — enrich `TagRead`; add `TagListItem`, `TagReadWithCount`, `TagGroupRead`, `TagGroupsResponse`.
+- `apps/api/app/modules/sot/service.py` — add `_tag_model_counts`, `list_tag_groups`; extend `list_tags(with_counts=)` → `list[TagListItem]`.
+- `apps/api/app/modules/sot/router.py` — `with_counts` param + `response_model=list[TagListItem]` on `GET /api/tags`; new `GET /api/tag-groups` route.
+- `apps/api/tests/test_sot_tags.py` — group-fields, with_counts (+/soft-delete/zero), no-count key absence, OpenAPI honesty.
+- `apps/api/tests/test_sot_tag_groups.py` — **new**: envelope, ordering, empty groups, groupless, count scope, cross-endpoint consistency, constant-query-count.
+- `apps/api/tests/test_sot_auth_boundary.py` — `/api/tag-groups` anon-401 + agent/member/admin-200.
+- `apps/api/tests/test_sot_schemas.py` — `TagRead` group round-trip; `TagListItem`/`TagReadWithCount`/`TagGroupRead`/`TagGroupsResponse` shapes.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — 42.2 → review.
+- `_bmad-output/implementation-artifacts/42-2-tags-tag-groups-read-api.md` — tasks/DAR/File List/Change Log/status (this file).
+
+## Change Log
+
+| Date | Change |
+|---|---|
+| 2026-07-19 | Story 42.2 implemented on `feat/E42.2-tags-tag-groups-read-api` (RED→GREEN TDD). Read APIs only: `GET /api/tags` + `group_id`/`group_position`/`?with_counts`; new `GET /api/tag-groups` (`{groups, groupless}`, per-tag counts). No migration/frontend/category/admin change. Ruff clean; backend 3× 1718p/3s. Status → review. Left for Laura: independent review, commit, ff-merge, deploy. |
+| 2026-07-19 | Controller closeout: native BMAD + Aider APPROVE; full `check-all.sh` 16/16 green; implementation commit `3cf5a4b`. Status → done, ready for ff-merge/push/deploy. |
