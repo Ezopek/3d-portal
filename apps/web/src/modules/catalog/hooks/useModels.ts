@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api";
 import type { ModelListResponse, ModelSource, ModelStatus } from "@/lib/api-types";
+import type { TagMatch } from "@/routes/catalog/index";
 
 export type ModelListSort = "recent" | "oldest" | "name_asc" | "name_desc" | "status" | "rating";
 
@@ -14,6 +15,7 @@ export interface ModelsFilters {
    */
   category_ids?: string[];
   tag_ids?: string[];
+  tag_match?: TagMatch;
   status?: ModelStatus;
   source?: ModelSource;
   q?: string;
@@ -48,6 +50,17 @@ function buildParams(f: ModelsFilters): URLSearchParams {
   }
   if (f.tag_ids !== undefined) {
     for (const tid of f.tag_ids) p.append("tag_ids", tid);
+  }
+  // `tag_match` only affects results with ≥2 tags, and is the backend default
+  // at "all", so omit it below 2 tags or when default. This keeps the models
+  // query consistent with `validateSearch` and `CatalogList.setFilters`, which
+  // gate the same write on the same threshold (E44.2 review).
+  if (
+    f.tag_match !== undefined &&
+    f.tag_match !== "all" &&
+    (f.tag_ids?.length ?? 0) >= 2
+  ) {
+    p.set("tag_match", f.tag_match);
   }
   if (f.status !== undefined) p.set("status", f.status);
   if (f.source !== undefined) p.set("source", f.source);

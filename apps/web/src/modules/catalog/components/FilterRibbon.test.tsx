@@ -1,7 +1,7 @@
 import "@/locales/i18n";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -142,5 +142,102 @@ describe("FilterRibbon", () => {
     // functional `(v) => !v` toggle re-opens. Asserts the picker is gone.
     fireEvent.click(screen.getByRole("button", { name: /cancel|anuluj/i }));
     expect(screen.queryByRole("dialog", { name: /add tags|dodaj tagi/i })).toBeNull();
+  });
+
+  it("does not render the AND/OR toggle with zero tags", () => {
+    render(
+      withQuery(
+        <FilterRibbon
+          state={{ q: "", tag_ids: [], status: undefined, source: undefined, sort: "recent" }}
+          tagsById={new Map()}
+          onChange={() => {}}
+        />,
+      ),
+    );
+    expect(screen.queryByRole("group", { name: /tag match/i })).toBeNull();
+  });
+
+  it("does not render the AND/OR toggle with a single tag", () => {
+    const tagsById = new Map(TAGS.map((t) => [t.id, t]));
+    render(
+      withQuery(
+        <FilterRibbon
+          state={{ q: "", tag_ids: ["t1"], status: undefined, source: undefined, sort: "recent" }}
+          tagsById={tagsById}
+          onChange={() => {}}
+        />,
+      ),
+    );
+    expect(screen.queryByRole("group", { name: /tag match/i })).toBeNull();
+  });
+
+  it("renders the AND/OR toggle with two tags, All pressed by default", () => {
+    const tagsById = new Map(TAGS.map((t) => [t.id, t]));
+    render(
+      withQuery(
+        <FilterRibbon
+          state={{ q: "", tag_ids: ["t1", "t2"], status: undefined, source: undefined, sort: "recent" }}
+          tagsById={tagsById}
+          onChange={() => {}}
+        />,
+      ),
+    );
+    const group = screen.getByRole("group", { name: /tag match/i });
+    const allBtn = within(group).getByRole("button", { name: /^All$/i });
+    const anyBtn = within(group).getByRole("button", { name: /^Any$/i });
+    expect(allBtn.getAttribute("aria-pressed")).toBe("true");
+    expect(anyBtn.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("fires onChange once with tag_match: any when Any is clicked", () => {
+    const tagsById = new Map(TAGS.map((t) => [t.id, t]));
+    const calls: { tag_match?: string }[] = [];
+    render(
+      withQuery(
+        <FilterRibbon
+          state={{ q: "", tag_ids: ["t1", "t2"], status: undefined, source: undefined, sort: "recent" }}
+          tagsById={tagsById}
+          onChange={(s) => calls.push(s)}
+        />,
+      ),
+    );
+    const group = screen.getByRole("group", { name: /tag match/i });
+    fireEvent.click(within(group).getByRole("button", { name: /^Any$/i }));
+    expect(calls.length).toBe(1);
+    expect(calls[0]?.tag_match).toBe("any");
+  });
+
+  it("fires onChange with tag_match: all when All is clicked while set to any", () => {
+    const tagsById = new Map(TAGS.map((t) => [t.id, t]));
+    const calls: { tag_match?: string }[] = [];
+    render(
+      withQuery(
+        <FilterRibbon
+          state={{ q: "", tag_ids: ["t1", "t2"], tag_match: "any", status: undefined, source: undefined, sort: "recent" }}
+          tagsById={tagsById}
+          onChange={(s) => calls.push(s)}
+        />,
+      ),
+    );
+    const group = screen.getByRole("group", { name: /tag match/i });
+    fireEvent.click(within(group).getByRole("button", { name: /^All$/i }));
+    expect(calls.length).toBe(1);
+    expect(calls[0]?.tag_match).toBe("all");
+  });
+
+  it("reflects the tag_match prop in aria-pressed", () => {
+    const tagsById = new Map(TAGS.map((t) => [t.id, t]));
+    render(
+      withQuery(
+        <FilterRibbon
+          state={{ q: "", tag_ids: ["t1", "t2"], tag_match: "any", status: undefined, source: undefined, sort: "recent" }}
+          tagsById={tagsById}
+          onChange={() => {}}
+        />,
+      ),
+    );
+    const group = screen.getByRole("group", { name: /tag match/i });
+    expect(within(group).getByRole("button", { name: /^Any$/i }).getAttribute("aria-pressed")).toBe("true");
+    expect(within(group).getByRole("button", { name: /^All$/i }).getAttribute("aria-pressed")).toBe("false");
   });
 });

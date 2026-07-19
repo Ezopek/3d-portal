@@ -25,22 +25,45 @@ const UUID_B = "22222222-2222-4222-8222-222222222222";
 const UUID_UNKNOWN = "99999999-9999-4999-8999-999999999999";
 const UUID_UPPER = "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE";
 
-describe("catalog validateSearch — tag_match (Story 43.3 AC #1)", () => {
-  it("normalizes the non-default 'any' value", () => {
-    expect(v({ tag_match: "any" })).toEqual({ tag_match: "any" });
-    // Type-level RED anchor: `.tag_match` is absent from CatalogSearch until T2.
-    expect(v({ tag_match: "any" }).tag_match).toBe("any");
+describe("catalog validateSearch — tag_match (Story 43.3 AC #1, Story 44.2 normalization)", () => {
+  it("normalizes the non-default 'any' value when ≥2 tags are selected", () => {
+    expect(v({ tag_match: "any", tag_ids: [UUID_A, UUID_B] })).toEqual({
+      tag_match: "any",
+      tag_ids: [UUID_A, UUID_B],
+    });
+    expect(v({ tag_match: "any", tag_ids: [UUID_A, UUID_B] }).tag_match).toBe("any");
   });
 
   it("omits the 'all' default", () => {
-    expect(v({ tag_match: "all" })).toEqual({});
+    expect(v({ tag_match: "all", tag_ids: [UUID_A, UUID_B] })).toEqual({
+      tag_ids: [UUID_A, UUID_B],
+    });
   });
 
   it("drops unknown / non-string values", () => {
-    expect(v({ tag_match: "both" })).toEqual({});
-    expect(v({ tag_match: "AND" })).toEqual({});
-    expect(v({ tag_match: 5 })).toEqual({});
+    expect(v({ tag_match: "both", tag_ids: [UUID_A, UUID_B] })).toEqual({
+      tag_ids: [UUID_A, UUID_B],
+    });
+    expect(v({ tag_match: "AND", tag_ids: [UUID_A, UUID_B] })).toEqual({
+      tag_ids: [UUID_A, UUID_B],
+    });
+    expect(v({ tag_match: 5, tag_ids: [UUID_A, UUID_B] })).toEqual({
+      tag_ids: [UUID_A, UUID_B],
+    });
     expect(v({})).toEqual({});
+  });
+
+  // Story 44.2: `tag_match` is only meaningful with ≥2 tags (AND vs OR is a
+  // no-op below that), and the FilterRibbon toggle that sets it hides at <2
+  // tags. validateSearch drops a stranded, un-clearable `tag_match` on
+  // hand-crafted URLs so URL state stays consistent with `setFilters`.
+  it("drops 'any' when fewer than 2 tags are selected", () => {
+    expect(v({ tag_match: "any" })).toEqual({});
+    expect(v({ tag_match: "any", tag_ids: [UUID_A] })).toEqual({ tag_ids: [UUID_A] });
+  });
+
+  it("drops 'any' when tag_ids are present in the raw input but none survive validation", () => {
+    expect(v({ tag_match: "any", tag_ids: ["not-a-uuid", ""] })).toEqual({});
   });
 });
 
@@ -128,7 +151,9 @@ describe("catalog validateSearch — coexistence with category_id + unrelated ke
   it("preserves category_id and every unrelated key alongside the new params", () => {
     const full = {
       category_id: "cat-1",
-      tag_ids: [UUID_A],
+      // Two tags so the non-default `tag_match` survives normalization
+      // (Story 44.2 requires ≥2 tags for `tag_match` to be meaningful).
+      tag_ids: [UUID_A, UUID_B],
       tag_match: "any",
       untagged: true,
       q: "vase",

@@ -316,7 +316,7 @@ development_status:
   epic-43-retrospective: done  # 2026-07-19 native bmad-retrospective (Claude author; Laura controller). Truthful final retro for the additive scope (43.1/43.2/43.3 all done; category surface preserved as zero-code bridge; destructive removal owned by/deferred to 47.4/47.5, un-granted). Artifact: epic-43-retro-2026-07-19.md.
   epic-44: backlog
   44-1-facetsidebar: done
-  44-2-filterribbon: backlog
+  44-2-filterribbon: done
   44-3-cataloglist-states: backlog
   epic-44-retrospective: optional
   epic-45: backlog

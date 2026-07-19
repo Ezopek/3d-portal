@@ -77,6 +77,43 @@ describe("useModels", () => {
     expect(url).toContain("tag_ids=b");
   });
 
+  it("sends tag_match=any (with ≥2 tags) but omits it for 'all' / undefined / <2 tags", async () => {
+    // any + 2 tags → param present
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EMPTY), { status: 200 }));
+    const { unmount } = renderHook(
+      () => useModels({ tag_match: "any", tag_ids: ["a", "b"] }),
+      { wrapper: wrap() },
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0]?.[0] as string).toContain("tag_match=any");
+    unmount();
+
+    // all (the backend default) → param omitted to avoid URL/query noise
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EMPTY), { status: 200 }));
+    const { unmount: unmount2 } = renderHook(
+      () => useModels({ tag_match: "all", tag_ids: ["a", "b"] }),
+      { wrapper: wrap() },
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls[1]?.[0] as string).not.toContain("tag_match");
+    unmount2();
+
+    // undefined → param omitted (the name this test also asserts)
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EMPTY), { status: 200 }));
+    const { unmount: unmount3 } = renderHook(() => useModels({ tag_ids: ["a", "b"] }), {
+      wrapper: wrap(),
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock.mock.calls[2]?.[0] as string).not.toContain("tag_match");
+    unmount3();
+
+    // any but only 1 tag → omitted, consistent with validateSearch/setFilters
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EMPTY), { status: 200 }));
+    renderHook(() => useModels({ tag_match: "any", tag_ids: ["a"] }), { wrapper: wrap() });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(fetchMock.mock.calls[3]?.[0] as string).not.toContain("tag_match");
+  });
+
   it("computes offset from page (1-indexed)", async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EMPTY), { status: 200 }));
     renderHook(() => useModels({ page: 3 }), { wrapper: wrap() });

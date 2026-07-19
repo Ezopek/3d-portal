@@ -47,6 +47,7 @@ export function CatalogList() {
   const models = useModels({
     category_ids: categoryIds,
     tag_ids: search.tag_ids,
+    tag_match: search.tag_match,
     status: search.status,
     source: search.source,
     q: search.q,
@@ -57,6 +58,7 @@ export function CatalogList() {
   const filterState: FilterRibbonState = {
     q: search.q ?? "",
     tag_ids: search.tag_ids ?? [],
+    tag_match: search.tag_match ?? "all",
     status: search.status,
     source: search.source,
     sort: search.sort ?? "recent",
@@ -68,6 +70,14 @@ export function CatalogList() {
         ...prev,
         q: next.q.length > 0 ? next.q : undefined,
         tag_ids: next.tag_ids.length > 0 ? next.tag_ids : undefined,
+        // Only persist a non-default tag_match while ≥2 tags are selected. AND
+        // vs OR is meaningless with <2 tags, and the toggle that sets it hides
+        // below that threshold — writing it anyway would strand an "any" the
+        // user can no longer see or clear (review 2026-07-20).
+        tag_match:
+          next.tag_ids.length >= 2 && next.tag_match && next.tag_match !== "all"
+            ? next.tag_match
+            : undefined,
         status: next.status,
         source: next.source,
         sort: next.sort === "recent" ? undefined : next.sort,

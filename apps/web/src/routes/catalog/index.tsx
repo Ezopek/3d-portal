@@ -25,7 +25,7 @@ const SORTS: readonly ModelListSort[] = [
   "rating",
 ];
 const TAG_MATCHES = ["all", "any"] as const;
-type TagMatch = (typeof TAG_MATCHES)[number];
+export type TagMatch = (typeof TAG_MATCHES)[number];
 
 // Canonical 8-4-4-4-12 UUID, case-insensitive, version-agnostic. Deliberately a
 // narrower subset of pydantic `uuid.UUID` (which also accepts hyphenless/braced/
@@ -69,10 +69,16 @@ export const Route = createFileRoute("/catalog/")({
       }
       if (normalized.length > 0) out.tag_ids = normalized;
     }
+    // `tag_match` (AND/OR) only changes results with ≥2 selected tags, so it is
+    // only meaningful — and only surfaced by the FilterRibbon toggle — at that
+    // threshold. Normalize it away below 2 tags so a hand-crafted URL cannot
+    // strand an un-clearable `tag_match=any`, keeping this validator consistent
+    // with `CatalogList.setFilters`, which gates the same write (E44.2 review).
     if (
       typeof raw.tag_match === "string" &&
       (TAG_MATCHES as readonly string[]).includes(raw.tag_match) &&
-      raw.tag_match !== "all"
+      raw.tag_match !== "all" &&
+      (out.tag_ids?.length ?? 0) >= 2
     ) {
       out.tag_match = raw.tag_match as TagMatch;
     }
