@@ -39,6 +39,67 @@ async function setup(page: Page) {
   await waitForReady(page);
 }
 
+// Story 45.3 visual-coverage repair — EditTagsSheet mounts unconditionally
+// whenever isAdmin (ModelHero.tsx), so useTags() fires on page load, not on
+// sheet-open click. stubSotDetail's own /api/tag-groups fixture already
+// defines two known groups (tg-theme "Motyw", tg-material "Materiał"); this
+// test-local override for /api/tags returns 3 unselected candidates spanning
+// both groups plus one groupless orphan, so the grouped picker actually
+// renders section headers + candidate rows in the baseline instead of an
+// empty list. Kept local to this test (not folded into shared stubSotDetail)
+// so the other three specs in this file, which never open EditTagsSheet,
+// keep their existing baselines untouched.
+async function stubTagCandidates(page: Page) {
+  await page.route("**/api/tags*", (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: "t1",
+          slug: "dragon",
+          name_en: "Dragon",
+          name_pl: "Smok",
+          group_id: "tg-theme",
+          group_position: 0,
+        },
+        {
+          id: "t2",
+          slug: "articulated",
+          name_en: "Articulated",
+          name_pl: null,
+          group_id: null,
+          group_position: 0,
+        },
+        {
+          id: "t3",
+          slug: "fire",
+          name_en: "Fire",
+          name_pl: "Ogień",
+          group_id: "tg-theme",
+          group_position: 1,
+        },
+        {
+          id: "t4",
+          slug: "resin",
+          name_en: "Resin",
+          name_pl: "Żywica",
+          group_id: "tg-material",
+          group_position: 0,
+        },
+        {
+          id: "t5",
+          slug: "orphan-decor",
+          name_en: "Orphan Decor",
+          name_pl: "Sierota",
+          group_id: null,
+          group_position: 0,
+        },
+      ]),
+    }),
+  );
+}
+
 async function openAdminKebab(page: Page) {
   // Polish aria-label from catalog.actions.modelActions = "Akcje modelu".
   const kebab = page.getByRole("button", { name: /^Akcje modelu$/i });
@@ -72,12 +133,25 @@ test.describe("Destructive dialogs + EditSheets — open-state baselines (E5.12b
   });
 
   test("EditTagsSheet open", async ({ page }) => {
+    await stubTagCandidates(page);
     await setup(page);
     // EditTagsSheet is reached via the small Pencil button beside tag chips,
     // not the kebab. catalog.actions.editTags = "Edytuj tagi".
     await page.getByRole("button", { name: /^Edytuj tagi$/i }).click();
     const sheet = page.locator("[data-slot='sheet-content']");
     await sheet.waitFor({ state: "visible" });
+    // Story 45.3 visual proof: assert the grouped candidate picker actually
+    // rendered — two known-group headers (pl-PL labels from stubSotDetail's
+    // /api/tag-groups fixture) plus the trailing "Ungrouped" section, each
+    // with its representative candidate row, before capturing the baseline.
+    await expect(sheet.getByText("Motyw", { exact: true })).toBeVisible();
+    await expect(sheet.getByText("Materiał", { exact: true })).toBeVisible();
+    await expect(sheet.getByText("Bez grupy", { exact: true })).toBeVisible();
+    await expect(sheet.getByRole("button", { name: "+ fire" })).toBeVisible();
+    await expect(sheet.getByRole("button", { name: "+ resin" })).toBeVisible();
+    await expect(
+      sheet.getByRole("button", { name: "+ orphan-decor" }),
+    ).toBeVisible();
     await page.waitForTimeout(50);
     await expect(sheet).toHaveScreenshot("edit-tags-sheet-open.png");
   });

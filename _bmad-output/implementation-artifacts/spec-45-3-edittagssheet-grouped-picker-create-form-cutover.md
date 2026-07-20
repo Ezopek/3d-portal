@@ -5,7 +5,7 @@ created: '2026-07-20'
 status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
-final_revision: '9acc137dafebc32a3d066216346e9969a97f368a'
+final_revision: 'PLACEHOLDER_UPDATED_BY_COMMIT'
 context: []
 warnings: ['oversized']
 baseline_revision: '195a8e47d47d4b63abc47774f5a42a842cd01d1f'
@@ -167,4 +167,28 @@ No changes to `EditTagsSheet.tsx`, `ModelHero.tsx`, or `ModelHero.test.tsx` this
 - `npx tsc -b` -- exit 0, no type errors
 
 **Residual risks:** None blocking. The two newly-deferred findings are pre-existing gaps in already-shipped, already-reviewed sibling conventions (`labelOf`, unused `group_position`), logged for later focused attention. The external `aider-review-gate.py` regex bug is unresolved (out of this worktree's scope — it lives in shared `.bmad-loop/scripts/` on `main`) and may cause the same false-negative on re-verification if the reviewer model again formats its verdict as `**Verdict:** APPROVE`; recommend fixing that script's regex separately since no in-scope code change can affect its parsing.
+
+### 2026-07-20 — Visual-coverage repair pass
+
+**Finding:** `apps/web/tests/visual/destructive-dialogs-edit-sheets-open.spec.ts`'s "EditTagsSheet open" case opened the sheet against `stubSotDetail`'s fixture, whose only tags (`t1`/`t2`) were already selected. `EditTagsSheet` mounts unconditionally under `ModelHero`'s `isAdmin &&` block (not lazily on sheet-open), so `useTags("")` fires on page load; with no `/api/tags` stub registered for this spec, the request 404'd via `_test.ts`'s default catch-all, leaving `candidates = []`. The four `edit-tags-sheet-open-*.png` baselines therefore showed the chip row + empty search box only — no group headers, no candidate rows — so the suite passed without ever visually exercising this story's core deliverable (the grouped candidate picker).
+
+**Repair:** Added a test-local `stubTagCandidates(page)` route override for `**/api/tags*` inside the spec file (not folded into shared `stubSotDetail`, so the other three tests in this file — which never open `EditTagsSheet` — keep their existing baselines byte-identical). It returns 5 tags: the 2 already-selected ones (`t1` dragon/`tg-theme`, `t2` articulated/groupless — filtered out client-side by the component's own `!selected.includes(id)` logic) plus 3 new unselected candidates spanning `stubSotDetail`'s existing `/api/tag-groups` fixture's two known groups (`t3` fire → `tg-theme`/"Motyw", `t4` resin → `tg-material`/"Materiał") and one groupless orphan (`t5` orphan-decor → `group_id: null` → "Bez grupy"). Added explicit `expect(...).toBeVisible()` assertions for both pl-PL group headers, the "Bez grupy" trailing section, and all three candidate rows, scoped to the sheet locator, before each `toHaveScreenshot` call — so a future regression that silently empties the picker fails the assertion, not just a pixel diff a reviewer might rubber-stamp.
+
+No production code changes — `EditTagsSheet.tsx` already implements the grouped picker correctly per the 2026-07-20 review passes above; this pass was purely a test-fixture/visual-proof gap.
+
+**Files changed this pass:**
+- `apps/web/tests/visual/destructive-dialogs-edit-sheets-open.spec.ts` — added `stubTagCandidates()` local route stub + pre-screenshot visibility assertions for the "EditTagsSheet open" test only.
+- `apps/web/tests/visual/__snapshots__/destructive-dialogs-edit-sheets-open.spec.ts/edit-tags-sheet-open-{desktop,mobile}-{light,dark}.png` — regenerated; now show 3 grouped sections ("Motyw" + fire, "Materiał" + resin, "Bez grupy" + orphan-decor) instead of an empty candidate list.
+- This spec (`final_revision` placeholder pending this pass's commit SHA).
+
+**Verification performed:**
+- `npx playwright test --config=tests/visual/playwright.config.ts destructive-dialogs-edit-sheets-open.spec.ts` (targeted, all 4 projects, pre-regen) — 12/16 passed, the 4 `EditTagsSheet open` cases failed only on `toHaveScreenshot` pixel diff (expected — old baselines showed the empty-picker bug); all new `toBeVisible()` assertions passed on every project, confirming the grouped picker renders correctly before the screenshot step.
+- `npx playwright test --config=tests/visual/playwright.config.ts destructive-dialogs-edit-sheets-open.spec.ts -g "EditTagsSheet open" --update-snapshots` — regenerated exactly the 4 targeted baselines.
+- `npx playwright test --config=tests/visual/playwright.config.ts` (full suite) — 468 passed, 0 failed, 24 skipped. `git status --porcelain` confirmed only the 4 intended PNGs + the spec file changed — no other baseline rippled.
+- `git diff --check` — clean, no whitespace errors.
+- `npx eslint tests/visual/destructive-dialogs-edit-sheets-open.spec.ts --max-warnings=0` — no issues.
+- `npx tsc -b` — 1 pre-existing, unrelated error (`TS5101`, deprecated `baseUrl` compiler option in `tsconfig.json`, itself untouched by this pass — confirmed via `git diff --stat -- apps/web/tsconfig.json` showing no diff); no new type errors from the changed test file.
+- Visually inspected all 4 regenerated baselines (Read tool, rendered PNGs): grouped sections render correctly in the expected `position` order (Motyw → Materiał → Bez grupy), no clipping, no unwanted scrollbar, correct light/dark contrast, and correct desktop/mobile layout in all four.
+
+**Residual risks:** None. This pass only closed a visual-proof gap in test fixtures/assertions; it does not touch `EditTagsSheet.tsx`, `ModelHero.tsx`, `AddModelForm.tsx`, `routes/admin/models/new.tsx`, category-selector behavior, API types, or backend. Epic 45 closeout ownership remains with Laura/controller.
 
