@@ -5,7 +5,7 @@ created: '2026-07-20'
 status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
-final_revision: 'bfab5fae01b8da9335d11b7c95208b01897f6c8a'
+final_revision: '8b9e234b2801776e5833bab0c115ee77289fa3a5'
 context: []
 warnings: ['oversized']
 baseline_revision: '195a8e47d47d4b63abc47774f5a42a842cd01d1f'
