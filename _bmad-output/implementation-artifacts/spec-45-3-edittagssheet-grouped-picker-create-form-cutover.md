@@ -5,7 +5,7 @@ created: '2026-07-20'
 status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
-final_revision: 'PLACEHOLDER_UPDATED_BY_COMMIT'
+final_revision: 'bbfdc6d7cbd3a46facceaf9ad0cc0fcccc822994'
 context: []
 warnings: ['oversized']
 baseline_revision: '195a8e47d47d4b63abc47774f5a42a842cd01d1f'
