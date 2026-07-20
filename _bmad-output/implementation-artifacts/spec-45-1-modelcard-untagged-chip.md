@@ -2,12 +2,13 @@
 title: 'ModelCard untagged ghost-chip'
 type: 'feature'
 created: '2026-07-20'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
 warnings: []
 baseline_revision: '5f1912c6e9092b20274e8c317176b637e05001fe'
+final_revision: '65c58c376369edb989321ee035def21c438099eb'
 ---
 
 <intent-contract>
@@ -99,3 +100,26 @@ _(none — no bad_spec loopback occurred)_
 - `npm run test` (from `apps/web/`) -- expected: all Vitest suites pass, including the new `ModelCard.test.tsx` case
 - `npx playwright test --config=tests/visual/playwright.config.ts` (from `apps/web/`) -- expected: run first to see the intentional diff on baselines containing the zero-tag fixture model, then `--update-snapshots` to regenerate, then a final run confirming all four projects pass clean
 - `npx tsc --noEmit` (from `apps/web/`, or via the project's typecheck script) -- expected: no new type errors
+
+## Auto Run Result
+
+**Summary:** Zero-tag `ModelCard`s now render a dashed "Brak tagów"/"No tags" ghost chip instead of a blank chip row, communicating the untagged state (now the common post-cutover case) instead of leaving empty space. Tagged-model rendering is unchanged.
+
+**Files changed:**
+- `apps/web/src/locales/en.json` -- added `catalog.no_tags: "No tags"`
+- `apps/web/src/locales/pl.json` -- added `catalog.no_tags: "Brak tagów"`
+- `apps/web/src/ui/custom/ModelCard.tsx` -- ghost-chip branch when `topTags.length === 0`; hoisted the shared chip-row wrapper (review patch)
+- `apps/web/src/ui/custom/ModelCard.test.tsx` -- new tests for zero-tag (with translated-text assertion), single-tag boundary, and mutual-exclusivity on the tagged case (review patches)
+- `apps/web/tests/visual/__snapshots__/**` -- 14 baseline PNGs regenerated (`catalog-list.spec.ts` ×4, `filter-ribbon-selects-open.spec.ts` ×6, `focus-ring.spec.ts` ×4), all containing the pre-existing zero-tag "Vase" fixture model; visually verified as ghost-chip-only diffs
+- `_bmad-output/implementation-artifacts/deferred-work.md` -- recorded one deferred finding
+
+**Review findings breakdown:** 10 total (Blind Hunter 10, Edge Case Hunter 0) — 4 patch (auto-fixed: weak i18n test assertion, missing 1-tag boundary test, missing mutual-exclusivity assertion, duplicated wrapper markup), 1 defer (`/dev/components` gallery has no zero-tag fixture), 5 reject (out-of-scope ModelHero gap owned by 45.2, two visually-verified non-issues on baseline diffs, cosmetic capitalization nit, premature baseline-sign-off note).
+
+**Verification performed:**
+- `npm run lint` -- exit 0, `--max-warnings=0` (one pre-existing unrelated warning)
+- `npm run test` -- 128 test files / 716 tests passed
+- `npx tsc -b` -- exit 0, no type errors
+- `npx playwright test --config=tests/visual/playwright.config.ts` -- full run across all four projects (desktop-light/dark, mobile-light/dark): 464 passed, 24 skipped, 0 failed after baseline regeneration
+- Direct visual inspection of before/after PNGs (`catalog-list-desktop-light.png`, `rail-focus-desktop-light.png`) confirmed diffs are limited to the intended ghost chip with no layout shift
+
+**Residual risks:** None blocking. The `/dev/components` manual-QA gallery gap is low-severity and deferred. `ModelHero.tsx` (catalog-detail) still shows a blank row for zero-tag models until Story 45.2 lands — expected, in-scope for that story.
