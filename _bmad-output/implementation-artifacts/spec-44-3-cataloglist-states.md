@@ -4,7 +4,7 @@ type: 'feature'
 created: '2026-07-20'
 status: 'done'
 baseline_revision: '8c5f345ff34c595f4b08b163f97ab62a557779e3'
-final_revision: '283d6faa063fe0fce7270d33ce49798f24e6b849'
+final_revision: 'cdd00ba600620a7071298920c501ec454c946154'
 review_loop_iteration: 1
 followup_review_recommended: true
 context:
@@ -77,6 +77,11 @@ warnings: ['oversized']
 ## Spec Change Log
 
 _No `bad_spec` loopback occurred; the single review pass produced one auto-fixed patch (see Review Triage Log)._
+
+- 2026-07-20: Recovery closeout aligned the Playwright catalog fixture with
+  `/api/tag-groups`, migrated stale category-based visual scenarios to the E44
+  tag surface, visually reviewed and signed off the affected baselines, received
+  independent Aider `APPROVE`, and passed the full 16/16 `check-all.sh` gate.
 
 ## Review Triage Log
 
