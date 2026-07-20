@@ -5,10 +5,10 @@ import { waitForReady } from "./helpers";
 
 test("catalog empty state offers a clear-filters action when filters active", async ({ page }) => {
   await stubSotList(page);
-  // Override /api/models to return an empty list when filtering by a
-  // non-existent category UUID, exercising the EmptyState's action branch.
+  // Override /api/models to return an empty list for a no-match search,
+  // exercising the EmptyState action branch through an E44-supported filter.
   await page.route(
-    "**/api/models?**category_ids=00000000-0000-0000-0000-000000000000**",
+    "**/api/models?**q=no-match**",
     (route) =>
       route.fulfill({
         status: 200,
@@ -16,28 +16,15 @@ test("catalog empty state offers a clear-filters action when filters active", as
         body: JSON.stringify({ total: 0, offset: 0, limit: 48, items: [] }),
       }),
   );
-  await page.goto("/catalog?category_id=00000000-0000-0000-0000-000000000000");
+  await page.goto("/catalog?q=no-match");
   await waitForReady(page);
   await expect(page).toHaveScreenshot("catalog-empty-with-action.png", { fullPage: true });
 });
 
 test("catalog empty state hides clear-filters button without active filters", async ({ page }) => {
-  // Stub the SoT endpoints with empty results so the no-filter branch renders
-  // an EmptyState without a clear-filters action.
-  await page.route("**/api/categories", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ roots: [] }),
-    }),
-  );
-  await page.route("**/api/tags*", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify([]),
-    }),
-  );
+  await stubSotList(page);
+  // Override only the model list so all E44 catalog dependencies still load
+  // and the no-filter branch renders a genuine empty catalog state.
   await page.route("**/api/models*", (route) =>
     route.fulfill({
       status: 200,

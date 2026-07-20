@@ -100,15 +100,15 @@ test.describe("Remaining sheets — open-state baselines (E5.12d)", () => {
     await expect(sheet).toHaveScreenshot("filter-ribbon-mobile-filters-sheet-open.png");
   });
 
-  test("CatalogList mobile-categories Sheet open", async ({ page }, testInfo) => {
+  test("CatalogList mobile-tags Sheet open", async ({ page }, testInfo) => {
     skipOnDesktop(testInfo);
     await setupCatalog(page);
-    // catalog.filters.openCategories = "Kategorie" — the SheetTrigger button.
+    // catalog.filters.openTags = "Tagi" — the FacetSidebar SheetTrigger label.
     // Visible only when lg:hidden does NOT hide it (viewport <1024px).
-    await page.getByRole("button", { name: /^Kategorie$/i }).click();
+    await page.getByRole("button", { name: /^Tagi$/i }).click();
     const sheet = page.locator("[data-slot='sheet-content']");
     await sheet.waitFor({ state: "visible" });
     await page.waitForTimeout(50);
-    await expect(sheet).toHaveScreenshot("catalog-list-mobile-categories-sheet-open.png");
+    await expect(sheet).toHaveScreenshot("catalog-list-mobile-tags-sheet-open.png");
   });
 });

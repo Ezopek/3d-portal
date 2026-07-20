@@ -171,6 +171,44 @@ export async function stubSotList(page: Page) {
     }),
   );
 
+  // CatalogList started consuming this endpoint in E44.3. Keep its response
+  // shape alongside the list fixtures; without it every catalog visual test
+  // falls into the network-error state.
+  await page.route("**/api/tag-groups*", (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        groups: [
+          {
+            id: "33333333-3333-3333-3333-333333333333",
+            slug: "theme",
+            name_en: "Theme",
+            name_pl: "Motyw",
+            position: 0,
+            tags: [
+              {
+                id: "tag-1",
+                slug: "dragon",
+                name_en: "Dragon",
+                name_pl: "Smok",
+                model_count: 1,
+              },
+              {
+                id: "tag-2",
+                slug: "articulated",
+                name_en: "Articulated",
+                name_pl: null,
+                model_count: 0,
+              },
+            ],
+          },
+        ],
+        groupless: [],
+      }),
+    }),
+  );
+
   await page.route("**/api/models*", (route: Route) =>
     route.fulfill({
       status: 200,
