@@ -41,7 +41,18 @@ vi.stubGlobal("fetch", fetchMock);
 
 beforeEach(() => {
   fetchMock.mockReset();
-  fetchMock.mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
+  // Path-aware default: `/tag-groups` needs a valid `TagGroupsResponse` shape
+  // (the real, unmocked `EditTagsSheet` fires `useTagGroups()` on every
+  // mount); every other unmatched request (e.g. `/tags`) keeps the bare-array
+  // shape existing tests rely on.
+  fetchMock.mockImplementation((url: string) => {
+    if (url.includes("/tag-groups")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ groups: [], groupless: [] }), { status: 200 }),
+      );
+    }
+    return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
+  });
   mockUseAuth.mockReturnValue({ isAdmin: false });
   mockUseCategoriesTree.mockReturnValue({ data: undefined });
   mockTagGroupsSection.mockClear();

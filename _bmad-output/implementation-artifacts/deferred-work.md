@@ -34,3 +34,15 @@ _(The page-overshoot dead-end originally recorded here was RESOLVED in the 44.3 
 - source_spec: `_bmad-output/implementation-artifacts/spec-45-1-modelcard-untagged-chip.md`
   summary: The `/dev/components` manual-QA gallery (`apps/web/src/routes/dev/components.tsx`) has no zero-tag `ModelCard` fixture, so the new "Brak tagów"/"No tags" ghost-chip state has no dedicated lightweight inspection surface even though the sibling "no preview" placeholder state is exercised there via `thumbnail_file_id: null` on the existing fixtures.
   evidence: Both `FAKE_MODEL` and `FAKE_MODEL_2` in `apps/web/src/routes/dev/components.tsx` carry non-empty `tags` arrays; `dev.spec.ts`'s visual baseline never renders the new branch. Not required by the 45.1 spec's scope or ACs, but worth adding alongside a future dev-page touch (e.g. when 45.2/45.3 also add new card/detail states).
+
+## Deferred from: story 45.3 dev review (2026-07-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-45-3-edittagssheet-grouped-picker-create-form-cutover.md`
+  summary: `EditTagsSheet`'s "+ Create" button visibility (`candidates.length === 0 && query.length > 0`) conflates "search still loading" with "genuinely zero results," so it can flash briefly while `useTags(query)` is still refetching for a query that does have matches.
+  evidence: `candidates = (tags.data ?? []).filter(...)` — while `tags.isFetching` is true for a new `query` and `tags.data` still holds the previous (possibly empty) result set, the create button can render even though the in-flight request may return real matches a moment later. Pre-existing behavior, unchanged by 45.3 (only the surrounding `isAdmin &&` guard was added); not part of this story's scope.
+- source_spec: `_bmad-output/implementation-artifacts/spec-45-3-edittagssheet-grouped-picker-create-form-cutover.md`
+  summary: A whitespace-only search query lets the "+ Create" button render (`query.length > 0`) but `createAndSelect()` silently no-ops once the trimmed slug is empty, with no user-facing feedback that nothing happened.
+  evidence: `EditTagsSheet.tsx`'s `createAndSelect()`: `const slug = query.trim()...; if (slug === "") return;` — pre-existing logic, unchanged by 45.3. A user who types only spaces and clicks "+ Create" sees no toast, no error, and no created tag.
+- source_spec: `_bmad-output/implementation-artifacts/spec-45-3-edittagssheet-grouped-picker-create-form-cutover.md`
+  summary: A selected tag's chip label falls back to `id.slice(0, 6)` instead of its slug if the tag was selected while matching one search query, then the search text changes to something that no longer returns that tag AND it isn't present in `detail.tags` (i.e., a newly created/selected tag not yet saved).
+  evidence: `selectedLookup` is rebuilt each render from `tags.data ?? []` (the *current* query's results) plus `detail.tags`; a selected id present in neither collection has no name to display. Pre-existing `selectedLookup` construction, unchanged by 45.3.

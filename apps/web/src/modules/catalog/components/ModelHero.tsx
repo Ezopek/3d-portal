@@ -174,7 +174,7 @@ export function ModelHero({ detail }: { detail: ModelDetail }) {
       <TagGroupsSection detail={detail} isAdmin={isAdmin} onAddTags={() => setTagsOpen(true)} />
       {isAdmin && (
         <>
-          <EditTagsSheet detail={detail} open={tagsOpen} onOpenChange={setTagsOpen} />
+          <EditTagsSheet detail={detail} open={tagsOpen} onOpenChange={setTagsOpen} isAdmin={isAdmin} />
           <EditDescriptionSheet
             detail={detail}
             open={descriptionOpen}
