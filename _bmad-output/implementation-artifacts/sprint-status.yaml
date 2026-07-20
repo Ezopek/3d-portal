@@ -321,7 +321,7 @@ development_status:
   epic-44-retrospective: optional
   epic-45: backlog
   45-1-modelcard-untagged-chip: done
-  45-2-catalogdetail-grouped-tags: backlog
+  45-2-catalogdetail-grouped-tags: done
   45-3-edittagssheet-grouped-picker-create-form-cutover: backlog
   epic-45-retrospective: optional
   epic-46: backlog
