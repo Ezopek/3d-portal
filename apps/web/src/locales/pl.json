@@ -23,6 +23,7 @@
   "common.theme.toggle": "Przełącz motyw",
   "a11y.expand": "Rozwiń {{name}}",
   "a11y.collapse": "Zwiń {{name}}",
+  "a11y.addTagToGroup": "Dodaj tag do {{name}}",
   "a11y.editable": "(edytowalne)",
   "a11y.allCategories": "Wszystkie kategorie",
   "auth.login": "Zaloguj się",

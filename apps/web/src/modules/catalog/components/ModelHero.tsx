@@ -10,6 +10,7 @@ import { StatusPopover } from "@/modules/catalog/components/popovers/StatusPopov
 import { EditDescriptionSheet } from "@/modules/catalog/components/sheets/EditDescriptionSheet";
 import { EditTagsSheet } from "@/modules/catalog/components/sheets/EditTagsSheet";
 import { RenderSheet } from "@/modules/catalog/components/sheets/RenderSheet";
+import { TagGroupsSection } from "@/modules/catalog/components/TagGroupsSection";
 import { useCategoriesTree } from "@/modules/catalog/hooks/useCategoriesTree";
 import { useAuth } from "@/shell/AuthContext";
 import { Button } from "@/ui/button";
@@ -21,8 +22,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
-
-const TAG_DISPLAY_LIMIT = 5;
 
 function flattenCategoryTree(roots: readonly CategoryNode[]): Map<string, CategoryNode> {
   const map = new Map<string, CategoryNode>();
@@ -79,8 +78,6 @@ export function ModelHero({ detail }: { detail: ModelDetail }) {
 
   const labelFor = (cat: CategorySummary) =>
     preferPl && cat.name_pl !== null ? cat.name_pl : cat.name_en;
-  const visibleTags = detail.tags.slice(0, TAG_DISPLAY_LIMIT);
-  const overflow = detail.tags.length - visibleTags.length;
 
   const ratingLabel =
     detail.rating !== null ? (
@@ -163,16 +160,6 @@ export function ModelHero({ detail }: { detail: ModelDetail }) {
           )
         )}
         <SourceBadge source={detail.source} />
-        {visibleTags.map((tag) => (
-          <span
-            key={tag.id}
-            data-testid="tag-chip"
-            className="rounded bg-muted px-1.5 py-0.5 text-xs text-chip-foreground"
-          >
-            {tag.slug}
-          </span>
-        ))}
-        {overflow > 0 && <span className="text-xs text-muted-foreground">+{overflow}</span>}
         {isAdmin && (
           <button
             type="button"
@@ -184,6 +171,7 @@ export function ModelHero({ detail }: { detail: ModelDetail }) {
           </button>
         )}
       </div>
+      <TagGroupsSection detail={detail} isAdmin={isAdmin} onAddTags={() => setTagsOpen(true)} />
       {isAdmin && (
         <>
           <EditTagsSheet detail={detail} open={tagsOpen} onOpenChange={setTagsOpen} />

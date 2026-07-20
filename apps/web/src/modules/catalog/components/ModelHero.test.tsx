@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,6 +22,20 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
+// TagGroupsSection has its own dedicated, router-mounted test file
+// (TagGroupsSection.test.tsx) covering the I/O matrix; here it's mocked so
+// this suite stays router-free, and we just assert it's mounted with the
+// right props.
+interface TagGroupsSectionProps {
+  detail: ModelDetail;
+  isAdmin: boolean;
+  onAddTags: () => void;
+}
+const mockTagGroupsSection = vi.fn<(props: TagGroupsSectionProps) => null>(() => null);
+vi.mock("@/modules/catalog/components/TagGroupsSection", () => ({
+  TagGroupsSection: (props: TagGroupsSectionProps) => mockTagGroupsSection(props),
+}));
+
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
 
@@ -30,6 +44,7 @@ beforeEach(() => {
   fetchMock.mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
   mockUseAuth.mockReturnValue({ isAdmin: false });
   mockUseCategoriesTree.mockReturnValue({ data: undefined });
+  mockTagGroupsSection.mockClear();
 });
 
 afterEach(() => {
@@ -141,18 +156,28 @@ describe("ModelHero", () => {
     expect(breadcrumb.textContent).toContain("Decorations");
   });
 
-  it("renders status badge, rating, source, top tags", () => {
+  it("renders status badge, rating, source", () => {
     render(<ModelHero detail={makeDetail()} />, { wrapper: wrap() });
     expect(document.body.textContent?.toLowerCase()).toContain("printed");
     expect(document.body.textContent).toContain("4.5");
     expect(document.body.textContent?.toLowerCase()).toContain("printables");
-    // top 5 tag chips
-    expect(screen.getAllByTestId("tag-chip").length).toBe(5);
   });
 
-  it("shows overflow indicator when more than 5 tags", () => {
-    render(<ModelHero detail={makeDetail()} />, { wrapper: wrap() });
-    expect(document.body.textContent).toContain("+1");
+  it("mounts TagGroupsSection with the model detail, admin flag, and an onAddTags handler that opens the tags sheet", () => {
+    mockUseAuth.mockReturnValue({ isAdmin: true });
+    const detail = makeDetail();
+    render(<ModelHero detail={detail} />, { wrapper: wrap() });
+    expect(mockTagGroupsSection).toHaveBeenCalledTimes(1);
+    const call = mockTagGroupsSection.mock.calls[0];
+    if (call === undefined) throw new Error("TagGroupsSection was not called");
+    const [props] = call;
+    expect(props.detail).toBe(detail);
+    expect(props.isAdmin).toBe(true);
+    expect(typeof props.onAddTags).toBe("function");
+    // onAddTags reuses ModelHero's existing tagsOpen state, opening the same
+    // EditTagsSheet the pencil button opens (no new sheet built).
+    act(() => props.onAddTags());
+    expect(screen.getByText("Edit tags")).toBeTruthy();
   });
 
   it("does not render rating when null", () => {

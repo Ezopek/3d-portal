@@ -305,12 +305,21 @@ export async function stubSotDetail(page: Page) {
         created_at: "2026-04-12T00:00:00Z",
         updated_at: "2026-04-12T00:00:00Z",
         tags: [
-          { id: "t1", slug: "dragon", name_en: "Dragon", name_pl: "Smok" },
+          {
+            id: "t1",
+            slug: "dragon",
+            name_en: "Dragon",
+            name_pl: "Smok",
+            group_id: "tg-theme",
+            group_position: 0,
+          },
           {
             id: "t2",
             slug: "articulated",
             name_en: "Articulated",
             name_pl: null,
+            group_id: null,
+            group_position: 0,
           },
         ],
         category: {
@@ -400,6 +409,47 @@ export async function stubSotDetail(page: Page) {
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
         "base64",
       ),
+    }),
+  );
+  // Story 45.2 — TagGroupsSection's `/api/tag-groups` fixture. "Theme" carries
+  // this model's tag `t1` (renders label + chip); "Material" carries none of
+  // this model's tags (renders admin dash + Add, hidden for non-admins);
+  // `t2` (above) is groupless, exercising the trailing "Ungrouped" section.
+  // Together the three cover all three per-section rendering states in one
+  // fixture.
+  await page.route("**/api/tag-groups*", (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        groups: [
+          {
+            id: "tg-theme",
+            slug: "theme",
+            name_en: "Theme",
+            name_pl: "Motyw",
+            position: 0,
+            tags: [
+              { id: "t1", slug: "dragon", name_en: "Dragon", name_pl: "Smok", model_count: 1 },
+            ],
+          },
+          {
+            id: "tg-material",
+            slug: "material",
+            name_en: "Material",
+            name_pl: "Materiał",
+            position: 1,
+            // Empty catalog-wide roster is fine here — TagGroupsSection only
+            // consumes `detail.tags` filtered by `group_id`, never `group.tags`
+            // (see Design Notes in spec-45-2), so this group's own tag list is
+            // irrelevant to what it's exercising: zero of *this model's* tags.
+            tags: [],
+          },
+        ],
+        groupless: [
+          { id: "t2", slug: "articulated", name_en: "Articulated", name_pl: null, model_count: 1 },
+        ],
+      }),
     }),
   );
 }

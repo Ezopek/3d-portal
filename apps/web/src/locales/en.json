@@ -23,6 +23,7 @@
   "common.theme.toggle": "Toggle theme",
   "a11y.expand": "Expand {{name}}",
   "a11y.collapse": "Collapse {{name}}",
+  "a11y.addTagToGroup": "Add tag to {{name}}",
   "a11y.editable": "(editable)",
   "a11y.allCategories": "All categories",
   "auth.login": "Sign in",
