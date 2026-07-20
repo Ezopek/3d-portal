@@ -410,6 +410,7 @@
   "catalog.set_default_thumbnail": "Set as default",
   "catalog.current_default_thumbnail": "Current default thumbnail",
   "catalog.no_preview": "no preview",
+  "catalog.no_tags": "No tags",
   "toasts.thumbnail_updated": "Thumbnail updated",
   "toasts.thumbnail_cleared": "Restored auto-selection",
   "share.title": "Shared model",

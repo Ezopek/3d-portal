@@ -74,6 +74,29 @@ describe("ModelCard (SoT)", () => {
     expect(labels).toContain("dragon");
     expect(labels).toContain("articulated");
     expect(labels).not.toContain("extra-tag"); // overflow not rendered
+    expect(screen.queryByTestId("untagged-chip")).toBeNull();
+  });
+
+  it("renders a single real tag chip and no ghost chip when tags has exactly 1 item", async () => {
+    await renderWithRouter(
+      <ModelCard
+        model={makeSummary({
+          tags: [{ id: "33", slug: "dragon", name_en: "Dragon", name_pl: "Smok", group_id: null, group_position: 0 }],
+        })}
+      />,
+    );
+    const chips = await screen.findAllByTestId("tag-chip");
+    expect(chips).toHaveLength(1);
+    expect(chips[0]?.textContent).toBe("dragon");
+    expect(screen.queryByTestId("untagged-chip")).toBeNull();
+  });
+
+  it("renders an untagged ghost chip with the localized copy and no tag chips when tags is empty", async () => {
+    await renderWithRouter(<ModelCard model={makeSummary({ tags: [] })} />);
+    // i18n test config defaults to 'en' — see locales/i18n.ts
+    expect(await screen.findByText("No tags")).toBeTruthy();
+    expect(screen.getByTestId("untagged-chip").textContent).toBe("No tags");
+    expect(screen.queryAllByTestId("tag-chip")).toHaveLength(0);
   });
 
   it("emits a link to /catalog/<uuid>", async () => {

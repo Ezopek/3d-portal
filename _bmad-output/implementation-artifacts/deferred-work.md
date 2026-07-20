@@ -28,3 +28,9 @@
 ## Deferred from: story 44.3 dev review (2026-07-20)
 
 _(The page-overshoot dead-end originally recorded here was RESOLVED in the 44.3 dev-repair pass — see the spec's Review Triage Log. `CatalogList` now renders a "Back to first page" recovery action whenever `items.length === 0 && total > 0` (page past the end of a non-empty result set), covered by `CatalogList.test.tsx`. No open 44.3-specific deferrals remain.)_
+
+## Deferred from: story 45.1 dev review (2026-07-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-45-1-modelcard-untagged-chip.md`
+  summary: The `/dev/components` manual-QA gallery (`apps/web/src/routes/dev/components.tsx`) has no zero-tag `ModelCard` fixture, so the new "Brak tagów"/"No tags" ghost-chip state has no dedicated lightweight inspection surface even though the sibling "no preview" placeholder state is exercised there via `thumbnail_file_id: null` on the existing fixtures.
+  evidence: Both `FAKE_MODEL` and `FAKE_MODEL_2` in `apps/web/src/routes/dev/components.tsx` carry non-empty `tags` arrays; `dev.spec.ts`'s visual baseline never renders the new branch. Not required by the 45.1 spec's scope or ACs, but worth adding alongside a future dev-page touch (e.g. when 45.2/45.3 also add new card/detail states).

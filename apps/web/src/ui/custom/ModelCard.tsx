@@ -90,9 +90,9 @@ export function ModelCard({ model }: { model: ModelSummary }) {
               <p className="line-clamp-1 text-xs text-muted-foreground">{secondary}</p>
             )}
           </div>
-          {topTags.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {topTags.map((tag) => (
+          <div className="flex flex-wrap gap-1">
+            {topTags.length > 0 ? (
+              topTags.map((tag) => (
                 <span
                   key={tag.id}
                   data-testid="tag-chip"
@@ -100,9 +100,16 @@ export function ModelCard({ model }: { model: ModelSummary }) {
                 >
                   {tag.slug}
                 </span>
-              ))}
-            </div>
-          )}
+              ))
+            ) : (
+              <span
+                data-testid="untagged-chip"
+                className="rounded border border-dashed border-muted-foreground px-1.5 py-0.5 text-xs text-muted-foreground"
+              >
+                {t("catalog.no_tags")}
+              </span>
+            )}
+          </div>
         </CardContent>
       </Card>
     </Link>
