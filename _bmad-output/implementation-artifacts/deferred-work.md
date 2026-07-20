@@ -46,3 +46,12 @@ _(The page-overshoot dead-end originally recorded here was RESOLVED in the 44.3 
 - source_spec: `_bmad-output/implementation-artifacts/spec-45-3-edittagssheet-grouped-picker-create-form-cutover.md`
   summary: A selected tag's chip label falls back to `id.slice(0, 6)` instead of its slug if the tag was selected while matching one search query, then the search text changes to something that no longer returns that tag AND it isn't present in `detail.tags` (i.e., a newly created/selected tag not yet saved).
   evidence: `selectedLookup` is rebuilt each render from `tags.data ?? []` (the *current* query's results) plus `detail.tags`; a selected id present in neither collection has no name to display. Pre-existing `selectedLookup` construction, unchanged by 45.3.
+
+## Deferred from: story 45.3 dev-repair review (2026-07-20)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-45-3-edittagssheet-grouped-picker-create-form-cutover.md`
+  summary: `labelOf`'s locale-fallback helper guards against an empty `name_pl` (falls back to `name_en`) but has no equivalent guard for an empty `name_en`, so a group/tag with `name_en === ""` renders a blank section/label with no fallback text.
+  evidence: Identical `labelOf` expression (`preferPl && item.name_pl ? item.name_pl : item.name_en`) is independently duplicated verbatim in `FacetSidebar.tsx`, `TagGroupsSection.tsx`, and now `EditTagsSheet.tsx` — pre-existing gap in an already-shipped (45.1/45.2), already-reviewed convention, not introduced or worsened by this story. `name_en` is presumed non-empty by the same backend/DB invariant those sibling components already trust.
+- source_spec: `_bmad-output/implementation-artifacts/spec-45-3-edittagssheet-grouped-picker-create-form-cutover.md`
+  summary: Grouped candidate sections have no defined ordering within a section — `TagRead.group_position` ("order within the group," per its own doc comment in `api-types.ts`) is never read by the sort/filter logic, so tags within a section render in whatever order `useTags(query)` returned them.
+  evidence: Confirmed via repo-wide grep that no sibling component (`FacetSidebar`, `TagGroupsSection`) reads `group_position` either — it's only ever set in test fixtures. Pre-existing architectural gap surfaced incidentally by this story (the first place a bold group header visually implies curated ordering, making it more noticeable), not caused by this diff's logic.

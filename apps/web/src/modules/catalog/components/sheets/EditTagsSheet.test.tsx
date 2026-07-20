@@ -210,8 +210,9 @@ describe("EditTagsSheet", () => {
 
     // Sections must appear in group `position` order (Theme=0, Material=1),
     // with Ungrouped trailing. `SheetContent` portals into `document.body`,
-    // so assert against the document, not the local render container.
-    const text = document.body.textContent ?? "";
+    // so scope the ordering check to the dialog root rather than the whole
+    // document (avoids false-passing on unrelated text elsewhere on the page).
+    const text = screen.getByRole("dialog").textContent ?? "";
     expect(text.indexOf("Theme")).toBeLessThan(text.indexOf("Material"));
     expect(text.indexOf("Material")).toBeLessThan(text.indexOf("Ungrouped"));
   });
@@ -280,7 +281,15 @@ describe("EditTagsSheet", () => {
     fireEvent.change(screen.getByPlaceholderText("Search or create…"), {
       target: { value: "brandnew" },
     });
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    // Wait for the query fired by the typed text specifically — fetchMock was
+    // already called once by the mount-time empty-query fetch, so a bare
+    // "has been called" check would resolve before this request completes.
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("q=brandnew"),
+        expect.anything(),
+      ),
+    );
 
     expect(screen.queryByRole("button", { name: /create/i })).toBeNull();
     expect(fetchMock).not.toHaveBeenCalledWith(
