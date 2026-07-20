@@ -124,11 +124,15 @@ export function CatalogList() {
   // Guard on data presence rather than `isLoading`: on the very first render
   // TanStack Query has not yet mounted the queries, so `isLoading` is still
   // false. Without this, FacetSidebar paints with empty group data before
-  // `tagGroups.data` resolves. `tags` is guarded alongside the browse-surface
-  // deps because it feeds the FilterRibbon chip-label map (`tagsById`): on a
-  // tags failure the selected-tag chips would otherwise fall back to truncated
-  // UUIDs, so its error/retry/loading is folded in here too.
-  if (tagGroups.isError || models.isError || tags.isError) {
+  // `tagGroups.data` resolves.
+  //
+  // `tags` is deliberately NOT part of the fatal guard: it only feeds the
+  // FilterRibbon chip-label map (`tagsById`), so a tags-only failure degrades
+  // gracefully (chips fall back to a truncated id) while the grid, sidebar, and
+  // pagination stay fully usable — blanking the whole catalog for a cosmetic
+  // label gap would be a worse outcome. The retry below still refetches `tags`
+  // so a shared-backend blip recovers everything in one click.
+  if (tagGroups.isError || models.isError) {
     return (
       <EmptyState
         messageKey="errors.network"
@@ -144,11 +148,7 @@ export function CatalogList() {
       />
     );
   }
-  if (
-    tagGroups.data === undefined ||
-    models.data === undefined ||
-    tags.data === undefined
-  ) {
+  if (tagGroups.data === undefined || models.data === undefined) {
     return <LoadingState variant="skeleton-grid" cols={5} rows={3} />;
   }
 
@@ -256,6 +256,19 @@ export function CatalogList() {
                 onClick: () => {
                   void navigate({ search: {}, replace: true });
                 },
+              }}
+            />
+          ) : total > 0 ? (
+            // Page overshoot: the filtered set is non-empty but this page is
+            // past its end (a stale/hand-crafted `?page=N`). Offer a "back to
+            // first page" recovery rather than a dead end — and never
+            // "Clear filters" here, which would needlessly wipe the user's
+            // still-matching filters (review 2026-07-20).
+            <EmptyState
+              messageKey="catalog.emptyPage"
+              action={{
+                labelKey: "catalog.actions.back_to_page_1",
+                onClick: () => setPage(1),
               }}
             />
           ) : (

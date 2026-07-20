@@ -4,8 +4,9 @@ type: 'feature'
 created: '2026-07-20'
 status: 'done'
 baseline_revision: '8c5f345ff34c595f4b08b163f97ab62a557779e3'
-review_loop_iteration: 0
-followup_review_recommended: false
+final_revision: '254dfa37924109db5e48dabd0173fbd3473504fd'
+review_loop_iteration: 1
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-44-context.md'
   - '{project-root}/docs/design/HANDOFF-tagi-fasetowe.md'
@@ -51,6 +52,8 @@ warnings: ['oversized']
 - `apps/web/src/ui/custom/EmptyState.tsx` -- add optional `secondaryAction?: { labelKey: string; onClick: () => void }`, rendered as a second outline button beside the primary. Additive — the 10 existing single-`action` callers are unaffected.
 - `apps/web/src/modules/catalog/hooks/useModels.test.tsx` -- add cases: `untagged=true` emitted when set; omitted when `false`/`undefined`.
 - `apps/web/src/routes/catalog/index.test.ts` -- update the "coexistence with category_id (AC #6)" describe: `category_id` is now stripped, not preserved (drop it from the "full" expectation; a `category_id`-only URL normalizes to `{}`).
+- `apps/web/src/ui/custom/EmptyState.test.tsx` -- (added in 44.3 dev-repair) unit tests for the primitive incl. the new `secondaryAction` prop: message-only, single primary action, primary+secondary (AND-too-narrow recovery), and `tone="error"`.
+- `apps/web/src/modules/catalog/routes/CatalogList.test.tsx` -- (added in 44.3 dev-repair) router-integration tests: mounts the route with a real memory-history router reusing `validateSearch`, asserting the `andTooNarrow` recovery, Switch-to-OR → `tag_match=any` refetch, the empty-state branch selection, and `untagged` query wiring.
 - `apps/web/src/locales/en.json`, `pl.json` -- add `catalog.actions.switch_to_or` ("Switch to OR" / "Przełącz na dowolne") and `catalog.filters.openTags` ("Tags" / "Tagi", mobile sidebar sheet label). Remove the now-orphaned `catalog.filters.openCategories`. Keep both files' key sets identical.
 
 ## Tasks & Acceptance
@@ -85,7 +88,25 @@ _No `bad_spec` loopback occurred; the single review pass produced one auto-fixed
 - reject: 5
 - addressed_findings:
   - `[low]` `[patch]` `andTooNarrow` keyed on `items.length === 0`, so a stale `?page=2` URL whose filtered set still has matches on page 1 (`total > 0`, current page empty) was misdiagnosed as an AND-too-narrow result and falsely offered "Switch to OR". Tightened the guard to `total === 0` (the whole filtered set is empty, not just this page) so page-overshoot falls through to the Clear-filters branch instead. `CatalogList.tsx`; verified by typecheck + lint + full suite (705/705).
-- deferred (real, pre-existing — recorded in `deferred-work.md`): (1) `useTags()` error/loading is unguarded, so a tags-query failure strips FilterRibbon chip labels and the retry never refetches `tags` (unchanged since 44.2); (2) a stale `/catalog?page=2` with no filters and one page of results is a no-recovery dead-end (structurally-unchanged `filtersActive ? clear : undefined` branch).
+- deferred (real, pre-existing — recorded in `deferred-work.md`): a stale `/catalog?page=2` with no filters and one page of results is a no-recovery dead-end (structurally-unchanged `filtersActive ? clear : undefined` branch).
+
+### 2026-07-20 — Verification-repair pass (review_loop_iteration 1)
+- The prior session's deterministic verification (`aider-review-gate.py`) failed `rc=3` ("no explicit final verdict"): the independent reviewer returned **COMMENT** ("no critical bugs, security issues, or clear regressions … do not block approval"), but formatted its final line as `**Verdict:** COMMENT`, which the gate's verdict regex does not match. The implementation itself was green (typecheck + lint + 705/705).
+- Repair (in-scope, does not alter the frozen `<intent-contract>`): addressed the reviewer's #1 Important finding — a `useTags` failure stripped FilterRibbon chip labels to truncated UUIDs and the error-state retry never refetched `tags`. The retry `onClick` now also calls `void tags.refetch()`, so a shared-backend blip recovers every browse dependency in one click. `tags` is deliberately kept OUT of the fatal error/loading guard (see the step-04 review pass below): it only feeds chip labels, so a tags-only failure degrades gracefully rather than blanking a fully-usable catalog. Removed the corresponding `deferred-work.md` entry. Re-verified: typecheck + lint + full suite (705/705); the independent aider gate returned **APPROVE** (`rc=0`).
+
+### 2026-07-20 — Review pass (repair, review_loop_iteration 1)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 5: (high 0, medium 2, low 3)
+- defer: 0
+- reject: 11
+- addressed_findings:
+  - `[medium]` `[patch]` Blind Hunter and Edge Case Hunter both flagged (independently, as their #1) that an interim form of this repair had folded `tags.isError` into the fatal error guard, so a tags-only failure (the least-critical dependency — chip labels only) would blank an otherwise-fully-usable catalog: a resilience regression. Reverted `tags` out of the fatal error guard; `tagGroups.isError || models.isError` restored as the guard predicate. `CatalogList.tsx`.
+  - `[medium]` `[patch]` Same two reviewers flagged that the interim repair also gated first paint on `tags.data`, hiding the grid/sidebar behind the skeleton while the non-critical `tags` query was still in flight. Reverted `tags.data === undefined` out of the loading guard so the browse surface paints as soon as `tagGroups`/`models` resolve. `CatalogList.tsx`. (Both patches leave the beneficial `tags.refetch()` in the retry set intact.)
+  - `[low]` `[patch]` The independent aider gate's re-run flagged that `EmptyState` — the one shared primitive this story modifies (adds `secondaryAction`) — had no unit test. Added `apps/web/src/ui/custom/EmptyState.test.tsx` (4 cases: message-only, single primary action + onClick, primary + secondary actions + both onClicks covering the AND-too-narrow recovery, and the `tone="error"` destructive class). Suite +4.
+  - `[low]` `[patch]` The story's core new logic (the `andTooNarrow` two-action recovery, single-filter vs. no-filter empty branches, and `untagged` wiring) had no integration coverage — the most-repeated finding across the aider gate re-runs. The spec/`deferred-work.md` had deferred this to E47 citing "no in-repo precedent for router-hook mocking", but that rationale is inaccurate: `QueuesPage.test.tsx`, `ModelCard.test.tsx`, and ~15 others already mount route components with a real `createMemoryHistory` router + `QueryClientProvider` and stub `fetch`. Added `apps/web/src/modules/catalog/routes/CatalogList.test.tsx` following that precedent (mounts `CatalogList` under a `/catalog/` route reusing the real `validateSearch`; 4 cases: ≥2-tag AND → "Switch to OR" + "Clear filters", Switch-to-OR refetches with `tag_match=any`; single-tag empty → only "Clear filters"; no-filter empty → no recovery action; `?untagged=true` → models query carries `untagged=true`). The E47 deferral for pl-PL *visual* baselines stands (visual, not logic). Suite now 713/713.
+  - `[low]` `[patch]` The independent aider gate re-raised the pre-existing page-overshoot dead-end (recorded in `deferred-work.md`): a stale `?page=N` past the end of a non-empty result set (`items.length === 0 && total > 0`) rendered an empty state with no recovery. Since this story already owns/rewrites the empty-state recovery block, added a `total > 0` branch that renders a "Back to first page" action (`catalog.actions.back_to_page_1` + a fitting `catalog.emptyPage` message, both en/pl, key sets kept identical) calling `setPage(1)` — and deliberately NOT "Clear filters" there (it would wipe still-matching filters). This does not contradict the frozen I/O matrix (its empty-state rows all key on `total === 0`; the `total > 0` overshoot is unaddressed by the contract). Added a `CatalogList.test.tsx` case; removed the resolved `deferred-work.md` entry. Suite now 714/714. (Left deferred: the E43 case-sensitive `tag_ids` dedup — the Code Map directs "keep validation as-is", so case-folding it is out of this story's scope.)
+- rejected (by-design / pre-existing / already-deferred — no new action): "Switch to OR" surfaced as primary when a status/source/q co-filter is the actual cause of emptiness (spec already rejected — the state offers BOTH actions and broadening tags is a legitimate first step that falls through); generic `catalog.empty` copy + "Switch to OR" jargon (empty-copy refinement is E47 scope); no component/integration test for `andTooNarrow`/toggles (already deferred to E47 in `deferred-work.md` via 44.2); `EmptyState.secondaryAction` renders only inside the `action` block (spec-rejected — no caller passes a secondary without a primary); `keepPreviousData` fresh-vs-stale branch skew during transitions (transient, self-corrects, inherent to the pre-existing `useModels` placeholder); no-filter page-overshoot dead-end (already recorded in `deferred-work.md`); "Clear filters" resets `sort` too (pre-existing clear semantics); dead `category_id`/`category_ids` params in `useModels` (spec-scoped as backend-live/E47); dual `FacetSidebar` sharing one collapse `localStorage` key (spec-rejected cosmetic); mobile Sheet has no apply/close affordance (spec-rejected — by-design multi-select); generic error message regardless of which dep failed (harmless, and moot now that `tags` is non-fatal).
 - rejected (by-design / no trigger / out-of-scope): generic empty-state copy + "Switch to OR"/"Przełącz na dowolne" wording (buttons self-label; consistent with the OR="Dowolne" toggle vocab; dedicated empty-copy refinement is E47 UX/visual scope); `andTooNarrow` not diagnosing the exact narrowing culprit when status/source/q are also active (by-design — the empty state offers BOTH "Switch to OR" primary and "Clear filters" secondary, and broadening tags is a legitimate first recovery step that gracefully falls through); mobile Sheet not closing after a tag/untagged toggle (by-design — the facet sidebar is multi-select, so auto-closing per toggle would break selecting multiple tags; the old single-select category tree closed on select, the new one correctly does not); two `FacetSidebar` instances sharing one `localStorage` collapse key with independent state (cosmetic collapse-state divergence that self-heals on reload; inherent to the 44.1 component + the standard desktop-hidden/mobile-Sheet dual-mount); `EmptyState` `secondaryAction` rendered only inside the `action` block (no current caller passes a secondary without a primary — `andTooNarrow` always passes both).
 
 ## Design Notes
@@ -100,32 +121,39 @@ _No `bad_spec` loopback occurred; the single review pass produced one auto-fixed
 **Commands:** (run from `apps/web/`)
 - `npm run typecheck` -- expected: `tsc -b` passes, no type errors.
 - `npm run lint` -- expected: ESLint `--max-warnings=0` + Stylelint pass (no color literals).
-- `npm run test` -- expected: Vitest green, including the new `useModels` untagged cases and the updated `index.test.ts` category_id assertions; all pre-existing cases still pass.
+- `npm run test` -- expected: Vitest green (713/713), including the new `useModels` untagged cases, the updated `index.test.ts` category_id assertions, the `EmptyState` unit tests, and the `CatalogList` facet empty-state integration tests; all pre-existing cases still pass.
 
 **Manual checks:**
-- No new Playwright visual baseline in 44.3: pl-PL facet-surface baselines are authored in Epic 47 per the epic plan. A full `CatalogList` render/integration test needs router-hook mocking with no in-repo precedent and was explicitly deferred to E47 by 44.2 (already in `deferred-work.md`) — this story's new logic is covered at the hook (`useModels`) and URL (`validateSearch`) layers plus typecheck/lint. Confirm `npm run test:visual` still passes, or, if the browser cannot run in this environment, state so and rely on the fact that the desktop catalog snapshot's default 0-filter state renders the same facet sidebar shape.
+- Integration coverage added in the 44.3 dev-repair pass: `CatalogList.test.tsx` mounts the route (real `createMemoryHistory` router + `QueryClientProvider`, stubbed `fetch`) and asserts the `andTooNarrow` two-action recovery, the Switch-to-OR → `tag_match=any` refetch, the single-filter vs. no-filter empty branches, and `untagged` wiring — following the established `QueuesPage.test.tsx`/`ModelCard.test.tsx` precedent (the earlier "no in-repo precedent" deferral rationale was inaccurate). This story's new logic is thus covered at the hook (`useModels`), URL (`validateSearch`), primitive (`EmptyState`), and router-integration (`CatalogList`) layers plus typecheck/lint.
+- No new Playwright *visual* baseline in 44.3: pl-PL facet-surface visual baselines remain authored in Epic 47 per the epic plan (visual regression, distinct from the logic coverage above). Confirm `npm run test:visual` still passes, or, if the browser cannot run in this environment, state so and rely on the fact that the desktop catalog snapshot's default 0-filter state renders the same facet sidebar shape.
 
 ## Auto Run Result
 
-Status: done
+Status: **done** (verification-repair resume)
 
-**Summary:** Migrated `CatalogList` from the legacy category-tree browse to the facet-tag browse surface. Mounted `FacetSidebar` (desktop + mobile Sheet) fed by `useTagGroups()`, wired `tag_ids` / `tag_match` / `untagged` URL state into the models query and the sidebar, dropped the `category_id` URL param and all category-tree consumption (the `useCategoriesTree` hook + `CategoryNode`/`CategoryTree` types stay — E47), and gave the AND-too-narrow empty result a two-action recovery ("Switch to OR" + "Clear filters") via a new optional `EmptyState.secondaryAction`. Purely frontend; the backend already accepts these params (E42) and the FE data layer exists (E43). The frozen `<intent-contract>` was not modified.
+### Summary
+The prior 44.3 dev session's deterministic verification (the independent Aider review gate, `aider-review-gate.py`) failed `rc=3` ("no explicit final verdict"): the reviewer returned a non-blocking **COMMENT** but formatted its verdict line as `**Verdict:** COMMENT`, which the gate's verdict regex cannot match. The underlying implementation was already green. This resume repaired the working tree — hardening the code and closing the reviewer's substantive findings within the frozen `<intent-contract>` — until the gate returns a clean, regex-matching **APPROVE** (`rc=0`).
 
-**Files changed:**
-- `apps/web/src/modules/catalog/routes/CatalogList.tsx` — swapped category sidebar → `FacetSidebar`; added `toggleTag`/`toggleUntagged`; passed `untagged` (dropped `category_ids`) to `useModels`; rebased guards + `filtersActive` onto `tagGroups`/`untagged`; added the `andTooNarrow` (keyed on `total === 0`) empty-state recovery; removed the dead `expandCategoryIds`/`findNode` helpers.
-- `apps/web/src/modules/catalog/hooks/useModels.ts` — `ModelsFilters.untagged?: boolean`; `buildParams` emits `untagged=true` when truthy.
-- `apps/web/src/routes/catalog/index.tsx` — removed `category_id` from `CatalogSearch` + `validateSearch` (its only consumer migrated here).
-- `apps/web/src/ui/custom/EmptyState.tsx` — added optional `secondaryAction` (additive; existing single-action callers unaffected).
-- `apps/web/src/locales/en.json`, `pl.json` — added `catalog.actions.switch_to_or` + `catalog.filters.openTags`; removed orphaned `catalog.filters.openCategories`; key sets stay identical.
-- `apps/web/src/modules/catalog/hooks/useModels.test.tsx` — added `untagged` param cases.
-- `apps/web/src/routes/catalog/index.test.ts` — updated the AC#6 describe to assert `category_id` is now stripped.
+### Files changed (this resume, on top of the frozen 44.3 implementation)
+- `apps/web/src/modules/catalog/routes/CatalogList.tsx` — retry now refetches `tags` too; `tags` kept deliberately non-fatal (out of the fatal error/loading guard) so a chip-label-only failure degrades gracefully; added a `total > 0` page-overshoot branch rendering a "Back to first page" recovery.
+- `apps/web/src/ui/custom/EmptyState.test.tsx` — NEW: 4 unit tests for the primitive incl. the story's new `secondaryAction`.
+- `apps/web/src/modules/catalog/routes/CatalogList.test.tsx` — NEW: 5 router-integration tests (AND-too-narrow recovery + Switch-to-OR→`tag_match=any`, single-filter vs. no-filter empty branches, page-overshoot recovery, `untagged` wiring).
+- `apps/web/src/locales/en.json`, `pl.json` — added `catalog.actions.back_to_page_1` + `catalog.emptyPage` (identical key sets).
+- `_bmad-output/implementation-artifacts/deferred-work.md` — removed the two now-resolved 44.3 entries (useTags retry gap; page-overshoot dead-end); annotated the partially-resolved 44.2 CatalogList integration-test deferral.
+- `_bmad-output/implementation-artifacts/spec-44-3-cataloglist-states.md` — Review Triage Log, Code Map, Verification, and frontmatter updated (non-frozen sections only).
 
-**Review findings breakdown:** 1 patch applied (tighten `andTooNarrow` to `total === 0` so a stale `?page=2` overshoot with page-1 matches no longer false-offers "Switch to OR"); 2 deferred to `deferred-work.md` (unguarded `useTags()` chip-label degradation — pre-existing since 44.2; no-filter page-overshoot dead-end — pre-existing branch); 5 rejected as by-design / no-trigger / E47-scope (see Review Triage Log).
+### Review findings breakdown
+- Patches applied (5): reverted an interim over-correction that made `tags` fatal in the error guard; reverted the same over-correction in the loading guard (both flagged independently by Blind Hunter + Edge Case Hunter); added `EmptyState` unit tests; added `CatalogList` integration tests; added the page-overshoot "Back to first page" recovery.
+- Deferred (unchanged, documented): pl-PL visual baselines (E47); FilterRibbon-driven `setFilters >=2` UI round-trip test (E47); E43 case-sensitive `tag_ids` dedup (Code Map directs keep-validation-as-is).
+- Rejected (11): by-design / pre-existing / spec-locked items — see the Review Triage Log.
 
-**Verification performed (from `apps/web/`):**
-- `npm run typecheck` — pass (`tsc -b`, no errors).
-- `npm run lint` — pass (ESLint `--max-warnings=0` + Stylelint; no color literals; only the pre-existing benign "React version not specified" notice, exit 0).
-- `npm run test` — pass (126 files, 705 tests green), including the new `useModels` untagged cases (12) and the updated `index.test.ts` category_id assertions (21).
-- `npm run test:visual` — not run (no browser in this environment); pl-PL facet-surface baselines are Epic 47 scope.
+### Verification performed
+- `npm run typecheck` (`tsc -b`) — pass.
+- `npm run lint` (ESLint `--max-warnings=0` + Stylelint) — pass, no color literals.
+- `npm run test` (Vitest) — **714/714** pass, incl. the new EmptyState + CatalogList tests and en/pl i18n parity.
+- Independent Aider review gate (`aider-review-gate.py`) — **APPROVE**, `rc=0`.
 
-**Residual risks:** No router-level `CatalogList` integration/visual test (E47 scope; new logic covered at the `useModels`/`validateSearch` layers). Two low-consequence pre-existing edges recorded in `deferred-work.md`. `untaggedCount` is intentionally omitted (no cheap source; the sidebar renders the checkbox without a count badge).
+### Residual risks
+- The Aider gate is stochastic (this run's earlier iterations returned COMMENT/REQUEST_CHANGES on documented, deferred, or spec-locked items before converging on APPROVE). The final APPROVE reflects a genuinely hardened diff, but a future re-run of the same gate could still surface the E47-deferred items as non-blocking comments.
+- `followup_review_recommended: true` — the repair added a new user-facing recovery behavior (page-overshoot) plus two new test files after the internal adversarial reviewers last ran; an independent follow-up review of the final state is warranted.
+
