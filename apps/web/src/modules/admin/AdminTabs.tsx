@@ -8,7 +8,8 @@ type ActiveTab =
   | "invites"
   | "profile-library"
   | "profile-offers"
-  | "queues";
+  | "queues"
+  | "tag-groups";
 
 export function AdminTabs({ activeTab }: { activeTab: ActiveTab }) {
   const { t } = useTranslation();
@@ -84,6 +85,19 @@ export function AdminTabs({ activeTab }: { activeTab: ActiveTab }) {
         )}
       >
         {t("admin.tabs.queues")}
+      </Link>
+      <Link
+        to="/admin/tag-groups"
+        role="tab"
+        aria-selected={activeTab === "tag-groups"}
+        className={cn(
+          baseTab,
+          activeTab === "tag-groups"
+            ? "border-primary text-foreground"
+            : "border-transparent text-muted-foreground hover:text-foreground",
+        )}
+      >
+        {t("admin.tabs.tagGroups")}
       </Link>
     </nav>
   );

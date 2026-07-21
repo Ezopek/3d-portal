@@ -55,3 +55,15 @@ _(The page-overshoot dead-end originally recorded here was RESOLVED in the 44.3 
 - source_spec: `_bmad-output/implementation-artifacts/spec-45-3-edittagssheet-grouped-picker-create-form-cutover.md`
   summary: Grouped candidate sections have no defined ordering within a section — `TagRead.group_position` ("order within the group," per its own doc comment in `api-types.ts`) is never read by the sort/filter logic, so tags within a section render in whatever order `useTags(query)` returned them.
   evidence: Confirmed via repo-wide grep that no sibling component (`FacetSidebar`, `TagGroupsSection`) reads `group_position` either — it's only ever set in test fixtures. Pre-existing architectural gap surfaced incidentally by this story (the first place a bold group header visually implies curated ordering, making it more noticeable), not caused by this diff's logic.
+
+## Deferred from: story 46.1 dev review (2026-07-22)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-46-1-group-list-counts.md`
+  summary: `AdminTabs`'s `<nav role="tablist" aria-label={t("admin.tabs.users")}>` hardcodes the tablist's accessible name to the "Users" tab label regardless of which tab is actually active, and Story 46.1 adds a 6th tab without fixing it.
+  evidence: `apps/web/src/modules/admin/AdminTabs.tsx:20` — `aria-label` is a static `t("admin.tabs.users")` call, unconditional on `activeTab`. Pre-existing since the tab component's introduction; 46.1 only appends a new `<Link>`, it doesn't touch the `aria-label` line.
+- source_spec: `_bmad-output/implementation-artifacts/spec-46-1-group-list-counts.md`
+  summary: `routes/admin/tag-groups.tsx`'s auth-gate branches (`isLoading` → null, `!isAuthenticated` → null, `!isAdmin` → redirect to `/`) have no automated test coverage — `TagGroupsPage.test.tsx` only mounts the bare page component, never the route wrapper.
+  evidence: Same gap exists for the sibling `routes/admin/queues.tsx` (no dedicated route-level auth test either), so this is an inherited convention gap, not a novel regression — but it means the 46.1 acceptance criterion "non-admin is redirected to `/`" is only verified by manual/structural inspection, not a test.
+- source_spec: `_bmad-output/implementation-artifacts/spec-46-1-group-list-counts.md`
+  summary: `TagGroupsPage` has no ARIA live-region or `aria-busy` signal on loading→data or loading→error transitions, so a screen-reader user gets no announcement that content changed after the initial render.
+  evidence: The skeleton is correctly `aria-hidden="true"`, but nothing else in the component tree uses `aria-live`/`aria-busy`; `QueuesPage` has the identical gap, so this is a pre-existing app-wide convention gap surfaced incidentally by this new screen, not introduced by it.
