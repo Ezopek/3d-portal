@@ -9,40 +9,35 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as RegisterRouteImport } from './routes/register'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
-import { Route as AdminInvitesRouteImport } from './routes/admin/invites'
-import { Route as AdminProfileLibraryRouteImport } from './routes/admin/profile-library'
-import { Route as AdminProfileOffersRouteImport } from './routes/admin/profile-offers'
-import { Route as AdminQueuesRouteImport } from './routes/admin/queues'
-import { Route as AdminTagGroupsRouteImport } from './routes/admin/tag-groups'
-import { Route as AdminUsersRouteImport } from './routes/admin/users'
-import { Route as CatalogIndexRouteImport } from './routes/catalog/index'
-import { Route as CatalogIdRouteImport } from './routes/catalog/$id'
-import { Route as DevComponentsRouteImport } from './routes/dev/components'
-import { Route as EstimatesIndexRouteImport } from './routes/estimates/index'
-import { Route as PrinterIndexRouteImport } from './routes/printer/index'
-import { Route as QueueIndexRouteImport } from './routes/queue/index'
-import { Route as RequestsIndexRouteImport } from './routes/requests/index'
-import { Route as SettingsIndexRouteImport } from './routes/settings/index'
-import { Route as Settings2faRouteImport } from './routes/settings/2fa'
-import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
-import { Route as SettingsSessionsRouteImport } from './routes/settings/sessions'
-import { Route as SettingsShareLinksRouteImport } from './routes/settings/share-links'
-import { Route as ShareTokenRouteImport } from './routes/share/$token'
+import { Route as RegisterRouteImport } from './routes/register'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as SpoolsIndexRouteImport } from './routes/spools/index'
+import { Route as SettingsIndexRouteImport } from './routes/settings/index'
+import { Route as RequestsIndexRouteImport } from './routes/requests/index'
+import { Route as QueueIndexRouteImport } from './routes/queue/index'
+import { Route as PrinterIndexRouteImport } from './routes/printer/index'
+import { Route as EstimatesIndexRouteImport } from './routes/estimates/index'
+import { Route as CatalogIndexRouteImport } from './routes/catalog/index'
+import { Route as ShareTokenRouteImport } from './routes/share/$token'
+import { Route as SettingsShareLinksRouteImport } from './routes/settings/share-links'
+import { Route as SettingsSessionsRouteImport } from './routes/settings/sessions'
+import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
+import { Route as Settings2faRouteImport } from './routes/settings/2fa'
+import { Route as DevComponentsRouteImport } from './routes/dev/components'
+import { Route as CatalogIdRouteImport } from './routes/catalog/$id'
+import { Route as AdminUsersRouteImport } from './routes/admin/users'
+import { Route as AdminTagGroupsRouteImport } from './routes/admin/tag-groups'
+import { Route as AdminQueuesRouteImport } from './routes/admin/queues'
+import { Route as AdminProfileOffersRouteImport } from './routes/admin/profile-offers'
+import { Route as AdminProfileLibraryRouteImport } from './routes/admin/profile-library'
+import { Route as AdminInvitesRouteImport } from './routes/admin/invites'
 import { Route as AdminModelsNewRouteImport } from './routes/admin/models/new'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RegisterRoute = RegisterRouteImport.update({
@@ -50,74 +45,19 @@ const RegisterRoute = RegisterRouteImport.update({
   path: '/register',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ResetPasswordRoute = ResetPasswordRouteImport.update({
-  id: '/reset-password',
-  path: '/reset-password',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminInvitesRoute = AdminInvitesRouteImport.update({
-  id: '/admin/invites',
-  path: '/admin/invites',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminProfileLibraryRoute = AdminProfileLibraryRouteImport.update({
-  id: '/admin/profile-library',
-  path: '/admin/profile-library',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminProfileOffersRoute = AdminProfileOffersRouteImport.update({
-  id: '/admin/profile-offers',
-  path: '/admin/profile-offers',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminQueuesRoute = AdminQueuesRouteImport.update({
-  id: '/admin/queues',
-  path: '/admin/queues',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminTagGroupsRoute = AdminTagGroupsRouteImport.update({
-  id: '/admin/tag-groups',
-  path: '/admin/tag-groups',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminUsersRoute = AdminUsersRouteImport.update({
-  id: '/admin/users',
-  path: '/admin/users',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CatalogIndexRoute = CatalogIndexRouteImport.update({
-  id: '/catalog/',
-  path: '/catalog/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CatalogIdRoute = CatalogIdRouteImport.update({
-  id: '/catalog/$id',
-  path: '/catalog/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DevComponentsRoute = DevComponentsRouteImport.update({
-  id: '/dev/components',
-  path: '/dev/components',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const EstimatesIndexRoute = EstimatesIndexRouteImport.update({
-  id: '/estimates/',
-  path: '/estimates/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PrinterIndexRoute = PrinterIndexRouteImport.update({
-  id: '/printer/',
-  path: '/printer/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const QueueIndexRoute = QueueIndexRouteImport.update({
-  id: '/queue/',
-  path: '/queue/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RequestsIndexRoute = RequestsIndexRouteImport.update({
-  id: '/requests/',
-  path: '/requests/',
+const SpoolsIndexRoute = SpoolsIndexRouteImport.update({
+  id: '/spools/',
+  path: '/spools/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsIndexRoute = SettingsIndexRouteImport.update({
@@ -125,24 +65,29 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
   path: '/settings/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const Settings2faRoute = Settings2faRouteImport.update({
-  id: '/settings/2fa',
-  path: '/settings/2fa',
+const RequestsIndexRoute = RequestsIndexRouteImport.update({
+  id: '/requests/',
+  path: '/requests/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SettingsProfileRoute = SettingsProfileRouteImport.update({
-  id: '/settings/profile',
-  path: '/settings/profile',
+const QueueIndexRoute = QueueIndexRouteImport.update({
+  id: '/queue/',
+  path: '/queue/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SettingsSessionsRoute = SettingsSessionsRouteImport.update({
-  id: '/settings/sessions',
-  path: '/settings/sessions',
+const PrinterIndexRoute = PrinterIndexRouteImport.update({
+  id: '/printer/',
+  path: '/printer/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SettingsShareLinksRoute = SettingsShareLinksRouteImport.update({
-  id: '/settings/share-links',
-  path: '/settings/share-links',
+const EstimatesIndexRoute = EstimatesIndexRouteImport.update({
+  id: '/estimates/',
+  path: '/estimates/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CatalogIndexRoute = CatalogIndexRouteImport.update({
+  id: '/catalog/',
+  path: '/catalog/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ShareTokenRoute = ShareTokenRouteImport.update({
@@ -150,9 +95,64 @@ const ShareTokenRoute = ShareTokenRouteImport.update({
   path: '/share/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SpoolsIndexRoute = SpoolsIndexRouteImport.update({
-  id: '/spools/',
-  path: '/spools/',
+const SettingsShareLinksRoute = SettingsShareLinksRouteImport.update({
+  id: '/settings/share-links',
+  path: '/settings/share-links',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsSessionsRoute = SettingsSessionsRouteImport.update({
+  id: '/settings/sessions',
+  path: '/settings/sessions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsProfileRoute = SettingsProfileRouteImport.update({
+  id: '/settings/profile',
+  path: '/settings/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const Settings2faRoute = Settings2faRouteImport.update({
+  id: '/settings/2fa',
+  path: '/settings/2fa',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DevComponentsRoute = DevComponentsRouteImport.update({
+  id: '/dev/components',
+  path: '/dev/components',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CatalogIdRoute = CatalogIdRouteImport.update({
+  id: '/catalog/$id',
+  path: '/catalog/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminUsersRoute = AdminUsersRouteImport.update({
+  id: '/admin/users',
+  path: '/admin/users',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminTagGroupsRoute = AdminTagGroupsRouteImport.update({
+  id: '/admin/tag-groups',
+  path: '/admin/tag-groups',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminQueuesRoute = AdminQueuesRouteImport.update({
+  id: '/admin/queues',
+  path: '/admin/queues',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminProfileOffersRoute = AdminProfileOffersRouteImport.update({
+  id: '/admin/profile-offers',
+  path: '/admin/profile-offers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminProfileLibraryRoute = AdminProfileLibraryRouteImport.update({
+  id: '/admin/profile-library',
+  path: '/admin/profile-library',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminInvitesRoute = AdminInvitesRouteImport.update({
+  id: '/admin/invites',
+  path: '/admin/invites',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminModelsNewRoute = AdminModelsNewRouteImport.update({
@@ -357,18 +357,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/register': {
@@ -378,102 +371,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RegisterRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/reset-password': {
-      id: '/reset-password'
-      path: '/reset-password'
-      fullPath: '/reset-password'
-      preLoaderRoute: typeof ResetPasswordRouteImport
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin/invites': {
-      id: '/admin/invites'
-      path: '/admin/invites'
-      fullPath: '/admin/invites'
-      preLoaderRoute: typeof AdminInvitesRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin/profile-library': {
-      id: '/admin/profile-library'
-      path: '/admin/profile-library'
-      fullPath: '/admin/profile-library'
-      preLoaderRoute: typeof AdminProfileLibraryRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/profile-offers': {
-      id: '/admin/profile-offers'
-      path: '/admin/profile-offers'
-      fullPath: '/admin/profile-offers'
-      preLoaderRoute: typeof AdminProfileOffersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/queues': {
-      id: '/admin/queues'
-      path: '/admin/queues'
-      fullPath: '/admin/queues'
-      preLoaderRoute: typeof AdminQueuesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/tag-groups': {
-      id: '/admin/tag-groups'
-      path: '/admin/tag-groups'
-      fullPath: '/admin/tag-groups'
-      preLoaderRoute: typeof AdminTagGroupsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/users': {
-      id: '/admin/users'
-      path: '/admin/users'
-      fullPath: '/admin/users'
-      preLoaderRoute: typeof AdminUsersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/catalog/': {
-      id: '/catalog/'
-      path: '/catalog'
-      fullPath: '/catalog/'
-      preLoaderRoute: typeof CatalogIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/catalog/$id': {
-      id: '/catalog/$id'
-      path: '/catalog/$id'
-      fullPath: '/catalog/$id'
-      preLoaderRoute: typeof CatalogIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/dev/components': {
-      id: '/dev/components'
-      path: '/dev/components'
-      fullPath: '/dev/components'
-      preLoaderRoute: typeof DevComponentsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/estimates/': {
-      id: '/estimates/'
-      path: '/estimates'
-      fullPath: '/estimates/'
-      preLoaderRoute: typeof EstimatesIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/printer/': {
-      id: '/printer/'
-      path: '/printer'
-      fullPath: '/printer/'
-      preLoaderRoute: typeof PrinterIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/queue/': {
-      id: '/queue/'
-      path: '/queue'
-      fullPath: '/queue/'
-      preLoaderRoute: typeof QueueIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/requests/': {
-      id: '/requests/'
-      path: '/requests'
-      fullPath: '/requests/'
-      preLoaderRoute: typeof RequestsIndexRouteImport
+    '/spools/': {
+      id: '/spools/'
+      path: '/spools'
+      fullPath: '/spools/'
+      preLoaderRoute: typeof SpoolsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/': {
@@ -483,32 +399,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/settings/2fa': {
-      id: '/settings/2fa'
-      path: '/settings/2fa'
-      fullPath: '/settings/2fa'
-      preLoaderRoute: typeof Settings2faRouteImport
+    '/requests/': {
+      id: '/requests/'
+      path: '/requests'
+      fullPath: '/requests/'
+      preLoaderRoute: typeof RequestsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/settings/profile': {
-      id: '/settings/profile'
-      path: '/settings/profile'
-      fullPath: '/settings/profile'
-      preLoaderRoute: typeof SettingsProfileRouteImport
+    '/queue/': {
+      id: '/queue/'
+      path: '/queue'
+      fullPath: '/queue/'
+      preLoaderRoute: typeof QueueIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/settings/sessions': {
-      id: '/settings/sessions'
-      path: '/settings/sessions'
-      fullPath: '/settings/sessions'
-      preLoaderRoute: typeof SettingsSessionsRouteImport
+    '/printer/': {
+      id: '/printer/'
+      path: '/printer'
+      fullPath: '/printer/'
+      preLoaderRoute: typeof PrinterIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/settings/share-links': {
-      id: '/settings/share-links'
-      path: '/settings/share-links'
-      fullPath: '/settings/share-links'
-      preLoaderRoute: typeof SettingsShareLinksRouteImport
+    '/estimates/': {
+      id: '/estimates/'
+      path: '/estimates'
+      fullPath: '/estimates/'
+      preLoaderRoute: typeof EstimatesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/catalog/': {
+      id: '/catalog/'
+      path: '/catalog'
+      fullPath: '/catalog/'
+      preLoaderRoute: typeof CatalogIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/share/$token': {
@@ -518,11 +441,88 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShareTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/spools/': {
-      id: '/spools/'
-      path: '/spools'
-      fullPath: '/spools/'
-      preLoaderRoute: typeof SpoolsIndexRouteImport
+    '/settings/share-links': {
+      id: '/settings/share-links'
+      path: '/settings/share-links'
+      fullPath: '/settings/share-links'
+      preLoaderRoute: typeof SettingsShareLinksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/sessions': {
+      id: '/settings/sessions'
+      path: '/settings/sessions'
+      fullPath: '/settings/sessions'
+      preLoaderRoute: typeof SettingsSessionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/profile': {
+      id: '/settings/profile'
+      path: '/settings/profile'
+      fullPath: '/settings/profile'
+      preLoaderRoute: typeof SettingsProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/2fa': {
+      id: '/settings/2fa'
+      path: '/settings/2fa'
+      fullPath: '/settings/2fa'
+      preLoaderRoute: typeof Settings2faRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dev/components': {
+      id: '/dev/components'
+      path: '/dev/components'
+      fullPath: '/dev/components'
+      preLoaderRoute: typeof DevComponentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/catalog/$id': {
+      id: '/catalog/$id'
+      path: '/catalog/$id'
+      fullPath: '/catalog/$id'
+      preLoaderRoute: typeof CatalogIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/users': {
+      id: '/admin/users'
+      path: '/admin/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AdminUsersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/tag-groups': {
+      id: '/admin/tag-groups'
+      path: '/admin/tag-groups'
+      fullPath: '/admin/tag-groups'
+      preLoaderRoute: typeof AdminTagGroupsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/queues': {
+      id: '/admin/queues'
+      path: '/admin/queues'
+      fullPath: '/admin/queues'
+      preLoaderRoute: typeof AdminQueuesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/profile-offers': {
+      id: '/admin/profile-offers'
+      path: '/admin/profile-offers'
+      fullPath: '/admin/profile-offers'
+      preLoaderRoute: typeof AdminProfileOffersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/profile-library': {
+      id: '/admin/profile-library'
+      path: '/admin/profile-library'
+      fullPath: '/admin/profile-library'
+      preLoaderRoute: typeof AdminProfileLibraryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/invites': {
+      id: '/admin/invites'
+      path: '/admin/invites'
+      fullPath: '/admin/invites'
+      preLoaderRoute: typeof AdminInvitesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/models/new': {
