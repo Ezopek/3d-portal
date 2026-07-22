@@ -229,4 +229,3 @@ Dev-repair iteration: the deterministic verify gate (`aider-review-gate.py`) ret
 ### Residual risks
 
 - Group reorder remains non-atomic at the transport layer: a network partition that applies the second PATCH but drops its response can still briefly leave two groups sharing a `position` (self-heals on refetch). Full single-request atomicity is deferred (F3) pending a backend reorder endpoint, out of this frontend story's scope.
-
