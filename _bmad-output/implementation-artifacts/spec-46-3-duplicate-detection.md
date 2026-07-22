@@ -6,7 +6,7 @@ status: 'done'
 baseline_revision: '907745e59b80a36b7d254edea535e09bcc7ca162'
 final_revision: 'cf9c9702db8e2906b4dce4a8e04b9a0a7106a70b'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true # 2026-07-22 focused repair of Aider REQUEST_CHANGES; independent re-review still pending
 context: []
 warnings: ['oversized']
 ---
@@ -109,6 +109,26 @@ _No bad_spec loopback occurred; empty._
   - `[medium]` `[patch]` The partial-failure toast copy ("Some duplicate tags couldn't be merged. Already-merged tags were kept.") was shown even when the very *first* sequential merge call failed, i.e. when zero merges actually committed — implying partial progress that didn't happen. Fixed: `submitMergeDuplicates` now tracks `succeededCount` and uses a distinct `duplicates.toast.merge_failed` message ("Couldn't merge the duplicate tags.") when nothing succeeded, keeping the "kept" wording only for genuine partial completion. New en/pl i18n key added (auto-covered by `tag-groups-i18n.test.ts`'s prefix sweep). Added `TagGroupsPage.test.tsx` "first call fails outright — distinct 'nothing merged' toast…".
   - Deferred: Escape/backdrop-click bypasses the disabled-Cancel signal during an in-flight cluster merge (pre-existing across all 46.2 dialogs too, worse consequence here since it's several sequential requests, not one — needs a shared dialog-state-level fix, not a single-dialog patch); an empty-but-still-warning dialog state when a concurrent action drains all candidates (spec's own "submit disables below 2" requirement is met; low-consequence polish only); unbounded O(n²) clustering recompute with no size guard (consistent with this epic's established admin-scale-is-fine convention, no practical concern at current catalog scale). All three logged to `deferred-work.md`.
   - Rejected: the per-language OR-match semantics can false-positive-cluster tags whose other-language field clearly disagrees — this is the spec's deliberate, explicitly-documented design (an explicit admin confirmation exists precisely to catch heuristic false positives; AND-semantics would break the common case where only one language field is populated). Rejected: cluster labels don't show group context despite cross-group clustering being a named scenario — matches the pre-existing 46.2 `MergeTagDialog`/`mergeOptions` precedent, which also never surfaces group context for merges; not a new gap. Rejected: no cap/virtualization on the duplicates panel for a hypothetically large cluster count — matches the existing no-virtualization pattern across this admin screen's group list; no real catalog is at that scale. Rejected: union-find assumes tag ids are unique with no guard against a duplicate-id input — requires an unreachable backend PK-corruption precondition (SQLite primary keys are unique by construction); defensive-programming overkill for a state this app cannot produce.
+
+### 2026-07-22 — Aider independent-review follow-up (focused repair, author: Claude/BMAD)
+
+Independent Aider review (`aider-review-gate.py`) returned `REQUEST_CHANGES` on the diff at `cf9c970`/`0fa32a6`:
+
+> Add a test case to `TagGroupsPage.test.tsx` simulating the scenario where the survivor tag (`t11`/`"Brackets"`) is merged away by a concurrent action while the `MergeDuplicatesDialog` is open, asserting that the selection is re-seeded to the new highest `model_count` candidate and the subsequent merge succeeds.
+
+- addressed_findings:
+  - `[medium]` `[patch]` Missing regression coverage for the *selected survivor* (not just a non-survivor candidate, already covered by the existing "uses live candidate ids at submit time" test) disappearing from the live query data while `MergeDuplicatesDialog` is open. Added `TagGroupsPage.test.tsx` "merge cluster: selected survivor disappears mid-dialog — re-seeds selection to the new highest model_count candidate and merges only live tags" — mutates the query cache mid-dialog (removing the currently-selected survivor `t11`), asserts the radio selection re-seeds to the next-highest `model_count` remaining candidate (`t10`/"Bracket", 5 models, beating `t12`/"bracket", 3 models), then confirms and asserts only the still-live tag is merged into the re-seeded survivor with no stale-id attempt.
+  - **No production code change was required.** The existing `MergeDuplicatesDialog`'s `useEffect` (re-seeds `selectedId` to `pickDefaultSurvivor(candidates)` whenever the previously-selected id drops out of the live `candidates` prop) already covers this case — it was written generically over "the current selection," which includes the survivor, not just a non-survivor candidate. Sanity-checked by temporarily neutralizing the re-seed branch (`setSelectedId((prev) => prev)`) and re-running the new test: it went RED (`waitFor` timeout on the re-seeded "Bracket" radio). Reverted immediately; confirmed the working tree is byte-identical to `HEAD` for `MergeDuplicatesDialog.tsx` (`git diff` empty) before proceeding.
+  - `[test-harness]` `[patch]` Discovered while running the new test as part of the full `TagGroupsPage.test.tsx` file (not in isolation): the file's `vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))` creates its mocks once per file; the existing `afterEach(() => { cleanup(); vi.restoreAllMocks(); })` does not clear their call history (`restoreAllMocks` only reverts `vi.spyOn` spies). Every successful mutation across the whole file (rename/move/merge/create-group successes earlier in the file, not just the duplicate-detection tests) accumulates on the same shared `toast.success`/`toast.error` mocks, so any `toHaveBeenCalledTimes(1)` assertion downstream in the file — pre-existing, not introduced by this pass — was order-dependent and failed when the file ran as a whole (5 failures: the 4 pre-existing duplicate-detection toast-count assertions plus the new test). Fixed by adding `vi.clearAllMocks()` to the shared `afterEach`. This is a test-harness-only change; no production file touched.
+
+**Verification for this focused repair:**
+- `npx vitest run src/modules/admin/TagGroupsPage.test.tsx` — 26/26 pass (was 21/26 before the `vi.clearAllMocks()` fix).
+- `npx vitest run -- duplicateTags TagGroupsPage MergeDuplicatesDialog tag-groups-i18n` — 51/51 pass.
+- `npm run typecheck` (`tsc -b`) — clean.
+- `npm run lint -- --max-warnings=0` — clean.
+- No production `.tsx`/`.ts` file changed; no visual/baseline files touched (no `npx playwright test:visual` re-run needed — this repair is test-file-only, no new rendered state).
+
+**Status honesty:** this closes the specific Aider `REQUEST_CHANGES` finding above with test evidence from this session. It has **not** been re-submitted to an independent reviewer (Aider/Codex) for re-verification, and no Laura/operator sign-off is claimed here — that remains pending. Epic 46 is not being marked done by this entry; no retrospective was run.
 
 ## Design Notes
 

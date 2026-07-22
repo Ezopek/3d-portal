@@ -27,6 +27,12 @@ import { toast } from "sonner";
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  // `vi.mock("sonner", ...)` above creates its `toast.success`/`toast.error`
+  // vi.fn()s once for the whole file; restoreAllMocks() only reverts spies
+  // created via vi.spyOn, so without this their call history accumulates
+  // across every `it()` in this file and toHaveBeenCalledTimes(1) assertions
+  // in later tests see totals from earlier tests' successful mutations.
+  vi.clearAllMocks();
 });
 
 function response(overrides: Partial<TagGroupsResponse> = {}): TagGroupsResponse {
@@ -751,6 +757,50 @@ describe("TagGroupsPage duplicate detection (Story 46.3)", () => {
     );
     const merges = writeCalls(fetchMock, "POST", "/admin/tags/merge");
     expect(merges[0]?.body).toEqual({ from_id: "t10", to_id: "t11" });
+    expect(toast.success).toHaveBeenCalledTimes(1);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  // Aider REQUEST_CHANGES follow-up: the previous regression only covered a
+  // disappearing non-survivor candidate (t12). This covers the selected
+  // SURVIVOR ("t11"/"Brackets", model_count 20) disappearing mid-dialog — the
+  // dialog must re-seed selection to the new highest-model_count remaining
+  // candidate ("t10"/"Bracket", model_count 5) rather than keep pointing at a
+  // now-gone id, and confirming afterwards must send only valid live merge
+  // calls to the re-seeded survivor.
+  it("merge cluster: selected survivor disappears mid-dialog — re-seeds selection to the new highest model_count candidate and merges only live tags", async () => {
+    const fetchMock = installFetch({ data: duplicatesResponse() });
+    const user = userEvent.setup();
+    const { qc } = mount(<TagGroupsPage />);
+    await screen.findByText("Possible duplicates");
+
+    await user.click(screen.getByRole("button", { name: "Merge into one" }));
+    await screen.findByRole("heading", { name: "Merge duplicate tags" });
+    // Default survivor = highest model_count ("Brackets", 20 models).
+    expect(screen.getByRole("radio", { name: "Brackets" })).toHaveProperty("checked", true);
+
+    // Simulate a concurrent action merging the currently-selected survivor
+    // ("t11"/"Brackets") away while this dialog stays open.
+    qc.setQueryData(["sot", "tag-groups"], {
+      groups: [],
+      groupless: duplicatesResponse().groupless.filter((tag) => tag.id !== "t11"),
+    });
+
+    // Selection re-seeds to the new highest-model_count remaining candidate:
+    // "t10"/"Bracket" (5 models) beats "t12"/"bracket" (3 models).
+    await waitFor(() =>
+      expect(screen.getByRole("radio", { name: "Bracket" })).toHaveProperty("checked", true),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Confirm merge" }));
+
+    // Only the still-live "t12" is merged into the re-seeded survivor "t10" —
+    // no stale-id attempt against the vanished "t11".
+    await waitFor(() =>
+      expect(writeCalls(fetchMock, "POST", "/admin/tags/merge")).toHaveLength(1),
+    );
+    const merges = writeCalls(fetchMock, "POST", "/admin/tags/merge");
+    expect(merges[0]?.body).toEqual({ from_id: "t12", to_id: "t10" });
     expect(toast.success).toHaveBeenCalledTimes(1);
     expect(toast.error).not.toHaveBeenCalled();
   });

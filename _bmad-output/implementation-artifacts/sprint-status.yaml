@@ -327,7 +327,7 @@ development_status:
   epic-46: backlog
   46-1-group-list-counts: done
   46-2-rename-merge-move: done
-  46-3-duplicate-detection: backlog
+  46-3-duplicate-detection: done
   epic-46-retrospective: optional
   epic-47: backlog  # 2026-07-19 correct-course: E47 also owns the relocated terminal category retirement (47.4 + 47.5). Live category API is the zero-code compatibility bridge until then.
   47-1-i18n: backlog
