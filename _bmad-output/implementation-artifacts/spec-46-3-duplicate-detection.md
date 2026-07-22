@@ -4,9 +4,9 @@ type: 'feature'
 created: '2026-07-22'
 status: 'done'
 baseline_revision: '907745e59b80a36b7d254edea535e09bcc7ca162'
-final_revision: 'cf9c9702db8e2906b4dce4a8e04b9a0a7106a70b'
+final_revision: 'c65771d119f809d25fd1a47e8fd11b214432da3a'
 review_loop_iteration: 0
-followup_review_recommended: true # 2026-07-22 focused repair of Aider REQUEST_CHANGES; independent re-review still pending
+followup_review_recommended: false # 2026-07-22 independent re-review of c65771d: APPROVE, no missing tests
 context: []
 warnings: ['oversized']
 ---
@@ -128,7 +128,11 @@ Independent Aider review (`aider-review-gate.py`) returned `REQUEST_CHANGES` on 
 - `npm run lint -- --max-warnings=0` — clean.
 - No production `.tsx`/`.ts` file changed; no visual/baseline files touched (no `npx playwright test:visual` re-run needed — this repair is test-file-only, no new rendered state).
 
-**Status honesty:** this closes the specific Aider `REQUEST_CHANGES` finding above with test evidence from this session. It has **not** been re-submitted to an independent reviewer (Aider/Codex) for re-verification, and no Laura/operator sign-off is claimed here — that remains pending. Epic 46 is not being marked done by this entry; no retrospective was run.
+**Independent re-review — 2026-07-22:** Aider focused re-review of `c65771d` (the commit above): **APPROVE**, no missing tests.
+
+**Full gate — 2026-07-22:** `infra/scripts/check-all.sh` standalone run: 16/16 stages PASS; visual regression 504 passed / 24 skipped; all green. Evidence log: `.hermes/run-logs/check-all-e46-3-final-20260722_135928.log` (gitignored local evidence, per AGENTS.md § "Pre-push hook policy & gate evidence").
+
+**Status honesty:** this closes the Aider `REQUEST_CHANGES` finding above; the fix has since passed an independent Aider re-review and the full closeout gate. Epic 46 is not being marked done by this entry; no retrospective was run.
 
 ## Design Notes
 
