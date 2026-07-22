@@ -2,12 +2,13 @@
 title: 'Story 47.2 — Facet-surface Playwright visual specs (sidebar, ribbon, AND-too-narrow empty state)'
 type: 'chore'
 created: '2026-07-22'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
 warnings: ['oversized']
 baseline_revision: 'b1fe7393818bb315db066713b1d61d7b28f42b0f'
+final_revision: '716cd2b809bfb31b617bddfb541070723dec5760'
 ---
 
 <intent-contract>
