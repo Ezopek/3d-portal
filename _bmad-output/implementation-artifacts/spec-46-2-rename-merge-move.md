@@ -2,7 +2,7 @@
 title: 'Admin tag-groups screen — rename / merge / move + group create/reorder (Story 46.2)'
 type: 'feature'
 created: '2026-07-22'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '9e526f85826d40ba20b7d6a43e8c81aec046eb0a'
 final_revision: 'fe8570778100098e3d942168dd43c001561acbb1'
 review_loop_iteration: 0
@@ -147,6 +147,21 @@ _No bad_spec loopback occurred; empty._
   - `[high]` `[patch]` The independent verify-gate review (`aider-review-gate.py`, rc=4 → REQUEST_CHANGES) flagged the non-atomic group reorder as a critical data-consistency risk: the two-PATCH adjacent-swap fired both writes concurrently (`Promise.all`), so a first-lands/second-fails partial failure left two groups sharing a `position`. Fixed within the frozen intent contract (still "adjacent-swap of `position`" + "either PATCH fails → error toast, list re-syncs from server"): the PATCHes now run sequentially and, on second-PATCH failure, a best-effort compensating PATCH restores the first group's original `position` so the server never persists a duplicate-position order. Added `TagGroupsPage.test.tsx` "reorder partial failure rolls back the first PATCH…" covering the previously-untested partial-failure branch. Updated the F3 `deferred-work.md` entry (partial-failure inconsistency now resolved; only out-of-scope single-request atomicity + corrupt-seed equal-position no-op remain).
   - `[low]` `[patch]` Same review's Minor "inconsistent dialog accessibility": `CreateGroupDialog` and `RenameEntityDialog` omitted `DialogDescription` while Move/Merge include it. Added a `DialogDescription` to both (screen-reader-only via `sr-only`, so no visual-baseline change) with new `create.description` / `rename.description` i18n keys (en+pl parity auto-covered by `tag-groups-i18n.test.ts`). This reverses the earlier F5 reject now that the same finding blocks the deterministic gate.
 
+### 2026-07-22 — Review pass (dev-repair re-review)
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 0
+- defer: 0
+- reject: 12
+- addressed_findings:
+  - none
+- notes (fresh Blind Hunter + Edge Case Hunter pass over the repaired diff; no new actionable defects — the reorder rollback is a strict improvement over the prior concurrent `Promise.all`, and every surfaced item is already-tracked, spec-conformant, or a pre-accepted low-consequence tradeoff, so no code changed):
+  - Reject/pre-accepted: the reorder rollback cannot cover a network partition where the second PATCH applies server-side but its response is lost (both groups then briefly share a `position`). This residual is the same non-atomic tradeoff already recorded as F3 — true single-request atomicity needs an out-of-scope backend endpoint — and it self-heals on the next refetch. The change still strictly improves the common clean-failure case, which now rolls back to a consistent order. Same bucket: the transient duplicate-position window between the two success-path PATCHes, and the equal-position swap no-op (only reachable from corrupt seed data).
+  - Reject/spec-conformant: `mapApiError` 400→group-not-found and the count-based append `group_position`/`position` are the spec Boundaries verbatim; the "400 reads oddly for create/rename" and "counts collide across position gaps" concerns fall under the documented duplicate-position tolerance and the move-only 400 signal.
+  - Reject/already-tracked: Move/Merge dialogs reachable with an empty candidate `<select>` in degenerate catalogs, and `reorderPending`/`isPending` conflating rename with reorder, are the prior passes' rejected F4/F5-class findings; the Move/Merge selection-preserving effect firing on each render is the intended pass-1 fix (it bails via the state-setter).
+  - Reject/cosmetic: the sr-only (Create/Rename) vs visible (Move/Merge) `DialogDescription` is a deliberate choice adding a11y parity without a visual-baseline regen; the Edge Case Hunter confirmed no reachable missing-`aria-describedby` path. The partial-failure reorder test asserting PATCH call counts (not the toast) matches every other write test's convention in this file (none mount the sonner Toaster).
+
 ## Design Notes
 
 Merge target and move target lists are built from the already-loaded `useTagGroups()` data (all tags across `groups[].tags` + `groupless`) — do not add a separate `useTags` fetch. Exclude the source/current container from options.
@@ -178,4 +193,40 @@ export function useUpdateTag() {
 
 **Manual checks (if no CLI):**
 - Confirm each dialog renders correctly in light and dark themes with token-only styling, and that move/merge selectors exclude the source/current container.
+
+## Auto Run Result
+
+Status: done
+
+### Summary
+
+Dev-repair iteration: the deterministic verify gate (`aider-review-gate.py`) returned rc=4 (independent review verdict `REQUEST_CHANGES`), driven by a critical data-consistency risk in the group reorder and a minor dialog-accessibility inconsistency. Repaired both **without touching the frozen `<intent-contract>`**, then re-reviewed adversarially (Blind Hunter + Edge Case Hunter) with no new actionable defects.
+
+- **Reorder consistency (critical):** the two-PATCH adjacent-swap previously fired both writes concurrently (`Promise.all`), so a first-lands/second-fails partial failure left two groups sharing a `position`. Now the PATCHes run sequentially and, if the second fails after the first landed, a best-effort compensating PATCH restores the first group's original `position`, so the server never persists a duplicate-position order in the common clean-failure case. Still honors the intent contract's "adjacent-swap of `position`" + "either PATCH fails → error toast, list re-syncs from server". The only residual (network partition where the second write applies but its response is lost) is the same non-atomic tradeoff already recorded as F3 and self-heals on refetch.
+- **Dialog a11y (minor):** added a screen-reader-only `DialogDescription` to `CreateGroupDialog` and `RenameEntityDialog` for a11y parity with Move/Merge (sr-only → no visual-baseline change), with en+pl i18n keys auto-covered by the parity test.
+
+### Files changed
+
+- `apps/web/src/modules/admin/TagGroupsPage.tsx` — `reorder()` now sequential with a compensating rollback on partial failure; pass `description` to both rename dialogs.
+- `apps/web/src/modules/admin/dialogs/RenameEntityDialog.tsx` — optional `description` prop rendered as an sr-only `DialogDescription`.
+- `apps/web/src/modules/admin/dialogs/CreateGroupDialog.tsx` — sr-only `DialogDescription`.
+- `apps/web/src/locales/en.json`, `apps/web/src/locales/pl.json` — new `create.description` + `rename.description` keys (real pl translations).
+- `apps/web/src/modules/admin/TagGroupsPage.test.tsx` — new "reorder partial failure rolls back the first PATCH…" test covering the previously-untested partial-failure branch.
+- `_bmad-output/implementation-artifacts/deferred-work.md` — F3 entry updated (partial-failure inconsistency resolved; only out-of-scope single-request atomicity + corrupt-seed equal-position no-op remain).
+
+### Review findings breakdown
+
+- Dev-repair pass: patch 2 (high 1 reorder consistency, low 1 dialog a11y); intent_gap 0, bad_spec 0, defer 0, reject 0.
+- Adversarial re-review pass: patch 0, defer 0, reject 12 (all already-tracked, spec-conformant, pre-accepted, or cosmetic); intent_gap 0, bad_spec 0.
+
+### Verification performed
+
+- `pnpm --filter web test -- TagGroupsPage tag-groups-i18n RenameEntityDialog CreateGroupDialog MoveTagDialog MergeTagDialog` — pass (25 tests; `window.scrollTo` lines are pre-existing jsdom noise, not failures).
+- `pnpm --filter web typecheck` — pass.
+- `pnpm --filter web lint` (`--max-warnings=0`) — pass.
+- Visual suite not re-run: the sr-only descriptions add no visible pixels and the reorder change is behavior-only, so the committed baselines remain valid (no `--update-snapshots` needed).
+
+### Residual risks
+
+- Group reorder remains non-atomic at the transport layer: a network partition that applies the second PATCH but drops its response can still briefly leave two groups sharing a `position` (self-heals on refetch). Full single-request atomicity is deferred (F3) pending a backend reorder endpoint, out of this frontend story's scope.
 
