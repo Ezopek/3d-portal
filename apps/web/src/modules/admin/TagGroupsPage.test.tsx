@@ -8,7 +8,8 @@ import {
   createRoute,
   createRouter,
 } from "@tanstack/react-router";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -76,10 +77,18 @@ function response(overrides: Partial<TagGroupsResponse> = {}): TagGroupsResponse
 }
 
 function installFetch(
-  opts: { data?: TagGroupsResponse; error?: boolean; pending?: boolean } = {},
+  opts: {
+    data?: TagGroupsResponse;
+    error?: boolean;
+    pending?: boolean;
+    /** Status returned for any non-read (write) request — used to exercise inline errors. */
+    writeStatus?: number;
+  } = {},
 ) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = typeof input === "string" ? input : input.toString();
+    // GET /api/tag-groups is the read; the admin write endpoints all live under
+    // /api/admin/* so they never collide with this substring.
     if (url.includes("/api/tag-groups")) {
       if (opts.pending) return new Promise<Response>(() => {}); // never resolves → loading
       if (opts.error) {
@@ -93,10 +102,39 @@ function installFetch(
         headers: { "Content-Type": "application/json" },
       });
     }
+    // Any write endpoint: succeed with a trivial 200 body unless a failure is requested.
+    if (opts.writeStatus && opts.writeStatus >= 400) {
+      return new Response(JSON.stringify({ detail: "conflict" }), {
+        status: opts.writeStatus,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
+}
+
+// Return every write (PATCH/POST) call to a URL containing `urlSubstr`, as
+// { method, url, body } with the JSON body parsed. Reads (GET) are ignored.
+function writeCalls(
+  fetchMock: ReturnType<typeof vi.fn>,
+  method: string,
+  urlSubstr: string,
+): { method: string; url: string; body: Record<string, unknown> }[] {
+  return fetchMock.mock.calls
+    .map((call) => {
+      const input = call[0] as RequestInfo | URL;
+      const init = (call[1] ?? {}) as RequestInit;
+      const url = typeof input === "string" ? input : input.toString();
+      return { url, init };
+    })
+    .filter(({ url, init }) => init.method === method && url.includes(urlSubstr))
+    .map(({ url, init }) => ({
+      method: init.method as string,
+      url,
+      body: init.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {},
+    }));
 }
 
 /** First call fails, every call after succeeds with `data` — for retry-recovery assertions. */
@@ -219,5 +257,245 @@ describe("TagGroupsPage (Story 46.1)", () => {
     fireEvent.click(retry);
     expect(await screen.findByText("Material")).toBeTruthy();
     expect(screen.queryByText("Couldn't load the tag groups")).toBeNull();
+  });
+});
+
+function readCount(fetchMock: ReturnType<typeof vi.fn>): number {
+  return fetchMock.mock.calls.filter((call) => {
+    const input = call[0] as RequestInfo | URL;
+    const url = typeof input === "string" ? input : input.toString();
+    return url.includes("/api/tag-groups");
+  }).length;
+}
+
+describe("TagGroupsPage write actions (Story 46.2)", () => {
+  beforeEach(() => {
+    void i18n.changeLanguage("en");
+  });
+
+  it("rename tag → PATCH /admin/tags/{id} with only the changed name field, then refreshes", async () => {
+    const fetchMock = installFetch();
+    const user = userEvent.setup();
+    mount(<TagGroupsPage />);
+    await screen.findByText("PLA");
+
+    await user.click(screen.getByRole("button", { name: "Actions for tag PLA" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+    const nameEn = await screen.findByLabelText("English name");
+    await user.clear(nameEn);
+    await user.type(nameEn, "PLA Plus");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(writeCalls(fetchMock, "PATCH", "/admin/tags/t1")).toHaveLength(1),
+    );
+    expect(writeCalls(fetchMock, "PATCH", "/admin/tags/t1")[0]?.body).toEqual({
+      name_en: "PLA Plus",
+    });
+    // Successful write invalidates the read → list refreshes (>1 GET /tag-groups).
+    await waitFor(() => expect(readCount(fetchMock)).toBeGreaterThanOrEqual(2));
+  });
+
+  it("clear Polish name → PATCH sends name_pl: null", async () => {
+    const data = response({
+      groupless: [
+        {
+          id: "t3",
+          slug: "misc",
+          name_en: "Misc",
+          name_pl: "Różne",
+          group_id: null,
+          group_position: 0,
+          model_count: 1,
+        },
+      ],
+    });
+    const fetchMock = installFetch({ data });
+    const user = userEvent.setup();
+    mount(<TagGroupsPage />);
+    await screen.findByText("Misc");
+
+    await user.click(screen.getByRole("button", { name: "Actions for tag Misc" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+    await user.clear(await screen.findByLabelText("Polish name"));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(writeCalls(fetchMock, "PATCH", "/admin/tags/t3")).toHaveLength(1),
+    );
+    expect(writeCalls(fetchMock, "PATCH", "/admin/tags/t3")[0]?.body).toEqual({
+      name_pl: null,
+    });
+  });
+
+  it("rename group → PATCH /admin/tag-groups/{id} with changed fields", async () => {
+    const fetchMock = installFetch();
+    const user = userEvent.setup();
+    mount(<TagGroupsPage />);
+    await screen.findByText("Material");
+
+    await user.click(screen.getByRole("button", { name: "Actions for group Material" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+    const nameEn = await screen.findByLabelText("English name");
+    await user.clear(nameEn);
+    await user.type(nameEn, "Materials");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(writeCalls(fetchMock, "PATCH", "/admin/tag-groups/g1")).toHaveLength(1),
+    );
+    expect(writeCalls(fetchMock, "PATCH", "/admin/tag-groups/g1")[0]?.body).toEqual({
+      name_en: "Materials",
+    });
+  });
+
+  it("move tag into a group → group_position is the target's current tag count", async () => {
+    const fetchMock = installFetch();
+    const user = userEvent.setup();
+    mount(<TagGroupsPage />);
+    await screen.findByText("PLA");
+
+    await user.click(screen.getByRole("button", { name: "Actions for tag PLA" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Move to group" }));
+
+    const select = await screen.findByLabelText("Target group");
+    await user.selectOptions(select, within(select).getByRole("option", { name: "Style" }));
+    await user.click(screen.getByRole("button", { name: "Move" }));
+
+    await waitFor(() =>
+      expect(writeCalls(fetchMock, "PATCH", "/admin/tags/t1")).toHaveLength(1),
+    );
+    // Style (g2) currently holds 0 tags → append at position 0.
+    expect(writeCalls(fetchMock, "PATCH", "/admin/tags/t1")[0]?.body).toEqual({
+      group_id: "g2",
+      group_position: 0,
+    });
+  });
+
+  it("move tag to Ungrouped → group_id: null with group_position = groupless count", async () => {
+    const fetchMock = installFetch();
+    const user = userEvent.setup();
+    mount(<TagGroupsPage />);
+    await screen.findByText("PLA");
+
+    await user.click(screen.getByRole("button", { name: "Actions for tag PLA" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Move to group" }));
+
+    const select = await screen.findByLabelText("Target group");
+    await user.selectOptions(select, within(select).getByRole("option", { name: "Ungrouped" }));
+    await user.click(screen.getByRole("button", { name: "Move" }));
+
+    await waitFor(() =>
+      expect(writeCalls(fetchMock, "PATCH", "/admin/tags/t1")).toHaveLength(1),
+    );
+    // One groupless tag (Misc) already exists → append at position 1.
+    expect(writeCalls(fetchMock, "PATCH", "/admin/tags/t1")[0]?.body).toEqual({
+      group_id: null,
+      group_position: 1,
+    });
+  });
+
+  it("merge tag → POST /admin/tags/merge { from_id, to_id }", async () => {
+    const fetchMock = installFetch();
+    const user = userEvent.setup();
+    mount(<TagGroupsPage />);
+    await screen.findByText("PLA");
+
+    await user.click(screen.getByRole("button", { name: "Actions for tag PLA" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Merge into…" }));
+
+    const select = await screen.findByLabelText("Survivor tag");
+    await user.selectOptions(select, within(select).getByRole("option", { name: "PETG" }));
+    await user.click(screen.getByRole("button", { name: "Merge" }));
+
+    await waitFor(() =>
+      expect(writeCalls(fetchMock, "POST", "/admin/tags/merge")).toHaveLength(1),
+    );
+    expect(writeCalls(fetchMock, "POST", "/admin/tags/merge")[0]?.body).toEqual({
+      from_id: "t1",
+      to_id: "t2",
+    });
+  });
+
+  it("create group → POST /admin/tag-groups with position = current group count", async () => {
+    const fetchMock = installFetch();
+    const user = userEvent.setup();
+    mount(<TagGroupsPage />);
+    await screen.findByText("Material");
+
+    await user.click(screen.getByRole("button", { name: "Create group" }));
+    await user.type(await screen.findByLabelText("Slug"), "finish");
+    await user.type(screen.getByLabelText("English name"), "Finish");
+    await user.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() =>
+      expect(writeCalls(fetchMock, "POST", "/admin/tag-groups")).toHaveLength(1),
+    );
+    expect(writeCalls(fetchMock, "POST", "/admin/tag-groups")[0]?.body).toEqual({
+      slug: "finish",
+      name_en: "Finish",
+      name_pl: null,
+      position: 2,
+    });
+  });
+
+  it("reorder group up → two PATCHes swap adjacent positions", async () => {
+    const fetchMock = installFetch();
+    const user = userEvent.setup();
+    mount(<TagGroupsPage />);
+    await screen.findByText("Style");
+
+    await user.click(screen.getByRole("button", { name: "Actions for group Style" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Move up" }));
+
+    await waitFor(() =>
+      expect(writeCalls(fetchMock, "PATCH", "/admin/tag-groups/")).toHaveLength(2),
+    );
+    // Style (g2, position 1) takes Material's slot (0); Material (g1) takes 1.
+    expect(writeCalls(fetchMock, "PATCH", "/admin/tag-groups/g2")[0]?.body).toEqual({
+      position: 0,
+    });
+    expect(writeCalls(fetchMock, "PATCH", "/admin/tag-groups/g1")[0]?.body).toEqual({
+      position: 1,
+    });
+  });
+
+  it("boundary reorder: first group can't move up, last can't move down", async () => {
+    const user = userEvent.setup();
+    mount(<TagGroupsPage />);
+    await screen.findByText("Material");
+
+    await user.click(screen.getByRole("button", { name: "Actions for group Material" }));
+    const moveUp = await screen.findByRole("menuitem", { name: "Move up" });
+    expect(moveUp.getAttribute("aria-disabled") === "true" || moveUp.hasAttribute("data-disabled")).toBe(
+      true,
+    );
+
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "Actions for group Style" }));
+    const moveDown = await screen.findByRole("menuitem", { name: "Move down" });
+    expect(
+      moveDown.getAttribute("aria-disabled") === "true" || moveDown.hasAttribute("data-disabled"),
+    ).toBe(true);
+  });
+
+  it("write conflict (409) keeps the dialog open with an inline error", async () => {
+    const fetchMock = installFetch({ writeStatus: 409 });
+    const user = userEvent.setup();
+    mount(<TagGroupsPage />);
+    await screen.findByText("Material");
+
+    await user.click(screen.getByRole("button", { name: "Create group" }));
+    await user.type(await screen.findByLabelText("Slug"), "material");
+    await user.type(screen.getByLabelText("English name"), "Material 2");
+    await user.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(await screen.findByText("That name or slug is already in use.")).toBeTruthy();
+    // Dialog stays open (submit button still rendered), request was attempted.
+    expect(screen.getByRole("button", { name: "Create" })).toBeTruthy();
+    expect(writeCalls(fetchMock, "POST", "/admin/tag-groups")).toHaveLength(1);
   });
 });

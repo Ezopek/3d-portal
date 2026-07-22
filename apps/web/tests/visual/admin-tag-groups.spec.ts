@@ -132,6 +132,9 @@ test.describe("/admin/tag-groups baselines", () => {
     await expect(page.getByTestId("tag-group-ungrouped")).toBeVisible();
     await expect(page.getByText("1 model", { exact: true })).toBeVisible();
     await expect(page.getByText("Brak tagów w tej grupie.")).toBeVisible();
+    // Story 46.2 — the page now carries write affordances (per-row menus + Create group).
+    await expect(page.getByRole("button", { name: "Utwórz grupę" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Akcje dla grupy Motyw" })).toBeVisible();
     // baseline-reviewed:
     await expect(page).toHaveScreenshot("tag-groups-populated.png", { fullPage: true });
   });
@@ -158,5 +161,58 @@ test.describe("/admin/tag-groups baselines", () => {
     await expect(page.getByRole("button", { name: "Ponów" })).toBeVisible();
     // baseline-reviewed:
     await expect(page).toHaveScreenshot("tag-groups-error.png", { fullPage: true });
+  });
+});
+
+// Story 46.2 — the four write dialogs, each opened over the populated page. The
+// harness forces pl-PL, so triggers/menu items/titles are matched in Polish.
+// POPULATED's first theme tag localizes to "Smok" (Dragon → name_pl) and the
+// first group to "Motyw" (Theme).
+test.describe("/admin/tag-groups write dialogs", () => {
+  async function gotoPopulated(page: Page) {
+    await stubTagGroups(page, { snapshot: POPULATED });
+    await page.goto("/admin/tag-groups");
+    await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
+    await waitForReady(page);
+  }
+
+  test("create-group dialog", async ({ page }) => {
+    await gotoPopulated(page);
+    await page.getByRole("button", { name: "Utwórz grupę" }).click();
+    // Concrete rendered content of THIS dialog (slug field is create-only) before capturing.
+    await expect(page.getByRole("heading", { name: "Utwórz grupę" })).toBeVisible();
+    await expect(page.getByText("Identyfikator")).toBeVisible();
+    // baseline-reviewed:
+    await expect(page).toHaveScreenshot("tag-groups-dialog-create.png", { fullPage: true });
+  });
+
+  test("rename dialog", async ({ page }) => {
+    await gotoPopulated(page);
+    await page.getByRole("button", { name: "Akcje dla tagu Smok" }).click();
+    await page.getByRole("menuitem", { name: "Zmień nazwę" }).click();
+    await expect(page.getByRole("heading", { name: "Zmień nazwę tagu" })).toBeVisible();
+    await expect(page.getByText("Nazwa angielska")).toBeVisible();
+    // baseline-reviewed:
+    await expect(page).toHaveScreenshot("tag-groups-dialog-rename.png", { fullPage: true });
+  });
+
+  test("move dialog", async ({ page }) => {
+    await gotoPopulated(page);
+    await page.getByRole("button", { name: "Akcje dla tagu Smok" }).click();
+    await page.getByRole("menuitem", { name: "Przenieś do grupy" }).click();
+    await expect(page.getByRole("heading", { name: "Przenieś tag" })).toBeVisible();
+    await expect(page.getByText("Grupa docelowa")).toBeVisible();
+    // baseline-reviewed:
+    await expect(page).toHaveScreenshot("tag-groups-dialog-move.png", { fullPage: true });
+  });
+
+  test("merge dialog", async ({ page }) => {
+    await gotoPopulated(page);
+    await page.getByRole("button", { name: "Akcje dla tagu Smok" }).click();
+    await page.getByRole("menuitem", { name: "Scal z…" }).click();
+    await expect(page.getByRole("heading", { name: "Scal tag" })).toBeVisible();
+    await expect(page.getByText("Tag docelowy")).toBeVisible();
+    // baseline-reviewed:
+    await expect(page).toHaveScreenshot("tag-groups-dialog-merge.png", { fullPage: true });
   });
 });
