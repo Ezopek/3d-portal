@@ -181,7 +181,7 @@ test.describe("/admin/tag-groups write dialogs", () => {
     await page.getByRole("button", { name: "Utwórz grupę" }).click();
     // Concrete rendered content of THIS dialog (slug field is create-only) before capturing.
     await expect(page.getByRole("heading", { name: "Utwórz grupę" })).toBeVisible();
-    await expect(page.getByText("Identyfikator")).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Identyfikator" })).toBeVisible();
     // baseline-reviewed:
     await expect(page).toHaveScreenshot("tag-groups-dialog-create.png", { fullPage: true });
   });
