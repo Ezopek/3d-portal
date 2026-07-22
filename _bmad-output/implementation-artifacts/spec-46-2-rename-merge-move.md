@@ -4,8 +4,9 @@ type: 'feature'
 created: '2026-07-22'
 status: 'done'
 baseline_revision: '9e526f85826d40ba20b7d6a43e8c81aec046eb0a'
+final_revision: '8961c099caec63276156b7e21c2ec45da3596843'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context: []
 warnings: ['multiple-goals', 'oversized']
 ---
@@ -119,6 +120,22 @@ _No bad_spec loopback occurred; empty._
   - Rejected (F4): the two concurrent `mutateAsync` calls share one mutation instance so `isPending` tracks only the latest — noise; self-heals via invalidation and the reorder control lives in a menu that closes on click.
   - Rejected (F5): `CreateGroupDialog`/`RenameEntityDialog` omit `DialogDescription` (Move/Merge include it) — cosmetic a11y-consistency only; the repo convention is already mixed (`Viewer3DModal`, `ImageFullscreenViewer` omit it too).
 
+### 2026-07-22 — Review pass (follow-up)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 0
+- defer: 0
+- reject: 9
+- addressed_findings:
+  - none
+- notes (fresh Blind Hunter + Edge Case Hunter pass on the shipped diff; no new actionable defects — every finding is already-tracked, spec-conformant, or a pre-accepted low-consequence tradeoff, so no code changed):
+  - Reject/already-tracked: the reorder cluster resurfaced by both reviewers — two-PATCH swap non-atomic partial-failure (duplicate `position`), equal-position swap no-op that still toasts success, and the untested reorder-failure branch — is the same F3 already recorded in `deferred-work.md` (spec Design Notes pre-accepted it; robust fix = backend atomic-reorder endpoint, out of scope). Not re-deferred to avoid a duplicate ledger entry.
+  - Reject/spec-conformant: `mapApiError` (409→conflict, 400→group-not-found, else generic) implements the spec Boundaries error-mapping verbatim; the "400 reads oddly for rename/merge" and "422 slug-format → generic" concerns require responses the documented contract doesn't emit for those flows (400 is a move-only signal), so they are unreachable/spec-accepted.
+  - Reject/spec-conformant: merge dialog pre-selecting the first survivor with an immediately-enabled button mirrors the Move dialog pattern and ships the mandated destructive-warning banner; requiring an empty placeholder is a design change, not a defect.
+  - Reject/low-consequence: Move/Merge dialogs opening with an empty `<select>` only in degenerate states (a catalog with exactly one tag; a groupless tag with zero groups) that don't occur in the real taxonomy, and are recoverable via Cancel; a guard would add non-trivial prop threading against the minimal-diff policy.
+  - Reject/pre-accepted: stale/concurrent `group_position`/`position` collisions (two admins, or a stale tab) fall under the spec Design Notes' explicit "acceptable at admin scale" tradeoff; multi-admin concurrency is out of this story's scope.
+  - Reject/low-consequence: a no-op rename closing silently without a toast, and the `name_pl === ""` (empty-string) vs `null` normalization firing one redundant harmless PATCH, are cosmetic with no spec requirement.
+
 ## Design Notes
 
 Merge target and move target lists are built from the already-loaded `useTagGroups()` data (all tags across `groups[].tags` + `groupless`) — do not add a separate `useTags` fetch. Exclude the source/current container from options.
@@ -178,3 +195,11 @@ Status: done
 - Playwright pinned to lockfile 1.59.1 / browser 1217 via `npm ci`; stray `tsc -b` `.d.ts` artifacts removed.
 
 **Residual risks:** (1) The deferred reorder partial-failure/no-op tradeoff (low, self-healing). (2) Pre-existing app-wide `text-destructive` WCAG-AA contrast shortfall (3.78:1) applies to the new dialog inline errors too — a token-level issue, not introduced here. (3) The `accessibility-axe` catalog flake is unrelated but was observed once.
+
+### 2026-07-22 — Follow-up review pass
+
+A fresh Blind Hunter (adversarial) + Edge Case Hunter pass ran against the shipped diff (baseline `9e526f8` → `8961c09`). **No new actionable defects; no code changed.** Every surfaced finding was one of: already-tracked (the reorder cluster = deferred F3 in `deferred-work.md`), spec-conformant (the `mapApiError` mapping and merge-dialog default both implement the spec verbatim), a pre-accepted tradeoff (stale/concurrent position math — "acceptable at admin scale" per Design Notes), or a degenerate-state / cosmetic low-consequence item (empty-option dialogs in a 1-tag / 0-group catalog; silent no-op rename). Triage: 0 intent_gap / 0 bad_spec / 0 patch / 0 defer / 9 reject. The prior pass had already caught and fixed the one genuinely destructive bug (merge-into-wrong-survivor selection reset), and this diff carries those fixes.
+
+**Verification (follow-up):** No source files were modified this pass, so the prior pass's green verification stands unchanged (targeted vitest 21 passed / full suite 762 passed; `typecheck` + `lint --max-warnings=0` clean; `test:visual` 495 passed / 24 skipped; `admin-tag-groups` 28/28). Re-running would be identical.
+
+**Follow-up review recommendation:** `false` — this pass made no review-driven changes.
