@@ -140,3 +140,21 @@ Controller review of the branch flagged two blocking closeout defects; both fixe
 - `npm run test:visual` full suite → **480 passed / 24 skipped / 0 failed** (468 pre-existing + 12 new).
 - `npm run typecheck` → clean; `npm run lint` → exit 0; `vitest` `TagGroupsPage.test.tsx` + `tag-groups-i18n.test.ts` → 11 passed.
 - No baselines regenerated beyond the already-justified `AdminTabs` ripple (`68eb1ed`, unchanged) and the 12 new `admin-tag-groups` baselines. `git status --porcelain` confined to the new spec, its `__snapshots__` dir, and this artifact.
+
+## Closeout Repair — auth-gate coverage + truthful nav label (2026-07-22)
+
+Independent Aider COMMENT flagged the two findings deferred in the review-pass triage log (§ Review Triage Log, deferred items) as worth closing before sign-off. Both fixed this pass; scope held to accessibility metadata + new tests, so **no visual baseline regeneration was required** (verified below).
+
+**Finding 1 — `AdminTabs` `<nav role="tablist">` aria-label was hardcoded to the "Users" tab label.** The landmark named itself "Users" (`t("admin.tabs.users")`) on every admin screen regardless of `activeTab`, so a screen-reader user on e.g. `/admin/tag-groups` heard a wrong, misleading landmark name. Fix: added a new generic i18n key `admin.tabs.nav_aria_label` — en `"Admin sections"` / pl `"Sekcje administracyjne"` — in both locale files (en/pl parity preserved; the project-wide `tests/i18n.test.ts` exact-key-parity check stays green) and pointed the nav's `aria-label` at it. This is a text-only change to `aria-label` (accessibility metadata, not rendered pixels), so admin visual baselines are unaffected. New focused coverage in `apps/web/src/modules/admin/AdminTabs.test.tsx` asserts the tablist is labelled with the generic key and **not** any individual tab label, on both `activeTab="tag-groups"` and `activeTab="users"`.
+
+**Finding 2 — no route-level coverage of `routes/admin/tag-groups.tsx`'s auth gate.** The auth-gate branches (loading, unauthenticated, non-admin, admin) were untested. Fix: added `apps/web/src/routes/admin/tag-groups.test.tsx` mounting the real route component in a memory router (with a `/` fallback so the non-admin `<Navigate to="/" replace />` resolves), mocking `useAuth` as the single seam and stubbing `TagGroupsPage` with a render spy. Four cases, mirroring the existing admin route/auth test patterns (e.g. `UsersPage.test.tsx`'s router mount + `useAuth` mock, `settings/index.test.tsx`'s memory-router harness):
+- loading / unknown auth → renders `null` (no page, no redirect, spy uncalled);
+- unauthenticated → renders `null`, deferring to the shell `AuthGate` (no client redirect to `/`);
+- authenticated non-admin (member) → redirects to `/`, and the tag-groups page (hence its `useTagGroups` fetch) never mounts (render spy uncalled — the testable proxy for "no tag-group data fetched", matching Acceptance Criterion 2);
+- authenticated admin → renders `TagGroupsPage`.
+
+**Verification (this repair):**
+- `npx vitest run src/routes/admin/tag-groups.test.tsx src/modules/admin/AdminTabs.test.tsx src/modules/admin/tag-groups-i18n.test.ts tests/i18n.test.ts` → **10 passed** (4 route + 2 nav-label + 3 i18n-parity + 1 project-wide key-parity). (TanStack scroll-restoration prints a benign `window.scrollTo` not-implemented notice under jsdom on the redirect case; tests pass.)
+- `npx vitest run src/modules/admin src/routes/admin` (regression sweep of all admin + admin-route suites) → **15 files / 97 tests passed**.
+- `npm run typecheck` → exit 0; `npm run lint` → exit 0.
+- No visual baselines touched (change is `aria-label` text + new test files only). `git status --porcelain` confined to `AdminTabs.tsx`, `en.json`, `pl.json`, the two new `.test.tsx` files, and this artifact.

@@ -18,7 +18,7 @@ export function AdminTabs({ activeTab }: { activeTab: ActiveTab }) {
   return (
     <nav
       role="tablist"
-      aria-label={t("admin.tabs.users")}
+      aria-label={t("admin.tabs.nav_aria_label")}
       className="flex gap-2 border-b border-border"
     >
       <Link

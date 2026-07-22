@@ -651,6 +651,7 @@
   "admin.tabs.profileOffers": "Oferty profili",
   "admin.tabs.queues": "Kolejki",
   "admin.tabs.tagGroups": "Grupy tagów",
+  "admin.tabs.nav_aria_label": "Sekcje administracyjne",
   "modules.admin.profiles.title": "Profile procesów",
   "modules.admin.profiles.printer_context": "Drukarka",
   "modules.admin.profiles.printer_label": "Creality K1 Max · Microswiss HF",
