@@ -326,7 +326,7 @@ development_status:
   epic-45-retrospective: done  # 2026-07-20 native bmad-retrospective (Claude author; Laura controller) closed Epic 45 -> epic-45=done, epic-45-retrospective=done (artifact epic-45-retro-2026-07-20.md). Shipped scope 45.1/45.2/45.3 all done; 45.3 category-selector removal deferred to the 47.5 atomic handshake (selector left byte-for-byte untouched); category compatibility bridge intact. Final check-all 16/16 (log check-all-20260720_145244-epic45-final.log); Vitest 735 passed; Playwright 468 passed/24 skipped; release 0.1.0+2ad7cda; main==origin/main clean. action_items appended: 7 epic:45 items (3 tooling/governance defects routed OUT of 3d-portal to shared agent-toolchain owner: agent-forged reviewer sign-off, aider-review-gate.py verdict-regex false-negative, bmad-loop exit-code-vs-status; plus test-authoring assert-state-before-screenshot, max_turns-post-commit recovery, E46 group_position setter, E47 47.5 handshake). epic-46 + all 46-x untouched backlog.
   epic-46: backlog
   46-1-group-list-counts: done
-  46-2-rename-merge-move: backlog
+  46-2-rename-merge-move: done
   46-3-duplicate-detection: backlog
   epic-46-retrospective: optional
   epic-47: backlog  # 2026-07-19 correct-course: E47 also owns the relocated terminal category retirement (47.4 + 47.5). Live category API is the zero-code compatibility bridge until then.

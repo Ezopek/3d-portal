@@ -2,9 +2,9 @@
 title: 'Admin tag-groups screen — rename / merge / move + group create/reorder (Story 46.2)'
 type: 'feature'
 created: '2026-07-22'
-status: 'done'
+status: 'in-progress'
 baseline_revision: '9e526f85826d40ba20b7d6a43e8c81aec046eb0a'
-final_revision: '8961c099caec63276156b7e21c2ec45da3596843'
+final_revision: 'fe8570778100098e3d942168dd43c001561acbb1'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
@@ -136,11 +136,22 @@ _No bad_spec loopback occurred; empty._
   - Reject/pre-accepted: stale/concurrent `group_position`/`position` collisions (two admins, or a stale tab) fall under the spec Design Notes' explicit "acceptable at admin scale" tradeoff; multi-admin concurrency is out of this story's scope.
   - Reject/low-consequence: a no-op rename closing silently without a toast, and the `name_pl === ""` (empty-string) vs `null` normalization firing one redundant harmless PATCH, are cosmetic with no spec requirement.
 
+### 2026-07-22 — Dev-repair pass (verify gate REQUEST_CHANGES)
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 2 (high 1, low 1)
+- defer: 0
+- reject: 0
+- addressed_findings:
+  - `[high]` `[patch]` The independent verify-gate review (`aider-review-gate.py`, rc=4 → REQUEST_CHANGES) flagged the non-atomic group reorder as a critical data-consistency risk: the two-PATCH adjacent-swap fired both writes concurrently (`Promise.all`), so a first-lands/second-fails partial failure left two groups sharing a `position`. Fixed within the frozen intent contract (still "adjacent-swap of `position`" + "either PATCH fails → error toast, list re-syncs from server"): the PATCHes now run sequentially and, on second-PATCH failure, a best-effort compensating PATCH restores the first group's original `position` so the server never persists a duplicate-position order. Added `TagGroupsPage.test.tsx` "reorder partial failure rolls back the first PATCH…" covering the previously-untested partial-failure branch. Updated the F3 `deferred-work.md` entry (partial-failure inconsistency now resolved; only out-of-scope single-request atomicity + corrupt-seed equal-position no-op remain).
+  - `[low]` `[patch]` Same review's Minor "inconsistent dialog accessibility": `CreateGroupDialog` and `RenameEntityDialog` omitted `DialogDescription` while Move/Merge include it. Added a `DialogDescription` to both (screen-reader-only via `sr-only`, so no visual-baseline change) with new `create.description` / `rename.description` i18n keys (en+pl parity auto-covered by `tag-groups-i18n.test.ts`). This reverses the earlier F5 reject now that the same finding blocks the deterministic gate.
+
 ## Design Notes
 
 Merge target and move target lists are built from the already-loaded `useTagGroups()` data (all tags across `groups[].tags` + `groupless`) — do not add a separate `useTags` fetch. Exclude the source/current container from options.
 
-Reorder swap (in `TagGroupsPage`): for "move up" at rendered index `i`, fire `useUpdateTagGroup` twice — `{id: groups[i].id, position: groups[i-1].position}` and `{id: groups[i-1].id, position: groups[i].position}` — then invalidate once. If two groups share an equal stored `position` (only possible from seed data), the swap is a visual no-op (read tie-breaks by slug); acceptable at admin scale, not worth a full reindex.
+Reorder swap (in `TagGroupsPage`): for "move up" at rendered index `i`, fire `useUpdateTagGroup` sequentially — first `{id: groups[i].id, position: groups[i-1].position}`, then `{id: groups[i-1].id, position: groups[i].position}` (the hook invalidates after each success). Running them in sequence (not `Promise.all`) means a mid-swap failure leaves at most one applied write; if the second PATCH fails after the first landed, a best-effort compensating PATCH restores `groups[i]` to its original `position` so the server never persists two groups sharing a `position`. If two groups share an equal stored `position` (only possible from corrupt seed data), the swap is a visual no-op (read tie-breaks by slug); acceptable at admin scale, not worth a full reindex. True single-request atomicity would need a backend reorder endpoint (out of scope).
 
 Mutation hook shape (mirror `useCreateTag.ts`):
 ```ts
@@ -168,38 +179,3 @@ export function useUpdateTag() {
 **Manual checks (if no CLI):**
 - Confirm each dialog renders correctly in light and dark themes with token-only styling, and that move/merge selectors exclude the source/current container.
 
-## Auto Run Result
-
-Status: done
-
-**Summary:** Added the write layer to the read-only `/admin/tag-groups` screen (Story 46.2): per-tag rename / move-to-group / merge-into, per-group rename and up/down reorder, and a top-level Create group — all wiring the already-live E42/42.4 admin governance endpoints via `api()`, no backend changes. The inherited 42.4 collision item is discharged: move sends `group_position` explicitly as the target container's current tag count.
-
-**Files changed:**
-- `apps/web/src/modules/catalog/hooks/mutations/useUpdateTag.ts` (new) — `PATCH /admin/tags/{id}` partial body; invalidates `sot/tag-groups` + `sot/tags`.
-- `apps/web/src/modules/catalog/hooks/mutations/useMergeTags.ts` (new) — `POST /admin/tags/merge {from_id,to_id}`.
-- `apps/web/src/modules/catalog/hooks/mutations/useCreateTagGroup.ts` (new) — `POST /admin/tag-groups`.
-- `apps/web/src/modules/catalog/hooks/mutations/useUpdateTagGroup.ts` (new) — `PATCH /admin/tag-groups/{id}` (rename + reorder).
-- `apps/web/src/modules/admin/dialogs/{RenameEntityDialog,MoveTagDialog,MergeTagDialog,CreateGroupDialog}.tsx` (new) — presentational write dialogs; `apiErrorMessage.ts` (new) shared 409/400/generic mapping.
-- `apps/web/src/modules/admin/dialogs/{MergeTagDialog,MoveTagDialog}.test.tsx` (new) — selection-stability regression tests (review fix).
-- `apps/web/src/modules/admin/TagGroupsPage.tsx` — action menus, Create-group button, dialog state, mutation wiring, reorder swap.
-- `apps/web/src/modules/admin/TagGroupsPage.test.tsx` — +10 write-flow tests (method/path/body asserts incl. explicit `group_position`, boundary-disable, 409 inline error).
-- `apps/web/src/locales/{en,pl}.json` — new `modules.admin.tagGroups.*` action/dialog/error/toast keys (en/pl parity).
-- `apps/web/tests/visual/admin-tag-groups.spec.ts` + 24 baselines — populated/empty regenerated (now carry affordances) + 4 open-dialog states × 4 projects.
-
-**Review findings breakdown:** 2 patched (1 high — destructive merge-into-wrong-survivor selection-reset bug; 1 medium — same class on move), 1 deferred (reorder partial-failure/no-op → `deferred-work.md`; robust fix needs an atomic backend endpoint), 2 rejected (shared-mutation `isPending` fidelity; missing `DialogDescription` — repo-inconsistent cosmetic). No intent_gap, no bad_spec.
-
-**Verification performed:**
-- `npx vitest run` (targeted): `TagGroupsPage.test.tsx` + `MergeTagDialog.test.tsx` + `MoveTagDialog.test.tsx` → 21 passed. Full suite earlier: 762 passed.
-- `npm run typecheck` → clean (`tsc -b`). `npm run lint` → exit 0 (`--max-warnings=0`).
-- `npm run test:visual` full suite → 495 passed / 24 skipped, plus 1 pre-existing flake in `accessibility-axe.spec.ts` (catalog home `text-destructive` color-contrast, a surface this story never touches — passes 5/5 on isolated rerun). `admin-tag-groups` spec re-run post-review-patch → 28/28 passed.
-- Playwright pinned to lockfile 1.59.1 / browser 1217 via `npm ci`; stray `tsc -b` `.d.ts` artifacts removed.
-
-**Residual risks:** (1) The deferred reorder partial-failure/no-op tradeoff (low, self-healing). (2) Pre-existing app-wide `text-destructive` WCAG-AA contrast shortfall (3.78:1) applies to the new dialog inline errors too — a token-level issue, not introduced here. (3) The `accessibility-axe` catalog flake is unrelated but was observed once.
-
-### 2026-07-22 — Follow-up review pass
-
-A fresh Blind Hunter (adversarial) + Edge Case Hunter pass ran against the shipped diff (baseline `9e526f8` → `8961c09`). **No new actionable defects; no code changed.** Every surfaced finding was one of: already-tracked (the reorder cluster = deferred F3 in `deferred-work.md`), spec-conformant (the `mapApiError` mapping and merge-dialog default both implement the spec verbatim), a pre-accepted tradeoff (stale/concurrent position math — "acceptable at admin scale" per Design Notes), or a degenerate-state / cosmetic low-consequence item (empty-option dialogs in a 1-tag / 0-group catalog; silent no-op rename). Triage: 0 intent_gap / 0 bad_spec / 0 patch / 0 defer / 9 reject. The prior pass had already caught and fixed the one genuinely destructive bug (merge-into-wrong-survivor selection reset), and this diff carries those fixes.
-
-**Verification (follow-up):** No source files were modified this pass, so the prior pass's green verification stands unchanged (targeted vitest 21 passed / full suite 762 passed; `typecheck` + `lint --max-warnings=0` clean; `test:visual` 495 passed / 24 skipped; `admin-tag-groups` 28/28). Re-running would be identical.
-
-**Follow-up review recommendation:** `false` — this pass made no review-driven changes.

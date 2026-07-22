@@ -230,7 +230,7 @@ export function TagGroupsPage() {
     onMerge: (tag) => openDialog({ kind: "merge", tag }),
   };
 
-  function reorder(group: TagGroupRead, direction: "up" | "down") {
+  async function reorder(group: TagGroupRead, direction: "up" | "down") {
     if (!data) return;
     const groups = data.groups;
     const index = groups.findIndex((g) => g.id === group.id);
@@ -238,20 +238,34 @@ export function TagGroupsPage() {
     const current = groups[index];
     const other = groups[otherIndex];
     if (!current || !other) return; // boundary guard (buttons are already disabled)
-    // Adjacent-swap the stored `position`; the hook invalidates after each PATCH so
-    // a failure mid-swap re-syncs the list from the server.
-    void Promise.all([
-      updateGroup.mutateAsync({ id: current.id, body: { position: other.position } }),
-      updateGroup.mutateAsync({ id: other.id, body: { position: current.position } }),
-    ])
-      .then(() => toast.success(t("modules.admin.tagGroups.toast.reordered")))
-      .catch(() => toast.error(t("modules.admin.tagGroups.toast.reorder_failed")));
+    // Adjacent-swap the stored `position`. Run the two PATCHes sequentially so a
+    // mid-swap failure leaves at most one applied write; if the second PATCH fails
+    // after the first landed, compensate by restoring `current` to its original
+    // position so the server never persists two groups sharing a `position` (which
+    // would be an inconsistent, slug-tie-broken order). Either way the error toast
+    // fires and the list re-syncs from the server via the hook's invalidation.
+    try {
+      await updateGroup.mutateAsync({ id: current.id, body: { position: other.position } });
+      try {
+        await updateGroup.mutateAsync({ id: other.id, body: { position: current.position } });
+      } catch (err) {
+        // Best-effort rollback of the first write; swallow its own failure so the
+        // original error still surfaces as the reorder-failed toast + refetch.
+        await updateGroup
+          .mutateAsync({ id: current.id, body: { position: current.position } })
+          .catch(() => {});
+        throw err;
+      }
+      toast.success(t("modules.admin.tagGroups.toast.reordered"));
+    } catch {
+      toast.error(t("modules.admin.tagGroups.toast.reorder_failed"));
+    }
   }
 
   const groupActions: GroupActions = {
     onRename: (group) => openDialog({ kind: "rename-group", group }),
-    onMoveUp: (group) => reorder(group, "up"),
-    onMoveDown: (group) => reorder(group, "down"),
+    onMoveUp: (group) => void reorder(group, "up"),
+    onMoveDown: (group) => void reorder(group, "down"),
   };
 
   function submitRenameTag(tag: TagReadWithCount, values: { name_en: string; name_pl: string | null }) {
@@ -442,6 +456,7 @@ export function TagGroupsPage() {
           open
           onOpenChange={onDialogOpenChange}
           title={t("modules.admin.tagGroups.rename.title_tag")}
+          description={t("modules.admin.tagGroups.rename.description")}
           initialNameEn={dialog.tag.name_en}
           initialNamePl={dialog.tag.name_pl}
           pending={updateTag.isPending}
@@ -455,6 +470,7 @@ export function TagGroupsPage() {
           open
           onOpenChange={onDialogOpenChange}
           title={t("modules.admin.tagGroups.rename.title_group")}
+          description={t("modules.admin.tagGroups.rename.description")}
           initialNameEn={dialog.group.name_en}
           initialNamePl={dialog.group.name_pl}
           pending={updateGroup.isPending}

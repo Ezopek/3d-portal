@@ -463,6 +463,46 @@ describe("TagGroupsPage write actions (Story 46.2)", () => {
     });
   });
 
+  it("reorder partial failure rolls back the first PATCH so no two groups share a position", async () => {
+    // First swap PATCH (g2 → 0) succeeds; the second (g1 → 1) fails. The page must
+    // then restore g2 to its original position (1) so the server never keeps two
+    // groups at the same `position` (an inconsistent, slug-tie-broken order).
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/api/tag-groups")) {
+        return new Response(JSON.stringify(response()), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/admin/tag-groups/g1")) {
+        return new Response(JSON.stringify({ detail: "boom" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = userEvent.setup();
+    mount(<TagGroupsPage />);
+    await screen.findByText("Style");
+
+    await user.click(screen.getByRole("button", { name: "Actions for group Style" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Move up" }));
+
+    // g2 is written twice: the forward swap to 0, then the compensating rollback to 1.
+    await waitFor(() =>
+      expect(writeCalls(fetchMock, "PATCH", "/admin/tag-groups/g2")).toHaveLength(2),
+    );
+    const g2Writes = writeCalls(fetchMock, "PATCH", "/admin/tag-groups/g2");
+    expect(g2Writes[0]?.body).toEqual({ position: 0 });
+    expect(g2Writes[1]?.body).toEqual({ position: 1 }); // rollback to original
+    // g1 was attempted exactly once (the failed second PATCH), never left applied.
+    expect(writeCalls(fetchMock, "PATCH", "/admin/tag-groups/g1")).toHaveLength(1);
+  });
+
   it("boundary reorder: first group can't move up, last can't move down", async () => {
     const user = userEvent.setup();
     mount(<TagGroupsPage />);

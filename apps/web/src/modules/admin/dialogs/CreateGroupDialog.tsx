@@ -5,6 +5,7 @@ import { Button } from "@/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -59,6 +60,9 @@ export function CreateGroupDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("modules.admin.tagGroups.create.title")}</DialogTitle>
+          <DialogDescription className="sr-only">
+            {t("modules.admin.tagGroups.create.description")}
+          </DialogDescription>
         </DialogHeader>
         <form
           className="flex flex-col gap-3"

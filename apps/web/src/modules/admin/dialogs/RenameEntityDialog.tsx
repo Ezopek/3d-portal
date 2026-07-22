@@ -5,6 +5,7 @@ import { Button } from "@/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -19,6 +20,8 @@ export interface RenameEntityDialogProps {
   open: boolean;
   onOpenChange: (next: boolean) => void;
   title: string;
+  /** Accessible description; rendered screen-reader-only for a11y parity with Move/Merge. */
+  description?: string;
   initialNameEn: string;
   initialNamePl: string | null;
   pending: boolean;
@@ -30,6 +33,7 @@ export function RenameEntityDialog({
   open,
   onOpenChange,
   title,
+  description,
   initialNameEn,
   initialNamePl,
   pending,
@@ -62,6 +66,9 @@ export function RenameEntityDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
+          {description ? (
+            <DialogDescription className="sr-only">{description}</DialogDescription>
+          ) : null}
         </DialogHeader>
         <form
           className="flex flex-col gap-3"
