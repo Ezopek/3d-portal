@@ -13,9 +13,16 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Story 46.3 — no <Toaster> is mounted in these tests (mirrors the rest of this
+// file: success/error paths are asserted via network calls, not rendered toast
+// text), so mock `sonner` to make the duplicate-cluster merge's success/partial-
+// failure toast calls observable.
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
 import i18n from "@/locales/i18n";
 import type { TagGroupsResponse } from "@/lib/api-types";
 import { TagGroupsPage } from "@/modules/admin/TagGroupsPage";
+import { toast } from "sonner";
 
 afterEach(() => {
   cleanup();
@@ -178,11 +185,13 @@ function mount(node: ReactNode) {
     history: createMemoryHistory({ initialEntries: ["/admin/tag-groups"] }),
   });
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  // `qc` is exposed (additively — existing call sites ignore it) so a test can
+  // simulate a concurrent cache update (e.g. Story 46.3's stale-tagIds regression).
+  return { ...render(
     <QueryClientProvider client={qc}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
-  );
+  ), qc };
 }
 
 describe("TagGroupsPage (Story 46.1)", () => {
@@ -537,5 +546,212 @@ describe("TagGroupsPage write actions (Story 46.2)", () => {
     // Dialog stays open (submit button still rendered), request was attempted.
     expect(screen.getByRole("button", { name: "Create" })).toBeTruthy();
     expect(writeCalls(fetchMock, "POST", "/admin/tag-groups")).toHaveLength(1);
+  });
+});
+
+// Story 46.3 — client-side duplicate-tag detection panel + cluster-merge dialog.
+// Three groupless tags ("Bracket"/"Brackets"/"bracket") normalize/Levenshtein
+// into a single 3-tag cluster (see duplicateTags.test.ts for the algorithm's own
+// coverage); this fixture exercises the panel + sequential-merge wiring only.
+function duplicatesResponse(): TagGroupsResponse {
+  return {
+    groups: [],
+    groupless: [
+      {
+        id: "t10",
+        slug: "bracket",
+        name_en: "Bracket",
+        name_pl: null,
+        group_id: null,
+        group_position: 0,
+        model_count: 5,
+      },
+      {
+        id: "t11",
+        slug: "brackets",
+        name_en: "Brackets",
+        name_pl: null,
+        group_id: null,
+        group_position: 1,
+        model_count: 20,
+      },
+      {
+        id: "t12",
+        slug: "bracket-lower",
+        name_en: "bracket",
+        name_pl: null,
+        group_id: null,
+        group_position: 2,
+        model_count: 3,
+      },
+    ],
+  };
+}
+
+describe("TagGroupsPage duplicate detection (Story 46.3)", () => {
+  beforeEach(() => {
+    void i18n.changeLanguage("en");
+  });
+
+  it("renders the possible-duplicates panel with a cluster and similar-count badge", async () => {
+    installFetch({ data: duplicatesResponse() });
+    mount(<TagGroupsPage />);
+    expect(await screen.findByText("Possible duplicates")).toBeTruthy();
+    expect(screen.getByText("3 similar")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Merge into one" })).toBeTruthy();
+  });
+
+  it("omits the duplicates panel entirely when no cluster is detected", async () => {
+    installFetch(); // default response(): PLA/PETG/Misc/Material/Style — all textually distinct
+    mount(<TagGroupsPage />);
+    await screen.findByText("Material");
+    expect(screen.queryByText("Possible duplicates")).toBeNull();
+    expect(screen.queryByTestId("duplicate-tags-panel")).toBeNull();
+  });
+
+  it("merge cluster happy path: sequential POST /admin/tags/merge calls into the default (highest model_count) survivor, then success toast", async () => {
+    const fetchMock = installFetch({ data: duplicatesResponse() });
+    const user = userEvent.setup();
+    mount(<TagGroupsPage />);
+    await screen.findByText("Possible duplicates");
+
+    await user.click(screen.getByRole("button", { name: "Merge into one" }));
+    await screen.findByRole("heading", { name: "Merge duplicate tags" });
+    // Default survivor = highest model_count ("Brackets", 20 models).
+    expect(screen.getByRole("radio", { name: "Brackets" })).toHaveProperty("checked", true);
+
+    await user.click(screen.getByRole("button", { name: "Confirm merge" }));
+
+    await waitFor(() =>
+      expect(writeCalls(fetchMock, "POST", "/admin/tags/merge")).toHaveLength(2),
+    );
+    const merges = writeCalls(fetchMock, "POST", "/admin/tags/merge");
+    // Sequential, in cluster order, skipping the survivor: t10 → t11, then t12 → t11.
+    expect(merges[0]?.body).toEqual({ from_id: "t10", to_id: "t11" });
+    expect(merges[1]?.body).toEqual({ from_id: "t12", to_id: "t11" });
+
+    expect(toast.success).toHaveBeenCalledTimes(1);
+    expect(toast.error).not.toHaveBeenCalled();
+    // Dialog closes on completion.
+    expect(screen.queryByRole("heading", { name: "Merge duplicate tags" })).toBeNull();
+    // Successful merge invalidates the read → list refreshes (>1 GET /tag-groups).
+    await waitFor(() => expect(readCount(fetchMock)).toBeGreaterThanOrEqual(2));
+  });
+
+  it("merge cluster partial failure: stops after the failing call, closes the dialog, and toasts a partial-failure error", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/api/tag-groups")) {
+        return new Response(JSON.stringify(duplicatesResponse()), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/admin/tags/merge")) {
+        const body: { from_id?: string } = init?.body
+          ? (JSON.parse(init.body as string) as { from_id?: string })
+          : {};
+        if (body.from_id === "t12") {
+          return new Response(JSON.stringify({ detail: "conflict" }), {
+            status: 409,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = userEvent.setup();
+    mount(<TagGroupsPage />);
+    await screen.findByText("Possible duplicates");
+
+    await user.click(screen.getByRole("button", { name: "Merge into one" }));
+    await screen.findByRole("heading", { name: "Merge duplicate tags" });
+    await user.click(screen.getByRole("button", { name: "Confirm merge" }));
+
+    // The first merge (t10 → t11) succeeds; the second (t12 → t11) 409s and the
+    // loop stops — no further merge attempts beyond these two.
+    await waitFor(() =>
+      expect(writeCalls(fetchMock, "POST", "/admin/tags/merge")).toHaveLength(2),
+    );
+    const merges = writeCalls(fetchMock, "POST", "/admin/tags/merge");
+    expect(merges[0]?.body).toEqual({ from_id: "t10", to_id: "t11" });
+    expect(merges[1]?.body).toEqual({ from_id: "t12", to_id: "t11" });
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+    expect(toast.success).not.toHaveBeenCalled();
+    // Dialog still closes despite the partial failure (nothing left to correct
+    // in-dialog — the already-committed first merge is the desired end state).
+    expect(screen.queryByRole("heading", { name: "Merge duplicate tags" })).toBeNull();
+  });
+
+  // Review finding (dev-repair): when the very FIRST sequential merge call
+  // fails, zero merges actually committed — the "kept" wording used by the
+  // partial-failure toast would be misleading (implies partial progress).
+  it("merge cluster: first call fails outright — distinct 'nothing merged' toast, not the partial-failure wording", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/api/tag-groups")) {
+        return new Response(JSON.stringify(duplicatesResponse()), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/admin/tags/merge")) {
+        return new Response(JSON.stringify({ detail: "conflict" }), {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = userEvent.setup();
+    mount(<TagGroupsPage />);
+    await screen.findByText("Possible duplicates");
+    await user.click(screen.getByRole("button", { name: "Merge into one" }));
+    await screen.findByRole("heading", { name: "Merge duplicate tags" });
+    await user.click(screen.getByRole("button", { name: "Confirm merge" }));
+
+    await waitFor(() => expect(writeCalls(fetchMock, "POST", "/admin/tags/merge")).toHaveLength(1));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+    // Distinct copy from the partial-failure case — nothing succeeded here.
+    expect(toast.error).toHaveBeenCalledWith("Couldn't merge the duplicate tags.");
+  });
+
+  // Review finding (dev-repair): the merge loop must use the LIVE candidate ids
+  // at submit time, not the ids frozen when the dialog opened — otherwise a tag
+  // that already disappeared (merged away by a concurrent action) is still
+  // attempted, producing a spurious failure for a tag that no longer exists.
+  it("merge cluster: uses live candidate ids at submit time, skipping a tag that disappeared from the cache while the dialog was open", async () => {
+    const fetchMock = installFetch({ data: duplicatesResponse() });
+    const user = userEvent.setup();
+    const { qc } = mount(<TagGroupsPage />);
+    await screen.findByText("Possible duplicates");
+
+    await user.click(screen.getByRole("button", { name: "Merge into one" }));
+    await screen.findByRole("heading", { name: "Merge duplicate tags" });
+
+    // Simulate a concurrent action (another tab/admin) merging "t12" away —
+    // the query cache updates (e.g. via a background refetch) while this
+    // dialog is still open, before the admin clicks confirm.
+    qc.setQueryData(["sot", "tag-groups"], {
+      groups: [],
+      groupless: duplicatesResponse().groupless.filter((tag) => tag.id !== "t12"),
+    });
+
+    await user.click(screen.getByRole("button", { name: "Confirm merge" }));
+
+    // Only t10 → t11 is attempted; t12 is never merged since it was already gone.
+    await waitFor(() =>
+      expect(writeCalls(fetchMock, "POST", "/admin/tags/merge")).toHaveLength(1),
+    );
+    const merges = writeCalls(fetchMock, "POST", "/admin/tags/merge");
+    expect(merges[0]?.body).toEqual({ from_id: "t10", to_id: "t11" });
+    expect(toast.success).toHaveBeenCalledTimes(1);
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });

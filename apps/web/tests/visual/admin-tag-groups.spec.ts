@@ -26,6 +26,10 @@ import { waitForReady } from "./helpers";
 // Populated fixture exercises: position ordering (Motyw → Materiał → Kolekcja), multi-tag
 // groups, singular vs plural CLDR counts (1 → "model"), name_pl-null fallback to name_en
 // (PLA), an empty group's inline empty-state, and the groupless ("Bez grupy") section.
+//
+// Story 46.3 — "Bracket"/"Brackets" is an intentional near-duplicate pair (Levenshtein
+// distance 1, normalized length 8) added to the groupless tags so the populated fixture
+// also exercises the duplicates-detection panel.
 const POPULATED = {
   groups: [
     {
@@ -92,6 +96,24 @@ const POPULATED = {
       group_position: 0,
       model_count: 5,
     },
+    {
+      id: "t-bracket",
+      slug: "bracket",
+      name_en: "Bracket",
+      name_pl: null,
+      group_id: null,
+      group_position: 1,
+      model_count: 8,
+    },
+    {
+      id: "t-brackets",
+      slug: "brackets",
+      name_en: "Brackets",
+      name_pl: null,
+      group_id: null,
+      group_position: 2,
+      model_count: 2,
+    },
   ],
 };
 
@@ -137,6 +159,22 @@ test.describe("/admin/tag-groups baselines", () => {
     await expect(page.getByRole("button", { name: "Akcje dla grupy Motyw" })).toBeVisible();
     // baseline-reviewed:
     await expect(page).toHaveScreenshot("tag-groups-populated.png", { fullPage: true });
+  });
+
+  test("populated — possible duplicates panel for a near-duplicate tag pair", async ({
+    page,
+  }) => {
+    await stubTagGroups(page, { snapshot: POPULATED });
+    await page.goto("/admin/tag-groups");
+    await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
+    await waitForReady(page);
+    // Story 46.3 — the duplicates panel renders above the group list, listing the
+    // Bracket/Brackets cluster with its similar-count badge and merge action.
+    await expect(page.getByText("Możliwe duplikaty")).toBeVisible();
+    await expect(page.getByText("2 podobne")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Scal w jeden" })).toBeVisible();
+    // baseline-reviewed:
+    await expect(page).toHaveScreenshot("tag-groups-duplicates-panel.png", { fullPage: true });
   });
 
   test("empty — no groups and no groupless tags", async ({ page }) => {
@@ -214,5 +252,16 @@ test.describe("/admin/tag-groups write dialogs", () => {
     await expect(page.getByText("Tag docelowy")).toBeVisible();
     // baseline-reviewed:
     await expect(page).toHaveScreenshot("tag-groups-dialog-merge.png", { fullPage: true });
+  });
+
+  test("merge-duplicates dialog", async ({ page }) => {
+    await gotoPopulated(page);
+    await page.getByRole("button", { name: "Scal w jeden" }).click();
+    await expect(page.getByRole("heading", { name: "Scal duplikaty tagów" })).toBeVisible();
+    await expect(page.getByText("Tag, który pozostanie")).toBeVisible();
+    // baseline-reviewed:
+    await expect(page).toHaveScreenshot("tag-groups-dialog-merge-duplicates.png", {
+      fullPage: true,
+    });
   });
 });

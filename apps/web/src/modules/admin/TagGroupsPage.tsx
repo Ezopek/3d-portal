@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, MoreHorizontal, Plus } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -23,9 +23,15 @@ import {
 import { AdminTabs } from "./AdminTabs";
 import { mapApiError } from "./dialogs/apiErrorMessage";
 import { CreateGroupDialog } from "./dialogs/CreateGroupDialog";
+import {
+  MergeDuplicatesDialog,
+  type MergeDuplicatesCandidate,
+} from "./dialogs/MergeDuplicatesDialog";
 import { MergeTagDialog, type MergeTargetOption } from "./dialogs/MergeTagDialog";
 import { MoveTagDialog, type MoveTargetOption } from "./dialogs/MoveTagDialog";
 import { RenameEntityDialog } from "./dialogs/RenameEntityDialog";
+import { DuplicateTagsPanel } from "./DuplicateTagsPanel";
+import { findDuplicateClusters } from "./duplicateTags";
 
 // TAG-GROUPS-1 (Story 46.1) — locale-aware group/tag naming follows the same
 // `preferPl` fallback used by ModelHero (apps/web/src/modules/catalog/components/ModelHero.tsx:67-80):
@@ -182,13 +188,14 @@ function GrouplessSection({
   );
 }
 
-// Story 46.2 — which write dialog (if any) is open, and against which target.
+// Story 46.2/46.3 — which write dialog (if any) is open, and against which target.
 type DialogState =
   | { kind: "rename-tag"; tag: TagReadWithCount }
   | { kind: "rename-group"; group: TagGroupRead }
   | { kind: "move"; tag: TagReadWithCount }
   | { kind: "merge"; tag: TagReadWithCount }
   | { kind: "create" }
+  | { kind: "merge-duplicates"; tagIds: string[] }
   | null;
 
 const UNGROUPED_KEY = "__ungrouped__";
@@ -209,8 +216,17 @@ export function TagGroupsPage() {
 
   const [dialog, setDialog] = useState<DialogState>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [duplicatesMergePending, setDuplicatesMergePending] = useState(false);
 
   const data = query.data;
+
+  // Story 46.3 — pure client-side derivation over already-loaded data, recomputed
+  // on every `data` change (see the frozen intent-contract: no new endpoint, no
+  // extra fetch).
+  const duplicateClusters = useMemo(
+    () => (data ? findDuplicateClusters(allTags(data)) : []),
+    [data],
+  );
 
   function openDialog(next: NonNullable<DialogState>) {
     setErrorMessage(null);
@@ -341,6 +357,48 @@ export function TagGroupsPage() {
     );
   }
 
+  // Story 46.3 — sequential merge of every other cluster tag into the chosen
+  // survivor. Never Promise.all (Design Notes): a mid-sequence failure must
+  // leave already-committed merges applied and stop before the rest, so
+  // subsequent merges are never attempted against a survivor whose id may have
+  // become stale. Unlike the single-tag merge dialog, this always closes the
+  // dialog and reports via toast (success or partial-failure) rather than an
+  // inline error, since a partially-completed cluster merge has nothing left
+  // to correct in-dialog — the list refetch already reflects the true state.
+  //
+  // Review finding (dev-repair): `tagIds` must be the LIVE candidate ids at the
+  // moment of submit (see the onSubmit wiring below), not the raw ids frozen
+  // when the dialog was opened — otherwise a tag that already disappeared
+  // (merged elsewhere while the dialog was open) would still be attempted here
+  // and produce a spurious failure for a tag that no longer needs merging.
+  async function submitMergeDuplicates(tagIds: string[], survivorId: string) {
+    setDuplicatesMergePending(true);
+    let succeededCount = 0;
+    let failed = false;
+    for (const tagId of tagIds) {
+      if (tagId === survivorId) continue;
+      try {
+        await mergeTags.mutateAsync({ from_id: tagId, to_id: survivorId });
+        succeededCount++;
+      } catch {
+        failed = true;
+        break;
+      }
+    }
+    setDuplicatesMergePending(false);
+    closeDialog();
+    if (failed && succeededCount === 0) {
+      // Review finding (dev-repair): the "kept" wording below implies partial
+      // progress — wrong when the very first merge call failed and nothing
+      // actually committed.
+      toast.error(t("modules.admin.tagGroups.duplicates.toast.merge_failed"));
+    } else if (failed) {
+      toast.error(t("modules.admin.tagGroups.duplicates.toast.merge_partial_failure"));
+    } else {
+      toast.success(t("modules.admin.tagGroups.duplicates.toast.merged"));
+    }
+  }
+
   function submitCreate(values: { slug: string; name_en: string; name_pl: string | null }) {
     if (!data) return;
     createGroup.mutate(
@@ -379,6 +437,23 @@ export function TagGroupsPage() {
       .map((x) => ({ id: x.id, label: localize(x.name_en, x.name_pl) }));
   }
 
+  // Story 46.3 — re-derives the survivor candidate list live from currently-loaded
+  // tags by id every render (same options-refresh pattern as mergeOptions/moveOptions
+  // above): if a cluster member disappears (merged elsewhere) while the dialog is
+  // open, it drops out of `candidates` automatically on the next data change.
+  function mergeDuplicatesCandidates(tagIds: string[]): MergeDuplicatesCandidate[] {
+    if (!data) return [];
+    const idSet = new Set(tagIds);
+    return allTags(data)
+      .filter((x) => idSet.has(x.id))
+      .map((x) => ({
+        id: x.id,
+        label: localize(x.name_en, x.name_pl),
+        name_en: x.name_en,
+        model_count: x.model_count,
+      }));
+  }
+
   const onDialogOpenChange = (next: boolean) => {
     if (!next) closeDialog();
   };
@@ -405,6 +480,12 @@ export function TagGroupsPage() {
           ) : null}
         </div>
       </header>
+
+      <DuplicateTagsPanel
+        clusters={duplicateClusters}
+        localize={localize}
+        onMergeCluster={(tagIds) => openDialog({ kind: "merge-duplicates", tagIds })}
+      />
 
       {data ? (
         // Prefer showing already-loaded data over a background-refetch error (mirrors
@@ -510,6 +591,24 @@ export function TagGroupsPage() {
           pending={createGroup.isPending}
           errorMessage={errorMessage}
           onSubmit={submitCreate}
+        />
+      ) : null}
+
+      {dialog?.kind === "merge-duplicates" ? (
+        <MergeDuplicatesDialog
+          open
+          onOpenChange={onDialogOpenChange}
+          candidates={mergeDuplicatesCandidates(dialog.tagIds)}
+          pending={duplicatesMergePending}
+          errorMessage={null}
+          onSubmit={(survivorId) =>
+            // Live-derive at submit time (not the stale open-time tagIds) so a
+            // tag that already disappeared is never attempted (review finding).
+            void submitMergeDuplicates(
+              mergeDuplicatesCandidates(dialog.tagIds).map((candidate) => candidate.id),
+              survivorId,
+            )
+          }
         />
       ) : null}
     </div>
