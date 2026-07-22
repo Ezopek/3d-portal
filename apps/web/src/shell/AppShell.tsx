@@ -49,8 +49,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       // Codex P2 (2026-05-21) — pass raw `pathname + searchStr` to navigate.
       // TanStack Router encodes search values via URLSearchParams; manually
       // calling encodeURIComponent here would double-encode (the resulting URL
-      // becomes `/login?next=%252Fcatalog%253Fcategory_id%253Dxyz` instead of
-      // `/login?next=%2Fcatalog%3Fcategory_id%3Dxyz`).
+      // becomes `/login?next=%252Fcatalog%253Fq%253Dxyz` instead of
+      // `/login?next=%2Fcatalog%3Fq%3Dxyz`).
       const next = pathname + (searchStr || "");
       void navigate({ to: "/login", search: { next }, replace: true });
     }

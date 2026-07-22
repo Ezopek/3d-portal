@@ -26,45 +26,12 @@ from ._enums import (
 from ._helpers import _now_utc, uuid_fk
 
 
-class Category(SQLModel, table=True):
-    __tablename__ = "category"
-    __table_args__ = (
-        UniqueConstraint("parent_id", "slug", name="uq_category_parent_slug"),
-        # NULL != NULL in SQL, so the composite constraint above won't catch two
-        # root categories (parent_id IS NULL) with the same slug.  A partial
-        # unique index on slug WHERE parent_id IS NULL covers that case on both
-        # SQLite (3.9+) and Postgres.
-        Index(
-            "uq_category_root_slug",
-            "slug",
-            unique=True,
-            sqlite_where=Column("parent_id").is_(None),
-            postgresql_where=Column("parent_id").is_(None),
-        ),
-        # Named to match the alembic migration (ix_category_parent), which
-        # differs from the SQLModel auto-generated name (ix_category_parent_id).
-        Index("ix_category_parent", "parent_id"),
-    )
-
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    parent_id: uuid.UUID | None = Field(
-        default=None,
-        sa_column=uuid_fk("category.id", ondelete="RESTRICT", nullable=True),
-    )
-    slug: str = Field(index=True)
-    name_en: str
-    name_pl: str | None = None
-    created_at: datetime.datetime = Field(default_factory=_now_utc)
-    updated_at: datetime.datetime = Field(default_factory=_now_utc)
-
-
 class TagGroup(SQLModel, table=True):
     __tablename__ = "tag_group"
     __table_args__ = (
         # Explicit index name so the ORM name matches the alembic migration
         # 41.2 will create (op.create_index("uq_tag_group_slug", ...)) —
         # Field(index=True) would auto-name it ix_tag_group_slug and drift.
-        # Mirrors the Category explicit-index precedent above.
         Index("uq_tag_group_slug", "slug", unique=True),
     )
 
@@ -106,9 +73,6 @@ class Model(SQLModel, table=True):
     slug: str = Field(unique=True, index=True)
     name_en: str
     name_pl: str | None = None
-    category_id: uuid.UUID = Field(
-        sa_column=uuid_fk("category.id", ondelete="RESTRICT", nullable=False, index=True),
-    )
     source: ModelSource = Field(default=ModelSource.unknown)
     status: ModelStatus = Field(default=ModelStatus.not_printed, index=True)
     rating: float | None = None

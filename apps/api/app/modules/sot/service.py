@@ -13,7 +13,6 @@ from sqlalchemy import and_, func, nullslast, or_
 from sqlmodel import Session, select
 
 from app.core.db.models import (
-    Category,
     Model,
     ModelExternalLink,
     ModelFile,
@@ -27,9 +26,6 @@ from app.core.db.models import (
     TagGroup,
 )
 from app.modules.sot.schemas import (
-    CategoryNode,
-    CategorySummary,
-    CategoryTree,
     ExternalLinkRead,
     FileListResponse,
     ModelDetail,
@@ -60,76 +56,12 @@ class TagMatch(StrEnum):
     any = "any"
 
 
-def list_categories_tree(session: Session) -> CategoryTree:
-    """Return the full category hierarchy as a nested tree.
-
-    Each node carries `model_count`, the total number of non-deleted models
-    in the subtree rooted at that node (i.e. self plus all descendants).
-    """
-    rows: list[Category] = list(session.exec(select(Category)).all())
-    by_id: dict[uuid.UUID, CategoryNode] = {
-        row.id: CategoryNode(
-            id=row.id,
-            parent_id=row.parent_id,
-            slug=row.slug,
-            name_en=row.name_en,
-            name_pl=row.name_pl,
-            children=[],
-            model_count=0,
-        )
-        for row in rows
-    }
-    roots: list[CategoryNode] = []
-    for node in by_id.values():
-        if node.parent_id is None:
-            roots.append(node)
-        else:
-            parent = by_id.get(node.parent_id)
-            if parent is not None:
-                parent.children.append(node)
-            # Orphaned rows (parent missing) are silently skipped — they should
-            # not exist given the FK RESTRICT, but defensive.
-
-    # Stable order: by slug at each level
-    def _sort_recursive(node: CategoryNode) -> None:
-        node.children.sort(key=lambda c: c.slug)
-        for c in node.children:
-            _sort_recursive(c)
-
-    roots.sort(key=lambda r: r.slug)
-    for r in roots:
-        _sort_recursive(r)
-
-    # Count models directly attached to each category (excluding soft-deleted),
-    # then accumulate up the tree by recursive subtree summation.
-    direct_counts: dict[uuid.UUID, int] = {}
-    direct_rows = session.exec(
-        select(Model.category_id, func.count(Model.id))
-        .where(Model.deleted_at.is_(None))
-        .group_by(Model.category_id)
-    ).all()
-    for cat_id, n in direct_rows:
-        direct_counts[cat_id] = n
-
-    def _sum_subtree(node: CategoryNode) -> int:
-        total = direct_counts.get(node.id, 0)
-        for child in node.children:
-            total += _sum_subtree(child)
-        node.model_count = total
-        return total
-
-    for r in roots:
-        _sum_subtree(r)
-
-    return CategoryTree(roots=roots)
-
-
 def _tag_model_counts(session: Session) -> dict[uuid.UUID, int]:
     """Distinct non-deleted models per tag (Story 42.2 D-COUNT-1).
 
     One GROUP BY over model_tag joined to model, filtered to live rows
-    (`Model.deleted_at IS NULL`) — mirrors the list_categories_tree count
-    scope. Hits the ix_model_tag_tag_model covering index. ModelTag's
+    (`Model.deleted_at IS NULL`). Hits the ix_model_tag_tag_model covering
+    index. ModelTag's
     composite PK (model_id, tag_id) means each row is a distinct model per
     tag, so func.count() is the distinct-model count without DISTINCT. No
     N+1: one query feeds both /api/tags?with_counts and /api/tag-groups.
@@ -435,8 +367,6 @@ def get_model_detail(
     if m is None:
         return None
 
-    cat = session.exec(select(Category).where(Category.id == m.category_id)).one()
-
     tag_rows = session.exec(
         select(Tag)
         .join(ModelTag, ModelTag.tag_id == Tag.id)
@@ -483,7 +413,6 @@ def get_model_detail(
             "tags": tags,
             "gallery_file_ids": gallery_file_ids,
             "image_count": len(gallery_file_ids),
-            "category": CategorySummary.model_validate(cat),
             "files": files,
             "prints": prints,
             "notes": notes,

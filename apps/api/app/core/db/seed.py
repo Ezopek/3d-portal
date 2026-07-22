@@ -170,8 +170,8 @@ def seed_taxonomy(engine: Engine) -> None:
     clean re-run is create-if-absent and completes the remainder, converging to
     the full dataset exactly once with no duplicates or orphan tags.
 
-    Writes ONLY ``tag_group`` and ``tag`` rows — no ``Model``, ``ModelTag`` or
-    ``Category`` reads/writes; models stay untagged after seeding (HANDOFF §1/§5).
+    Writes ONLY ``tag_group`` and ``tag`` rows — no ``Model`` or ``ModelTag``
+    reads/writes; models stay untagged after seeding (HANDOFF §1/§5).
 
     Deliberate admin-run action — NOT wired into the FastAPI lifespan (unlike
     ``seed_admin``), so a redeploy cannot resurrect an owner-deleted group.

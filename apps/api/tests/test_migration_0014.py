@@ -66,8 +66,10 @@ def test_migration_0014_round_trip(_round_trip_db: Path) -> None:
     db_path = _round_trip_db
     cfg = _alembic_cfg(db_path)
 
-    # Forward to head — adds is_active + last_active_at to the user table.
-    command.upgrade(cfg, "head")
+    # Pinned to 0018_facet_tags (not head): 0019_drop_category is forward-only
+    # (downgrade() raises), so any head-downward traversal would fail (Story 47.5).
+    # Forward — adds is_active + last_active_at to the user table.
+    command.upgrade(cfg, "0018_facet_tags")
     cols = _user_columns(db_path)
     assert "is_active" in cols
     assert "last_active_at" in cols
@@ -92,7 +94,7 @@ def test_migration_0014_round_trip(_round_trip_db: Path) -> None:
     assert "totp_enabled_at" in cols
 
     # Re-upgrade — idempotency check.
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0018_facet_tags")
     cols = _user_columns(db_path)
     assert "is_active" in cols
     assert "last_active_at" in cols

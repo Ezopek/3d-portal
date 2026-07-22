@@ -7,7 +7,6 @@ from sqlmodel import Session
 from app.core.auth.cookies import ACCESS_COOKIE
 from app.core.auth.jwt import encode_token
 from app.core.db.models import (
-    Category,
     Model,
     ModelStatus,
     ModelTag,
@@ -18,7 +17,7 @@ from app.core.db.session import get_engine
 
 
 # Initiative 6 Story 11.1 — default-deny on SoT GET endpoints. See
-# test_sot_categories.py:_default_admin_cookie docstring for context.
+# test_sot_auth_boundary.py for the role-matrix boundary coverage.
 @pytest.fixture(autouse=True)
 def _default_admin_cookie(client):
     token = encode_token(
@@ -32,11 +31,10 @@ def _default_admin_cookie(client):
     client.cookies.delete(ACCESS_COOKIE)
 
 
-def _seed_model(session, slug, *, category_id, status=None, tags=()):
+def _seed_model(session, slug, *, status=None, tags=()):
     m = Model(
         slug=slug,
         name_en=slug,
-        category_id=category_id,
     )
     if status is not None:
         m.status = status
@@ -48,14 +46,6 @@ def _seed_model(session, slug, *, category_id, status=None, tags=()):
     session.commit()
     session.refresh(m)
     return m
-
-
-def _seed_cat(session, slug):
-    c = Category(slug=slug, name_en=slug)
-    session.add(c)
-    session.commit()
-    session.refresh(c)
-    return c
 
 
 def _seed_tag(session, slug):
@@ -88,9 +78,8 @@ def test_list_models_returns_envelope(client):
 def test_list_models_includes_seeded_model_with_tags(client):
     engine = get_engine()
     with Session(engine) as s:
-        cat = _seed_cat(s, "cat-4-decorum")
         tag = _seed_tag(s, "tag-4-dragon")
-        m = _seed_model(s, "model-4-x", category_id=cat.id, tags=[tag])
+        m = _seed_model(s, "model-4-x", tags=[tag])
         tag_id: uuid.UUID = tag.id
         model_id: uuid.UUID = m.id
 
@@ -106,11 +95,8 @@ def test_list_models_includes_seeded_model_with_tags(client):
 def test_list_models_filter_by_status(client):
     engine = get_engine()
     with Session(engine) as s:
-        cat = _seed_cat(s, "cat-4-status-cat")
-        m_p = _seed_model(s, "model-4-printed", category_id=cat.id, status=ModelStatus.printed)
-        m_n = _seed_model(
-            s, "model-4-not-printed", category_id=cat.id, status=ModelStatus.not_printed
-        )
+        m_p = _seed_model(s, "model-4-printed", status=ModelStatus.printed)
+        m_n = _seed_model(s, "model-4-not-printed", status=ModelStatus.not_printed)
         m_p_id: uuid.UUID = m_p.id
         m_n_id: uuid.UUID = m_n.id
 
@@ -123,10 +109,9 @@ def test_list_models_filter_by_status(client):
 def test_list_models_filter_by_tag(client):
     engine = get_engine()
     with Session(engine) as s:
-        cat = _seed_cat(s, "cat-4-tag-cat")
         t = _seed_tag(s, "tag-4-only")
-        with_tag = _seed_model(s, "model-4-with-tag", category_id=cat.id, tags=[t])
-        without_tag = _seed_model(s, "model-4-without-tag", category_id=cat.id)
+        with_tag = _seed_model(s, "model-4-with-tag", tags=[t])
+        without_tag = _seed_model(s, "model-4-without-tag")
         t_id: uuid.UUID = t.id
         with_tag_id: uuid.UUID = with_tag.id
         without_tag_id: uuid.UUID = without_tag.id
@@ -140,11 +125,10 @@ def test_list_models_filter_by_tag(client):
 def test_list_models_filter_by_q_matches_name_en(client):
     engine = get_engine()
     with Session(engine) as s:
-        cat = _seed_cat(s, "cat-4-q-cat")
         # Using slug values that include the search target so name_en (which
         # we set = slug for test brevity) contains it too.
-        match = _seed_model(s, "model-4-q-articulated-x", category_id=cat.id)
-        nope = _seed_model(s, "model-4-q-other-y", category_id=cat.id)
+        match = _seed_model(s, "model-4-q-articulated-x")
+        nope = _seed_model(s, "model-4-q-other-y")
         match_id: uuid.UUID = match.id
         nope_id: uuid.UUID = nope.id
 
@@ -157,12 +141,11 @@ def test_list_models_filter_by_q_matches_name_en(client):
 def test_list_models_excludes_soft_deleted_by_default(client):
     engine = get_engine()
     with Session(engine) as s:
-        cat = _seed_cat(s, "cat-4-soft-cat")
-        deleted = _seed_model(s, "model-4-soft-deleted", category_id=cat.id)
+        deleted = _seed_model(s, "model-4-soft-deleted")
         deleted.deleted_at = datetime.datetime.now(datetime.UTC)
         s.add(deleted)
         s.commit()
-        alive = _seed_model(s, "model-4-soft-alive", category_id=cat.id)
+        alive = _seed_model(s, "model-4-soft-alive")
         deleted_id: uuid.UUID = deleted.id
         alive_id: uuid.UUID = alive.id
 
@@ -175,8 +158,7 @@ def test_list_models_excludes_soft_deleted_by_default(client):
 def test_list_models_include_deleted_returns_soft_deleted(client):
     engine = get_engine()
     with Session(engine) as s:
-        cat = _seed_cat(s, "cat-4-incl-cat")
-        deleted = _seed_model(s, "model-4-incl-deleted", category_id=cat.id)
+        deleted = _seed_model(s, "model-4-incl-deleted")
         deleted.deleted_at = datetime.datetime.now(datetime.UTC)
         s.add(deleted)
         s.commit()
@@ -191,10 +173,9 @@ def test_list_models_pagination(client):
     """Pagination + total stay correct under a tag filter (count subquery includes it)."""
     engine = get_engine()
     with Session(engine) as s:
-        cat = _seed_cat(s, "cat-4-page-cat")
         page_tag = _seed_tag(s, "tag-4-page")
         for i in range(5):
-            _seed_model(s, f"model-4-page-{i:02d}", category_id=cat.id, tags=[page_tag])
+            _seed_model(s, f"model-4-page-{i:02d}", tags=[page_tag])
         tag_id: uuid.UUID = page_tag.id
 
     r = client.get(f"/api/models?tag_ids={tag_id}&limit=2&offset=0")
@@ -215,13 +196,13 @@ def test_list_models_pagination(client):
 
 @pytest.fixture(scope="module")
 def seeded_listing():
-    """Seed: 2 categories (A,B), 2 tag groups + a groupless tag, 5 models.
+    """Seed: 2 tag groups + a groupless tag, 5 models.
 
     Facet layout (D1 groupless-tag = own AND-bucket):
     - group A = {tag_x, tag_y}; group B = {tag_z}; tag_w is groupless (group_id=None).
     - Model tag-sets: m1=x,y,w | m2=x | m3=z,w | m4=x,y,z | m5=none.
 
-    Returns a dict with category/tag/model id lookups for assertions.
+    Returns a dict with tag/model id lookups for assertions.
 
     Module-scoped so the (uniquely-slugged) seed rows are inserted exactly
     once across all tests in this file — the test DB persists for the whole
@@ -229,8 +210,6 @@ def seeded_listing():
     on the second invocation.
     """
     with Session(get_engine()) as s:
-        cat_a = _seed_cat(s, "list-cat-a")
-        cat_b = _seed_cat(s, "list-cat-b")
         grp_a = _seed_tag_group(s, "list-grp-a")
         grp_b = _seed_tag_group(s, "list-grp-b")
         tag_x = _seed_tag(s, "list-tag-x")
@@ -246,31 +225,31 @@ def seeded_listing():
 
         from app.core.db.models import ModelSource
 
-        # model 1: cat_a, tag x+y+w, source printables, status printed, rating 5
-        m1 = _seed_model(s, "m-list-1", category_id=cat_a.id, tags=(tag_x, tag_y, tag_w))
+        # model 1: tag x+y+w, source printables, status printed, rating 5
+        m1 = _seed_model(s, "m-list-1", tags=(tag_x, tag_y, tag_w))
         m1.source = ModelSource.printables
         m1.status = ModelStatus.printed
         m1.rating = 5
         s.add(m1)
-        # model 2: cat_a, tag x only, source printables, not_printed, rating 3
-        m2 = _seed_model(s, "m-list-2", category_id=cat_a.id, tags=(tag_x,))
+        # model 2: tag x only, source printables, not_printed, rating 3
+        m2 = _seed_model(s, "m-list-2", tags=(tag_x,))
         m2.source = ModelSource.printables
         m2.status = ModelStatus.not_printed
         m2.rating = 3
         s.add(m2)
-        # model 3: cat_a, tag z+w, source own, printed, rating 4
-        m3 = _seed_model(s, "m-list-3", category_id=cat_a.id, tags=(tag_z, tag_w))
+        # model 3: tag z+w, source own, printed, rating 4
+        m3 = _seed_model(s, "m-list-3", tags=(tag_z, tag_w))
         m3.source = ModelSource.own
         m3.status = ModelStatus.printed
         m3.rating = 4
         s.add(m3)
-        # model 4: cat_b, tag x+y+z, source thangs, in_progress, rating null
-        m4 = _seed_model(s, "m-list-4", category_id=cat_b.id, tags=(tag_x, tag_y, tag_z))
+        # model 4: tag x+y+z, source thangs, in_progress, rating null
+        m4 = _seed_model(s, "m-list-4", tags=(tag_x, tag_y, tag_z))
         m4.source = ModelSource.thangs
         m4.status = ModelStatus.in_progress
         s.add(m4)
-        # model 5: cat_b, no tags, source unknown, broken, rating 1
-        m5 = _seed_model(s, "m-list-5", category_id=cat_b.id, tags=())
+        # model 5: no tags, source unknown, broken, rating 1
+        m5 = _seed_model(s, "m-list-5", tags=())
         m5.source = ModelSource.unknown
         m5.status = ModelStatus.broken
         m5.rating = 1
@@ -278,8 +257,6 @@ def seeded_listing():
         s.commit()
 
         return {
-            "cat_a": cat_a.id,
-            "cat_b": cat_b.id,
             "tag_x": tag_x.id,
             "tag_y": tag_y.id,
             "tag_z": tag_z.id,
@@ -375,16 +352,15 @@ def test_list_untagged_returns_zero_tag_models(isolated_client):
     _authed(c)
     engine = get_engine()
     with Session(engine) as s:
-        cat = _seed_cat(s, "u-cat")
         grp = _seed_tag_group(s, "u-grp")
         tag = _seed_tag(s, "u-tag")
         groupless = _seed_tag(s, "u-groupless")  # group_id stays None
         tag.group_id = grp.id
         s.add(tag)
         s.commit()
-        _seed_model(s, "u-tagged", category_id=cat.id, tags=(tag,))
-        _seed_model(s, "u-has-groupless", category_id=cat.id, tags=(groupless,))
-        _seed_model(s, "u-zero", category_id=cat.id, tags=())
+        _seed_model(s, "u-tagged", tags=(tag,))
+        _seed_model(s, "u-has-groupless", tags=(groupless,))
+        _seed_model(s, "u-zero", tags=())
 
     r = c.get("/api/models?untagged=true&limit=200")
     assert r.status_code == 200
@@ -401,12 +377,11 @@ def test_list_untagged_with_tag_ids_is_union(isolated_client):
     _authed(c)
     engine = get_engine()
     with Session(engine) as s:
-        cat = _seed_cat(s, "uu-cat")
         tag_x = _seed_tag(s, "uu-x")
         tag_o = _seed_tag(s, "uu-other")
-        _seed_model(s, "uu-x-match", category_id=cat.id, tags=(tag_x,))
-        _seed_model(s, "uu-other-tagged", category_id=cat.id, tags=(tag_o,))
-        _seed_model(s, "uu-zero", category_id=cat.id, tags=())
+        _seed_model(s, "uu-x-match", tags=(tag_x,))
+        _seed_model(s, "uu-other-tagged", tags=(tag_o,))
+        _seed_model(s, "uu-zero", tags=())
         x_id: uuid.UUID = tag_x.id
 
     r = c.get(f"/api/models?untagged=true&tag_ids={x_id}&limit=200")
@@ -506,9 +481,8 @@ def test_list_models_exposes_gallery_hints(client):
 
     engine = get_engine()
     with Session(engine) as s:
-        cat = _seed_cat(s, "cat-4-gallery")
-        with_imgs = _seed_model(s, "model-4-gallery-with", category_id=cat.id)
-        without_imgs = _seed_model(s, "model-4-gallery-without", category_id=cat.id)
+        with_imgs = _seed_model(s, "model-4-gallery-with")
+        without_imgs = _seed_model(s, "model-4-gallery-without")
 
         # Insert in scrambled order to confirm ordering isn't insertion-order.
         f_print = ModelFile(
@@ -576,9 +550,8 @@ def test_list_models_external_url_exact_match_returns_owner(client):
     target_url = "https://example.com/dedup/owner"
     other_url = "https://example.com/dedup/other"
     with Session(engine) as s:
-        cat = _seed_cat(s, "cat-4-tb-004-owner")
-        owner = _seed_model(s, "model-4-tb-004-owner", category_id=cat.id)
-        decoy = _seed_model(s, "model-4-tb-004-decoy", category_id=cat.id)
+        owner = _seed_model(s, "model-4-tb-004-owner")
+        decoy = _seed_model(s, "model-4-tb-004-decoy")
         s.add(ModelExternalLink(model_id=owner.id, source=ExternalSource.other, url=target_url))
         s.add(ModelExternalLink(model_id=decoy.id, source=ExternalSource.other, url=other_url))
         s.commit()
@@ -603,8 +576,7 @@ def test_list_models_external_url_no_match_returns_empty(client):
     seeded_url = "https://example.com/dedup/no-match-seeded"
     queried_url = "https://example.com/dedup/no-match-queried"
     with Session(engine) as s:
-        cat = _seed_cat(s, "cat-4-tb-004-no-match")
-        m = _seed_model(s, "model-4-tb-004-no-match", category_id=cat.id)
+        m = _seed_model(s, "model-4-tb-004-no-match")
         # Seed a control row on a DIFFERENT URL — if the filter silently
         # ignored its input, queried_url would still match this row's
         # owner via the default-no-filter path → total>0. Strict 0 here
@@ -626,8 +598,7 @@ def test_list_models_external_url_excludes_soft_deleted_owner(client):
     engine = get_engine()
     target_url = "https://example.com/dedup/soft-deleted"
     with Session(engine) as s:
-        cat = _seed_cat(s, "cat-4-tb-004-sd")
-        owner = _seed_model(s, "model-4-tb-004-sd", category_id=cat.id)
+        owner = _seed_model(s, "model-4-tb-004-sd")
         s.add(ModelExternalLink(model_id=owner.id, source=ExternalSource.other, url=target_url))
         s.commit()
         owner_id = owner.id
@@ -660,19 +631,12 @@ def test_list_models_external_url_combines_with_other_filters(client):
     target_url = "https://example.com/dedup/combine"
     other_url = "https://example.com/dedup/combine-control"
     with Session(engine) as s:
-        cat = _seed_cat(s, "cat-4-tb-004-combine")
         # Two models share the target_url with different print-status.
-        m_printed = _seed_model(
-            s, "model-4-tb-004-printed", category_id=cat.id, status=ModelStatus.printed
-        )
-        m_unprinted = _seed_model(
-            s, "model-4-tb-004-unprinted", category_id=cat.id, status=ModelStatus.not_printed
-        )
+        m_printed = _seed_model(s, "model-4-tb-004-printed", status=ModelStatus.printed)
+        m_unprinted = _seed_model(s, "model-4-tb-004-unprinted", status=ModelStatus.not_printed)
         # Control: status=printed but a DIFFERENT external_url — would leak
         # through if external_url were silently ignored.
-        m_control = _seed_model(
-            s, "model-4-tb-004-printed-control", category_id=cat.id, status=ModelStatus.printed
-        )
+        m_control = _seed_model(s, "model-4-tb-004-printed-control", status=ModelStatus.printed)
         s.add(ModelExternalLink(model_id=m_printed.id, source=ExternalSource.other, url=target_url))
         s.add(
             ModelExternalLink(model_id=m_unprinted.id, source=ExternalSource.other, url=target_url)

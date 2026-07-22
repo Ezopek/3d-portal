@@ -2,7 +2,7 @@
 
 Covers (per Story 11.1 acceptance criteria AC-2 / AC-3 / AC-4):
 
-- AC-3: anonymous requests to each of the 6 SoT GET endpoints return 401
+- AC-3: anonymous requests to each SoT GET endpoint return 401
 - AC-2: agent-role cookie authentication returns 200 (NFR6-INT-1 — agent
   service-account ingestion preservation; this is the EXPLICIT regression
   test for hot-fix 64447ff's P1-2 codex finding where `current_member_or_admin`
@@ -27,7 +27,6 @@ from app.core.auth.cookies import ACCESS_COOKIE
 from app.core.auth.jwt import encode_token
 from app.core.config import get_settings
 from app.core.db.models import (
-    Category,
     Model,
     ModelFile,
     ModelFileKind,
@@ -68,10 +67,12 @@ def _clear_cookie(client):
 
 @pytest.fixture
 def seeded_model(client) -> tuple[uuid.UUID, uuid.UUID]:
-    """Seed one model + one image file row backed by an on-disk blob.
+    """Seed one model + one STL file row backed by an on-disk blob.
 
     Returns (model_id, file_id). The blob lives under settings.portal_content_dir
-    so /content endpoint can stream it without 404'ing on missing-on-disk.
+    so /content endpoint can stream it without 404'ing on missing-on-disk; the
+    STL kind additionally makes the /bundle endpoint (Story 47.5 boundary
+    coverage) return a non-empty archive instead of 404.
     """
     engine = get_engine()
     settings = get_settings()
@@ -82,17 +83,10 @@ def seeded_model(client) -> tuple[uuid.UUID, uuid.UUID]:
     blob_path.write_bytes(b"x" * 16)
 
     with Session(engine) as s:
-        cat_slug = f"cat-sot-auth-{uuid.uuid4().hex[:6]}"
-        cat = Category(slug=cat_slug, name_en="AuthBoundary")
-        s.add(cat)
-        s.commit()
-        s.refresh(cat)
-
         model_slug = f"model-sot-auth-{uuid.uuid4().hex[:6]}"
         model = Model(
             slug=model_slug,
             name_en="AuthBoundary",
-            category_id=cat.id,
             status=ModelStatus.not_printed,
         )
         s.add(model)
@@ -101,7 +95,7 @@ def seeded_model(client) -> tuple[uuid.UUID, uuid.UUID]:
 
         file_row = ModelFile(
             model_id=model.id,
-            kind=ModelFileKind.image,
+            kind=ModelFileKind.stl,
             original_name=blob_name,
             storage_path=blob_name,
             sha256=hashlib.sha256(blob_path.read_bytes()).hexdigest(),
@@ -124,9 +118,10 @@ def seeded_model(client) -> tuple[uuid.UUID, uuid.UUID]:
 # ---------------------------------------------------------------------------
 
 
-def test_sot_categories_anonymous_returns_401(client):
+def test_sot_model_bundle_anonymous_returns_401(client, seeded_model):
+    model_id, _file_id = seeded_model
     _clear_cookie(client)
-    r = client.get("/api/categories")
+    r = client.get(f"/api/models/{model_id}/bundle")
     assert r.status_code == 401
 
 
@@ -175,9 +170,10 @@ def test_sot_model_file_content_anonymous_returns_401(client, seeded_model):
 # ---------------------------------------------------------------------------
 
 
-def test_sot_categories_agent_authenticated_returns_200(client):
+def test_sot_model_bundle_agent_authenticated_returns_200(client, seeded_model):
+    model_id, _file_id = seeded_model
     _mint_cookie(client, "agent")
-    r = client.get("/api/categories")
+    r = client.get(f"/api/models/{model_id}/bundle")
     assert r.status_code == 200, r.text
 
 
@@ -225,9 +221,10 @@ def test_sot_model_file_content_agent_authenticated_returns_200(client, seeded_m
 # ---------------------------------------------------------------------------
 
 
-def test_sot_categories_member_authenticated_returns_200(client):
+def test_sot_model_bundle_member_authenticated_returns_200(client, seeded_model):
+    model_id, _file_id = seeded_model
     _mint_cookie(client, "member")
-    r = client.get("/api/categories")
+    r = client.get(f"/api/models/{model_id}/bundle")
     assert r.status_code == 200, r.text
 
 
@@ -281,9 +278,9 @@ def test_sot_model_file_content_member_authenticated_returns_200(client, seeded_
 # ---------------------------------------------------------------------------
 
 
-def test_sot_categories_admin_authenticated_returns_200(client):
+def test_sot_tags_admin_authenticated_returns_200(client):
     _mint_cookie(client, "admin")
-    r = client.get("/api/categories")
+    r = client.get("/api/tags")
     assert r.status_code == 200, r.text
 
 
@@ -300,7 +297,7 @@ def test_sot_models_list_admin_authenticated_returns_200(client):
 # ---------------------------------------------------------------------------
 
 
-def test_sot_categories_unknown_role_returns_403(client):
+def test_sot_reads_unknown_role_returns_403(client):
     # Forge a token with an unsupported role. _resolve_user raises 403
     # forbidden_role per apps/api/app/core/auth/dependencies.py:39.
     token = encode_token(
@@ -310,7 +307,7 @@ def test_sot_categories_unknown_role_returns_403(client):
         ttl_minutes=30,
     )
     client.cookies.set(ACCESS_COOKIE, token)
-    r = client.get("/api/categories")
+    r = client.get("/api/tags")
     assert r.status_code == 403, r.text
     assert "forbidden_role" in r.text
 

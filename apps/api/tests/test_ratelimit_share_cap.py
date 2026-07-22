@@ -41,7 +41,7 @@ from app.core.auth.ratelimit import (
     share_ratelimit_key,
     share_retry_after_seconds,
 )
-from app.core.db.models import Category, Model, User, UserRole
+from app.core.db.models import Model, User, UserRole
 from app.core.db.session import get_engine
 from app.main import create_app
 
@@ -210,18 +210,13 @@ def share_client(tmp_path, monkeypatch):
             s.flush()
             member_a_uuid = member_a.id
             member_b_uuid = member_b.id
-            cat = Category(slug=f"share-cat-{uuid.uuid4().hex[:6]}", name_en="Cat")
-            s.add(cat)
-            s.flush()
             m1 = Model(
                 slug=f"share-m1-{uuid.uuid4().hex[:6]}",
                 name_en="M1",
-                category_id=cat.id,
             )
             m2 = Model(
                 slug=f"share-m2-{uuid.uuid4().hex[:6]}",
                 name_en="M2",
-                category_id=cat.id,
             )
             s.add(m1)
             s.add(m2)
@@ -849,13 +844,9 @@ def test_share_threshold_env_var_override(tmp_path, monkeypatch):
             s.add(member)
             s.flush()
             member_uuid = member.id
-            cat = Category(slug=f"sc-{uuid.uuid4().hex[:6]}", name_en="C")
-            s.add(cat)
-            s.flush()
             m = Model(
                 slug=f"sm-{uuid.uuid4().hex[:6]}",
                 name_en="M",
-                category_id=cat.id,
             )
             s.add(m)
             s.commit()
@@ -907,13 +898,9 @@ def test_share_soft_alert_threshold_env_var_override(tmp_path, monkeypatch, shar
             s.add(member)
             s.flush()
             member_uuid = member.id
-            cat = Category(slug=f"sc-{uuid.uuid4().hex[:6]}", name_en="C")
-            s.add(cat)
-            s.flush()
             m = Model(
                 slug=f"sm-{uuid.uuid4().hex[:6]}",
                 name_en="M",
-                category_id=cat.id,
             )
             s.add(m)
             s.commit()

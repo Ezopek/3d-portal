@@ -68,8 +68,10 @@ def test_alembic_upgrade_head_creates_audit_log_and_drops_auditevent(
 
 
 def test_alembic_downgrade_one_restores_auditevent(alembic_env, api_dir, alembic_bin):
+    # Pinned to 0018_facet_tags (not head): 0019_drop_category is forward-only
+    # (downgrade() raises), so any head-downward traversal would fail (Story 47.5).
     db_path, env = alembic_env
-    r = _run_alembic(["upgrade", "head"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
+    r = _run_alembic(["upgrade", "0018_facet_tags"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
     assert r.returncode == 0, r.stderr
     r = _run_alembic(["downgrade", "0004"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
     assert r.returncode == 0, r.stderr
@@ -93,12 +95,14 @@ def test_alembic_downgrade_one_restores_auditevent(alembic_env, api_dir, alembic
 
 
 def test_alembic_full_round_trip(alembic_env, api_dir, alembic_bin):
+    # Pinned to 0018_facet_tags (not head): 0019_drop_category is forward-only
+    # (downgrade() raises), so any head-downward traversal would fail (Story 47.5).
     _db_path, env = alembic_env
-    r = _run_alembic(["upgrade", "head"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
+    r = _run_alembic(["upgrade", "0018_facet_tags"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
     assert r.returncode == 0, r.stderr
     r = _run_alembic(["downgrade", "base"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
     assert r.returncode == 0, r.stderr
-    r = _run_alembic(["upgrade", "head"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
+    r = _run_alembic(["upgrade", "0018_facet_tags"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
     assert r.returncode == 0, r.stderr
 
 

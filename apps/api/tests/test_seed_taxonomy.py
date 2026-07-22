@@ -12,7 +12,7 @@ import uuid
 import pytest
 from sqlmodel import Session, select
 
-from app.core.db.models import Category, Model, ModelTag, Tag, TagGroup
+from app.core.db.models import Model, ModelTag, Tag, TagGroup
 from app.core.db.seed import (
     STARTER_TAXONOMY,
     _insert_absent_tag,
@@ -177,11 +177,7 @@ def test_seed_taxonomy_no_model_side_effects(tmp_path):
     # AC #6: no Model / ModelTag writes; a pre-existing model stays untagged.
     engine = _seeded_engine(tmp_path)
     with Session(engine) as s:
-        category = Category(slug="root", name_en="Root")
-        s.add(category)
-        s.commit()
-        s.refresh(category)
-        s.add(Model(slug="m1", name_en="Model 1", category_id=category.id))
+        s.add(Model(slug="m1", name_en="Model 1"))
         s.commit()
 
     seed_taxonomy(engine)
@@ -189,9 +185,6 @@ def test_seed_taxonomy_no_model_side_effects(tmp_path):
     with Session(engine) as s:
         assert len(s.exec(select(ModelTag)).all()) == 0
         assert len(s.exec(select(Model)).all()) == 1
-        # AC #6: the seed provably never touches Category either — the pre-created
-        # root category survives untouched (count unchanged, no seed-side writes).
-        assert len(s.exec(select(Category)).all()) == 1
 
 
 def test_seed_taxonomy_converges_after_midtag_failure(tmp_path, monkeypatch):

@@ -1,7 +1,7 @@
 """Read-side response schemas for the SoT entity tables.
 
-These Pydantic models shape the JSON responses for /api/categories,
-/api/tags, /api/models[/{id}[/files]]. They use `from_attributes=True`
+These Pydantic models shape the JSON responses for /api/tags,
+/api/models[/{id}[/files]]. They use `from_attributes=True`
 so they can be built directly from SQLModel rows.
 """
 
@@ -13,23 +13,6 @@ from pydantic import BaseModel, ConfigDict, model_serializer
 
 class _OrmBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-
-
-class CategorySummary(_OrmBase):
-    id: uuid.UUID
-    parent_id: uuid.UUID | None
-    slug: str
-    name_en: str
-    name_pl: str | None
-
-
-class CategoryNode(CategorySummary):
-    children: list["CategoryNode"]
-    model_count: int = 0
-
-
-class CategoryTree(BaseModel):
-    roots: list[CategoryNode]
 
 
 class TagRead(_OrmBase):
@@ -91,8 +74,8 @@ class TagGroupsResponse(BaseModel):
 
 class TagGroupSummary(_OrmBase):
     """Flat write-response for the admin tag-group governance endpoints
-    (Story 42.4). Mirrors `CategorySummary`; does NOT embed `tags[]` — that
-    is the read-side `TagGroupRead`'s job (GET /api/tag-groups)."""
+    (Story 42.4). Does NOT embed `tags[]` — that is the read-side
+    `TagGroupRead`'s job (GET /api/tag-groups)."""
 
     id: uuid.UUID
     slug: str
@@ -157,7 +140,6 @@ class ModelSummary(_OrmBase):
     slug: str
     name_en: str
     name_pl: str | None
-    category_id: uuid.UUID
     source: str
     status: str
     rating: float | None
@@ -176,7 +158,6 @@ class ModelSummary(_OrmBase):
 class ModelDetail(ModelSummary):
     """Used in single-model GET; full embed of related entities."""
 
-    category: CategorySummary
     files: list[ModelFileRead]
     prints: list[PrintRead]
     notes: list[NoteRead]

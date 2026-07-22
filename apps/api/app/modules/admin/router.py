@@ -1,7 +1,7 @@
 """Admin endpoints that are not tied to a single SoT entity.
 
 Holds the audit log readers and the GlitchTip self-test trigger. The
-SoT model/file/tag/category write endpoints live in
+SoT model/file/tag write endpoints live in
 `app.modules.sot.admin_router`.
 """
 

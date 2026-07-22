@@ -347,8 +347,8 @@ describe("validateSearch open-redirect hardening (Story 30.1 AC-8)", () => {
     expect(validate({ next: "/catalog/xyz" })).toEqual({ next: "/catalog/xyz" });
     expect(validate({ next: "/settings/2fa" })).toEqual({ next: "/settings/2fa" });
     expect(validate({ next: "/" })).toEqual({ next: "/" });
-    expect(validate({ next: "/catalog?category_id=xyz&page=2" })).toEqual({
-      next: "/catalog?category_id=xyz&page=2",
+    expect(validate({ next: "/catalog?q=xyz&page=2" })).toEqual({
+      next: "/catalog?q=xyz&page=2",
     });
   });
 

@@ -17,7 +17,6 @@ from sqlmodel import Session, select
 
 from app.core.db.models import (
     AuditLog,
-    Category,
     Model,
     ModelTag,
     Tag,
@@ -41,18 +40,10 @@ def _seed_admin(session: Session) -> uuid.UUID:
     return u.id
 
 
-def _seed_category(session: Session) -> uuid.UUID:
-    cat = Category(slug=f"cat-tags-{uuid.uuid4().hex[:8]}", name_en="Test Cat")
-    session.add(cat)
-    session.flush()
-    return cat.id
-
-
-def _seed_model(session: Session, cat_id: uuid.UUID) -> uuid.UUID:
+def _seed_model(session: Session) -> uuid.UUID:
     m = Model(
         slug=f"m-tags-{uuid.uuid4().hex[:8]}",
         name_en="Test Model",
-        category_id=cat_id,
     )
     session.add(m)
     session.flush()
@@ -77,8 +68,7 @@ def test_replace_tags_empty_to_set(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         tag1_id = _seed_tag(s)
         tag2_id = _seed_tag(s)
         s.commit()
@@ -99,8 +89,7 @@ def test_replace_tags_clears_existing(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         old_tag = _seed_tag(s)
         new_tag = _seed_tag(s)
         # Pre-attach old tag
@@ -123,8 +112,7 @@ def test_replace_tags_empty_set(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         tag_id = _seed_tag(s)
         s.add(ModelTag(model_id=model_id, tag_id=tag_id))
         s.commit()
@@ -157,8 +145,7 @@ def test_replace_tags_400_invalid_tag(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     client.cookies.set("portal_access", admin_token(admin_id))
@@ -173,8 +160,7 @@ def test_replace_tags_writes_audit(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         tag_id = _seed_tag(s)
         s.commit()
 
@@ -203,8 +189,7 @@ def test_add_tag_201(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         tag_id = _seed_tag(s)
         s.commit()
 
@@ -223,8 +208,7 @@ def test_add_tag_idempotent(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         tag_id = _seed_tag(s)
         s.commit()
 
@@ -262,8 +246,7 @@ def test_add_tag_404_tag(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     client.cookies.set("portal_access", admin_token(admin_id))
@@ -283,8 +266,7 @@ def test_remove_tag_204(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         tag_id = _seed_tag(s)
         s.add(ModelTag(model_id=model_id, tag_id=tag_id))
         s.commit()
@@ -307,8 +289,7 @@ def test_remove_tag_idempotent(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         tag_id = _seed_tag(s)
         s.commit()
 
@@ -498,8 +479,7 @@ def test_delete_tag_409_in_use(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         tag_id = _seed_tag(s)
         s.add(ModelTag(model_id=model_id, tag_id=tag_id))
         s.commit()
@@ -521,8 +501,7 @@ def test_merge_tags_rewires_m2m(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         from_id = _seed_tag(s)
         to_id = _seed_tag(s)
         s.add(ModelTag(model_id=model_id, tag_id=from_id))
@@ -551,8 +530,7 @@ def test_merge_tags_handles_duplicate(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         from_id = _seed_tag(s)
         to_id = _seed_tag(s)
         # Attach both tags to the same model

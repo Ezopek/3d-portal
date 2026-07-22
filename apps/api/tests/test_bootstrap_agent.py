@@ -76,7 +76,9 @@ def test_bootstrap_login_e2e_works(client):
 def test_bootstrap_agent_can_call_admin_endpoints(client):
     """Sanity: an agent JWT is accepted by current_admin_or_agent dep,
     so the agent can hit /api/admin/* endpoints (with the role-gated
-    exceptions like ?hard=true). Smoke against POST /api/admin/categories."""
+    exceptions like ?hard=true). Smoke against POST /api/admin/models
+    (agent-writable; Story 47.5 re-pointed this from the retired
+    admin taxonomy CRUD)."""
     _user, _, password = bootstrap_agent(email="agent-call@portal.example.com")
 
     client.post(
@@ -86,7 +88,7 @@ def test_bootstrap_agent_can_call_admin_endpoints(client):
 
     # Use a unique slug so this test stays independent
     r2 = client.post(
-        "/api/admin/categories",
-        json={"slug": "agent-bootstrap-smoke", "name_en": "Smoke"},
+        "/api/admin/models",
+        json={"name_en": "Agent bootstrap smoke", "slug": "agent-bootstrap-smoke"},
     )
     assert r2.status_code == 201, r2.text

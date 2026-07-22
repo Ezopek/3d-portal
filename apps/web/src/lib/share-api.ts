@@ -30,7 +30,6 @@ export interface ShareModelView {
   id: string;
   name_en: string;
   name_pl: string | null;
-  category: string;
   tags: string[];
   thumbnail_url: string | null;
   has_3d: boolean;

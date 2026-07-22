@@ -18,7 +18,7 @@ import { test as base } from "@playwright/test";
 //     re-register /api/auth/me → 401 — Playwright matches handlers in
 //     reverse registration order so the per-test override wins.
 //   - `/api/**` catch-all → 404. Tests that need real-looking data register
-//     more specific routes (e.g. `**/api/categories`) which win the same way.
+//     more specific routes (e.g. `**/api/tag-groups`) which win the same way.
 //     This stops every "I forgot to stub /api/activity-log" from blocking
 //     networkidle for 2 minutes.
 const DEFAULT_ADMIN_ME = {

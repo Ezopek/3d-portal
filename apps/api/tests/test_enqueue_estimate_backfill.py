@@ -15,7 +15,7 @@ from types import SimpleNamespace
 
 from sqlmodel import Session
 
-from app.core.db.models import Category, Model, ModelFile, ModelFileKind
+from app.core.db.models import Model, ModelFile, ModelFileKind
 from app.core.db.session import create_engine_for_url, init_schema
 from app.modules.slicer.estimate_store import EstimateStore
 from app.modules.slicer.models import (
@@ -90,11 +90,7 @@ def _seed_stl(
     sha: str = SHA256_OF_STL,
     write: bool = True,
 ) -> ModelFile:
-    cat = Category(slug=f"cat-{uuid.uuid4().hex[:8]}", name_en="cat")
-    session.add(cat)
-    session.commit()
-    session.refresh(cat)
-    model = Model(slug=f"m-{uuid.uuid4().hex[:8]}", name_en="m", category_id=cat.id)
+    model = Model(slug=f"m-{uuid.uuid4().hex[:8]}", name_en="m")
     session.add(model)
     session.commit()
     session.refresh(model)
@@ -270,11 +266,7 @@ async def test_only_stl_rows_are_inspected(tmp_path):
     with Session(engine) as s:
         _seed_stl(s, content_dir=content_dir)
         # An image row must NOT be inspected by the estimate backfill.
-        cat = Category(slug="img-cat", name_en="c")
-        s.add(cat)
-        s.commit()
-        s.refresh(cat)
-        model = Model(slug="img-m", name_en="m", category_id=cat.id)
+        model = Model(slug="img-m", name_en="m")
         s.add(model)
         s.commit()
         s.refresh(model)

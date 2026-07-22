@@ -8,7 +8,6 @@ from sqlmodel import Session
 
 from app.core.auth.jwt import encode_token
 from app.core.db.models import (
-    Category,
     Model,
     ModelFile,
     ModelFileKind,
@@ -48,16 +47,12 @@ def client(tmp_path, monkeypatch):
         with Session(engine) as s:
             user = s.exec(select(User).where(User.email == "admin@localhost.localdomain")).first()
             user_id = user.id
-            cat = Category(slug=f"share-cat-{uuid.uuid4().hex[:6]}", name_en="Decorum")
-            s.add(cat)
-            s.flush()
 
             # Model 1: has both image and STL files
             m_full = Model(
                 slug=f"share-full-{uuid.uuid4().hex[:6]}",
                 name_en="Full Model",
                 name_pl="Pełny model",
-                category_id=cat.id,
             )
             s.add(m_full)
             s.flush()
@@ -90,7 +85,6 @@ def client(tmp_path, monkeypatch):
             m_bare = Model(
                 slug=f"share-bare-{uuid.uuid4().hex[:6]}",
                 name_en="Bare Model",
-                category_id=cat.id,
             )
             s.add(m_bare)
             s.commit()
@@ -99,7 +93,6 @@ def client(tmp_path, monkeypatch):
                 "bare": m_bare.id,
                 "img": img.id,
                 "stl": stl.id,
-                "category_slug": cat.slug,
             }
         token = encode_token(subject=str(user_id), role="admin", secret="test", ttl_minutes=30)
         yield c, token, ids
@@ -125,7 +118,10 @@ def test_resolve_returns_subset_projection(client):
     body = r.json()
     assert body["id"] == str(ids["full"])
     assert body["name_pl"] == "Pełny model"
-    assert body["category"] == ids["category_slug"]
+    # NFR25-LEAKFENCE-1 (Story 47.5) — the anonymous share payload must not
+    # carry any category field; facet tags remain the classification surface.
+    assert "category" not in body
+    assert isinstance(body["tags"], list)
     assert "rating" not in body  # subset, not full Model
     assert "source_url" not in body
     assert isinstance(body["images"], list)

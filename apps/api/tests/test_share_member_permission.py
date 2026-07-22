@@ -31,7 +31,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 from app.core.auth.jwt import encode_token
-from app.core.db.models import AuditLog, Category, Model, User, UserRole
+from app.core.db.models import AuditLog, Model, User, UserRole
 from app.core.db.session import get_engine
 from app.main import create_app
 
@@ -71,18 +71,13 @@ def client(tmp_path, monkeypatch):
             s.add(member)
             s.flush()
             member_uuid = member.id
-            cat = Category(slug=f"share-cat-{uuid.uuid4().hex[:6]}", name_en="Cat")
-            s.add(cat)
-            s.flush()
             m1 = Model(
                 slug=f"share-m1-{uuid.uuid4().hex[:6]}",
                 name_en="M1",
-                category_id=cat.id,
             )
             m2 = Model(
                 slug=f"share-m2-{uuid.uuid4().hex[:6]}",
                 name_en="M2",
-                category_id=cat.id,
             )
             s.add(m1)
             s.add(m2)

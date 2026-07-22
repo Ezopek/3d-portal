@@ -13,7 +13,6 @@ from app.core.audit import record_event
 from app.core.auth.ratelimit import _client_ip
 from app.core.config import get_settings
 from app.core.db.models import (
-    Category,
     Model,
     ModelFile,
     ModelFileKind,
@@ -141,8 +140,6 @@ async def resolve_share(
                     )
             # else: another dispatch is in flight for this STL; skip silently.
 
-    category = session.exec(select(Category).where(Category.id == model.category_id)).one()
-
     tag_rows = session.exec(
         select(Tag.name_en)
         .join(ModelTag, ModelTag.tag_id == Tag.id)
@@ -225,7 +222,6 @@ async def resolve_share(
         id=model.id,
         name_en=model.name_en,
         name_pl=model.name_pl,
-        category=category.slug,
         tags=tags,
         thumbnail_url=thumbnail_url,
         has_3d=stl_row is not None,

@@ -21,7 +21,7 @@ from sqlmodel import Session
 
 from app.core.auth.cookies import ACCESS_COOKIE
 from app.core.auth.jwt import encode_token
-from app.core.db.models import Category, Model, ModelStatus, ModelTag, Tag, TagGroup
+from app.core.db.models import Model, ModelStatus, ModelTag, Tag, TagGroup
 from app.core.db.session import get_engine
 from app.modules.sot.service import list_tag_groups, list_tags
 
@@ -59,21 +59,12 @@ def _mk_tag(s, slug, *, group_id=None, group_position=0):
     return t
 
 
-def _mk_category(s):
-    c = Category(slug=f"cat-tg-{uuid.uuid4().hex[:8]}", name_en="TG")
-    s.add(c)
-    s.commit()
-    s.refresh(c)
-    return c
-
-
-def _tag_model(s, tag_id, *, cat_id, count, deleted=0):
+def _tag_model(s, tag_id, *, count, deleted=0):
     """Attach `count` live + `deleted` soft-deleted models to a tag."""
     for _ in range(count):
         m = Model(
             slug=f"m-{uuid.uuid4().hex[:10]}",
             name_en="M",
-            category_id=cat_id,
             status=ModelStatus.not_printed,
         )
         s.add(m)
@@ -85,7 +76,6 @@ def _tag_model(s, tag_id, *, cat_id, count, deleted=0):
         m = Model(
             slug=f"m-{uuid.uuid4().hex[:10]}",
             name_en="M",
-            category_id=cat_id,
             status=ModelStatus.not_printed,
             deleted_at=datetime.datetime.now(datetime.UTC),
         )
@@ -208,8 +198,7 @@ def test_tag_groups_model_count_excludes_soft_deleted(client):
     with Session(engine) as s:
         g = _mk_group(s, f"{slug}-grp")
         t = _mk_tag(s, slug, group_id=g.id)
-        cat = _mk_category(s)
-        _tag_model(s, t.id, cat_id=cat.id, count=2, deleted=1)
+        _tag_model(s, t.id, count=2, deleted=1)
         tid = str(t.id)
 
     body = client.get("/api/tag-groups").json()
@@ -224,8 +213,7 @@ def test_tag_groups_count_matches_tags_endpoint(client):
     with Session(engine) as s:
         g = _mk_group(s, f"{slug}-grp")
         t = _mk_tag(s, slug, group_id=g.id)
-        cat = _mk_category(s)
-        _tag_model(s, t.id, cat_id=cat.id, count=3)
+        _tag_model(s, t.id, count=3)
         tid = str(t.id)
 
     groups_body = client.get("/api/tag-groups").json()

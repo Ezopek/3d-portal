@@ -13,7 +13,7 @@ from sqlmodel import Session, select
 
 from app.core.auth.cookies import ACCESS_COOKIE
 from app.core.auth.jwt import encode_token
-from app.core.db.models import Category, Model, User
+from app.core.db.models import Model, User
 from app.core.db.models._enums import UserRole
 from app.core.db.session import get_engine
 
@@ -47,11 +47,7 @@ def _token(user_id: uuid.UUID, role: str = "member") -> str:
 
 
 def _seed_model(session, slug: str = "share-me") -> uuid.UUID:
-    cat = Category(slug=f"cat-share-me-{slug}", name_en="X")
-    session.add(cat)
-    session.commit()
-    session.refresh(cat)
-    m = Model(slug=slug, name_en=slug, category_id=cat.id)
+    m = Model(slug=slug, name_en=slug)
     session.add(m)
     session.commit()
     session.refresh(m)

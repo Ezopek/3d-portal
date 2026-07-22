@@ -1,7 +1,7 @@
 """DB models package.
 
 Re-exports every public symbol so imports of the historical form
-`from app.core.db.models import User, Category, ...` keep working
+`from app.core.db.models import User, Model, ...` keep working
 without changes at call sites.
 """
 
@@ -16,7 +16,6 @@ from app.modules.invite import models as _invite_models  # noqa: F401
 from ._audit import AuditLog
 from ._auth import RefreshToken
 from ._entities import (
-    Category,
     Model,
     ModelExternalLink,
     ModelFile,
@@ -40,7 +39,6 @@ from ._user import User
 
 __all__ = [
     "AuditLog",
-    "Category",
     "ExternalSource",
     "Model",
     "ModelExternalLink",

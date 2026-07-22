@@ -5,7 +5,6 @@ from pydantic import ValidationError
 from sqlmodel import Session
 
 from app.core.db.models import (
-    Category,
     ExternalSource,
     Model,
     ModelExternalLink,
@@ -21,8 +20,6 @@ from app.core.db.models import (
 )
 from app.core.db.session import create_engine_for_url, init_schema
 from app.modules.sot.schemas import (
-    CategoryNode,
-    CategoryTree,
     ExternalLinkRead,
     FileListResponse,
     ModelDetail,
@@ -156,39 +153,12 @@ def test_tag_group_read_and_envelope_shape():
     assert set(resp.model_dump().keys()) == {"groups", "groupless"}
 
 
-def test_category_node_recursive_shape():
-    """CategoryNode allows nested children at any depth."""
-    leaf = CategoryNode(
-        id=uuid.uuid4(),
-        parent_id=uuid.uuid4(),
-        slug="leaf",
-        name_en="Leaf",
-        name_pl=None,
-        children=[],
-    )
-    parent = CategoryNode(
-        id=uuid.uuid4(),
-        parent_id=None,
-        slug="parent",
-        name_en="Parent",
-        name_pl=None,
-        children=[leaf],
-    )
-    tree = CategoryTree(roots=[parent])
-    assert tree.roots[0].children[0].slug == "leaf"
-
-
 def test_model_summary_from_orm_includes_tags(engine):
     with Session(engine) as session:
-        cat = Category(slug="decorum", name_en="Decorum")
-        session.add(cat)
-        session.commit()
-        session.refresh(cat)
         m = Model(
             slug="dragon-001",
             name_en="Dragon",
             name_pl="Smok",
-            category_id=cat.id,
             source=ModelSource.printables,
             status=ModelStatus.printed,
             rating=4.5,
@@ -216,14 +186,9 @@ def test_model_summary_from_orm_includes_tags(engine):
 
 def test_model_detail_from_orm_with_embeds(engine):
     with Session(engine) as session:
-        cat = Category(slug="decorum", name_en="Decorum")
-        session.add(cat)
-        session.commit()
-        session.refresh(cat)
         m = Model(
             slug="dragon-002",
             name_en="Dragon",
-            category_id=cat.id,
         )
         session.add(m)
         session.commit()
@@ -262,9 +227,8 @@ def test_model_detail_from_orm_with_embeds(engine):
         session.commit()
         session.refresh(p)
 
-        # Refresh m and cat after multiple commits to avoid SQLAlchemy expiry
+        # Refresh m after multiple commits to avoid SQLAlchemy expiry
         session.refresh(m)
-        session.refresh(cat)
 
         schema = ModelDetail.model_validate(
             {
@@ -272,20 +236,12 @@ def test_model_detail_from_orm_with_embeds(engine):
                 "tags": [],
                 "gallery_file_ids": [],
                 "image_count": 0,
-                "category": {
-                    "id": cat.id,
-                    "parent_id": cat.parent_id,
-                    "slug": cat.slug,
-                    "name_en": cat.name_en,
-                    "name_pl": cat.name_pl,
-                },
                 "files": [ModelFileRead.model_validate(f)],
                 "prints": [PrintRead.model_validate(p)],
                 "notes": [NoteRead.model_validate(n)],
                 "external_links": [ExternalLinkRead.model_validate(link)],
             }
         )
-        assert schema.category.slug == "decorum"
         assert len(schema.files) == 1
         assert schema.files[0].kind == "stl"
         assert len(schema.notes) == 1

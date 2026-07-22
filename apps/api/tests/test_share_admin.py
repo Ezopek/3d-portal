@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from app.core.auth.jwt import encode_token
-from app.core.db.models import Category, Model
+from app.core.db.models import Model
 from app.main import create_app
 
 
@@ -44,18 +44,13 @@ def client(tmp_path, monkeypatch):
         with Session(engine) as s:
             user = s.exec(select(User).where(User.email == "admin@localhost.localdomain")).first()
             user_id = user.id
-            cat = Category(slug=f"share-cat-{uuid.uuid4().hex[:6]}", name_en="Cat")
-            s.add(cat)
-            s.flush()
             m1 = Model(
                 slug=f"share-m1-{uuid.uuid4().hex[:6]}",
                 name_en="M1",
-                category_id=cat.id,
             )
             m2 = Model(
                 slug=f"share-m2-{uuid.uuid4().hex[:6]}",
                 name_en="M2",
-                category_id=cat.id,
             )
             s.add(m1)
             s.add(m2)

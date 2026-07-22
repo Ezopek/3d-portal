@@ -2,7 +2,7 @@ import uuid
 
 from sqlmodel import Session
 
-from app.core.db.models import Category, Model, ModelFile, ModelFileKind
+from app.core.db.models import Model, ModelFile, ModelFileKind
 from app.core.db.session import get_engine
 
 
@@ -10,11 +10,7 @@ def _seed_model_with_stl(slug_suffix: str) -> tuple[uuid.UUID, uuid.UUID]:
     """Return (model_id, stl_file_id)."""
     suffix = uuid.uuid4().hex[:8]
     with Session(get_engine()) as s:
-        cat = Category(slug=f"render-cat-{suffix}", name_en="x")
-        s.add(cat)
-        s.commit()
-        s.refresh(cat)
-        m = Model(slug=f"render-m-{suffix}", name_en="m", category_id=cat.id)
+        m = Model(slug=f"render-m-{suffix}", name_en="m")
         s.add(m)
         s.commit()
         s.refresh(m)
@@ -87,11 +83,7 @@ def test_stl_upload_enqueues_render_when_no_prior(client, _patch_arq_pool):
     """First STL upload kicks off auto-render."""
     suffix = uuid.uuid4().hex[:8]
     with Session(get_engine()) as s:
-        cat = Category(slug=f"auto-cat-{suffix}", name_en="x")
-        s.add(cat)
-        s.commit()
-        s.refresh(cat)
-        m = Model(slug=f"auto-m-{suffix}", name_en="m", category_id=cat.id)
+        m = Model(slug=f"auto-m-{suffix}", name_en="m")
         s.add(m)
         s.commit()
         s.refresh(m)
@@ -116,11 +108,7 @@ def test_stl_upload_enqueues_render_when_no_prior(client, _patch_arq_pool):
 def test_image_upload_does_not_enqueue_render(client, _patch_arq_pool):
     suffix = uuid.uuid4().hex[:8]
     with Session(get_engine()) as s:
-        cat = Category(slug=f"img-cat-{suffix}", name_en="x")
-        s.add(cat)
-        s.commit()
-        s.refresh(cat)
-        m = Model(slug=f"img-m-{suffix}", name_en="m", category_id=cat.id)
+        m = Model(slug=f"img-m-{suffix}", name_en="m")
         s.add(m)
         s.commit()
         s.refresh(m)
@@ -159,11 +147,7 @@ def test_stl_upload_does_not_re_enqueue_when_renders_exist(client, _patch_arq_po
     """Once a model has auto-renders, additional STL uploads don't re-trigger."""
     suffix = uuid.uuid4().hex[:8]
     with Session(get_engine()) as s:
-        cat = Category(slug=f"reup-cat-{suffix}", name_en="x")
-        s.add(cat)
-        s.commit()
-        s.refresh(cat)
-        m = Model(slug=f"reup-m-{suffix}", name_en="m", category_id=cat.id)
+        m = Model(slug=f"reup-m-{suffix}", name_en="m")
         s.add(m)
         s.commit()
         s.refresh(m)

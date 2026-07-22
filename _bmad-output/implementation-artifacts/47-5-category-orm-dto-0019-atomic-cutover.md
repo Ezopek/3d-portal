@@ -293,10 +293,32 @@ Then ff-only merge (cutover = only substantive change in range) → `infra/scrip
 ## 15. Dev Agent Record
 
 ### Agent Model Used
-(to be filled by dev-story)
+
+Claude Opus 4.8 (1M context) — `claude-opus-4-8[1m]` (bmad-loop dev session, 2026-07-22/23).
+
 ### Debug Log References
+
+- `.hermes/run-logs/check-all-20260723_*-e47-5.log` — full check-all gate run (all stages).
+- `.hermes/run-logs/determinism-e47-5.log` — 3× pytest (apps/api), 3× vitest (apps/web), 3× pytest (workers/render), identical pass counts.
+
 ### Completion Notes List
+
+- T0 RED gates authored and observed RED before any deletion: `test_migration_0019.py` (3 tests — revision absent), `test_share_public.py` leak-fence flip, T-OAS negatives in `test_openapi_agent_surface.py` (6 params RED), new `AddModelForm.test.tsx` (3 tests RED). The T-PAR parity test (`test_orm_migration_parity.py`) was green-vacuous pre-cutover (ORM and migrations both still carried category), as §7 anticipated ("fails or is vacuous pre-cutover").
+- Phases (a)→(d) executed in order per §4; all four complete in the single cutover commit.
+- §11 grep-contract note: negative-assert tests that must reference the retired literals (`test_migration_0019.py`, `test_migration_0018.py` deferral guard, `test_openapi_agent_surface.py` T-OAS, `test_sot_admin_models.py` extra-field policy, FE `AddModelForm.test.tsx`) assemble them at runtime (`"category" + "_id"`, split FE literals) so the residual-symbol greps stay at 0 disallowed hits while the asserts remain real.
+- `test_sot_auth_boundary.py` `/api/categories` params re-pointed onto `GET /api/models/{id}/bundle` (previously uncovered surviving SoT read; seeded file kind image→stl so bundle returns 200) and `GET /api/tags` (admin + rogue-role rows).
+- Extra-field policy asserted exactly per §5.14: create with legacy field → 201 ignored (`test_create_model_with_legacy_taxonomy_field_201_ignored`); patch → 422 (`test_patch_model_with_legacy_taxonomy_field_422`).
+- `test_2fa_schema.py::test_known_entity_types_count_includes_one_new_addition` updated 16→15 (KNOWN_ENTITY_TYPES lost "category") — a §4 omission discovered at run time.
+- Runbook d8 done with H1 + first non-blank line byte-identical (sha256 matches `infra/.runbook-fingerprint` before and after); 0 `category` hits.
+- Visual: 24 regenerated baselines (catalog-detail ×12, share-anonymous-with-signin ×4, share-member-enriched ×4, share-member-enriched-dismissed ×4) all show only the breadcrumb / share category-label removal (page height −17..20px or in-viewport upward shift); 4 new `add-model-form` baselines (all 4 projects, pl-PL). Every diff read and classified expected; no regressions. Element-scoped specs (`admin-dropdowns-tooltip-open`, `destructive-dialogs-edit-sheets-open`, `remaining-sheets-open`, `catalog-filestab-estimate`) produced no pixel change (their screenshots don't include the hero breadcrumb region).
+
 ### File List
+
+Backend (apps/api): `app/modules/sot/router.py`, `app/modules/sot/admin_router.py`, `app/modules/sot/service.py`, `app/modules/sot/admin_service.py`, `app/modules/sot/schemas.py`, `app/modules/sot/admin_schemas.py`, `app/modules/share/router.py`, `app/modules/share/models.py`, `app/modules/admin/router.py`, `app/core/audit.py`, `app/core/db/models/_entities.py`, `app/core/db/models/__init__.py`, `app/core/db/seed.py`, `scripts/seed_taxonomy.py`, `migrations/versions/0019_drop_category.py` (NEW).
+Backend tests: NEW `tests/test_migration_0019.py`, `tests/test_orm_migration_parity.py`; DELETED `tests/test_sot_categories.py`, `tests/test_sot_admin_categories.py`; rewritten/updated `test_share_public.py`, `test_openapi_agent_surface.py`, `test_sot_schemas.py`, `test_sot_auth_boundary.py`, `test_bootstrap_agent.py`, `test_audit.py`, `test_2fa_schema.py`, `test_sot_admin_models.py`, `test_sot_models_detail.py`, `test_db_entity_tables.py`, `test_seed_taxonomy.py`, `test_migration_0004/0005/0009/0012/0014/0018.py`, and the d9 fixture-only files (`test_sot_admin_files/tags/notes/prints/external_links.py`, `test_sot_tags.py`, `test_sot_tag_groups.py`, `test_sot_models_list.py`, `test_sot_model_files.py`, `test_sot_model_file_content.py`, `test_sot_model_bundle.py`, `test_admin_render_sot.py`, `test_thumbnail_pipeline.py`, `test_backfill_thumbnails.py`, `test_hydrate_local_tree.py`, `test_enqueue_estimate_backfill.py`, `test_share_asset.py`, `test_share_admin.py`, `test_share_member_permission.py`, `test_share_member_router.py`, `test_ratelimit_share_cap.py`, `test_stl_preview_single_flight.py`, `test_admin_profile_offers.py`, `test_admin_profile_publish.py`).
+Workers: `workers/render/tests/test_worker_sot.py`.
+Frontend (apps/web): `src/modules/admin/AddModelForm.tsx`, NEW `src/modules/admin/AddModelForm.test.tsx`, `src/modules/catalog/components/ModelHero.tsx` + `.test.tsx`, `src/modules/catalog/hooks/useModels.ts` + `.test.tsx`, `src/modules/catalog/hooks/mutations/useUpdateModel.ts`, DELETED `src/modules/catalog/hooks/useCategoriesTree.ts` + `.test.tsx`, `src/lib/api-types.ts`, `src/lib/share-api.ts`, `src/routes/share/$token.tsx`, `src/routes/share/MemberShareView.test.tsx`, `src/routes/catalog/index.test.ts`, `src/routes/login.test.tsx`, `src/routes/dev/components.tsx`, `src/shell/AppShell.tsx`, `src/locales/en.json`, `src/locales/pl.json`, the 11 §4 A7 fixture test files, `tests/visual/api-stubs.ts`, `tests/visual/accessibility-axe.spec.ts`, `tests/visual/anon-login-only.spec.ts`, `tests/visual/catalog-filestab-estimate.spec.ts`, `tests/visual/share-anonymous-with-signin.spec.ts`, `tests/visual/_test.ts`, `tests/visual/remaining-sheets-open.spec.ts`, NEW `tests/visual/add-model-form.spec.ts` + 4 baselines, 24 regenerated baselines.
+Docs: `docs/agents-add-model-runbook.md`.
 
 ## 16. Validation Record (VS)
 

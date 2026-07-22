@@ -31,7 +31,6 @@ const PAGES = [
   { path: "/catalog", label: "catalog list", needsAuth: false },
   { path: "/admin/models", label: "admin models", needsAuth: true },
   { path: "/admin/tags", label: "admin tags", needsAuth: true },
-  { path: "/admin/categories", label: "admin categories", needsAuth: true },
 ];
 
 for (const { path, label, needsAuth } of PAGES) {

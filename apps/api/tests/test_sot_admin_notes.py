@@ -12,7 +12,6 @@ from sqlmodel import Session, select
 
 from app.core.db.models import (
     AuditLog,
-    Category,
     Model,
     ModelNote,
     NoteKind,
@@ -35,18 +34,10 @@ def _seed_admin(session: Session) -> uuid.UUID:
     return u.id
 
 
-def _seed_category(session: Session) -> uuid.UUID:
-    cat = Category(slug=f"cat-notes-{uuid.uuid4().hex[:8]}", name_en="Test Cat")
-    session.add(cat)
-    session.flush()
-    return cat.id
-
-
-def _seed_model(session: Session, cat_id: uuid.UUID) -> uuid.UUID:
+def _seed_model(session: Session) -> uuid.UUID:
     m = Model(
         slug=f"m-notes-{uuid.uuid4().hex[:8]}",
         name_en="Test Model",
-        category_id=cat_id,
     )
     session.add(m)
     session.flush()
@@ -74,8 +65,7 @@ def test_create_note_201(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     client.cookies.set("portal_access", admin_token(admin_id))
@@ -110,8 +100,7 @@ def test_create_note_audit(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     client.cookies.set("portal_access", admin_token(admin_id))
@@ -142,8 +131,7 @@ def test_patch_note_200(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         note_id = _seed_note(s, model_id, admin_id)
         s.commit()
 
@@ -166,8 +154,7 @@ def test_patch_note_mirrors_body_to_body_en_on_description_kind(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         note_id = _seed_note(s, model_id, admin_id)
         s.commit()
 
@@ -211,8 +198,7 @@ def test_patch_note_audit(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         note_id = _seed_note(s, model_id, admin_id)
         s.commit()
 
@@ -242,8 +228,7 @@ def test_delete_note_204(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         note_id = _seed_note(s, model_id, admin_id)
         s.commit()
 

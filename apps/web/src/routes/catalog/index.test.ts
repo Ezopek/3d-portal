@@ -147,8 +147,8 @@ describe("catalog validateSearch — serialization & omit-default (AC #4, #5)", 
   });
 });
 
-describe("catalog validateSearch — category_id stripped + unrelated keys coexist (AC #6)", () => {
-  it("strips category_id but preserves every unrelated key alongside the new params", () => {
+describe("catalog validateSearch — unknown keys stripped + unrelated keys coexist (AC #6)", () => {
+  it("strips unknown keys but preserves every unrelated key alongside the new params", () => {
     // Two tags so the non-default `tag_match` survives normalization
     // (Story 44.2 requires ≥2 tags for `tag_match` to be meaningful).
     const expected = {
@@ -161,12 +161,12 @@ describe("catalog validateSearch — category_id stripped + unrelated keys coexi
       sort: "name_asc",
       page: 2,
     };
-    // `category_id` in the input is now stripped (44.3 migration).
-    expect(v({ category_id: "cat-1", ...expected })).toEqual(expected);
+    // Unknown legacy params in the input are stripped (44.3 migration).
+    expect(v({ legacy_param: "x", ...expected })).toEqual(expected);
   });
 
-  it("strips a category-only URL down to empty", () => {
-    expect(v({ category_id: "cat-1" })).toEqual({});
+  it("strips an unknown-params-only URL down to empty", () => {
+    expect(v({ legacy_param: "x" })).toEqual({});
   });
 });
 

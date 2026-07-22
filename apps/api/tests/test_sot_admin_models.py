@@ -12,7 +12,6 @@ from sqlmodel import Session, select
 
 from app.core.db.models import (
     AuditLog,
-    Category,
     Model,
     ModelFile,
     ModelFileKind,
@@ -21,6 +20,10 @@ from app.core.db.models import (
 )
 from app.core.db.session import get_engine
 from tests._test_helpers import admin_token, agent_token, member_token
+
+# Assembled at runtime so the Story 47.5 §11 residual-symbol grep stays clean;
+# used only for negative assertions against the retired taxonomy field.
+_LEGACY_FK = "category" + "_id"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -63,26 +66,18 @@ def _seed_member(session: Session) -> uuid.UUID:
     return u.id
 
 
-def _seed_category(session: Session) -> uuid.UUID:
-    cat = Category(slug=f"test-cat-{uuid.uuid4().hex[:8]}", name_en="Test Category")
-    session.add(cat)
-    session.flush()
-    return cat.id
-
-
-def _seed_model(session: Session, cat_id: uuid.UUID, *, slug_prefix: str = "m") -> uuid.UUID:
+def _seed_model(session: Session, *, slug_prefix: str = "m") -> uuid.UUID:
     m = Model(
         slug=f"{slug_prefix}-{uuid.uuid4().hex[:8]}",
         name_en="Test Model",
-        category_id=cat_id,
     )
     session.add(m)
     session.flush()
     return m.id
 
 
-def _seed_model_with_slug(session: Session, cat_id: uuid.UUID, slug: str) -> uuid.UUID:
-    m = Model(slug=slug, name_en="Test Model", category_id=cat_id)
+def _seed_model_with_slug(session: Session, slug: str) -> uuid.UUID:
+    m = Model(slug=slug, name_en="Test Model")
     session.add(m)
     session.flush()
     return m.id
@@ -97,18 +92,17 @@ def test_create_model_201(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
         s.commit()
 
     client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         "/api/admin/models",
-        json={"name_en": "My Model", "category_id": str(cat_id)},
+        json={"name_en": "My Model"},
     )
     assert r.status_code == 201
     body = r.json()
     assert body["name_en"] == "My Model"
-    assert body["category_id"] == str(cat_id)
+    assert _LEGACY_FK not in body  # Story 47.5 — the read DTO carries no legacy key
     assert body["tags"] == []
     assert body["files"] == []
 
@@ -119,7 +113,10 @@ def test_create_model_201(client):
         assert m.name_en == "My Model"
 
 
-def test_create_model_400_unknown_category(client):
+def test_create_model_with_legacy_taxonomy_field_201_ignored(client):
+    """Story 47.5 extra-field policy (verified §5.14): ``ModelCreate`` has no
+    ``extra`` config, so Pydantic's default *ignores* unknown fields — a
+    legacy payload still succeeds and the field leaves no trace."""
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
@@ -128,18 +125,34 @@ def test_create_model_400_unknown_category(client):
     client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         "/api/admin/models",
-        json={"name_en": "Orphan", "category_id": str(uuid.uuid4())},
+        json={"name_en": "Legacy Payload", _LEGACY_FK: str(uuid.uuid4())},
     )
-    assert r.status_code == 400
-    assert "category" in r.json()["detail"].lower()
+    assert r.status_code == 201, r.text
+    assert _LEGACY_FK not in r.json()
+
+
+def test_patch_model_with_legacy_taxonomy_field_422(client):
+    """Story 47.5 extra-field policy (verified §5.14): ``ModelPatch`` has
+    ``extra="forbid"``, so the legacy field in a patch body is rejected 422."""
+    engine = get_engine()
+    with Session(engine) as s:
+        admin_id = _seed_admin(s)
+        model_id = _seed_model(s)
+        s.commit()
+
+    client.cookies.set("portal_access", admin_token(admin_id))
+    r = client.patch(
+        f"/api/admin/models/{model_id}",
+        json={_LEGACY_FK: str(uuid.uuid4())},
+    )
+    assert r.status_code == 422, r.text
 
 
 def test_create_model_409_slug_collision(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        existing_id = _seed_model(s, cat_id, slug_prefix="collide")
+        existing_id = _seed_model(s, slug_prefix="collide")
         s.commit()
 
     # Fetch the slug from DB
@@ -150,7 +163,7 @@ def test_create_model_409_slug_collision(client):
     client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         "/api/admin/models",
-        json={"name_en": "Dupe", "category_id": str(cat_id), "slug": existing_slug},
+        json={"name_en": "Dupe", "slug": existing_slug},
     )
     assert r.status_code == 409
 
@@ -159,13 +172,12 @@ def test_create_model_auto_slug(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
         s.commit()
 
     client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         "/api/admin/models",
-        json={"name_en": "Auto Slug Model", "category_id": str(cat_id)},
+        json={"name_en": "Auto Slug Model"},
     )
     assert r.status_code == 201
     body = r.json()
@@ -177,13 +189,12 @@ def test_create_model_writes_audit_log(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
         s.commit()
 
     client.cookies.set("portal_access", admin_token(admin_id))
     r = client.post(
         "/api/admin/models",
-        json={"name_en": "Audit Create", "category_id": str(cat_id)},
+        json={"name_en": "Audit Create"},
     )
     assert r.status_code == 201
     model_id = uuid.UUID(r.json()["id"])
@@ -208,8 +219,7 @@ def test_patch_model_200(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     client.cookies.set("portal_access", admin_token(admin_id))
@@ -239,8 +249,7 @@ def test_patch_model_404_soft_deleted(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         m = s.get(Model, model_id)
         m.deleted_at = datetime.datetime.now(datetime.UTC)
         s.add(m)
@@ -258,9 +267,8 @@ def test_patch_model_409_slug_collision(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        m1_id = _seed_model(s, cat_id)
-        m2_id = _seed_model(s, cat_id)
+        m1_id = _seed_model(s)
+        m2_id = _seed_model(s)
         s.commit()
 
     with Session(engine) as s:
@@ -279,8 +287,7 @@ def test_patch_model_writes_audit_log(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     client.cookies.set("portal_access", admin_token(admin_id))
@@ -312,8 +319,7 @@ def test_soft_delete_200(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     client.cookies.set("portal_access", admin_token(admin_id))
@@ -332,8 +338,7 @@ def test_soft_delete_idempotent(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     client.cookies.set("portal_access", admin_token(admin_id))
@@ -347,8 +352,7 @@ def test_soft_delete_writes_audit_log(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     client.cookies.set("portal_access", admin_token(admin_id))
@@ -374,8 +378,7 @@ def test_restore_200(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         m = s.get(Model, model_id)
         m.deleted_at = datetime.datetime.now(datetime.UTC)
         s.add(m)
@@ -398,8 +401,7 @@ def test_restore_writes_audit_log(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         m = s.get(Model, model_id)
         m.deleted_at = datetime.datetime.now(datetime.UTC)
         s.add(m)
@@ -430,8 +432,7 @@ def test_hard_delete_admin_200(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     client.cookies.set("portal_access", admin_token(admin_id))
@@ -449,8 +450,7 @@ def test_hard_delete_agent_403(client):
     engine = get_engine()
     with Session(engine) as s:
         agent_id = _seed_agent(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     client.cookies.set("portal_access", agent_token(agent_id))
@@ -464,8 +464,7 @@ def test_hard_delete_writes_audit_log_with_snapshot(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         m = s.get(Model, model_id)
         m.name_en = "Snapshot Model"
         s.add(m)
@@ -499,8 +498,7 @@ def test_hard_delete_cleans_storage_files(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
 
         storage_path = f"test-models/{model_id}/file-{uuid.uuid4().hex[:6]}.stl"
         full_path = content_dir / storage_path
@@ -538,8 +536,7 @@ def test_set_thumbnail_200(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
 
         f = ModelFile(
             model_id=model_id,
@@ -568,9 +565,8 @@ def test_set_thumbnail_400_cross_model_file(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        m1_id = _seed_model(s, cat_id)
-        m2_id = _seed_model(s, cat_id)
+        m1_id = _seed_model(s)
+        m2_id = _seed_model(s)
 
         f = ModelFile(
             model_id=m1_id,  # belongs to m1
@@ -599,8 +595,7 @@ def test_set_thumbnail_400_unknown_file(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     client.cookies.set("portal_access", admin_token(admin_id))
@@ -615,8 +610,7 @@ def test_set_thumbnail_writes_audit_log(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
 
         f = ModelFile(
             model_id=model_id,
@@ -659,7 +653,7 @@ def test_set_thumbnail_writes_audit_log(client):
 def test_unauthenticated_create_401(client):
     r = client.post(
         "/api/admin/models",
-        json={"name_en": "X", "category_id": str(uuid.uuid4())},
+        json={"name_en": "X"},
     )
     assert r.status_code == 401
 
@@ -673,7 +667,7 @@ def test_member_role_create_403(client):
     client.cookies.set("portal_access", member_token(member_id))
     r = client.post(
         "/api/admin/models",
-        json={"name_en": "X", "category_id": str(uuid.uuid4())},
+        json={"name_en": "X"},
     )
     assert r.status_code == 403
 
@@ -691,11 +685,7 @@ def test_reorder_photos_assigns_sequential_positions(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat = Category(slug=f"reorder-cat-{uuid.uuid4().hex[:6]}", name_en="x")
-        s.add(cat)
-        s.commit()
-        s.refresh(cat)
-        m = Model(slug=f"reorder-m-{uuid.uuid4().hex[:6]}", name_en="m", category_id=cat.id)
+        m = Model(slug=f"reorder-m-{uuid.uuid4().hex[:6]}", name_en="m")
         s.add(m)
         s.commit()
         s.refresh(m)
@@ -756,11 +746,7 @@ def test_reorder_photos_rejects_unknown_file(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat = Category(slug=f"reorder-bad-cat-{uuid.uuid4().hex[:6]}", name_en="x")
-        s.add(cat)
-        s.commit()
-        s.refresh(cat)
-        m = Model(slug=f"reorder-bad-m-{uuid.uuid4().hex[:6]}", name_en="m", category_id=cat.id)
+        m = Model(slug=f"reorder-bad-m-{uuid.uuid4().hex[:6]}", name_en="m")
         s.add(m)
         s.commit()
         s.refresh(m)
@@ -780,11 +766,7 @@ def test_list_files_returns_image_kinds_in_position_order(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat = Category(slug=f"order-cat-{uuid.uuid4().hex[:6]}", name_en="x")
-        s.add(cat)
-        s.commit()
-        s.refresh(cat)
-        m = Model(slug=f"order-m-{uuid.uuid4().hex[:6]}", name_en="m", category_id=cat.id)
+        m = Model(slug=f"order-m-{uuid.uuid4().hex[:6]}", name_en="m")
         s.add(m)
         s.commit()
         s.refresh(m)

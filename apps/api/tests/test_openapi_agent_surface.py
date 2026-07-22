@@ -40,8 +40,6 @@ ENRICHED_REQUEST_MODELS = [
     "TagCreate",
     "TagPatch",
     "TagMerge",
-    "CategoryCreate",
-    "CategoryPatch",
     "NoteCreate",
     "NotePatch",
     "PrintCreate",
@@ -306,6 +304,58 @@ def test_post_tags_operation_id_is_stable(openapi_spec):
     off it stays compatible."""
     op = _op(openapi_spec, "POST", "/api/admin/tags")
     assert op.get("operationId") == "admin_create_tag_api_admin_tags_post"
+
+
+# ---------------------------------------------------------------------------
+# Story 47.5 (T-OAS) — negative category surface after the atomic cutover
+# ---------------------------------------------------------------------------
+
+
+def _iter_refs(node, path=""):
+    """Yield every `$ref` string anywhere in the spec tree."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "$ref" and isinstance(value, str):
+                yield path, value
+            else:
+                yield from _iter_refs(value, f"{path}/{key}")
+    elif isinstance(node, list):
+        for i, item in enumerate(node):
+            yield from _iter_refs(item, f"{path}[{i}]")
+
+
+def test_no_category_schemas_in_components(openapi_spec):
+    """Zero `Category*` component schemas survive the Story 47.5 cutover."""
+    schemas = openapi_spec.get("components", {}).get("schemas", {})
+    leftovers = [name for name in schemas if name.startswith("Category")]
+    assert not leftovers, f"Category* schemas still present in components.schemas: {leftovers}"
+
+
+@pytest.mark.parametrize(
+    "model_name",
+    ["ModelSummary", "ModelDetail", "ModelCreate", "ModelPatch", "ShareModelView"],
+)
+def test_no_category_properties_on_model_schemas(openapi_spec, model_name):
+    """No legacy taxonomy property survives on the model-shaped DTOs.
+
+    Literal assembled at runtime so the Story 47.5 §11 residual-symbol grep
+    stays clean."""
+    schemas = openapi_spec.get("components", {}).get("schemas", {})
+    assert model_name in schemas, f"{model_name} missing from components.schemas"
+    props = schemas[model_name].get("properties", {})
+    leftovers = [p for p in props if p in {"category", "category" + "_id"}]
+    assert not leftovers, f"{model_name} still carries category properties: {leftovers}"
+
+
+def test_no_dangling_refs(openapi_spec):
+    """Every `$ref` in the spec resolves — the schema deletions left no orphans."""
+    dangling: list[str] = []
+    for path, ref in _iter_refs(openapi_spec):
+        try:
+            _resolve_ref(openapi_spec, ref)
+        except (AssertionError, KeyError):
+            dangling.append(f"{path} -> {ref}")
+    assert not dangling, "dangling $refs:\n  " + "\n  ".join(dangling)
 
 
 @pytest.mark.parametrize("model_name", ENRICHED_REQUEST_MODELS)

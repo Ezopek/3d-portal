@@ -30,14 +30,10 @@ def test_render_model_inserts_4_modelfile_rows(tmp_db_engine):
     content_dir.mkdir()
 
     # Seed: a model with one STL file. The STL bytes are minimal valid ASCII STL.
-    from app.core.db.models import Category, Model, ModelFile, ModelFileKind
+    from app.core.db.models import Model, ModelFile, ModelFileKind
 
     with Session(engine) as s:
-        cat = Category(slug="t", name_en="t")
-        s.add(cat)
-        s.commit()
-        s.refresh(cat)
-        m = Model(slug="t", name_en="t", category_id=cat.id)
+        m = Model(slug="t", name_en="t")
         s.add(m)
         s.commit()
         s.refresh(m)
@@ -112,14 +108,10 @@ def test_render_model_replaces_old_auto_renders(tmp_db_engine):
     content_dir = tmp_root / "content"
     content_dir.mkdir()
 
-    from app.core.db.models import Category, Model, ModelFile, ModelFileKind
+    from app.core.db.models import Model, ModelFile, ModelFileKind
 
     with Session(engine) as s:
-        cat = Category(slug="r", name_en="r")
-        s.add(cat)
-        s.commit()
-        s.refresh(cat)
-        m = Model(slug="r", name_en="r", category_id=cat.id)
+        m = Model(slug="r", name_en="r")
         s.add(m)
         s.commit()
         s.refresh(m)
@@ -205,7 +197,7 @@ def test_render_model_replaces_old_auto_renders(tmp_db_engine):
 
 def _seed_two_stls(engine, content_dir, *, flags: tuple[bool, bool]):
     """Seed a model with two STL files; returns (model_id, file_a_id, file_b_id)."""
-    from app.core.db.models import Category, Model, ModelFile, ModelFileKind
+    from app.core.db.models import Model, ModelFile, ModelFileKind
 
     valid_stl = (
         "solid t\nfacet normal 0 0 1\nouter loop\n"
@@ -213,11 +205,7 @@ def _seed_two_stls(engine, content_dir, *, flags: tuple[bool, bool]):
         "endloop\nendfacet\nendsolid t\n"
     )
     with Session(engine) as s:
-        cat = Category(slug="x", name_en="x")
-        s.add(cat)
-        s.commit()
-        s.refresh(cat)
-        m = Model(slug="x", name_en="x", category_id=cat.id)
+        m = Model(slug="x", name_en="x")
         s.add(m)
         s.commit()
         s.refresh(m)
@@ -322,7 +310,7 @@ def _seed_model_with_stl(engine, content_dir: Path, *, sha256: str) -> tuple[str
     ``sha256`` column is whatever the caller supplied (lets the test
     control the sha8 suffix used by the worker's source-tracking).
     """
-    from app.core.db.models import Category, Model, ModelFile, ModelFileKind
+    from app.core.db.models import Model, ModelFile, ModelFileKind
 
     valid_stl = (
         "solid t\nfacet normal 0 0 1\nouter loop\n"
@@ -330,11 +318,7 @@ def _seed_model_with_stl(engine, content_dir: Path, *, sha256: str) -> tuple[str
         "endloop\nendfacet\nendsolid t\n"
     )
     with Session(engine) as s:
-        cat = Category(slug=f"sf-{uuid.uuid4().hex[:6]}", name_en="sf")
-        s.add(cat)
-        s.commit()
-        s.refresh(cat)
-        m = Model(slug=f"sf-{uuid.uuid4().hex[:6]}", name_en="sf", category_id=cat.id)
+        m = Model(slug=f"sf-{uuid.uuid4().hex[:6]}", name_en="sf")
         s.add(m)
         s.commit()
         s.refresh(m)

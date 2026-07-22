@@ -51,7 +51,6 @@ export async function stubViewerModelDetail(
         slug: "cube",
         name_en: "Cube",
         name_pl: "Sześcian",
-        category_id: "c1",
         source: "own",
         status: "not_printed",
         rating: null,
@@ -63,13 +62,6 @@ export async function stubViewerModelDetail(
         tags: [],
         gallery_file_ids: [],
         image_count: 0,
-        category: {
-          id: "c1",
-          parent_id: null,
-          slug: "tools",
-          name_en: "Tools",
-          name_pl: "Narzędzia",
-        },
         files: [
           {
             id: stlFileId,
@@ -173,45 +165,6 @@ export async function stubSotList(
 ) {
   const tags = opts.tags ?? DEFAULT_TAGS;
   const tagGroups = opts.tagGroups ?? DEFAULT_TAG_GROUPS;
-  await page.route("**/api/categories", (route: Route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        roots: [
-          {
-            id: "11111111-1111-1111-1111-111111111111",
-            parent_id: null,
-            slug: "decorations",
-            name_en: "Decorations",
-            name_pl: "Dekoracje",
-            children: [
-              {
-                id: "11111111-1111-1111-1111-111111111112",
-                parent_id: "11111111-1111-1111-1111-111111111111",
-                slug: "vases",
-                name_en: "Vases",
-                name_pl: "Wazony",
-                children: [],
-                model_count: 1,
-              },
-            ],
-            model_count: 1,
-          },
-          {
-            id: "22222222-2222-2222-2222-222222222222",
-            parent_id: null,
-            slug: "tools",
-            name_en: "Tools",
-            name_pl: "Narzędzia",
-            children: [],
-            model_count: 1,
-          },
-        ],
-      }),
-    }),
-  );
-
   await page.route("**/api/tags*", (route: Route) =>
     route.fulfill({
       status: 200,
@@ -245,7 +198,6 @@ export async function stubSotList(
             slug: "dragon",
             name_en: "Dragon",
             name_pl: "Smok",
-            category_id: "11111111-1111-1111-1111-111111111111",
             source: "printables",
             status: "printed",
             rating: 5,
@@ -274,7 +226,6 @@ export async function stubSotList(
             slug: "vase",
             name_en: "Vase",
             name_pl: "Wazon",
-            category_id: "11111111-1111-1111-1111-111111111112",
             source: "unknown",
             status: "not_printed",
             rating: null,
@@ -317,7 +268,6 @@ export async function stubSotDetail(page: Page) {
         slug: "dragon",
         name_en: "Dragon",
         name_pl: "Smok",
-        category_id: "c1",
         source: "printables",
         status: "printed",
         rating: 4.5,
@@ -344,13 +294,6 @@ export async function stubSotDetail(page: Page) {
             group_position: 0,
           },
         ],
-        category: {
-          id: "c1",
-          parent_id: null,
-          slug: "decorations",
-          name_en: "Decorations",
-          name_pl: "Dekoracje",
-        },
         files: [
           {
             id: "f1",

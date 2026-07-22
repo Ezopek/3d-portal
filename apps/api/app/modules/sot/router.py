@@ -24,7 +24,6 @@ from app.core.db.session import get_session
 from app.core.etag import file_etag
 from app.core.filenames import safe_filename
 from app.modules.sot.schemas import (
-    CategoryTree,
     FileListResponse,
     ModelDetail,
     ModelListResponse,
@@ -35,7 +34,6 @@ from app.modules.sot.service import (
     ModelListSort,
     TagMatch,
     get_model_detail,
-    list_categories_tree,
     list_model_files,
     list_models,
     list_tag_groups,
@@ -43,25 +41,6 @@ from app.modules.sot.service import (
 )
 
 router = APIRouter(prefix="/api", tags=["sot-read"])
-
-
-@router.get(
-    "/categories",
-    summary="Get the full category tree",
-    description=(
-        "Returns the complete hierarchical category tree (`CategoryTree`). Used by "
-        "agents during the pre-flight check to confirm a target slug exists before "
-        "creating a model. Requires authenticated user (any role: admin / member / "
-        "agent). Initiative 6 default-deny posture (architecture.md § Initiative 6 "
-        "Decision M); see `_PUBLIC_ROUTES` allowlist for anonymous-allowed surfaces."
-    ),
-    response_model=CategoryTree,
-)
-def get_categories(
-    session: Annotated[Session, Depends(get_session)],
-    _user_id: uuid.UUID = current_user,
-) -> CategoryTree:
-    return list_categories_tree(session)
 
 
 @router.get(
@@ -176,7 +155,7 @@ def get_models(
     "/models/{model_id}",
     summary="Get a single model's full detail",
     description=(
-        "Returns `ModelDetail` including category, tags, files, notes, prints, external "
+        "Returns `ModelDetail` including tags, files, notes, prints, external "
         "links, and the `thumbnail_file_id` field (non-null UUID once a render lands). "
         "404 if the model is not found OR is soft-deleted (use `?include_deleted=true` "
         "to include). Requires authenticated user (any role: admin / member / agent). "

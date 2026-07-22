@@ -59,7 +59,7 @@ curl -s -b /tmp/portal-cookies.txt -c /tmp/portal-cookies.txt \
   -X POST \
   -H 'X-Portal-Client: web' \
   -H 'Content-Type: application/json' \
-  -d '{"name_en":"Cali Cat","category_id":"<uuid>","source":"printables"}' \
+  -d '{"name_en":"Cali Cat","source":"printables"}' \
   https://3d.ezop.ddns.net/api/admin/models
 ```
 
@@ -315,7 +315,7 @@ To enumerate the full surface without enumerating it here:
 curl -s https://3d.ezop.ddns.net/api/openapi.json | jq '.paths | keys[]'
 ```
 
-To filter just the endpoints the agent role can WRITE to (model + file + tag + category + note + print + external-link mutations under `/api/admin/...`):
+To filter just the endpoints the agent role can WRITE to (model + file + tag + note + print + external-link mutations under `/api/admin/...`):
 
 ```bash
 curl -s https://3d.ezop.ddns.net/api/openapi.json \
@@ -366,15 +366,13 @@ For a Printables URL `https://www.printables.com/model/1000-prusa-mk3-led-lamp`:
 4. **Get download link** for each STL via the mutation. Fetch each link with `curl -L -o`.
 5. **3MF conversion?** Inspect the downloaded files; if any is `.3mf`, convert via § "3MF Conversion" before continuing.
 6. **Pre-flight checklist.** Walk all 4 items. Fail fast on any false answer.
-7. **Create model** via `POST /api/admin/models` (body: `ModelCreate`; minimum fields are `name_en` + `category_id`; default `source` is `unknown`, so set it explicitly per the host → enum mapping table). The response is a `ModelDetail` row whose `id` is the new model UUID. Note: the source URL does NOT belong on this payload.
+7. **Create model** via `POST /api/admin/models` (body: `ModelCreate`; the only required field is `name_en`; default `source` is `unknown`, so set it explicitly per the host → enum mapping table). The response is a `ModelDetail` row whose `id` is the new model UUID. Tagging is optional at create — facet tags are applied afterwards from the portal UI or via the tag endpoints. Note: the source URL does NOT belong on this payload.
 
-   `category_id` is still a required legacy field today (backend cutover pending stories 47.4/47.5); its value no longer affects catalog organization since tags now own that role, so there is no need to resolve a specific slug — this runbook must not itself query the category tree (that surface is next in line for retirement in 47.4, and this story's job was to stop being a consumer of it). Ask the operator once for any existing category UUID, or reuse a `$CATEGORY_ID` cached from a prior session, and export it before your first create:
    ```bash
-   CATEGORY_ID="<uuid-from-operator-or-cached-prior-session>"
    MODEL_ID=$(
      curl -s -b /tmp/portal-cookies.txt -c /tmp/portal-cookies.txt \
        -X POST -H 'X-Portal-Client: web' -H 'Content-Type: application/json' \
-       -d "{\"name_en\":\"Prusa MK3 LED Lamp\",\"name_pl\":\"Prusa MK3 lampka LED\",\"category_id\":\"$CATEGORY_ID\",\"source\":\"printables\"}" \
+       -d "{\"name_en\":\"Prusa MK3 LED Lamp\",\"name_pl\":\"Prusa MK3 lampka LED\",\"source\":\"printables\"}" \
        https://3d.ezop.ddns.net/api/admin/models \
      | jq -r .id
    )
@@ -408,4 +406,4 @@ For a Printables URL `https://www.printables.com/model/1000-prusa-mk3-led-lamp`:
     ```
     If the wall clock crosses ~3 min with no thumbnail flip AND no surfaced API error, THEN the worker log on `.190` is the next stop — the render worker runs as the `worker` service in `infra/docker-compose.yml` (image `portal-render`, code at `workers/render/`). SSH into `.190` then `docker compose -f /mnt/raid/docker-compose/3d-portal/docker-compose.yml logs worker --tail 200` (or whatever path holds the live compose file). The most common causes are (a) arq pool not connected to redis, (b) the selected STL has zero triangles, (c) the worker container OOM-killed by Docker.
 
-If anything in step 6 fails, stop and ask the operator. If anything in steps 7–10 returns 4xx, read the response body — the API returns descriptive `detail` strings (e.g. `"category not found"`, `"slug already exists"`); fix the input and retry, do not blanket-retry the same payload.
+If anything in step 6 fails, stop and ask the operator. If anything in steps 7–10 returns 4xx, read the response body — the API returns descriptive `detail` strings (e.g. `"slug already exists"`); fix the input and retry, do not blanket-retry the same payload.

@@ -15,7 +15,6 @@ from sqlmodel import Session, select
 
 from app.core.db.models import (
     AuditLog,
-    Category,
     Model,
     ModelFile,
     ModelFileKind,
@@ -31,16 +30,8 @@ def _make_engine(tmp_path: Path):
     return eng
 
 
-def _seed_category(session: Session, slug: str = "cat-bf") -> Category:
-    c = Category(slug=slug, name_en=slug)
-    session.add(c)
-    session.commit()
-    session.refresh(c)
-    return c
-
-
-def _seed_model(session: Session, *, slug: str, category_id: uuid.UUID) -> Model:
-    m = Model(slug=slug, name_en=slug, category_id=category_id)
+def _seed_model(session: Session, *, slug: str) -> Model:
+    m = Model(slug=slug, name_en=slug)
     session.add(m)
     session.commit()
     session.refresh(m)
@@ -78,8 +69,7 @@ def _seed_file(
 def test_backfill_sets_thumbnail_to_earliest_image_or_print(tmp_path):
     engine = _make_engine(tmp_path)
     with Session(engine) as s:
-        cat = _seed_category(s)
-        m = _seed_model(s, slug="model-bf-1", category_id=cat.id)
+        m = _seed_model(s, slug="model-bf-1")
         # Insert in deliberately scrambled order; the script must pick by
         # (position NULLS LAST, created_at) — i.e. position=0 wins.
         _seed_file(
@@ -132,8 +122,7 @@ def test_backfill_sets_thumbnail_to_earliest_image_or_print(tmp_path):
 def test_backfill_skips_models_that_already_have_thumbnail(tmp_path):
     engine = _make_engine(tmp_path)
     with Session(engine) as s:
-        cat = _seed_category(s)
-        m = _seed_model(s, slug="model-bf-already", category_id=cat.id)
+        m = _seed_model(s, slug="model-bf-already")
         existing = _seed_file(
             s, model_id=m.id, kind=ModelFileKind.image, name="hero.png", sha="d" * 64
         )
@@ -170,8 +159,7 @@ def test_backfill_skips_models_that_already_have_thumbnail(tmp_path):
 def test_backfill_leaves_stl_only_models_untouched(tmp_path):
     engine = _make_engine(tmp_path)
     with Session(engine) as s:
-        cat = _seed_category(s)
-        m = _seed_model(s, slug="model-bf-stl-only", category_id=cat.id)
+        m = _seed_model(s, slug="model-bf-stl-only")
         _seed_file(s, model_id=m.id, kind=ModelFileKind.stl, name="part.stl", sha="f" * 64)
         _seed_file(
             s,
@@ -197,8 +185,7 @@ def test_backfill_leaves_stl_only_models_untouched(tmp_path):
 def test_backfill_dry_run_does_not_mutate(tmp_path):
     engine = _make_engine(tmp_path)
     with Session(engine) as s:
-        cat = _seed_category(s)
-        m = _seed_model(s, slug="model-bf-dry", category_id=cat.id)
+        m = _seed_model(s, slug="model-bf-dry")
         _seed_file(s, model_id=m.id, kind=ModelFileKind.image, name="x.png", sha="1" * 64)
         model_id = m.id
 

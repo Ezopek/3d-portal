@@ -32,7 +32,6 @@ from app.core.auth.jwt import encode_token
 from app.core.config import get_settings
 from app.core.db.models import (
     AuditLog,
-    Category,
     Model,
     ModelFile,
     ModelFileKind,
@@ -104,16 +103,9 @@ def share_fixture(tmp_path, monkeypatch):
             admin = s.exec(select(User).where(User.email == "admin@localhost.localdomain")).first()
             admin_id = admin.id
 
-            cat = Category(slug=f"sa-cat-{uuid.uuid4().hex[:6]}", name_en="ShareAsset")
-            s.add(cat)
-            s.commit()
-            s.refresh(cat)
-            cat_id = cat.id
-
             model_a = Model(
                 slug=f"sa-model-a-{uuid.uuid4().hex[:6]}",
                 name_en="Model A",
-                category_id=cat_id,
             )
             s.add(model_a)
             s.commit()
@@ -123,7 +115,6 @@ def share_fixture(tmp_path, monkeypatch):
             model_b = Model(
                 slug=f"sa-model-b-{uuid.uuid4().hex[:6]}",
                 name_en="Model B",
-                category_id=cat_id,
             )
             s.add(model_b)
             s.commit()
@@ -154,7 +145,6 @@ def share_fixture(tmp_path, monkeypatch):
             model_soft = Model(
                 slug=f"sa-model-soft-{uuid.uuid4().hex[:6]}",
                 name_en="Soft Deleted",
-                category_id=cat_id,
             )
             s.add(model_soft)
             s.commit()

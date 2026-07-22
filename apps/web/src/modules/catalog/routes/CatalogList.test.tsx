@@ -75,7 +75,6 @@ function oneModel(): ModelSummary {
     slug: "dragon",
     name_en: "Dragon",
     name_pl: null,
-    category_id: GROUP_ID,
     source: "printables",
     status: "printed",
     rating: null,

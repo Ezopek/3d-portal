@@ -14,7 +14,6 @@ from sqlmodel import Session, select
 
 from app.core.db.models import (
     AuditLog,
-    Category,
     Model,
     ModelFile,
     ModelFileKind,
@@ -41,18 +40,10 @@ def _seed_admin(session: Session) -> uuid.UUID:
     return u.id
 
 
-def _seed_category(session: Session) -> uuid.UUID:
-    cat = Category(slug=f"cat-{uuid.uuid4().hex[:8]}", name_en="Test Cat")
-    session.add(cat)
-    session.flush()
-    return cat.id
-
-
-def _seed_model(session: Session, cat_id: uuid.UUID, *, deleted: bool = False) -> uuid.UUID:
+def _seed_model(session: Session, *, deleted: bool = False) -> uuid.UUID:
     m = Model(
         slug=f"m-{uuid.uuid4().hex[:8]}",
         name_en="Test Model",
-        category_id=cat_id,
     )
     if deleted:
         m.deleted_at = datetime.datetime.now(datetime.UTC)
@@ -107,8 +98,7 @@ def test_upload_201(client, tmp_path):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     content = b"solid test\nendsolid"
@@ -157,8 +147,7 @@ def test_upload_404_soft_deleted_model(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id, deleted=True)
+        model_id = _seed_model(s, deleted=True)
         s.commit()
 
     files, data = _multipart(b"data", "f.stl", "stl")
@@ -176,8 +165,7 @@ def test_upload_dedup_returns_200(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     content = b"unique-content-for-dedup-test"
@@ -207,8 +195,7 @@ def test_upload_writes_audit_log(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     files, data = _multipart(b"audit-test-content", "a.stl", "stl")
@@ -237,8 +224,7 @@ def test_upload_sha256_computed(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     content = b"sha256-check-content"
@@ -264,8 +250,7 @@ def test_upload_413_size_limit(client, monkeypatch):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     oversized = b"x" * 200  # 200 bytes > 100 byte limit
@@ -283,8 +268,7 @@ def test_upload_kind_stl_forces_mime_model_stl(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     files, data = _multipart(b"stl-content", "model.stl", "stl")
@@ -307,8 +291,7 @@ def test_patch_file_200(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id, _ = _seed_file(s, model_id, kind=ModelFileKind.stl)
         s.commit()
 
@@ -336,8 +319,7 @@ def test_patch_file_404_unknown(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     client.cookies.set("portal_access", admin_token(admin_id))
@@ -353,9 +335,8 @@ def test_patch_file_404_cross_model(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        m1_id = _seed_model(s, cat_id)
-        m2_id = _seed_model(s, cat_id)
+        m1_id = _seed_model(s)
+        m2_id = _seed_model(s)
         file_id, _ = _seed_file(s, m1_id)  # belongs to m1
         s.commit()
 
@@ -372,8 +353,7 @@ def test_patch_file_409_kind_change_unique_collision(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
 
         shared_content = b"shared-content-abc123"
         sha = hashlib.sha256(shared_content).hexdigest()
@@ -429,8 +409,7 @@ def test_delete_file_204(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
 
         content = b"delete-me"
         storage_rel = f"models/{model_id}/files/del-{uuid.uuid4().hex}.stl"
@@ -476,8 +455,7 @@ def test_delete_file_writes_audit_log(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
 
         content = b"audit-delete"
         storage_rel = f"models/{model_id}/files/auddel-{uuid.uuid4().hex}.stl"
@@ -522,9 +500,8 @@ def test_delete_file_404_cross_model(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        m1_id = _seed_model(s, cat_id)
-        m2_id = _seed_model(s, cat_id)
+        m1_id = _seed_model(s)
+        m2_id = _seed_model(s)
         file_id, _ = _seed_file(s, m1_id)
         s.commit()
 
@@ -544,8 +521,7 @@ def test_delete_file_clears_thumbnail_pointer(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
 
         content = b"thumb-content"
         storage_rel = f"models/{model_id}/files/thumb-{uuid.uuid4().hex}.png"
@@ -594,8 +570,7 @@ def test_upload_first_stl_is_selected_for_render(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     files, data = _multipart(b"first stl bytes", "first.stl", "stl")
@@ -614,8 +589,7 @@ def test_upload_second_stl_is_not_selected_for_render(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     f1, d1 = _multipart(b"first", "a.stl", "stl")
@@ -643,8 +617,7 @@ def test_patch_file_selected_for_render_toggle(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id, _ = _seed_file(s, model_id, kind=ModelFileKind.stl)
         s.commit()
 
@@ -671,8 +644,7 @@ def test_patch_file_selected_for_render_rejected_on_non_stl(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id, _ = _seed_file(
             s,
             model_id,

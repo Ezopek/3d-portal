@@ -6,12 +6,12 @@ from sqlmodel import Session
 
 from app.core.auth.cookies import ACCESS_COOKIE
 from app.core.auth.jwt import encode_token
-from app.core.db.models import Category, Model, ModelStatus, ModelTag, Tag, TagGroup
+from app.core.db.models import Model, ModelStatus, ModelTag, Tag, TagGroup
 from app.core.db.session import get_engine
 
 
 # Initiative 6 Story 11.1 — default-deny on SoT GET endpoints. See
-# test_sot_categories.py:_default_admin_cookie docstring for context.
+# test_sot_auth_boundary.py for the role-matrix boundary coverage.
 @pytest.fixture(autouse=True)
 def _default_admin_cookie(client):
     token = encode_token(
@@ -141,10 +141,6 @@ def test_get_tags_with_counts_includes_int_model_count(client):
     """with_counts=true adds model_count = distinct non-deleted models (AC #3)."""
     engine = get_engine()
     with Session(engine) as s:
-        cat = Category(slug=f"cat-tgc-{uuid.uuid4().hex[:6]}", name_en="C")
-        s.add(cat)
-        s.commit()
-        s.refresh(cat)
         tag = Tag(slug=f"tg-wc-{uuid.uuid4().hex[:6]}", name_en="WithCount")
         s.add(tag)
         s.commit()
@@ -153,7 +149,6 @@ def test_get_tags_with_counts_includes_int_model_count(client):
             m = Model(
                 slug=f"m-{uuid.uuid4().hex[:10]}",
                 name_en="M",
-                category_id=cat.id,
                 status=ModelStatus.not_printed,
             )
             s.add(m)
@@ -172,10 +167,6 @@ def test_get_tags_with_counts_includes_int_model_count(client):
 def test_get_tags_with_counts_excludes_soft_deleted(client):
     engine = get_engine()
     with Session(engine) as s:
-        cat = Category(slug=f"cat-tgd-{uuid.uuid4().hex[:6]}", name_en="C")
-        s.add(cat)
-        s.commit()
-        s.refresh(cat)
         tag = Tag(slug=f"tg-del-{uuid.uuid4().hex[:6]}", name_en="Del")
         s.add(tag)
         s.commit()
@@ -183,13 +174,11 @@ def test_get_tags_with_counts_excludes_soft_deleted(client):
         live = Model(
             slug=f"m-{uuid.uuid4().hex[:10]}",
             name_en="Live",
-            category_id=cat.id,
             status=ModelStatus.not_printed,
         )
         dead = Model(
             slug=f"m-{uuid.uuid4().hex[:10]}",
             name_en="Dead",
-            category_id=cat.id,
             status=ModelStatus.not_printed,
             deleted_at=datetime.datetime.now(datetime.UTC),
         )

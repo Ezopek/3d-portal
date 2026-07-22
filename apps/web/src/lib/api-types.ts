@@ -38,30 +38,6 @@ export interface VerifyRequest {
   code: string; // ^(\d{6}|[0-9a-f]{8})$
 }
 
-// --- Categories ---
-// Initiative 25: CategorySummary / CategoryNode / CategoryTree (and
-// ModelSummary.category_id / ModelDetail.category below) still match the live
-// wire and have live consumers; retained until their owning cutover stories
-// remove them (47.4 tree types, 47.5 model DTO/field + backend drop).
-
-export interface CategorySummary {
-  id: string;
-  parent_id: string | null;
-  slug: string;
-  name_en: string;
-  name_pl: string | null;
-}
-
-export interface CategoryNode extends CategorySummary {
-  children: CategoryNode[];
-  /** Total non-deleted models in this subtree (self + all descendants). */
-  model_count: number;
-}
-
-export interface CategoryTree {
-  roots: CategoryNode[];
-}
-
 // --- Tags ---
 
 export interface TagRead {
@@ -107,7 +83,7 @@ export interface TagGroupsResponse {
 }
 
 // Flat write-response for the admin tag-group governance endpoints (Story 42.4).
-// Mirrors CategorySummary; does NOT embed `tags[]` — that is TagGroupRead's job.
+// Does NOT embed `tags[]` — that is TagGroupRead's job.
 export interface TagGroupSummary {
   id: string;
   slug: string;
@@ -212,7 +188,6 @@ export interface ModelSummary {
   slug: string;
   name_en: string;
   name_pl: string | null;
-  category_id: string;
   source: ModelSource;
   status: ModelStatus;
   rating: number | null;
@@ -229,7 +204,6 @@ export interface ModelSummary {
 }
 
 export interface ModelDetail extends ModelSummary {
-  category: CategorySummary;
   files: ModelFileRead[];
   prints: PrintRead[];
   notes: NoteRead[];

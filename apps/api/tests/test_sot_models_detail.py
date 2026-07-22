@@ -6,7 +6,6 @@ from sqlmodel import Session
 from app.core.auth.cookies import ACCESS_COOKIE
 from app.core.auth.jwt import encode_token
 from app.core.db.models import (
-    Category,
     ExternalSource,
     Model,
     ModelExternalLink,
@@ -22,7 +21,7 @@ from app.core.db.session import get_engine
 
 
 # Initiative 6 Story 11.1 — default-deny on SoT GET endpoints. See
-# test_sot_categories.py:_default_admin_cookie docstring for context.
+# test_sot_auth_boundary.py for the role-matrix boundary coverage.
 @pytest.fixture(autouse=True)
 def _default_admin_cookie(client):
     token = encode_token(
@@ -44,12 +43,6 @@ def test_get_model_detail_404_for_unknown_id(client):
 def test_get_model_detail_full_embed(client):
     engine = get_engine()
     with Session(engine) as s:
-        cat = Category(slug="cat-5-decorum", name_en="Decorum")
-        s.add(cat)
-        s.commit()
-        s.refresh(cat)
-        cat_slug = cat.slug
-
         tag = Tag(slug="tag-5-dragon", name_en="Dragon", name_pl="Smok")
         s.add(tag)
         s.commit()
@@ -59,7 +52,6 @@ def test_get_model_detail_full_embed(client):
             slug="model-5-detail",
             name_en="Detail Model",
             name_pl="Model Detal",
-            category_id=cat.id,
         )
         s.add(m)
         s.commit()
@@ -94,7 +86,8 @@ def test_get_model_detail_full_embed(client):
     assert r.status_code == 200
     body = r.json()
     assert body["slug"] == "model-5-detail"
-    assert body["category"]["slug"] == cat_slug
+    # Story 47.5 — the detail DTO carries no legacy taxonomy embed.
+    assert "category" not in body
     assert {t["slug"] for t in body["tags"]} == {"tag-5-dragon"}
     assert len(body["files"]) == 1
     assert body["files"][0]["kind"] == "stl"
@@ -110,11 +103,7 @@ def test_get_model_detail_404_for_soft_deleted_by_default(client):
 
     engine = get_engine()
     with Session(engine) as s:
-        cat = Category(slug="cat-5-sd-cat", name_en="X")
-        s.add(cat)
-        s.commit()
-        s.refresh(cat)
-        m = Model(slug="model-5-sd", name_en="SD", category_id=cat.id)
+        m = Model(slug="model-5-sd", name_en="SD")
         m.deleted_at = datetime.datetime.now(datetime.UTC)
         s.add(m)
         s.commit()
@@ -130,11 +119,7 @@ def test_get_model_detail_include_deleted_returns_soft_deleted(client):
 
     engine = get_engine()
     with Session(engine) as s:
-        cat = Category(slug="cat-5-incl-cat", name_en="X")
-        s.add(cat)
-        s.commit()
-        s.refresh(cat)
-        m = Model(slug="model-5-incl", name_en="incl", category_id=cat.id)
+        m = Model(slug="model-5-incl", name_en="incl")
         m.deleted_at = datetime.datetime.now(datetime.UTC)
         s.add(m)
         s.commit()
@@ -149,12 +134,7 @@ def test_get_model_detail_include_deleted_returns_soft_deleted(client):
 def test_get_model_detail_files_ordered_by_position(client):
     engine = get_engine()
     with Session(engine) as s:
-        cat = Category(slug="cat-5-pos-order", name_en="Pos")
-        s.add(cat)
-        s.commit()
-        s.refresh(cat)
-
-        m = Model(slug="model-5-pos-order", name_en="Pos", category_id=cat.id)
+        m = Model(slug="model-5-pos-order", name_en="Pos")
         s.add(m)
         s.commit()
         s.refresh(m)

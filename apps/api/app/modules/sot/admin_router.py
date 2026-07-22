@@ -30,8 +30,6 @@ from app.core.config import Settings, get_settings
 from app.core.db.models import Model, ModelFile, ModelFileKind, User, UserRole
 from app.core.db.session import get_session
 from app.modules.sot.admin_schemas import (
-    CategoryCreate,
-    CategoryPatch,
     ExternalLinkCreate,
     ExternalLinkPatch,
     ModelCreate,
@@ -51,12 +49,10 @@ from app.modules.sot.admin_schemas import (
 )
 from app.modules.sot.admin_service import (
     add_model_tag,
-    create_category,
     create_external_link,
     create_model,
     create_note,
     create_print,
-    delete_category,
     delete_external_link,
     delete_model_file,
     delete_note,
@@ -72,7 +68,6 @@ from app.modules.sot.admin_service import (
     restore_model,
     set_thumbnail,
     soft_delete_model,
-    update_category,
     update_external_link,
     update_model,
     update_model_file,
@@ -82,7 +77,6 @@ from app.modules.sot.admin_service import (
     upload_model_file,
 )
 from app.modules.sot.schemas import (
-    CategorySummary,
     ExternalLinkRead,
     ModelDetail,
     ModelFileRead,
@@ -143,8 +137,7 @@ def _require_admin_role(session: Session, user_id: uuid.UUID) -> None:
     summary="Create a model row in the catalog",
     description=(
         "Creates a new Model row from a `ModelCreate` payload. Returns 201 + `ModelDetail`. "
-        "Common 4xx: 400 on `category not found` (the `category_id` UUID doesn't exist), "
-        "409 on `slug already exists` (Model.slug is globally unique across all categories), "
+        "Common 4xx: 409 on `slug already exists` (Model.slug is globally unique), "
         "422 on other Pydantic validation failures. The model is created with "
         "`deleted_at=None` and is immediately visible to public reads. To attach a source "
         "URL, follow with `POST /models/{id}/external-links`."
@@ -162,8 +155,6 @@ def admin_create_model(
         m = create_model(session, payload=payload, actor_user_id=actor_user_id)
     except ValueError as exc:
         msg = str(exc)
-        if "category not found" in msg:
-            raise HTTPException(400, "category not found") from exc
         if "slug_conflict" in msg:
             raise HTTPException(409, "slug already exists") from exc
         raise HTTPException(422, msg) from exc
@@ -181,8 +172,7 @@ def admin_create_model(
         "Partial update of a `Model` row. Only fields supplied in the patch body are "
         "changed (per `ModelPatch.model_config.extra='forbid'`, unknown keys yield 422). "
         "Returns 200 + `ModelDetail`. 4xx: 404 if model not found or soft-deleted (use "
-        "restore first), 400 on `category not found`, 409 on `slug already exists`, "
-        "422 on other validation."
+        "restore first), 409 on `slug already exists`, 422 on other validation."
     ),
     response_model=ModelDetail,
     tags=["agent-write"],
@@ -201,8 +191,6 @@ def admin_patch_model(
         m = update_model(session, model=m, patch=patch, actor_user_id=actor_user_id)
     except ValueError as exc:
         msg = str(exc)
-        if "category not found" in msg:
-            raise HTTPException(400, "category not found") from exc
         if "slug_conflict" in msg:
             raise HTTPException(409, "slug already exists") from exc
         raise HTTPException(422, msg) from exc
@@ -754,102 +742,6 @@ def admin_delete_tag(
     except ValueError as exc:
         if "tag_in_use" in str(exc):
             raise HTTPException(409, "tag is in use by one or more models") from exc
-        raise HTTPException(422, str(exc)) from exc
-
-
-# ---------------------------------------------------------------------------
-# Categories
-# ---------------------------------------------------------------------------
-
-
-@router.post(
-    "/categories",
-    summary="Create a new category (optionally under a parent)",
-    description=(
-        "Creates a Category row. `parent_id=null` for top-level categories; otherwise "
-        "the parent must exist. Returns 201 + `CategorySummary`. 400 on `parent not "
-        "found`. 409 on `slug already exists for this parent` (slugs are unique within "
-        "a parent). 422 on other validation."
-    ),
-    response_model=CategorySummary,
-    status_code=status.HTTP_201_CREATED,
-    tags=["agent-write"],
-)
-def admin_create_category(
-    payload: CategoryCreate,
-    session: Annotated[Session, Depends(get_session)],
-    actor_user_id: uuid.UUID = _current_principal,
-) -> CategorySummary:
-    try:
-        cat = create_category(session, payload=payload, actor_user_id=actor_user_id)
-    except ValueError as exc:
-        msg = str(exc)
-        if "parent not found" in msg:
-            raise HTTPException(400, "parent category not found") from exc
-        if "slug_conflict" in msg:
-            raise HTTPException(409, "slug already exists for this parent") from exc
-        raise HTTPException(422, msg) from exc
-    return CategorySummary.model_validate(cat)
-
-
-@router.patch(
-    "/categories/{category_id}",
-    summary="Patch a category's fields (including reparenting)",
-    description=(
-        "Updates `slug` / `name_en` / `name_pl` / `parent_id`. Returns 200 + "
-        "`CategorySummary`. 404 if category not found. 400 on `parent not found` or "
-        "`would create a cycle` (re-parenting cannot make an ancestor a descendant). "
-        "409 on slug conflict for the new parent. 422 on other validation."
-    ),
-    response_model=CategorySummary,
-    tags=["agent-write"],
-)
-def admin_patch_category(
-    category_id: uuid.UUID,
-    patch: CategoryPatch,
-    session: Annotated[Session, Depends(get_session)],
-    actor_user_id: uuid.UUID = _current_principal,
-) -> CategorySummary:
-    try:
-        cat = update_category(
-            session, category_id=category_id, patch=patch, actor_user_id=actor_user_id
-        )
-    except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
-    except ValueError as exc:
-        msg = str(exc)
-        if "parent not found" in msg:
-            raise HTTPException(400, "parent category not found") from exc
-        if "cycle" in msg:
-            raise HTTPException(400, "would create a cycle") from exc
-        if "slug_conflict" in msg:
-            raise HTTPException(409, "slug already exists for this parent") from exc
-        raise HTTPException(422, msg) from exc
-    return CategorySummary.model_validate(cat)
-
-
-@router.delete(
-    "/categories/{category_id}",
-    summary="Delete a category (only if no models / no child categories reference it)",
-    description=(
-        "Permanent delete. Returns 204. 404 if category not found. **409 if the category "
-        "has models OR child categories** — reassign or delete those first."
-    ),
-    status_code=status.HTTP_204_NO_CONTENT,
-    tags=["agent-write"],
-)
-def admin_delete_category(
-    category_id: uuid.UUID,
-    session: Annotated[Session, Depends(get_session)],
-    actor_user_id: uuid.UUID = _current_principal,
-) -> None:
-    try:
-        delete_category(session, category_id=category_id, actor_user_id=actor_user_id)
-    except LookupError as exc:
-        raise HTTPException(404, str(exc)) from exc
-    except ValueError as exc:
-        if "category_in_use" in str(exc):
-            raise HTTPException(409, "category has models or child categories") from exc
         raise HTTPException(422, str(exc)) from exc
 
 

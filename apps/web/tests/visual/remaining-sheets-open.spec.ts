@@ -9,7 +9,7 @@ import type { Page, Route } from "@playwright/test";
 //   - AddPrintSheet (from PrintsTab "+ Dodaj wydruk")
 //   - AddNoteSheet (from OperationalNotesTab "+ Dodaj notatkę")
 //   - FilterRibbon mobile-filters Sheet (mobile projects only — md:hidden)
-//   - CatalogList mobile-categories Sheet (mobile projects only — lg:hidden)
+//   - CatalogList mobile-filters Sheet (mobile projects only — lg:hidden)
 // RenderSheet "success" branch is post-submit confirmation and would require
 // faking a mutation response; deferred to operator (see commit-msg footer).
 

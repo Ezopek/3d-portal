@@ -59,8 +59,10 @@ def test_migration_0012_round_trip(_round_trip_db: Path) -> None:
     db_path = _round_trip_db
     cfg = _alembic_cfg(db_path)
 
-    # Forward to head — creates the invite_tokens table + indexes.
-    command.upgrade(cfg, "head")
+    # Pinned to 0018_facet_tags (not head): 0019_drop_category is forward-only
+    # (downgrade() raises), so any head-downward traversal would fail (Story 47.5).
+    # Forward — creates the invite_tokens table + indexes.
+    command.upgrade(cfg, "0018_facet_tags")
     objs = _objects(db_path)
     assert "invite_tokens" in objs
     assert "ux_invite_tokens_token_hash" in objs
@@ -92,7 +94,7 @@ def test_migration_0012_round_trip(_round_trip_db: Path) -> None:
     assert "ix_invite_tokens_used_by_user_id" not in objs
 
     # Re-upgrade — idempotency check.
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0018_facet_tags")
     objs = _objects(db_path)
     assert "invite_tokens" in objs
     assert "ux_invite_tokens_token_hash" in objs

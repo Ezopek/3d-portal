@@ -66,8 +66,9 @@ def test_alembic_upgrade_head_creates_all_new_tables(alembic_env, api_dir, alemb
     finally:
         conn.close()
 
+    # Post-0019 head: the legacy taxonomy table is gone (Story 47.5); the
+    # remaining 0004 entity tables must all exist at head.
     expected = {
-        "category",
         "tag",
         "model",
         "model_file",
@@ -81,18 +82,22 @@ def test_alembic_upgrade_head_creates_all_new_tables(alembic_env, api_dir, alemb
 
 
 def test_alembic_downgrade_then_upgrade_is_idempotent(alembic_env, api_dir, alembic_bin):
+    # Pinned to 0018_facet_tags (not head): 0019_drop_category is forward-only
+    # (downgrade() raises), so any head-downward traversal would fail (Story 47.5).
     _db_path, env = alembic_env
-    r = _run_alembic(["upgrade", "head"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
+    r = _run_alembic(["upgrade", "0018_facet_tags"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
     assert r.returncode == 0, r.stderr
     r = _run_alembic(["downgrade", "base"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
     assert r.returncode == 0, r.stderr
-    r = _run_alembic(["upgrade", "head"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
+    r = _run_alembic(["upgrade", "0018_facet_tags"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
     assert r.returncode == 0, r.stderr
 
 
 def test_alembic_downgrade_one_removes_only_new_tables(alembic_env, api_dir, alembic_bin):
+    # Pinned to 0018_facet_tags (not head): 0019_drop_category is forward-only
+    # (downgrade() raises), so any head-downward traversal would fail (Story 47.5).
     db_path, env = alembic_env
-    r = _run_alembic(["upgrade", "head"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
+    r = _run_alembic(["upgrade", "0018_facet_tags"], env=env, cwd=api_dir, alembic_bin=alembic_bin)
     assert r.returncode == 0, r.stderr
     # downgrade to 0004: audit_log and UUID user go away,
     # auditevent + int-id user come back; entity tables introduced in 0004 remain.
@@ -159,7 +164,6 @@ def test_alembic_and_sqlmodel_emit_equivalent_index_sets(
     init_schema(engine_b)
 
     new_tables = [
-        "category",
         "tag",
         "model",
         "model_file",

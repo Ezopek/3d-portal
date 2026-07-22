@@ -29,7 +29,6 @@ from sqlmodel import Session, select
 
 from app.core.auth.jwt import encode_token
 from app.core.db.models import (
-    Category,
     Model,
     ModelFile,
     ModelFileKind,
@@ -84,15 +83,11 @@ def sf_client(tmp_path, monkeypatch, _patch_arq_pool):
                     select(User).where(User.email == "admin@localhost.localdomain")
                 ).first()
                 user_id = user.id
-                cat = Category(slug=f"sf-cat-{uuid.uuid4().hex[:6]}", name_en="SF-Cat")
-                s.add(cat)
-                s.flush()
 
                 model = Model(
                     slug=f"sf-m-{uuid.uuid4().hex[:6]}",
                     name_en="SF Model",
                     name_pl="Model SF",
-                    category_id=cat.id,
                 )
                 s.add(model)
                 s.flush()
@@ -117,7 +112,6 @@ def sf_client(tmp_path, monkeypatch, _patch_arq_pool):
                     "model": model.id,
                     "stl": stl.id,
                     "stl_sha8": stl_sha256[:8],
-                    "category_slug": cat.slug,
                 }
             token = encode_token(
                 subject=str(user_id),

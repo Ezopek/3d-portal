@@ -506,7 +506,6 @@ export function AnonymousShareView({ token }: { token: string }) {
 
       <main className="mx-auto max-w-5xl space-y-4 p-4">
         <section className="space-y-2">
-          <div className="text-xs text-muted-foreground">{data.category}</div>
           <h1 className="text-2xl font-semibold">{title}</h1>
           {data.tags.length > 0 && (
             <div className="flex flex-wrap gap-1">

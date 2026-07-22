@@ -23,7 +23,6 @@ from sqlmodel import Session
 
 from app.core.config import get_settings
 from app.core.db.models import (
-    Category,
     Model,
     ModelFile,
     ModelFileKind,
@@ -60,18 +59,10 @@ def _seed_admin(session: Session) -> uuid.UUID:
     return u.id
 
 
-def _seed_category(session: Session) -> uuid.UUID:
-    cat = Category(slug=f"cat-{uuid.uuid4().hex[:8]}", name_en="Test Cat")
-    session.add(cat)
-    session.flush()
-    return cat.id
-
-
-def _seed_model(session: Session, cat_id: uuid.UUID) -> uuid.UUID:
+def _seed_model(session: Session) -> uuid.UUID:
     m = Model(
         slug=f"m-{uuid.uuid4().hex[:8]}",
         name_en="Test Model",
-        category_id=cat_id,
     )
     session.add(m)
     session.flush()
@@ -174,8 +165,7 @@ def test_thumbnail_jpeg_size_budget(tmp_path, label, size):
 
     engine = get_engine()
     with Session(engine) as s:
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
         )
@@ -212,8 +202,7 @@ def test_thumbnail_png_with_alpha_size_budget(tmp_path):
 
     engine = get_engine()
     with Session(engine) as s:
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s,
             model_id,
@@ -242,8 +231,7 @@ def test_thumbnail_idempotent_second_run_is_skipped(tmp_path):
 
     engine = get_engine()
     with Session(engine) as s:
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
         )
@@ -271,8 +259,7 @@ def test_thumbnail_non_image_kind_no_op():
     """STL / archive kinds: structured-skip, no file ops attempted."""
     engine = get_engine()
     with Session(engine) as s:
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s,
             model_id,
@@ -291,8 +278,7 @@ def test_thumbnail_original_missing_on_disk(tmp_path):
     """DB row exists but storage_path doesn't — structured warning, no crash."""
     engine = get_engine()
     with Session(engine) as s:
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s,
             model_id,
@@ -316,8 +302,7 @@ def test_thumbnail_print_kind_also_processed():
 
     engine = get_engine()
     with Session(engine) as s:
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s,
             model_id,
@@ -340,8 +325,7 @@ def test_image_upload_enqueues_thumbnail(client, _patch_arq_pool):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     # Build a tiny JPEG payload via Pillow so the API actually accepts a
@@ -372,8 +356,7 @@ def test_stl_upload_does_not_enqueue_thumbnail(client, _patch_arq_pool):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     files = {"file": ("part.stl", b"solid x\nendsolid", "model/stl")}
@@ -408,8 +391,7 @@ def test_variant_thumb_serves_webp_when_present(client):
 
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
         )
@@ -440,8 +422,7 @@ def test_variant_thumb_falls_back_to_original_when_missing(client):
 
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
         )
@@ -466,8 +447,7 @@ def test_variant_absent_returns_original(client):
 
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
         )
@@ -500,8 +480,7 @@ def test_variant_thumb_returns_404_when_original_missing_even_if_sidecar_present
 
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
         )
@@ -555,8 +534,7 @@ def test_thumbnail_render_uses_unique_tmp_per_job(tmp_path, monkeypatch):
 
     engine = get_engine()
     with Session(engine) as s:
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
         )
@@ -624,8 +602,7 @@ def test_delete_model_file_removes_thumbnail_sidecar(client):
 
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
         )
@@ -657,8 +634,7 @@ def test_hard_delete_model_removes_thumbnail_sidecars(client):
 
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
         )
@@ -701,8 +677,7 @@ def test_gallery_jpeg_size_budget(tmp_path, label, size):
 
     engine = get_engine()
     with Session(engine) as s:
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
         )
@@ -745,8 +720,7 @@ def test_gallery_png_with_alpha_size_budget(tmp_path):
 
     engine = get_engine()
     with Session(engine) as s:
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s,
             model_id,
@@ -775,8 +749,7 @@ def test_gallery_idempotent_second_run_is_skipped(tmp_path):
 
     engine = get_engine()
     with Session(engine) as s:
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
         )
@@ -805,8 +778,7 @@ def test_gallery_non_image_kind_no_op():
     """AC2 — STL / archive kinds: structured-skip, no file ops attempted."""
     engine = get_engine()
     with Session(engine) as s:
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s,
             model_id,
@@ -825,8 +797,7 @@ def test_gallery_original_missing_on_disk(tmp_path):
     """AC2 — DB row exists but storage_path doesn't — structured warning, no crash."""
     engine = get_engine()
     with Session(engine) as s:
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s,
             model_id,
@@ -851,8 +822,7 @@ def test_variant_gallery_serves_webp_when_present(client):
 
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
         )
@@ -883,8 +853,7 @@ def test_variant_gallery_falls_back_to_original_when_missing(client):
 
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
         )
@@ -909,8 +878,7 @@ def test_variant_gallery_returns_404_when_original_missing_even_if_sidecar_prese
 
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
         )
@@ -951,8 +919,7 @@ def test_arq_task_returns_composite_both_tiers(tmp_path):
 
     engine = get_engine()
     with Session(engine) as s:
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
         )
@@ -986,8 +953,7 @@ def test_arq_task_failure_isolation_per_tier(tmp_path, monkeypatch):
 
     engine = get_engine()
     with Session(engine) as s:
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
         )
@@ -1025,8 +991,7 @@ def test_delete_model_file_removes_gallery_sidecar(client):
 
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_image_file(
             s, model_id, content=abs_path.read_bytes(), storage_path=rel_path
         )

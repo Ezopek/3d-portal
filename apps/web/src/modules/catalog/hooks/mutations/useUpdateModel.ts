@@ -8,7 +8,6 @@ export interface ModelPatch {
   rating?: number | null;
   name_en?: string;
   name_pl?: string | null;
-  category_id?: string;
   source?: string;
 }
 

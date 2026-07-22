@@ -19,7 +19,6 @@ from app.core.auth.cookies import ACCESS_COOKIE
 from app.core.auth.jwt import encode_token
 from app.core.config import get_settings
 from app.core.db.models import (
-    Category,
     Model,
     ModelFile,
     ModelFileKind,
@@ -32,20 +31,8 @@ from scripts.hydrate_local_tree import _load_state, run_hydrate
 # ---------------------------------------------------------------------------
 
 
-def _seed_category(session: Session, *, slug: str) -> Category:
-    cat = Category(
-        slug=slug,
-        name_en=slug,
-    )
-    session.add(cat)
-    session.commit()
-    session.refresh(cat)
-    return cat
-
-
 def _seed_model(
     session: Session,
-    cat_id: uuid.UUID,
     *,
     slug: str,
     deleted: bool = False,
@@ -53,7 +40,6 @@ def _seed_model(
     m = Model(
         slug=slug,
         name_en=slug,
-        category_id=cat_id,
     )
     if deleted:
         m.deleted_at = datetime.datetime.now(datetime.UTC)
@@ -151,12 +137,11 @@ def _run(
 
 
 def test_hydrate_creates_local_tree(client, tmp_path):
-    """Seed 1 category + 1 model + 1 STL file.  Run hydrate.  Assert file exists."""
+    """Seed 1 model + 1 STL file.  Run hydrate.  Assert file exists."""
     engine = get_engine()
     content = b"FAKE_STL_TREE"
     with Session(engine) as s:
-        cat = _seed_category(s, slug=f"ht-decorum-{uuid.uuid4().hex[:6]}")
-        m = _seed_model(s, cat.id, slug=f"ht-dragon-{uuid.uuid4().hex[:6]}")
+        m = _seed_model(s, slug=f"ht-dragon-{uuid.uuid4().hex[:6]}")
         _seed_file_on_disk(s, m, original_name="dragon.stl", content=content)
 
     summary = _run(client, tmp_path)
@@ -181,8 +166,7 @@ def test_hydrate_skips_in_sync_files(client, tmp_path):
     engine = get_engine()
     content = b"STABLE_CONTENT_XYZ"
     with Session(engine) as s:
-        cat = _seed_category(s, slug=f"ht-skip-{uuid.uuid4().hex[:6]}")
-        m = _seed_model(s, cat.id, slug=f"ht-skip-m-{uuid.uuid4().hex[:6]}")
+        m = _seed_model(s, slug=f"ht-skip-m-{uuid.uuid4().hex[:6]}")
         _seed_file_on_disk(s, m, original_name="skip.stl", content=content)
 
     s1 = _run(client, tmp_path)
@@ -198,8 +182,7 @@ def test_hydrate_writes_state_file(client, tmp_path):
     """State file has correct format after a run."""
     engine = get_engine()
     with Session(engine) as s:
-        cat = _seed_category(s, slug=f"ht-state-{uuid.uuid4().hex[:6]}")
-        m = _seed_model(s, cat.id, slug=f"ht-state-m-{uuid.uuid4().hex[:6]}")
+        m = _seed_model(s, slug=f"ht-state-m-{uuid.uuid4().hex[:6]}")
         _seed_file_on_disk(s, m, original_name="state.stl", content=b"STATE_CONTENT")
 
     state_path = tmp_path / ".hydrate-state.json"
@@ -219,8 +202,7 @@ def test_hydrate_dry_run_writes_nothing(client, tmp_path):
     """--dry-run produces no local files and no state file."""
     engine = get_engine()
     with Session(engine) as s:
-        cat = _seed_category(s, slug=f"ht-dry-{uuid.uuid4().hex[:6]}")
-        m = _seed_model(s, cat.id, slug=f"ht-dry-m-{uuid.uuid4().hex[:6]}")
+        m = _seed_model(s, slug=f"ht-dry-m-{uuid.uuid4().hex[:6]}")
         _seed_file_on_disk(s, m, original_name="dry.stl", content=b"DRY_CONTENT")
 
     state_path = tmp_path / ".hydrate-state.json"
@@ -240,8 +222,7 @@ def test_hydrate_filters_by_kind(client, tmp_path):
     stl_content = b"STL_FILTER_CONTENT"
     img_content = b"PNG_FILTER_CONTENT"
     with Session(engine) as s:
-        cat = _seed_category(s, slug=f"ht-filt-{uuid.uuid4().hex[:6]}")
-        m = _seed_model(s, cat.id, slug=f"ht-filt-m-{uuid.uuid4().hex[:6]}")
+        m = _seed_model(s, slug=f"ht-filt-m-{uuid.uuid4().hex[:6]}")
         _seed_file_on_disk(
             s, m, original_name="part.stl", content=stl_content, kind=ModelFileKind.stl
         )
@@ -261,8 +242,7 @@ def test_hydrate_excludes_soft_deleted_by_default(client, tmp_path):
     """Soft-deleted models are not mirrored without --include-soft-deleted."""
     engine = get_engine()
     with Session(engine) as s:
-        cat = _seed_category(s, slug=f"ht-del-{uuid.uuid4().hex[:6]}")
-        m = _seed_model(s, cat.id, slug=f"ht-del-m-{uuid.uuid4().hex[:6]}", deleted=True)
+        m = _seed_model(s, slug=f"ht-del-m-{uuid.uuid4().hex[:6]}", deleted=True)
         _seed_file_on_disk(s, m, original_name="deleted.stl", content=b"DELETED")
 
     _run(client, tmp_path, include_soft_deleted=False)
@@ -275,8 +255,7 @@ def test_hydrate_includes_soft_deleted_with_flag(client, tmp_path):
     engine = get_engine()
     content = b"DELETED_BUT_INCLUDED"
     with Session(engine) as s:
-        cat = _seed_category(s, slug=f"ht-inc-{uuid.uuid4().hex[:6]}")
-        m = _seed_model(s, cat.id, slug=f"ht-inc-m-{uuid.uuid4().hex[:6]}", deleted=True)
+        m = _seed_model(s, slug=f"ht-inc-m-{uuid.uuid4().hex[:6]}", deleted=True)
         _seed_file_on_disk(s, m, original_name="included.stl", content=content)
 
     _run(client, tmp_path, include_soft_deleted=True)
@@ -288,12 +267,9 @@ def test_hydrate_includes_soft_deleted_with_flag(client, tmp_path):
 def test_hydrate_handles_pagination(client, tmp_path):
     """Seed 51 models; hydrate must walk all pages and download all files."""
     engine = get_engine()
-    # Use a dedicated category for isolation
-    cat_slug = f"ht-page-{uuid.uuid4().hex[:6]}"
     with Session(engine) as s:
-        cat = _seed_category(s, slug=cat_slug)
         for i in range(51):
-            m = _seed_model(s, cat.id, slug=f"ht-pg-m{i:03d}-{uuid.uuid4().hex[:4]}")
+            m = _seed_model(s, slug=f"ht-pg-m{i:03d}-{uuid.uuid4().hex[:4]}")
             _seed_file_on_disk(s, m, original_name=f"pg{i:03d}.stl", content=f"PG{i}".encode())
 
     summary = _run(client, tmp_path)
@@ -307,18 +283,15 @@ def test_hydrate_handles_pagination(client, tmp_path):
 
 
 def test_hydrate_layout_is_flat_slug_suffix(client, tmp_path):
-    """Directory tree must be: <model-slug>-<short-uuid>/<original_name> (no category prefix).
+    """Directory tree must be: <model-slug>-<short-uuid>/<original_name>, flat.
 
-    Post-47.3 the layout dropped the category/subcategory path segments entirely;
-    `_seed_category`/`_seed_model` are still used to satisfy `Model.category_id`'s
-    NOT NULL FK in the DB fixture, but the resulting local path must not reflect
-    the category at all. The suffix is the model's UUID hex with dashes stripped,
-    truncated to 8 chars (was the legacy_id pre-DROP)."""
+    Post-47.3 the layout dropped the legacy taxonomy path segments entirely;
+    the local path is derived from the model slug alone. The suffix is the
+    model's UUID hex with dashes stripped, truncated to 8 chars (was the
+    legacy_id pre-DROP)."""
     engine = get_engine()
-    cat_slug = f"ht-lay-cat-{uuid.uuid4().hex[:6]}"
     with Session(engine) as s:
-        cat = _seed_category(s, slug=cat_slug)
-        m = _seed_model(s, cat.id, slug="ht-lay-model")
+        m = _seed_model(s, slug="ht-lay-model")
         _seed_file_on_disk(s, m, original_name="layout.stl", content=b"LAYOUT")
         suffix = m.id.hex[:8]
 
@@ -328,16 +301,14 @@ def test_hydrate_layout_is_flat_slug_suffix(client, tmp_path):
     assert expected.exists(), (
         f"Expected file at {expected}; found: {list(tmp_path.rglob('layout.stl'))}"
     )
-    assert cat_slug not in str(expected), "flat layout must not include the category slug"
 
 
 def test_hydrate_idempotent_summary_counts(client, tmp_path):
     """First run: N downloaded, 0 skipped.  Second run: 0 downloaded, N skipped."""
     engine = get_engine()
     with Session(engine) as s:
-        cat = _seed_category(s, slug=f"ht-idem-{uuid.uuid4().hex[:6]}")
         for i in range(3):
-            m = _seed_model(s, cat.id, slug=f"ht-id-m{i}-{uuid.uuid4().hex[:4]}")
+            m = _seed_model(s, slug=f"ht-id-m{i}-{uuid.uuid4().hex[:4]}")
             _seed_file_on_disk(s, m, original_name=f"id{i}.stl", content=f"IDEM{i}".encode())
 
     state_path = tmp_path / ".hydrate-state.json"
@@ -356,8 +327,7 @@ def test_hydrate_prune_deleted_removes_local_files_not_in_master(client, tmp_pat
     engine = get_engine()
     content = b"PRUNE_ME"
     with Session(engine) as s:
-        cat = _seed_category(s, slug=f"ht-prune-{uuid.uuid4().hex[:6]}")
-        m = _seed_model(s, cat.id, slug=f"ht-prune-m-{uuid.uuid4().hex[:6]}")
+        m = _seed_model(s, slug=f"ht-prune-m-{uuid.uuid4().hex[:6]}")
         _seed_file_on_disk(s, m, original_name="live.stl", content=content)
 
     state_path = tmp_path / ".hydrate-state.json"

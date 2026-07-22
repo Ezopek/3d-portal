@@ -37,7 +37,6 @@ class ShareModelView(BaseModel):
     id: uuid.UUID
     name_en: str
     name_pl: str | None
-    category: str
     tags: list[str]
     thumbnail_url: str | None
     has_3d: bool

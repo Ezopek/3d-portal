@@ -2,7 +2,7 @@
 
 Populates the starter ``TagGroup`` + ``Tag`` rows (HANDOFF §8) idempotently by
 delegating to ``app.core.db.seed.seed_taxonomy``. Writes NO ``Model`` /
-``ModelTag`` / ``Category`` rows — models stay untagged.
+``ModelTag`` rows — models stay untagged.
 
 This is intentionally NOT wired into the FastAPI lifespan the way ``seed_admin``
 is: auto-seeding a fixed taxonomy on every boot/deploy would resurrect

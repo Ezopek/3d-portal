@@ -9,8 +9,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { api, ApiError } from "@/lib/api";
-import type { CategoryNode, ModelDetail } from "@/lib/api-types";
-import { useCategoriesTree } from "@/modules/catalog/hooks/useCategoriesTree";
+import type { ModelDetail } from "@/lib/api-types";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 
@@ -31,7 +30,6 @@ const STATUSES = ["not_printed", "printed", "in_progress", "broken"] as const;
 interface FormState {
   name_en: string;
   name_pl: string;
-  category_id: string;
   source: (typeof SOURCES)[number];
   status: (typeof STATUSES)[number];
   rating: string;
@@ -42,29 +40,12 @@ interface FormState {
 const EMPTY_FORM: FormState = {
   name_en: "",
   name_pl: "",
-  category_id: "",
   source: "unknown",
   status: "not_printed",
   rating: "",
   description_pl: "",
   description_en: "",
 };
-
-function flattenCategories(roots: readonly CategoryNode[], prefix = ""): CategoryNode[] {
-  const out: CategoryNode[] = [];
-  for (const node of roots) {
-    out.push({ ...node, name_en: prefix === "" ? node.name_en : `${prefix} › ${node.name_en}` });
-    if (node.children.length > 0) {
-      out.push(
-        ...flattenCategories(
-          node.children,
-          prefix === "" ? node.name_en : `${prefix} › ${node.name_en}`,
-        ),
-      );
-    }
-  }
-  return out;
-}
 
 export interface AddModelFormProps {
   onSuccess: (model: ModelDetail) => void;
@@ -78,7 +59,6 @@ export interface AddModelFormProps {
 export function AddModelForm({ onSuccess, onCancel, compact = false }: AddModelFormProps) {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const tree = useCategoriesTree();
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [error, setError] = useState<string | null>(null);
 
@@ -86,7 +66,6 @@ export function AddModelForm({ onSuccess, onCancel, compact = false }: AddModelF
     mutationFn: async (): Promise<ModelDetail> => {
       const payload: Record<string, unknown> = {
         name_en: form.name_en.trim(),
-        category_id: form.category_id,
         source: form.source,
         status: form.status,
       };
@@ -131,7 +110,6 @@ export function AddModelForm({ onSuccess, onCancel, compact = false }: AddModelF
     onError: (err) => {
       if (err instanceof ApiError) {
         if (err.status === 409) setError(t("admin.models.new.errors.slug_conflict"));
-        else if (err.status === 400) setError(t("admin.models.new.errors.category_not_found"));
         else if (err.status === 422) setError(t("admin.models.new.errors.validation"));
         else setError(t("admin.models.new.errors.generic"));
       } else {
@@ -140,10 +118,7 @@ export function AddModelForm({ onSuccess, onCancel, compact = false }: AddModelF
     },
   });
 
-  const categoryOptions =
-    tree.data !== undefined ? flattenCategories(tree.data.roots) : [];
-  const canSubmit =
-    form.name_en.trim().length > 0 && form.category_id !== "" && !mutation.isPending;
+  const canSubmit = form.name_en.trim().length > 0 && !mutation.isPending;
 
   return (
     <form
@@ -184,26 +159,6 @@ export function AddModelForm({ onSuccess, onCancel, compact = false }: AddModelF
             onChange={(e) => setForm({ ...form, name_pl: e.currentTarget.value })}
             autoComplete="off"
           />
-        </label>
-
-        <label className="block space-y-1">
-          <span className="text-sm font-medium">
-            {t("admin.models.new.field.category")}{" "}
-            <span className="text-destructive">*</span>
-          </span>
-          <select
-            value={form.category_id}
-            onChange={(e) => setForm({ ...form, category_id: e.currentTarget.value })}
-            required
-            className="block w-full rounded border border-border bg-background px-3 py-2 text-sm"
-          >
-            <option value="">{t("admin.models.new.field.category_placeholder")}</option>
-            {categoryOptions.map((cat) => (
-              <option key={cat.id} value={cat.id}>
-                {cat.name_en}
-              </option>
-            ))}
-          </select>
         </label>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

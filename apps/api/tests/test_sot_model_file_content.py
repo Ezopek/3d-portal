@@ -11,7 +11,6 @@ from app.core.auth.cookies import ACCESS_COOKIE
 from app.core.auth.jwt import encode_token
 from app.core.config import get_settings
 from app.core.db.models import (
-    Category,
     Model,
     ModelFile,
     ModelFileKind,
@@ -20,7 +19,7 @@ from app.core.db.session import get_engine
 
 
 # Initiative 6 Story 11.1 — default-deny on SoT GET endpoints. See
-# test_sot_categories.py:_default_admin_cookie docstring for context.
+# test_sot_auth_boundary.py for the role-matrix boundary coverage.
 @pytest.fixture(autouse=True)
 def _default_admin_cookie(client):
     token = encode_token(
@@ -35,11 +34,7 @@ def _default_admin_cookie(client):
 
 
 def _seed_model_with_file(session, *, slug, kind, original_name, content):
-    cat = Category(slug=f"cat-content-{slug}", name_en="X")
-    session.add(cat)
-    session.commit()
-    session.refresh(cat)
-    m = Model(slug=slug, name_en=slug, category_id=cat.id)
+    m = Model(slug=slug, name_en=slug)
     session.add(m)
     session.commit()
     session.refresh(m)

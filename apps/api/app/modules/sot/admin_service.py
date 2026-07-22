@@ -26,7 +26,6 @@ from sqlmodel import Session, select
 from app.core.audit import record_event
 from app.core.db.models import (
     AuditLog,
-    Category,
     Model,
     ModelExternalLink,
     ModelFile,
@@ -40,8 +39,6 @@ from app.core.db.models import (
 )
 from app.core.db.session import get_engine
 from app.modules.sot.admin_schemas import (
-    CategoryCreate,
-    CategoryPatch,
     ExternalLinkCreate,
     ExternalLinkPatch,
     ModelCreate,
@@ -152,7 +149,6 @@ def _model_snapshot(m: Model) -> dict:
         "name_en": m.name_en,
         "name_pl": m.name_pl,
         "slug": m.slug,
-        "category_id": str(m.category_id),
         "source": str(m.source),
         "status": str(m.status),
         "rating": m.rating,
@@ -175,14 +171,8 @@ def create_model(
     """Create a new Model row.
 
     Raises:
-        ValueError("category not found") — category_id absent in DB.
         ValueError("slug_conflict") — provided slug already taken.
     """
-    # Validate category
-    cat = session.exec(select(Category).where(Category.id == payload.category_id)).first()
-    if cat is None:
-        raise ValueError("category not found")
-
     # Resolve slug
     if payload.slug is not None:
         slug = payload.slug
@@ -200,7 +190,6 @@ def create_model(
         slug=slug,
         name_en=payload.name_en,
         name_pl=payload.name_pl,
-        category_id=payload.category_id,
         source=payload.source,
         status=payload.status,
         rating=payload.rating,
@@ -234,17 +223,11 @@ def update_model(
     """Apply a partial update to *model*.
 
     Raises:
-        ValueError("category not found") — category_id absent in DB.
         ValueError("slug_conflict") — new slug already taken by another model.
     """
     before = _model_snapshot(model)
 
     data = patch.model_dump(exclude_unset=True)
-
-    if "category_id" in data and data["category_id"] is not None:
-        cat = session.exec(select(Category).where(Category.id == data["category_id"])).first()
-        if cat is None:
-            raise ValueError("category not found")
 
     if "slug" in data and data["slug"] is not None:
         new_slug = data["slug"]
@@ -1219,7 +1202,7 @@ def update_tag_group(
     422 at the schema layer (D-NULLSEM-1), so it never reaches `setattr` here;
     the only remaining IntegrityError path is a genuine slug race → 409. An
     empty patch is a no-op that still writes one `tag_group.update` row with
-    before == after (unconditional audit, mirroring update_category).
+    before == after (unconditional audit).
 
     Raises:
         LookupError("tag group not found")
@@ -1297,186 +1280,6 @@ def delete_tag_group(
 
     session.delete(tg)
     session.commit()  # FK ON DELETE SET NULL nulls member tags' group_id
-
-
-# ---------------------------------------------------------------------------
-# Categories
-# ---------------------------------------------------------------------------
-
-
-def _would_cycle(session: Session, category_id: uuid.UUID, new_parent_id: uuid.UUID | None) -> bool:
-    if new_parent_id is None:
-        return False
-    if new_parent_id == category_id:
-        return True
-    visited: set[uuid.UUID] = {category_id}
-    cur: uuid.UUID | None = new_parent_id
-    while cur is not None:
-        if cur in visited:
-            return True
-        visited.add(cur)
-        parent = session.exec(select(Category.parent_id).where(Category.id == cur)).first()
-        cur = parent
-    return False
-
-
-def create_category(
-    session: Session,
-    *,
-    payload: CategoryCreate,
-    actor_user_id: uuid.UUID,
-) -> Category:
-    """Create a new Category.
-
-    Raises:
-        ValueError("parent not found") — parent_id given but absent.
-        ValueError("slug_conflict") — (parent_id, slug) collision.
-    """
-    if payload.parent_id is not None and session.get(Category, payload.parent_id) is None:
-        raise ValueError("parent not found")
-
-    now = datetime.datetime.now(datetime.UTC)
-    cat = Category(
-        parent_id=payload.parent_id,
-        slug=payload.slug,
-        name_en=payload.name_en,
-        name_pl=payload.name_pl,
-        created_at=now,
-        updated_at=now,
-    )
-    session.add(cat)
-
-    try:
-        session.flush()
-    except IntegrityError as exc:
-        session.rollback()
-        raise ValueError("slug_conflict") from exc
-
-    _audit_entity(
-        session,
-        action="category.create",
-        entity_type="category",
-        entity_id=cat.id,
-        actor_user_id=actor_user_id,
-        after={
-            "parent_id": str(cat.parent_id) if cat.parent_id else None,
-            "slug": cat.slug,
-            "name_en": cat.name_en,
-        },
-    )
-
-    session.commit()
-    session.refresh(cat)
-    return cat
-
-
-def update_category(
-    session: Session,
-    *,
-    category_id: uuid.UUID,
-    patch: CategoryPatch,
-    actor_user_id: uuid.UUID,
-) -> Category:
-    """Partially update a Category.
-
-    Raises:
-        LookupError("category not found")
-        ValueError("parent not found") — new parent_id absent.
-        ValueError("cycle") — new parent_id would create a cycle.
-        ValueError("slug_conflict")
-    """
-    cat = session.get(Category, category_id)
-    if cat is None:
-        raise LookupError("category not found")
-
-    before = {
-        "parent_id": str(cat.parent_id) if cat.parent_id else None,
-        "slug": cat.slug,
-        "name_en": cat.name_en,
-        "name_pl": cat.name_pl,
-    }
-
-    data = patch.model_dump(exclude_unset=True)
-
-    # Only check parent_id if it was explicitly provided in the payload
-    if "parent_id" in data:
-        new_parent_id = data["parent_id"]
-        if new_parent_id is not None:
-            if session.get(Category, new_parent_id) is None:
-                raise ValueError("parent not found")
-            if _would_cycle(session, category_id, new_parent_id):
-                raise ValueError("cycle")
-        cat.parent_id = new_parent_id
-
-    for field, value in data.items():
-        if field == "parent_id":
-            continue  # already handled
-        setattr(cat, field, value)
-
-    cat.updated_at = datetime.datetime.now(datetime.UTC)
-    after = {
-        "parent_id": str(cat.parent_id) if cat.parent_id else None,
-        "slug": cat.slug,
-        "name_en": cat.name_en,
-        "name_pl": cat.name_pl,
-    }
-
-    session.add(cat)
-
-    try:
-        session.flush()
-    except IntegrityError as exc:
-        session.rollback()
-        raise ValueError("slug_conflict") from exc
-
-    _audit_entity(
-        session,
-        action="category.update",
-        entity_type="category",
-        entity_id=cat.id,
-        actor_user_id=actor_user_id,
-        before=before,
-        after=after,
-    )
-
-    session.commit()
-    session.refresh(cat)
-    return cat
-
-
-def delete_category(
-    session: Session,
-    *,
-    category_id: uuid.UUID,
-    actor_user_id: uuid.UUID,
-) -> None:
-    """Delete a Category. RESTRICT if models or child categories reference it.
-
-    Raises:
-        LookupError("category not found")
-        ValueError("category_in_use")
-    """
-    cat = session.get(Category, category_id)
-    if cat is None:
-        raise LookupError("category not found")
-
-    before = {"slug": cat.slug, "name_en": cat.name_en}
-
-    _audit_entity(
-        session,
-        action="category.delete",
-        entity_type="category",
-        entity_id=cat.id,
-        actor_user_id=actor_user_id,
-        before=before,
-    )
-
-    try:
-        session.delete(cat)
-        session.commit()
-    except IntegrityError as exc:
-        session.rollback()
-        raise ValueError("category_in_use") from exc
 
 
 # ---------------------------------------------------------------------------

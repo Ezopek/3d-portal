@@ -89,16 +89,16 @@ test("anonymous user at /admin/users redirects to /login", async ({ page }) => {
   await expect(page.locator("header")).toHaveCount(0);
 });
 
-test("anonymous user at /catalog?category_id=xyz preserves query in next", async ({
+test("anonymous user at /catalog?q=xyz preserves query in next", async ({
   page,
 }) => {
   // P2 regression test from 64447ff codex finding verbatim. Pre-Init-6
   // implementation used `search` (parsed object) → template-literal-coerced
   // to "[object Object]" → next=%5Bobject%20Object%5D. Story 11.3 uses
   // `searchStr` → faithful URL-encoded preservation.
-  await page.goto("/catalog?category_id=xyz");
+  await page.goto("/catalog?q=xyz");
   await page.waitForURL(
-    /\/login\?next=%2Fcatalog%3Fcategory_id%3Dxyz$/,
+    /\/login\?next=%2Fcatalog%3Fq%3Dxyz$/,
     { timeout: 5_000 },
   );
   await waitForReady(page);

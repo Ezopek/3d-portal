@@ -22,7 +22,6 @@ const SHARE_VIEW_FIXTURE = {
   id: "00000000-0000-0000-0000-000000000030",
   name_en: "Test Share Model",
   name_pl: "Testowy model udostępniony",
-  category: "test",
   tags: ["sample"],
   thumbnail_url: null,
   has_3d: false,

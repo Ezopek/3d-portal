@@ -17,7 +17,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlmodel import Session, select
 
 from app.core.auth.jwt import encode_token
-from app.core.db.models import AuditLog, Category, Model, ModelFile, ModelFileKind, User, UserRole
+from app.core.db.models import AuditLog, Model, ModelFile, ModelFileKind, User, UserRole
 from app.main import _PUBLIC_ROUTES, create_app
 from app.modules.slicer import profile_publish
 from app.modules.slicer.bundle_store import BundleStore
@@ -117,11 +117,7 @@ async def seam(
 
 
 def _seed_stl_row(session: Session, *, content_dir: Path) -> None:
-    category = Category(slug=f"cat-{uuid.uuid4().hex[:8]}", name_en="cat")
-    session.add(category)
-    session.commit()
-    session.refresh(category)
-    model = Model(slug=f"model-{uuid.uuid4().hex[:8]}", name_en="m", category_id=category.id)
+    model = Model(slug=f"model-{uuid.uuid4().hex[:8]}", name_en="m")
     session.add(model)
     session.commit()
     session.refresh(model)

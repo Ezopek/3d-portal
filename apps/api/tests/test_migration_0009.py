@@ -25,13 +25,15 @@ def _alembic(env: dict, *args: str) -> subprocess.CompletedProcess:
 
 
 def test_migration_0009_round_trips(tmp_path):
+    # Pinned to 0018_facet_tags (not head): 0019_drop_category is forward-only
+    # (downgrade() raises), so any head-downward traversal would fail (Story 47.5).
     db_path = tmp_path / "rt.db"
     env = {"DATABASE_URL": f"sqlite:///{db_path}"}
-    up1 = _alembic(env, "upgrade", "head")
+    up1 = _alembic(env, "upgrade", "0018_facet_tags")
     assert up1.returncode == 0, up1.stderr
     down = _alembic(env, "downgrade", "0008")
     assert down.returncode == 0, down.stderr
-    up2 = _alembic(env, "upgrade", "head")
+    up2 = _alembic(env, "upgrade", "0018_facet_tags")
     assert up2.returncode == 0, up2.stderr
 
 

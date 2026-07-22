@@ -683,7 +683,7 @@ async def seam_publish(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Async
     """Full publish seam: bundle_store + STL cache + arq pool + content dir."""
     from sqlmodel import Session as _Session
 
-    from app.core.db.models import Category, Model, ModelFile, ModelFileKind, User, UserRole
+    from app.core.db.models import Model, ModelFile, ModelFileKind, User, UserRole
 
     vendored_root = tmp_path / "vendored"
     content_dir = tmp_path / "content"
@@ -727,12 +727,7 @@ async def seam_publish(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Async
         session.commit()
         session.refresh(u)
         admin_id = u.id
-
-        category = Category(slug=f"cat-{uuid.uuid4().hex[:8]}", name_en="cat")
-        session.add(category)
-        session.commit()
-        session.refresh(category)
-        model = Model(slug=f"model-{uuid.uuid4().hex[:8]}", name_en="m", category_id=category.id)
+        model = Model(slug=f"model-{uuid.uuid4().hex[:8]}", name_en="m")
         session.add(model)
         session.commit()
         session.refresh(model)

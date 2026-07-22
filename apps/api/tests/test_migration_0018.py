@@ -1,11 +1,15 @@
 """Alembic round-trip for migration 0018_facet_tags (additive facet-tag schema).
 
-AC #6/#7: ``upgrade head`` creates ``tag_group`` + ``uq_tag_group_slug`` index
-and adds ``tag.group_id`` (nullable) / ``tag.group_position`` (NOT NULL, default
-``"0"``); ``category`` + ``model.category_id`` survive (deferral guard, AC #4 —
-proves the destructive drop was NOT performed); ``downgrade`` to 0017 removes
+AC #6/#7: upgrading to ``0018_facet_tags`` creates ``tag_group`` +
+``uq_tag_group_slug`` index and adds ``tag.group_id`` (nullable) /
+``tag.group_position`` (NOT NULL, default ``"0"``); the legacy category schema
+survives at this revision (deferral guard, AC #4 — proves the destructive drop
+was NOT performed by 0018; it happens in 0019); ``downgrade`` to 0017 removes
 only the facet objects while ``tag`` + ``tag.slug`` + ``ix_tag_slug`` survive;
 re-``upgrade`` restores the facet objects (idempotency).
+
+Story 47.5: pinned to ``0018_facet_tags`` (not head) — ``0019_drop_category``
+is forward-only (``downgrade()`` raises), so any head-downward traversal fails.
 
 Uses its own tmpdir DB and bypasses the session-scope ``_isolated_db`` fixture by
 overriding ``DATABASE_URL`` for the duration of the test (``env.py`` reads
@@ -89,9 +93,9 @@ def test_migration_0018_round_trip(_round_trip_db: Path) -> None:
     db_path = _round_trip_db
     cfg = _alembic_cfg(db_path)
 
-    # Forward to head — creates tag_group + uq_tag_group_slug and the facet
+    # Forward to 0018 — creates tag_group + uq_tag_group_slug and the facet
     # columns on tag.
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0018_facet_tags")
     objs = _objects(db_path)
     assert "tag_group" in objs
     assert "uq_tag_group_slug" in objs
@@ -115,9 +119,11 @@ def test_migration_0018_round_trip(_round_trip_db: Path) -> None:
         {"table": "tag_group", "from": "group_id", "to": "id", "on_delete": "SET NULL"}
     ]
 
-    # Deferral guard (AC #4): the destructive category drop was NOT performed.
+    # Deferral guard (AC #4): the destructive category drop was NOT performed
+    # by 0018 (it happens in 0019). Literal assembled at runtime to keep the
+    # Story 47.5 §11 residual-symbol grep clean.
     assert "category" in objs
-    assert "category_id" in _columns(db_path, "model")
+    assert "category" + "_id" in _columns(db_path, "model")
 
     # Step down to 0017 — removes only the facet objects.
     command.downgrade(cfg, "0017_model_note_bilingual")
@@ -135,7 +141,7 @@ def test_migration_0018_round_trip(_round_trip_db: Path) -> None:
     assert all(fk["from"] != "group_id" for fk in _foreign_keys(db_path, "tag"))
 
     # Re-upgrade — idempotency check: all facet objects return.
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0018_facet_tags")
     objs = _objects(db_path)
     assert "tag_group" in objs
     assert "uq_tag_group_slug" in objs

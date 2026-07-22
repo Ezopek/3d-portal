@@ -13,7 +13,6 @@ function makeDetail(over: Partial<ModelDetail> = {}): ModelDetail {
     slug: "x",
     name_en: "X",
     name_pl: null,
-    category_id: "c",
     source: "printables",
     status: "not_printed",
     rating: null,
@@ -23,7 +22,6 @@ function makeDetail(over: Partial<ModelDetail> = {}): ModelDetail {
     created_at: "",
     updated_at: "",
     tags: [],
-    category: { id: "c", parent_id: null, slug: "c", name_en: "C", name_pl: null },
     files: [
       {
         id: "f1",

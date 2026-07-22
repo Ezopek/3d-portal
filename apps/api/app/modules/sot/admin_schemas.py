@@ -19,7 +19,6 @@ class ModelCreate(BaseModel):
                 {
                     "name_en": "Stanford Bunny",
                     "name_pl": "Królik Stanforda",
-                    "category_id": "12345678-1234-5678-1234-567812345678",
                     "source": "printables",
                     "status": "not_printed",
                 }
@@ -29,7 +28,6 @@ class ModelCreate(BaseModel):
 
     name_en: str = Field(min_length=1)
     name_pl: str | None = None
-    category_id: uuid.UUID
     source: ModelSource = ModelSource.unknown
     status: ModelStatus = ModelStatus.not_printed
     rating: float | None = Field(default=None, ge=1.0, le=5.0)
@@ -53,7 +51,6 @@ class ModelPatch(BaseModel):
 
     name_en: str | None = Field(default=None, min_length=1)
     name_pl: str | None = None
-    category_id: uuid.UUID | None = None
     source: ModelSource | None = None
     status: ModelStatus | None = None
     rating: float | None = Field(default=None, ge=1.0, le=5.0)
@@ -281,53 +278,6 @@ class TagGroupPatch(BaseModel):
         if v is None:
             raise ValueError("field may not be null")
         return v
-
-
-# ---------------------------------------------------------------------------
-# Categories
-# ---------------------------------------------------------------------------
-
-
-class CategoryCreate(BaseModel):
-    model_config = ConfigDict(
-        json_schema_extra={
-            "examples": [
-                {
-                    "parent_id": None,
-                    "slug": "kitchen",
-                    "name_en": "Kitchen",
-                    "name_pl": "Kuchnia",
-                },
-                {
-                    "parent_id": "77777777-7777-7777-7777-777777777777",
-                    "slug": "spice-racks",
-                    "name_en": "Spice racks",
-                    "name_pl": "Półki na przyprawy",
-                },
-            ]
-        }
-    )
-
-    parent_id: uuid.UUID | None = None
-    slug: str = Field(min_length=1)
-    name_en: str = Field(min_length=1)
-    name_pl: str | None = None
-
-
-class CategoryPatch(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        json_schema_extra={
-            "examples": [
-                {"name_pl": "Akcesoria kuchenne"},
-            ]
-        },
-    )
-
-    parent_id: uuid.UUID | None = None
-    slug: str | None = Field(default=None, min_length=1)
-    name_en: str | None = Field(default=None, min_length=1)
-    name_pl: str | None = None
 
 
 # ---------------------------------------------------------------------------

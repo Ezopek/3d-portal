@@ -16,7 +16,6 @@ function makeSummary(over: Partial<ModelSummary> = {}): ModelSummary {
     slug: "dragon",
     name_en: "Dragon",
     name_pl: "Smok",
-    category_id: "22222222-2222-2222-2222-222222222222",
     source: "printables",
     status: "printed",
     rating: 5,

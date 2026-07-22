@@ -66,7 +66,6 @@ def test_known_entity_types_covers_all_call_site_resources():
     """All resources currently audit-logged in app/modules/ must be in the set."""
     expected = {
         "catalog",
-        "category",
         "invite_token",
         "model",
         "model_external_link",

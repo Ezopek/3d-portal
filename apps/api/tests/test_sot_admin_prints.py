@@ -13,7 +13,6 @@ from sqlmodel import Session, select
 
 from app.core.db.models import (
     AuditLog,
-    Category,
     Model,
     ModelFile,
     ModelFileKind,
@@ -37,18 +36,10 @@ def _seed_admin(session: Session) -> uuid.UUID:
     return u.id
 
 
-def _seed_category(session: Session) -> uuid.UUID:
-    cat = Category(slug=f"cat-prints-{uuid.uuid4().hex[:8]}", name_en="Test Cat")
-    session.add(cat)
-    session.flush()
-    return cat.id
-
-
-def _seed_model(session: Session, cat_id: uuid.UUID) -> uuid.UUID:
+def _seed_model(session: Session) -> uuid.UUID:
     m = Model(
         slug=f"m-prints-{uuid.uuid4().hex[:8]}",
         name_en="Test Model",
-        category_id=cat_id,
     )
     session.add(m)
     session.flush()
@@ -88,8 +79,7 @@ def test_create_print_201(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     client.cookies.set("portal_access", admin_token(admin_id))
@@ -115,8 +105,7 @@ def test_create_print_flat_path_is_not_mounted(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     client.cookies.set("portal_access", admin_token(admin_id))
@@ -132,8 +121,7 @@ def test_create_print_minimal(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     client.cookies.set("portal_access", admin_token(admin_id))
@@ -150,8 +138,7 @@ def test_create_print_with_photo(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         file_id = _seed_file(s, model_id)
         s.commit()
 
@@ -169,9 +156,8 @@ def test_create_print_400_cross_model_photo(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
-        other_model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
+        other_model_id = _seed_model(s)
         file_id = _seed_file(s, other_model_id)
         s.commit()
 
@@ -201,8 +187,7 @@ def test_create_print_audit(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         s.commit()
 
     client.cookies.set("portal_access", admin_token(admin_id))
@@ -233,8 +218,7 @@ def test_patch_print_200(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         print_id = _seed_print(s, model_id)
         s.commit()
 
@@ -265,9 +249,8 @@ def test_patch_print_400_cross_model_photo(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
-        other_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
+        other_id = _seed_model(s)
         print_id = _seed_print(s, model_id)
         other_file_id = _seed_file(s, other_id)
         s.commit()
@@ -289,8 +272,7 @@ def test_delete_print_204(client):
     engine = get_engine()
     with Session(engine) as s:
         admin_id = _seed_admin(s)
-        cat_id = _seed_category(s)
-        model_id = _seed_model(s, cat_id)
+        model_id = _seed_model(s)
         print_id = _seed_print(s, model_id)
         s.commit()
 

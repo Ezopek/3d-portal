@@ -18,7 +18,6 @@ const FAKE_MODEL: ModelSummary = {
   slug: "dragon",
   name_en: "Dragon",
   name_pl: "Smok",
-  category_id: "11111111-1111-1111-1111-111111111111",
   source: "printables",
   status: "printed",
   rating: 5,
