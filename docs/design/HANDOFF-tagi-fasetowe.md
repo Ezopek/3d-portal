@@ -52,7 +52,7 @@ Rezygnujemy z **twardej, pojedynczej kategorii** na rzecz **wielu tagów pogrupo
 
 | Plik | Zmiana |
 |---|---|
-| `components/CategoryTreeSidebar.tsx` | **Zastąpić** `FacetSidebar` — grupy zwijane, checkboxy (multi-select), licznik per tag. Zamiast drzewa kategorii → lista grup faset. Search po tagach na górze. Pseudo-faseta „Bez tagów" przypięta na dole (makieta 02, 03, 08B). |
+| `components/CategoryTreeSidebar.tsx` | **Zastąpić** `FacetSidebar` (zrobione — usunięty w story 47.1) — grupy zwijane, checkboxy (multi-select), licznik per tag. Zamiast drzewa kategorii → lista grup faset. Search po tagach na górze. Pseudo-faseta „Bez tagów" przypięta na dole (makieta 02, 03, 08B). |
 | `components/FilterRibbon.tsx` | Dodać **pasek aktywnych chipów** (usuwalne) + **toggle AND/OR** (`tag_match`). Obecny TagPicker można zostawić jako alternatywne dodawanie, ale główny wybór przenosi się do sidebaru. Status/Source/Sort bez zmian (makieta 03). |
 | `routes/CatalogList.tsx` | Usunąć `useCategoriesTree`, `expandCategoryIds`, `category_id`. Stan URL: `tag_ids`, `tag_match`, `untagged`. Reszta (paginacja, empty state) zostaje. Pusty wynik → CTA „Przełącz na OR / Wyczyść" (makieta 08D). |
 | `hooks/useCategoriesTree.ts` | Usunąć. Dodać `useTagGroups()` (grupy + tagi + liczniki). `useTags` zostaje (z `group`). |

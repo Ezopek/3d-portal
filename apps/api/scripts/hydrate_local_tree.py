@@ -117,7 +117,7 @@ def _set_portal_access_cookie(http_client: Any, token: str) -> None:
     `Authorization: Bearer ...` header. The hydrate script's bearer-token CLI
     path (Init 2 baseline) cached the access_token across runs and sent it only
     as an Authorization header. Post-default-deny, that path 401s on the first
-    `/api/categories` call when no login happened in the current run.
+    `/api/models` call when no login happened in the current run.
 
     Setting the cookie mirrors the production agent service-account flow
     (Init 2 cookie+password login response sets `portal_access` automatically).
@@ -165,30 +165,6 @@ def ensure_token(http_client: Any, portal_url: str, token_data: dict) -> str:
     # might not auto-persist cookies from POST responses).
     _set_portal_access_cookie(http_client, access_token)
     return access_token
-
-
-# ---------------------------------------------------------------------------
-# Category path map builder
-# ---------------------------------------------------------------------------
-
-
-def _build_category_path_map(http_client: Any, headers: dict) -> dict[str, str]:
-    """Return {category_uuid: "slug/subslug"} for all categories."""
-    resp = http_client.get("/api/categories", headers=headers)
-    resp.raise_for_status()
-    tree = resp.json()
-
-    path_map: dict[str, str] = {}
-
-    def _walk(nodes: list, prefix: str) -> None:
-        for node in nodes:
-            slug = node["slug"]
-            full = f"{prefix}/{slug}" if prefix else slug
-            path_map[node["id"]] = full
-            _walk(node.get("children", []), full)
-
-    _walk(tree.get("roots", []), "")
-    return path_map
 
 
 # ---------------------------------------------------------------------------
@@ -300,14 +276,11 @@ def run_hydrate(
     kinds_set = {str(k) for k in kinds}
     headers = {"Authorization": f"Bearer {bearer_token}"} if bearer_token else {}
 
-    # -- 1. Category path map -----------------------------------------------
-    category_paths = _build_category_path_map(http_client, headers)
-
-    # -- 2. Load state -------------------------------------------------------
+    # -- 1. Load state -------------------------------------------------------
     state = _load_state(state_path)
     paths_state: dict[str, str] = state.setdefault("paths", {})
 
-    # -- 3. Paginate models --------------------------------------------------
+    # -- 2. Paginate models --------------------------------------------------
     n_models = 0
     m_downloaded = 0
     k_skipped = 0
@@ -343,9 +316,6 @@ def run_hydrate(
     for model in all_models:
         model_id = model["id"]
         slug = model["slug"]
-        cat_id = model["category_id"]
-
-        cat_path = category_paths.get(cat_id, "uncategorized")
 
         # Folder name: slug + 8-char short uuid as a stable disambiguator.
         # Prior to E4.4-followup the legacy_id ("001", "002", ...) was preferred
@@ -357,7 +327,7 @@ def run_hydrate(
         # accepts the layout change OR runs a one-time bulk-rename pass
         # against the pre-migration tree before re-hydrating.
         suffix = model_id.replace("-", "")[:8]
-        model_dir_rel = f"{cat_path}/{slug}-{suffix}"
+        model_dir_rel = f"{slug}-{suffix}"
         model_dir = target / model_dir_rel
 
         # Fetch file list for this model
@@ -422,7 +392,7 @@ def run_hydrate(
                     file=sys.stderr,
                 )
 
-    # -- 4. Prune deleted files ----------------------------------------------
+    # -- 3. Prune deleted files ----------------------------------------------
     if prune_deleted and not dry_run:
         # Walk state for paths no longer in master
         stale_keys = [k for k in list(paths_state.keys()) if k not in master_files]
@@ -433,7 +403,7 @@ def run_hydrate(
                 p_pruned += 1
             del paths_state[rel_key]
 
-    # -- 5. Write state ------------------------------------------------------
+    # -- 4. Write state ------------------------------------------------------
     if not dry_run:
         target.mkdir(parents=True, exist_ok=True)
         _save_state(state_path, state, portal_url)

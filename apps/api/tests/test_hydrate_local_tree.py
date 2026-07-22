@@ -32,11 +32,10 @@ from scripts.hydrate_local_tree import _load_state, run_hydrate
 # ---------------------------------------------------------------------------
 
 
-def _seed_category(session: Session, *, slug: str, parent_id=None) -> Category:
+def _seed_category(session: Session, *, slug: str) -> Category:
     cat = Category(
         slug=slug,
         name_en=slug,
-        parent_id=parent_id,
     )
     session.add(cat)
     session.commit()
@@ -307,27 +306,29 @@ def test_hydrate_handles_pagination(client, tmp_path):
     assert len(our_files) >= 51, f"Expected >=51 pg*.stl files, got {len(our_files)}"
 
 
-def test_hydrate_layout_uses_category_subcategory_slug(client, tmp_path):
-    """Directory tree must be: <cat>/<subcat>/<model-slug>-<short-uuid>/<original_name>.
+def test_hydrate_layout_is_flat_slug_suffix(client, tmp_path):
+    """Directory tree must be: <model-slug>-<short-uuid>/<original_name> (no category prefix).
 
-    Post-E4.4-followup the suffix is the model's UUID hex with dashes stripped,
+    Post-47.3 the layout dropped the category/subcategory path segments entirely;
+    `_seed_category`/`_seed_model` are still used to satisfy `Model.category_id`'s
+    NOT NULL FK in the DB fixture, but the resulting local path must not reflect
+    the category at all. The suffix is the model's UUID hex with dashes stripped,
     truncated to 8 chars (was the legacy_id pre-DROP)."""
     engine = get_engine()
-    root_slug = f"ht-lay-root-{uuid.uuid4().hex[:6]}"
-    sub_slug = f"ht-lay-sub-{uuid.uuid4().hex[:6]}"
+    cat_slug = f"ht-lay-cat-{uuid.uuid4().hex[:6]}"
     with Session(engine) as s:
-        root = _seed_category(s, slug=root_slug)
-        sub = _seed_category(s, slug=sub_slug, parent_id=root.id)
-        m = _seed_model(s, sub.id, slug="ht-lay-model")
+        cat = _seed_category(s, slug=cat_slug)
+        m = _seed_model(s, cat.id, slug="ht-lay-model")
         _seed_file_on_disk(s, m, original_name="layout.stl", content=b"LAYOUT")
         suffix = m.id.hex[:8]
 
     _run(client, tmp_path)
 
-    expected = tmp_path / root_slug / sub_slug / f"ht-lay-model-{suffix}" / "layout.stl"
+    expected = tmp_path / f"ht-lay-model-{suffix}" / "layout.stl"
     assert expected.exists(), (
         f"Expected file at {expected}; found: {list(tmp_path.rglob('layout.stl'))}"
     )
+    assert cat_slug not in str(expected), "flat layout must not include the category slug"
 
 
 def test_hydrate_idempotent_summary_counts(client, tmp_path):

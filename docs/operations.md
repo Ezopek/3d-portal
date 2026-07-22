@@ -447,7 +447,7 @@ point — from git history).
 ### UI rewrite delivered (Slices 3A-3F)
 
 - **3A — Auth + API context.** `AuthContext` + `useAuth()` hook. `GET /api/auth/me` accepts any authenticated role. SoT TypeScript types in `apps/web/src/lib/api-types.ts`.
-- **3B — List view rebuild.** `CategoryTreeSidebar` (recursive expandable tree) + `FilterRibbon` (search, tag chips, status, source, sort). Server-side filters and offset/limit pagination. `/api/models` extended with `category_ids[]`, `tag_ids[]` (AND), `source`, `sort` enum.
+- **3B — List view rebuild.** `CategoryTreeSidebar` (recursive expandable tree) + `FilterRibbon` (search, tag chips, status, source, sort). Server-side filters and offset/limit pagination. `/api/models` extended with `category_ids[]`, `tag_ids[]` (AND), `source`, `sort` enum. _`CategoryTreeSidebar` was later replaced by `FacetSidebar` in the E41-E46 facet-tag catalog rebuild — see Initiative 25._
 - **3C — Detail view rebuild.** Product-style layout: `ModelHero` + `ModelGallery` (4:3 ~36% width) + content rail (`DescriptionPanel`, `ExternalLinksPanel`, `MetadataPanel`) + `SecondaryTabs` (Files STL-primary / Prints / Operational notes).
 - **3D — Photos manager + DnD.** Admin-only `PhotosTab` (master-detail) with `@dnd-kit/sortable` reorder, set-thumbnail, delete, drag-drop upload. Backend `position` column on `model_file` + `POST /api/admin/models/{id}/photos/reorder`.
 - **3E — Edit affordances.** Status / rating popovers (atomic). Side-sheets: description, tags (with create-new), prints, notes. Delete-model confirmation modal (typed-name confirm). All ✏ icons wired on Hero/DescriptionPanel/PrintsTab/OperationalNotesTab.
@@ -480,7 +480,7 @@ http://192.168.2.190:8090 --target <local-dir> --token-file
 ~/.config/3d-portal/agent.token --kinds stl` from WSL to materialize
 STLs locally. State is kept in `<target>/.hydrate-state.json` for
 incremental updates. Layout:
-`<category-slug>/<subcategory-slug>/<model-slug>-<8-char-uuid>/<original_name>`
+`<model-slug>-<8-char-uuid>/<original_name>`
 (the 8-char suffix is the model UUID hex with dashes stripped,
 truncated). **Note:** prior to E4.4-followup (2026-05-11) the suffix
 was `legacy_id` (e.g. `001`, `002`) where present, falling back to the
@@ -489,6 +489,17 @@ Local trees rendered under the old scheme retain their pre-rename
 directory names — either accept the layout change on next re-hydrate
 OR run a one-time bulk-rename pass against the local tree before
 re-running `hydrate_local_tree.py`.
+
+**Migration note (story 47.3):** prior to this story the layout nested
+under `<category-slug>/<subcategory-slug>/...`; the category cutover
+dropped that prefix in favor of the flat form above. Pre-47.3 nested
+trees on disk are left in place after the first post-cutover
+re-hydrate (the flattened path is a new state-cache key, so nothing is
+auto-deleted); pass `--prune-deleted` on that first run to remove the
+old files once the new flat tree has been verified (the script only
+`unlink()`s stale files, not directories — the now-empty nested
+category folders are harmless leftovers and can be removed manually,
+e.g. `find <target-dir> -type d -empty -delete`).
 
 ### What remains
 
@@ -506,7 +517,7 @@ re-running `hydrate_local_tree.py`.
   agent does most creates anyway.
 - **`/admin/users` page** for member provisioning. Use direct SQL or
   the bootstrap script until then.
-- **Side-sheets for ExternalLinks, Category picker, File metadata.**
+- **Side-sheets for ExternalLinks, File metadata.**
   These edit paths are low-frequency; the API supports them directly.
 - **Share view rebuild.** The share-create UI was deleted with the dead
   `ShareDialog`; resurrect both when sharing becomes a real flow.

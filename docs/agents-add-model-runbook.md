@@ -6,7 +6,7 @@ This runbook teaches an AI agent (Claude, Codex, or any future LLM) how to add a
 
 - **Pull-only ergonomics.** The portal serves discovery and accepts writes; it never pushes. The agent decides cadence — fetch this runbook + OpenAPI on demand, login once per session, reuse the cookie.
 - **REST + cookie session.** All admin/sot calls go over HTTPS to `https://3d.ezop.ddns.net`. Auth is a JWT carried in the `portal_access` cookie set by the login endpoint. There is no long-lived bearer token; do NOT send `Authorization: Bearer ...` headers.
-- **Idempotence.** Re-importing the same source URL must not duplicate models. Pre-flight check #4 (duplicate-check) gates this via the `external_url` query parameter on `GET /api/models` — a single call returns the matching `ModelSummary` rows in `.items[]` (empty if not imported). Combine with `include_deleted=true` to also surface soft-deleted prior imports — the agent can then choose between restore-existing vs. fresh-import on hit.
+- **Idempotence.** Re-importing the same source URL must not duplicate models. Pre-flight check #3 (duplicate-check) gates this via the `external_url` query parameter on `GET /api/models` — a single call returns the matching `ModelSummary` rows in `.items[]` (empty if not imported). Combine with `include_deleted=true` to also surface soft-deleted prior imports — the agent can then choose between restore-existing vs. fresh-import on hit.
 - **Layered auto-discovery.** This runbook documents narrative, behavioral rules, and external-API recipes. The portal's own endpoints, request shapes, and status codes live in `/api/openapi.json` — query that, not source code.
 
 ## Auth & Login Flow
@@ -52,7 +52,7 @@ All subsequent calls send the cookie jar back via `-b`. Mutations also need the 
 
 ```bash
 # Read (no CSRF header needed):
-curl -s -b /tmp/portal-cookies.txt https://3d.ezop.ddns.net/api/categories
+curl -s -b /tmp/portal-cookies.txt https://3d.ezop.ddns.net/api/models
 
 # Write (CSRF header required):
 curl -s -b /tmp/portal-cookies.txt -c /tmp/portal-cookies.txt \
@@ -279,28 +279,9 @@ If you (the agent) are not running on the operator's dev box and cannot invoke t
 
 ## Pre-flight Checklist
 
-Verify all five items BEFORE the first portal write call. If any item is false, stop and ask the operator — do not call the model-create endpoint and let the API 4xx absorb the mistake.
+Verify all four items BEFORE the first portal write call. If any item is false, stop and ask the operator — do not call the model-create endpoint and let the API 4xx absorb the mistake.
 
-1. **Category slug exists.** Fetch the category tree and confirm the target slug is present:
-   ```bash
-   curl -s -b /tmp/portal-cookies.txt https://3d.ezop.ddns.net/api/categories | jq '.. | objects | .slug? // empty'
-   ```
-   The portal's `category_id` field on the model-create payload requires a valid UUID; you must pick from the existing tree, not invent a slug. The tree is recursive (`roots[].children[].children[]...`) and slugs are unique only **per parent** (DB constraint `(parent_id, slug)`), so the same slug can appear under multiple parents. Map slug → UUID with a guarded `jq` that errors on ambiguity instead of silently returning multiple IDs:
-   ```bash
-   slug=cats   # the slug you want
-   CATEGORY_ID=$(
-     curl -s -b /tmp/portal-cookies.txt https://3d.ezop.ddns.net/api/categories \
-       | jq -er --arg s "$slug" '
-           [.. | objects | select(.slug? == $s) | .id]
-           | if length == 1 then .[0]
-             elif length == 0 then error("category slug not found: " + $s)
-             else error("ambiguous category slug: " + $s + " (" + (length|tostring) + " matches — disambiguate by parent path)")
-             end'
-   ) || exit 1
-   echo "$CATEGORY_ID"
-   ```
-   On ambiguity, dump the tree (`jq '.'`) and pick the right `id` by walking the parent chain manually, then ask the operator to rename one of the colliding slugs.
-2. **Model name sanitized — populate BOTH `name_en` AND `name_pl`.** No Polish diacritics in `name_en`, no leading/trailing whitespace, no file extension. **Always populate both names** by translating one from the other — direction depends on the source page language. For brand-name compounds (e.g. "Prusa MK3 LED Lamp" → "Prusa MK3 lampka LED"), keep brand terms (`Prusa MK3`) verbatim and translate only the descriptive parts. If translation feels lossy (technical jargon, terms-of-art with no clean PL equivalent), fall back to `name_pl: null` and surface the case to the operator rather than guess. The catalog renders bilingually (i18n PL/EN) so leaving `name_pl: null` degrades to the English fallback for Polish UI users — functional but defeats the bilingual design. **How to derive `name_en` per source:**
+1. **Model name sanitized — populate BOTH `name_en` AND `name_pl`.** No Polish diacritics in `name_en`, no leading/trailing whitespace, no file extension. **Always populate both names** by translating one from the other — direction depends on the source page language. For brand-name compounds (e.g. "Prusa MK3 LED Lamp" → "Prusa MK3 lampka LED"), keep brand terms (`Prusa MK3`) verbatim and translate only the descriptive parts. If translation feels lossy (technical jargon, terms-of-art with no clean PL equivalent), fall back to `name_pl: null` and surface the case to the operator rather than guess. The catalog renders bilingually (i18n PL/EN) so leaving `name_pl: null` degrades to the English fallback for Polish UI users — functional but defeats the bilingual design. **How to derive `name_en` per source:**
    - **Printables URL slug** (`/model/<id>-<slug-words>`): strip the leading numeric id and the trailing dash, replace `-` with spaces, title-case. Example: `1000-prusa-mk3-led-lamp` → `Prusa MK3 LED Lamp`. One-liner:
      ```bash
      echo "1000-prusa-mk3-led-lamp" | sed -E 's/^[0-9]+-//; s/-/ /g' \
@@ -308,8 +289,8 @@ Verify all five items BEFORE the first portal write call. If any item is false, 
      ```
    - **Browser-only sources** (Thangs, Thingiverse, MakerWorld, Creality Cloud): grab the `<title>` of the model page via `agent-browser` (it strips the trailing site brand) and clean similarly.
    - **Sanity-check** the result against the source page's headline before sending. If the slug-derived form looks awkward (acronyms uppercased wrong, brand names mangled), prefer the page title or ask the operator — `name_en` is user-visible and not trivial to rename later (it changes the auto-generated portal slug).
-3. **At least one STL ready to upload.** After any 3MF conversion (above) or OBJ/STEP conversion (use `trimesh.load(path, force='mesh').export(out, file_type='stl')`), the working directory must contain at least one `.stl` file. Verify case-insensitively (some legacy assets are `.STL`): `find . -maxdepth 1 -type f -iname '*.stl'`.
-4. **Duplicate check via external links.** The source URL is NOT stored on the model row itself — it lives on a separate `ExternalLink` row attached to the model. Use the `external_url` query parameter on `GET /api/models` for a one-shot lookup; a hit returns the existing model row(s), a miss returns `items: []` and `total: 0` so the agent proceeds with a fresh import. The model's `source` field is an enum (`printables`, `thangs`, `unknown`, etc.) and does NOT carry the URL. **Pass `include_deleted=true`** so a previously-imported-then-soft-deleted model is surfaced too — otherwise the dedup check returns 0 and you risk creating a duplicate (or hitting a unique-slug conflict downstream); on hit, inspect the row's `deleted_at` field to decide: restore the existing model vs. proceed with a fresh import.
+2. **At least one STL ready to upload.** After any 3MF conversion (above) or OBJ/STEP conversion (use `trimesh.load(path, force='mesh').export(out, file_type='stl')`), the working directory must contain at least one `.stl` file. Verify case-insensitively (some legacy assets are `.STL`): `find . -maxdepth 1 -type f -iname '*.stl'`.
+3. **Duplicate check via external links.** The source URL is NOT stored on the model row itself — it lives on a separate `ExternalLink` row attached to the model. Use the `external_url` query parameter on `GET /api/models` for a one-shot lookup; a hit returns the existing model row(s), a miss returns `items: []` and `total: 0` so the agent proceeds with a fresh import. The model's `source` field is an enum (`printables`, `thangs`, `unknown`, etc.) and does NOT carry the URL. **Pass `include_deleted=true`** so a previously-imported-then-soft-deleted model is surfaced too — otherwise the dedup check returns 0 and you risk creating a duplicate (or hitting a unique-slug conflict downstream); on hit, inspect the row's `deleted_at` field to decide: restore the existing model vs. proceed with a fresh import.
    ```bash
    # Use the SAME canonical URL the upcoming external-link create call will store.
    # `external_url` is exact-match (no normalization), so query and stored value
@@ -322,7 +303,7 @@ Verify all five items BEFORE the first portal write call. If any item is false, 
      | jq '{total, items: [.items[] | {id, slug, deleted_at}]}'
    ```
    Typically returns 0 or 1 row. URL-encode the source URL via `--data-urlencode` so `?` `&` `#` characters in the URL don't corrupt the query string. Pick one canonical form for a given source (always with the slug suffix for Printables; whatever the share-button copies for browser-only sources) and reuse it in BOTH the dedup query and the external-link create payload — the API does NOT canonicalize for you.
-5. **No leftover transient files.** No `.3mf`, no `.zip`, no `.7z` in the working directory after extraction + conversion. Only the source files (STL, optional OBJ/STEP keep-original) remain.
+4. **No leftover transient files.** No `.3mf`, no `.zip`, no `.7z` in the working directory after extraction + conversion. Only the source files (STL, optional OBJ/STEP keep-original) remain.
 
 ## Endpoint Discovery via OpenAPI
 
@@ -384,11 +365,12 @@ For a Printables URL `https://www.printables.com/model/1000-prusa-mk3-led-lamp`:
 3. **List files** via the GraphQL query (§ "Printables GraphQL Recipe → List files"). Pick the STL file id(s) you want.
 4. **Get download link** for each STL via the mutation. Fetch each link with `curl -L -o`.
 5. **3MF conversion?** Inspect the downloaded files; if any is `.3mf`, convert via § "3MF Conversion" before continuing.
-6. **Pre-flight checklist.** Walk all 5 items. Fail fast on any false answer.
-7. **Pick category.** Use the slug → UUID `jq` recipe from § "Pre-flight Checklist → 1. Category slug exists" against `/api/categories` to resolve `CATEGORY_ID`.
-8. **Create model** via `POST /api/admin/models` (body: `ModelCreate`; minimum fields are `name_en` + `category_id`; default `source` is `unknown`, so set it explicitly per the host → enum mapping table). The response is a `ModelDetail` row whose `id` is the new model UUID. Note: the source URL does NOT belong on this payload.
+6. **Pre-flight checklist.** Walk all 4 items. Fail fast on any false answer.
+7. **Create model** via `POST /api/admin/models` (body: `ModelCreate`; minimum fields are `name_en` + `category_id`; default `source` is `unknown`, so set it explicitly per the host → enum mapping table). The response is a `ModelDetail` row whose `id` is the new model UUID. Note: the source URL does NOT belong on this payload.
+
+   `category_id` is still a required legacy field today (backend cutover pending stories 47.4/47.5); its value no longer affects catalog organization since tags now own that role, so there is no need to resolve a specific slug — this runbook must not itself query the category tree (that surface is next in line for retirement in 47.4, and this story's job was to stop being a consumer of it). Ask the operator once for any existing category UUID, or reuse a `$CATEGORY_ID` cached from a prior session, and export it before your first create:
    ```bash
-   CATEGORY_ID=<uuid-from-step-7>
+   CATEGORY_ID="<uuid-from-operator-or-cached-prior-session>"
    MODEL_ID=$(
      curl -s -b /tmp/portal-cookies.txt -c /tmp/portal-cookies.txt \
        -X POST -H 'X-Portal-Client: web' -H 'Content-Type: application/json' \
@@ -399,14 +381,14 @@ For a Printables URL `https://www.printables.com/model/1000-prusa-mk3-led-lamp`:
    echo "$MODEL_ID"
    ```
    On 4xx, `MODEL_ID` will be `null` — re-run without the `jq -r .id` pipe to read the error body.
-9. **Attach the source URL** via `POST /api/admin/models/{model_id}/external-links` (body: `ExternalLinkCreate`; `source` uses the `ExternalSource` enum — see the host mapping table for the value to send). 409 here means a link for that source already exists on this model (one link per source per model is the unique constraint). This is what pre-flight check #4 (duplicate detection) queries on re-imports.
+8. **Attach the source URL** via `POST /api/admin/models/{model_id}/external-links` (body: `ExternalLinkCreate`; `source` uses the `ExternalSource` enum — see the host mapping table for the value to send). 409 here means a link for that source already exists on this model (one link per source per model is the unique constraint). This is what pre-flight check #3 (duplicate detection) queries on re-imports.
    ```bash
    curl -s -b /tmp/portal-cookies.txt -c /tmp/portal-cookies.txt \
      -X POST -H 'X-Portal-Client: web' -H 'Content-Type: application/json' \
      -d '{"source":"printables","external_id":"1000","url":"https://www.printables.com/model/1000-prusa-mk3-led-lamp"}' \
      "https://3d.ezop.ddns.net/api/admin/models/$MODEL_ID/external-links"
    ```
-10. **Upload each STL** via the file-upload endpoint scoped to the new model UUID; multipart `file` part + form `kind=stl`. The first STL upload auto-enqueues the render. (`$MODEL_ID` is the variable set in step 8; `/tmp/ledtray.stl` is the file fetched in step 4 — substitute your own path per upload.)
+9. **Upload each STL** via the file-upload endpoint scoped to the new model UUID; multipart `file` part + form `kind=stl`. The first STL upload auto-enqueues the render. (`$MODEL_ID` is the variable set in step 7; `/tmp/ledtray.stl` is the file fetched in step 4 — substitute your own path per upload.)
     ```bash
     curl -s -b /tmp/portal-cookies.txt -c /tmp/portal-cookies.txt \
       -X POST -H 'X-Portal-Client: web' \
@@ -415,7 +397,7 @@ For a Printables URL `https://www.printables.com/model/1000-prusa-mk3-led-lamp`:
       "https://3d.ezop.ddns.net/api/admin/models/$MODEL_ID/files"
     ```
     Curl auto-sets the `multipart/form-data` content type from `-F`; do NOT add `-H 'Content-Type: ...'` manually or it will clobber the boundary. Other valid `kind` values: `image`, `print`, `source`, `archive_3mf` (see `ModelFileKind` in OpenAPI).
-11. **Verify.** Fetch the model via the public model-detail endpoint (`GET /api/models/{model_id}`, unauthenticated). The `thumbnail_file_id` field flips from `null` to a UUID once the render completes. Wall-clock budget scales with mesh complexity: ~60 s nominal for small meshes (≤50k triangles), ~120 s typical for medium meshes (≤200k triangles), longer for large ones. Concrete poll loop (24 attempts × 5 s = 120 s budget; safe for the medium-mesh range, generous headroom for small):
+10. **Verify.** Fetch the model via the public model-detail endpoint (`GET /api/models/{model_id}`, unauthenticated). The `thumbnail_file_id` field flips from `null` to a UUID once the render completes. Wall-clock budget scales with mesh complexity: ~60 s nominal for small meshes (≤50k triangles), ~120 s typical for medium meshes (≤200k triangles), longer for large ones. Concrete poll loop (24 attempts × 5 s = 120 s budget; safe for the medium-mesh range, generous headroom for small):
     ```bash
     for i in $(seq 1 24); do
       tid=$(curl -s "https://3d.ezop.ddns.net/api/models/$MODEL_ID" | jq -r '.thumbnail_file_id // empty')
@@ -426,4 +408,4 @@ For a Printables URL `https://www.printables.com/model/1000-prusa-mk3-led-lamp`:
     ```
     If the wall clock crosses ~3 min with no thumbnail flip AND no surfaced API error, THEN the worker log on `.190` is the next stop — the render worker runs as the `worker` service in `infra/docker-compose.yml` (image `portal-render`, code at `workers/render/`). SSH into `.190` then `docker compose -f /mnt/raid/docker-compose/3d-portal/docker-compose.yml logs worker --tail 200` (or whatever path holds the live compose file). The most common causes are (a) arq pool not connected to redis, (b) the selected STL has zero triangles, (c) the worker container OOM-killed by Docker.
 
-If anything in step 6 fails, stop and ask the operator. If anything in steps 8–11 returns 4xx, read the response body — the API returns descriptive `detail` strings (e.g. `"category not found"`, `"slug already exists"`); fix the input and retry, do not blanket-retry the same payload.
+If anything in step 6 fails, stop and ask the operator. If anything in steps 7–10 returns 4xx, read the response body — the API returns descriptive `detail` strings (e.g. `"category not found"`, `"slug already exists"`); fix the input and retry, do not blanket-retry the same payload.
