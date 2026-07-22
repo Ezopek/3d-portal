@@ -2,8 +2,9 @@
 title: 'Admin tag-groups screen — duplicate detection (Story 46.3)'
 type: 'feature'
 created: '2026-07-22'
-status: 'in-review'
+status: 'done'
 baseline_revision: '907745e59b80a36b7d254edea535e09bcc7ca162'
+final_revision: 'cf9c9702db8e2906b4dce4a8e04b9a0a7106a70b'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
