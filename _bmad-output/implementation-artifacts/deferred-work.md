@@ -82,3 +82,18 @@ _(The page-overshoot dead-end originally recorded here was RESOLVED in the 44.3 
 - source_spec: `_bmad-output/implementation-artifacts/spec-46-3-duplicate-detection.md`
   summary: `findDuplicateClusters` is O(n²) tag-pair comparisons (each with a bounded-but-nonzero Levenshtein call), recomputed via `useMemo` on every `useTagGroups()` data-reference change, including background refetches that return unchanged content — no size ceiling or memo-by-content-hash guard.
   evidence: Consistent with this epic's established convention of not optimizing admin-scale, rarely-queried tag data ahead of need (see the 42.4 sprint-status note: "42.2's `list_tag_groups` still buckets all tags in Python... re-open as fresh triage only if a future hot per-group query materializes"). At the catalog's actual scale (dozens of tags, per the 41.3 starter taxonomy of 8 groups/36 tags), this is not a practical concern; revisit only if the tag catalog grows into the hundreds and a real jank report surfaces.
+
+## Deferred from: story 47.1 dev review (2026-07-22)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-47-1-i18n.md`
+  summary: `docs/design/HANDOFF-tagi-fasetowe.md:55` and `docs/operations.md:450` still reference the now-deleted `CategoryTreeSidebar` component as current/pending, left stale by this story's deletion.
+  evidence: Confirmed both live docs still name `CategoryTreeSidebar`; out of 47.1's boundary by design — story 47.3 ("Runbook + docs cutover") is the epic's designated owner for category-referencing doc updates, so folding this into 47.1 would duplicate 47.3's scope rather than fix a 47.1 gap. A third reference exists at `docs/superpowers/specs/2026-05-05-portal-ui-rewrite-design.md` (a dated historical UI-rewrite proposal, not live operational documentation); 47.3 should confirm whether that archived spec is in scope before treating this list as exhaustive.
+- source_spec: `_bmad-output/implementation-artifacts/spec-47-1-i18n.md`
+  summary: No automated check detects i18n keys with zero remaining code consumers (orphaned keys); the repo's only i18n test (`apps/web/tests/i18n.test.ts`) checks en/pl parity, not liveness — this story's cleanup (and the pre-existing `catalog.filters.tags` orphan noted but left alone) relied on manual grepping.
+  evidence: Verified `apps/web/tests/i18n.test.ts` only asserts key-set parity between locales. This is a systemic tooling gap, not specific to 47.1's change; will keep recurring across the remaining E47 cutover stories (47.3/47.4/47.5) unless addressed once, e.g. a script that diffs locale keys against a repo-wide `t("...")` grep.
+
+## Deferred from: story 47.1 repair pass (2026-07-22)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-47-1-i18n.md`
+  summary: `epic-47-context.md`'s "Determinism requirement" line states "3 consecutive identical pytest + vitest pass counts required before merging any story in this epic," worded broadly enough to appear to apply to every E47 story, but 47.1 (and presumably other non-destructive stories) closed on a single Vitest run per its own spec's Verification section.
+  evidence: The rule reads naturally as scoped to the destructive migrations (47.4/47.5, where non-determinism risk is highest), not simple dead-code/i18n chores; not clear enough to act on without re-reading the source planning artifact this was compiled from. Whoever compiles/uses epic context for 47.2+ should confirm the rule's intended scope and reword `epic-47-context.md` line 33 if it's meant to be migration-specific rather than epic-wide.
