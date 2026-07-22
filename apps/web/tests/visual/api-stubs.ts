@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 
 import type { Page, Route } from "@playwright/test";
 
+import type { TagGroupsResponse, TagListItem } from "@/lib/api-types";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
@@ -115,7 +117,62 @@ export async function stubViewerModelDetail(
   );
 }
 
-export async function stubSotList(page: Page) {
+// Default `/api/tags*` fixture for `stubSotList` — 2 flat tags. Extracted to a
+// module-level constant (E47 47.2 consolidation, NFR25-VISUAL-1) so callers
+// needing a richer fixture (more tags, real UUID ids) can override it via
+// `stubSotList`'s `opts.tags` without registering a duplicate route handler.
+// Deliberately NOT annotated `: TagListItem[]` — these fixture rows predate
+// the `group_id`/`group_position` facet fields on `TagRead` and adding them
+// here would change the JSON body served to the 18 existing zero-arg call
+// sites (byte-for-byte behavior-preserving requirement, spec-47-2).
+const DEFAULT_TAGS = [
+  { id: "tag-1", slug: "dragon", name_en: "Dragon", name_pl: "Smok" },
+  {
+    id: "tag-2",
+    slug: "articulated",
+    name_en: "Articulated",
+    name_pl: null,
+  },
+];
+
+// Default `/api/tag-groups*` fixture for `stubSotList` — 1 group ("theme"),
+// empty groupless. Extracted alongside `DEFAULT_TAGS` for the same reason;
+// see its comment above (also deliberately unannotated for the same reason).
+const DEFAULT_TAG_GROUPS = {
+  groups: [
+    {
+      id: "33333333-3333-3333-3333-333333333333",
+      slug: "theme",
+      name_en: "Theme",
+      name_pl: "Motyw",
+      position: 0,
+      tags: [
+        {
+          id: "tag-1",
+          slug: "dragon",
+          name_en: "Dragon",
+          name_pl: "Smok",
+          model_count: 1,
+        },
+        {
+          id: "tag-2",
+          slug: "articulated",
+          name_en: "Articulated",
+          name_pl: null,
+          model_count: 0,
+        },
+      ],
+    },
+  ],
+  groupless: [],
+};
+
+export async function stubSotList(
+  page: Page,
+  opts: { tags?: TagListItem[]; tagGroups?: TagGroupsResponse } = {},
+) {
+  const tags = opts.tags ?? DEFAULT_TAGS;
+  const tagGroups = opts.tagGroups ?? DEFAULT_TAG_GROUPS;
   await page.route("**/api/categories", (route: Route) =>
     route.fulfill({
       status: 200,
@@ -159,15 +216,7 @@ export async function stubSotList(page: Page) {
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify([
-        { id: "tag-1", slug: "dragon", name_en: "Dragon", name_pl: "Smok" },
-        {
-          id: "tag-2",
-          slug: "articulated",
-          name_en: "Articulated",
-          name_pl: null,
-        },
-      ]),
+      body: JSON.stringify(tags),
     }),
   );
 
@@ -178,34 +227,7 @@ export async function stubSotList(page: Page) {
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({
-        groups: [
-          {
-            id: "33333333-3333-3333-3333-333333333333",
-            slug: "theme",
-            name_en: "Theme",
-            name_pl: "Motyw",
-            position: 0,
-            tags: [
-              {
-                id: "tag-1",
-                slug: "dragon",
-                name_en: "Dragon",
-                name_pl: "Smok",
-                model_count: 1,
-              },
-              {
-                id: "tag-2",
-                slug: "articulated",
-                name_en: "Articulated",
-                name_pl: null,
-                model_count: 0,
-              },
-            ],
-          },
-        ],
-        groupless: [],
-      }),
+      body: JSON.stringify(tagGroups),
     }),
   );
 
