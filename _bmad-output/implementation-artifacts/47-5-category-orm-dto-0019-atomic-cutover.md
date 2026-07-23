@@ -5,7 +5,7 @@ baseline_commit: b75701a5a0b6ec2ba90f0b057853d78bcc0d87ef
 # Story 47.5 — Category API-surface + ORM + DTO + `0019` atomic cutover (absorbs 47.4)
 
 - **Epic:** E47 — i18n + theming + visual regression + runbook/docs cutover + terminal category retirement (Initiative 25 — Facet Tag Taxonomy + Category Retirement).
-- **Status:** `ready-for-dev` — spec authored (Create 2026-07-22), then independently validated + amended the same day by a fresh-context native `bmad-create-story:validate` (VS) pass (see §16 Validation Record). Next canonical step: `bmad-dev-story` (DS) on branch `feat/E47.5-category-atomic-cutover`, under the destructive gate in §2.
+- **Status:** `done` — implemented (`98246d7`); native code review CR-1 REQUEST_CHANGES → focused repair (`4636d88`) → CR-2 APPROVE (Claude Opus 4.8); independent Aider APPROVE on both `98246d7` (full diff) and `4636d88` (focused repair); Laura/controller independently inspected before/after/diff contact sheets for all 28 changed/added baselines and recorded visual ACCEPT; docs review closeout (`0443432`). Deployed as release `0.1.0+0443432` (ff-only `main`==`origin/main`==deploy HEAD `0443432`); pre-deploy backup verified + live smoke passed (see §17 Post-Deploy Closeout). Epic 47 stays `review` pending the native retrospective — out of this story's scope.
 - **Story key:** `47-5-category-orm-dto-0019-atomic-cutover`. FR/NFR: FR25-SHARE-1, FR25-AGENT-1, NFR25-LEAKFENCE-1, NFR25-SCHEMA-MIGRATION-1, NFR25-DETERMINISM-1.
 - **Author:** Claude (native BMAD `bmad-create-story`, Create). No human has reviewed this spec at authoring time; no reviewer identity is claimed anywhere below.
 - **Created:** 2026-07-22, phase 4-implementation; preceded-by 47.3 (done) + the applied 2026-07-22 SCP; followed-by `bmad-create-story:validate`.
@@ -314,7 +314,8 @@ Claude Opus 4.8 (1M context) — `claude-opus-4-8[1m]` (bmad-loop dev session, 2
 - `test_2fa_schema.py::test_known_entity_types_count_includes_one_new_addition` updated 16→15 (KNOWN_ENTITY_TYPES lost "category") — a §4 omission discovered at run time.
 - Runbook d8 done with H1 + first non-blank line byte-identical (sha256 matches `infra/.runbook-fingerprint` before and after); 0 `category` hits.
 - Visual: 24 regenerated baselines (catalog-detail ×12, share-anonymous-with-signin ×4, share-member-enriched ×4, share-member-enriched-dismissed ×4) all show only the breadcrumb / share category-label removal (page height −17..20px or in-viewport upward shift); 4 new `add-model-form` baselines (all 4 projects, pl-PL). Every diff read and classified expected; no regressions. Element-scoped specs (`admin-dropdowns-tooltip-open`, `destructive-dialogs-edit-sheets-open`, `remaining-sheets-open`, `catalog-filestab-estimate`) produced no pixel change (their screenshots don't include the hero breadcrumb region).
-- Review closeout (2026-07-23): native BMAD CR-1 (fresh context, Claude Opus 4.8) on `fb8b568...98246d7` → REQUEST_CHANGES (narrow repairs; runtime cutover verified correct); repair commit `4636d88` (docs/tests/scripts only — incl. rename of the `test_2fa_schema.py` count test to `test_known_entity_types_count_reflects_taxonomy_retirement`); focused native re-review CR-2 (Claude Opus 4.8) on `98246d7...4636d88` → **APPROVE**. Independent Aider verdicts: base cutover `98246d7` APPROVE, focused repair `4636d88` APPROVE. Laura/controller independently inspected before/after/diff contact sheets for all 28 changed/added baselines and recorded visual ACCEPT in the controller session. Final evidence at exact HEAD `4636d88`: check-all 16/16, API 1747/3, web 785, workers 21, visual 522/30, determinism triples identical ×3 (log paths in Debug Log References). Deploy + controller closeout pending — sprint-status intentionally not flipped here.
+- Review closeout (2026-07-23): native BMAD CR-1 (fresh context, Claude Opus 4.8) on `fb8b568...98246d7` → REQUEST_CHANGES (narrow repairs; runtime cutover verified correct); repair commit `4636d88` (docs/tests/scripts only — incl. rename of the `test_2fa_schema.py` count test to `test_known_entity_types_count_reflects_taxonomy_retirement`); focused native re-review CR-2 (Claude Opus 4.8) on `98246d7...4636d88` → **APPROVE**. Independent Aider verdicts: base cutover `98246d7` APPROVE, focused repair `4636d88` APPROVE. Laura/controller independently inspected before/after/diff contact sheets for all 28 changed/added baselines and recorded visual ACCEPT in the controller session. Final evidence at exact HEAD `4636d88`: check-all 16/16, API 1747/3, web 785, workers 21, visual 522/30, determinism triples identical ×3 (log paths in Debug Log References). Docs review closeout `0443432`; ff-only `main`/`origin/main`/deploy HEAD converged on `0443432`.
+- **Post-deploy closeout (2026-07-23, native BMAD docs/artifacts pass — see §17 for the full evidence bundle):** production deploy of `0.1.0+0443432` completed under the destructive gate (backup verified, migration `0019_drop_category` applied, live smoke green). Story flipped `done`; `epic-47` flipped to `review` pending the native Epic 47 retrospective (next canonical step, not run in this pass).
 
 ### File List
 
@@ -330,3 +331,33 @@ Docs: `docs/agents-add-model-runbook.md`.
 - Method: planning-side verification against the 2026-07-22 SCP (+APPLY record), `epics.md` §E47, `architecture.md` Decisions AU/AV/AW + all three dated Updates, `epic-47-context.md`, the superseded 47.4 spec, `sprint-status.yaml`, AGENTS.md, `project-context.md`; code-side verification of **every §4 file:line claim** via three parallel full-repo traces (FE, BE, migrations/infra) @ `b75701a`, each including an independent completeness sweep for missed category consumers.
 - Result: Create's Code Map and §5 discovered-dependency corrections **confirmed** (trivial ±1-line drifts only). Destructive GO provenance confirmed **exact** (`GO E47 ATOMIC CUTOVER`, SCP APPLY record, 2026-07-22); checkpoint-backup evidence log verified on disk (sha256 match; note: the log is a key=value summary, not a raw transcript — the mandatory fresh pre-deploy backup in §12 is where live counts are re-proven). No fabricated reviewer signatures found anywhere in the spec.
 - Amendments applied this pass (all spec-text only; no code/tests/migrations/DB/backup/commit actions): §4 A7 (11 FE vitest fixture files), d3 (+`admin/router.py:4`), d9 (+`test_admin_profile_offers.py`, `test_sot_models_list.py` reclassified), d10 (reclass), **d11 rewritten** (+`test_migration_0009/0012/0014` — raising `downgrade()` breaks all head-downward traversals), d8 fingerprint mechanics precision, §4(c) bootstrap range `:76-92` + verified replacement target, §5.9-16 VS corrections, §6 rows (extra-field policy verified: create=ignore / patch=forbid; parity + gate rows honest), §8 Updated list, §10 `stubSotDetail` list corrected, §11 exception (+`test_slicer_estimate.py:757`), §12 i18n parity diff command. Status: `ready-for-validation` → `ready-for-dev`.
+
+## 17. Post-Deploy Closeout (2026-07-23)
+
+Native BMAD docs/artifacts closeout pass, run after code-review completion (`4636d88` CR-2 APPROVE, docs review closeout `0443432`) and after the operator-authorized production deploy. This section records the destructive-gate execution and live verification only; it authors no code/test/migration change and re-runs no implementation or review.
+
+**Destructive-gate authorization (exact phrases, controller session):**
+- `GO E47 ATOMIC CUTOVER` — original destructive-go (§2 item 1, recorded 2026-07-22, unchanged).
+- `GO FINAL BACKUP AND DEPLOY E47.5` — terminal gate confirmation to proceed with the fresh pre-deploy backup + deploy.
+- `APPROVED IN TERMINAL UI` — final operator approval recorded in the controller terminal.
+
+**Fresh pre-deploy backup (under `/tmp/3d-portal-deploy.lock`, §12 mandatory backup — distinct from the 2026-07-22 pre-GO checkpoint):**
+- File: `/mnt/raid/3d-portal-state/backups/portal-pre-e47-5-20260723T190246Z.db`; sha256 `cb5e794a3929fe3df0fd1a1f911c965e134642c9b18f63caca4c04d7fd468140`; 4,317,184 bytes.
+- Source + backup + scratch restore all confirmed at Alembic `0018_facet_tags`; `PRAGMA integrity_check` ok; `PRAGMA foreign_key_check` 0 errors; scratch restore verified.
+- Live counts at backup time: 43 category rows, 130 models, 130 category assignments — matches the §2 Block-If bound (43/130); no drift since GO.
+- Evidence log: `.hermes/run-logs/e47-final-predeploy-backup-20260723T190245Z.log`.
+
+**Deploy:**
+- Release `0.1.0+0443432`; `infra/scripts/deploy.sh` exit code 0.
+- Migration head after deploy: `0019_drop_category`.
+- Post-deploy DB checks: integrity ok; FK errors 0; `category` table absent (0 rows queryable — table dropped); `model.category_id` column absent; `ix_model_category_id` index absent; `model` row count preserved at 130.
+
+**Public live smoke:**
+- `GET /api/health` → 200 `{"status":"ok","version":"0.1.0"}`.
+- `GET /api/categories` → 404 (route retired, confirms §4(c)).
+- `GET /api/tags` → 401 `missing_access` (confirms default-deny auth boundary intact).
+- All six compose services running; slicer worker smoke OK.
+- GlitchTip symbolication: top frame `main.tsx` resolves correctly for release `0.1.0+0443432`.
+- Runbook fingerprint OK: `49280ada79ed49151c682e8e61e5e446c7af13909553f89b24c2a2622e454573` (confirms §4 d8's byte-for-byte H1/first-non-blank-line constraint held through deploy).
+
+**Disposition:** Story status → `done`. `epic-47` → `review`, pending the native Epic 47 retrospective (next canonical step — not run in this pass). No code, test, migration, or further deploy action taken in this closeout pass.
