@@ -298,8 +298,11 @@ Claude Opus 4.8 (1M context) — `claude-opus-4-8[1m]` (bmad-loop dev session, 2
 
 ### Debug Log References
 
-- `.hermes/run-logs/check-all-20260723_*-e47-5.log` — full check-all gate run (all stages).
-- `.hermes/run-logs/determinism-e47-5.log` — 3× pytest (apps/api), 3× vitest (apps/web), 3× pytest (workers/render), identical pass counts.
+- `.hermes/run-logs/check-all-20260723_*-e47-5.log` — full check-all gate run (all stages). *(Superseded: CR-1 found these logs validated a divergent uncommitted attempt-2 tree — see final evidence below.)*
+- `.hermes/run-logs/determinism-e47-5.log` — 3× pytest (apps/api), 3× vitest (apps/web), 3× pytest (workers/render), identical pass counts. *(Superseded, same provenance finding.)*
+- **Final evidence (exact HEAD `4636d88a6c20a48411c650d38f32cfdfc5c83fa9`, post review-repair):**
+  - `.hermes/run-logs/check-all-e47-5-final2-4636d88-20260723_071245.log` — check-all 16/16 all green: apps/api pytest **1747 passed/3 skipped** (up from 1745 by the 2 CR-1 retired-route negative tests), apps/web vitest **785**, workers/render pytest **21**, visual **522 passed/30 skipped**.
+  - `.hermes/run-logs/determinism-e47-5-final-4636d88-20260723_072322.log` — opens `HEAD=4636d88a6c20a48411c650d38f32cfdfc5c83fa9`; identical triples: apps/api 1747/3 ×3, apps/web 785 ×3, workers/render 21 ×3; ends `DETERMINISM_DONE`.
 
 ### Completion Notes List
 
@@ -311,6 +314,7 @@ Claude Opus 4.8 (1M context) — `claude-opus-4-8[1m]` (bmad-loop dev session, 2
 - `test_2fa_schema.py::test_known_entity_types_count_includes_one_new_addition` updated 16→15 (KNOWN_ENTITY_TYPES lost "category") — a §4 omission discovered at run time.
 - Runbook d8 done with H1 + first non-blank line byte-identical (sha256 matches `infra/.runbook-fingerprint` before and after); 0 `category` hits.
 - Visual: 24 regenerated baselines (catalog-detail ×12, share-anonymous-with-signin ×4, share-member-enriched ×4, share-member-enriched-dismissed ×4) all show only the breadcrumb / share category-label removal (page height −17..20px or in-viewport upward shift); 4 new `add-model-form` baselines (all 4 projects, pl-PL). Every diff read and classified expected; no regressions. Element-scoped specs (`admin-dropdowns-tooltip-open`, `destructive-dialogs-edit-sheets-open`, `remaining-sheets-open`, `catalog-filestab-estimate`) produced no pixel change (their screenshots don't include the hero breadcrumb region).
+- Review closeout (2026-07-23): native BMAD CR-1 (fresh context, Claude Opus 4.8) on `fb8b568...98246d7` → REQUEST_CHANGES (narrow repairs; runtime cutover verified correct); repair commit `4636d88` (docs/tests/scripts only — incl. rename of the `test_2fa_schema.py` count test to `test_known_entity_types_count_reflects_taxonomy_retirement`); focused native re-review CR-2 (Claude Opus 4.8) on `98246d7...4636d88` → **APPROVE**. Independent Aider verdicts: base cutover `98246d7` APPROVE, focused repair `4636d88` APPROVE. Laura/controller independently inspected before/after/diff contact sheets for all 28 changed/added baselines and recorded visual ACCEPT in the controller session. Final evidence at exact HEAD `4636d88`: check-all 16/16, API 1747/3, web 785, workers 21, visual 522/30, determinism triples identical ×3 (log paths in Debug Log References). Deploy + controller closeout pending — sprint-status intentionally not flipped here.
 
 ### File List
 
