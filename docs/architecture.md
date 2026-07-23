@@ -23,7 +23,7 @@ This document condenses the system architecture. For the full design specificati
 
 **Web container** — nginx serving the built React SPA (`dist/`), static assets only. Exposes `127.0.0.1:8080` on `.190` and is reverse-proxied by nginx-180.
 
-**API container** — FastAPI on uvicorn. Owns the SoT entity tables (model, model_file, tag, category, etc.), serves binary content from `portal-content` with ETag, manages share tokens, JWT login, and audit log. Mounts portal-content (rw) and portal-state (rw). Talks to Redis.
+**API container** — FastAPI on uvicorn. Owns the SoT entity tables (model, model_file, tag, tag_group, etc.), serves binary content from `portal-content` with ETag, manages share tokens, JWT login, and audit log. Mounts portal-content (rw) and portal-state (rw). Talks to Redis.
 
 **Worker container** — arq worker. Pre-renders thumbnails (4 views per model) on demand using `trimesh` + matplotlib, writing the resulting PNGs back as `ModelFile` rows under `portal-content`. Mounts portal-content (rw) and portal-state (rw). Talks to Redis.
 
@@ -31,7 +31,7 @@ This document condenses the system architecture. For the full design specificati
 
 ## Data flow
 
-The SQLite database under `/data/state/portal.db` is the catalog source of truth. Models, files, tags, categories, notes, prints, and external links are created and edited via the admin API (`/api/admin/*`). Binary content (STL, photos, renders) lives under `portal-content` and is referenced by `model_file.storage_path`. Reverse-sync to WSL uses an `agent`-role JWT (see `scripts/hydrate_local_tree.py`).
+The SQLite database under `/data/state/portal.db` is the catalog source of truth. Models, files, tags (facet-grouped), notes, prints, and external links are created and edited via the admin API (`/api/admin/*`). Binary content (STL, photos, renders) lives under `portal-content` and is referenced by `model_file.storage_path`. Reverse-sync to WSL uses an `agent`-role JWT (see `scripts/hydrate_local_tree.py`).
 
 ## Future-proofing slots
 

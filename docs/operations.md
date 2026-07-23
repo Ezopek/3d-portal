@@ -109,7 +109,7 @@ The detection + command-generation logic is unit-tested (no Docker/SSH) in `infr
 
 ## Catalog (post-SoT)
 
-The portal's source of truth is now the `portal.db` SQLite database on `.190` plus the `portal-content` volume. Models, files, tags, categories, notes, prints, and external links are managed through the admin API (`/api/admin/*`) and reverse-synced from WSL via the agent token + `scripts/hydrate_local_tree.py` (see SoT migration section below). The legacy one-way Windows → `.190` rsync is no longer used.
+The portal's source of truth is now the `portal.db` SQLite database on `.190` plus the `portal-content` volume. Models, files, tags (facet-grouped since E41–E46), notes, prints, and external links are managed through the admin API (`/api/admin/*`) and reverse-synced from WSL via the agent token + `scripts/hydrate_local_tree.py` (see SoT migration section below). The legacy one-way Windows → `.190` rsync is no longer used.
 
 ## First-time setup
 
@@ -422,7 +422,9 @@ curl -s -b /tmp/gt-cookies.txt -H "X-CSRFTOKEN: $CSRF" -H "Referer: https://glit
 **As of 2026-05-05**, the SoT migration (Slices 2A-2D) is done AND the
 UI rewrite (Slices 3A-3F) is done. The portal database on `.190` now
 holds the canonical catalog: 89 models, 821 binary files (2.8 GB across
-`/mnt/raid/3d-portal-content/`), 243 deduplicated tags, 43 categories,
+`/mnt/raid/3d-portal-content/`), 243 deduplicated tags, 43 legacy
+categories (single-category taxonomy since retired by the Story 47.5
+cutover — facet tags are the sole classification system),
 62 external links, 31 notes, 26 print records. The frontend at
 `https://3d.ezop.ddns.net/` consumes only `/api/*` (the SoT surface).
 
@@ -455,10 +457,12 @@ point — from git history).
 
 ### Active surfaces
 
-- **Public read** (`/api/categories`, `/api/tags`, `/api/models`,
+- **Public read** (`/api/tags`, `/api/models`,
   `/api/models/{id}`, `/api/models/{id}/files`,
   `/api/models/{id}/files/{id}/content`) — serves real DB-backed data.
-- **Admin write** (`/api/admin/*` for models, files, tags, categories,
+  (`/api/categories` was part of this surface until the Story 47.5
+  category-taxonomy cutover retired it.)
+- **Admin write** (`/api/admin/*` for models, files, tags,
   notes, prints, external_links) — JWT-protected; admin role plus the
   newly-enabled `agent` role can both call most endpoints.
   Hard-delete (`?hard=true`) is admin-only.
@@ -602,9 +606,14 @@ the FastAPI app and receive 401 from `current_user` Depends — verified
 end-to-end on 2026-05-21:
 
 ```bash
-curl -sS -o /dev/null -w "%{http_code}\n" https://3d.ezop.ddns.net/api/categories
+curl -sS -o /dev/null -w "%{http_code}\n" https://3d.ezop.ddns.net/api/tags
 # → 401  (was 403 from temporary allowlist during Initiative 6 build window)
 ```
+
+(The 2026-05-21 verification originally probed `/api/categories`; that route
+was retired by the Story 47.5 category cutover, so the example now uses
+`/api/tags` — an equivalent auth-protected SoT read with the same 401
+default-deny behavior.)
 
 ### Default-deny posture on `/api/*` (Initiative 6 Decision M)
 

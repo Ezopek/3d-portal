@@ -398,7 +398,11 @@ scenario_4_admin_login() {
 # the app-level default-deny is the load-bearing gate, not the temporary
 # perimeter restoration).
 scenario_5_external_anonymous_probe() {
-  local ts code endpoint="/api/categories"
+  # Probe endpoint re-pointed by Story 47.5: /api/categories was retired in
+  # the category-taxonomy cutover (would 404, false-failing this gate);
+  # /api/tags is a live auth-protected SoT read that preserves the exact
+  # anonymous-external default-deny 401 property this scenario verifies.
+  local ts code endpoint="/api/tags"
   ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
   if [[ -z "${CUTOVER_EXTERNAL_PROBE_SSH:-}" ]]; then

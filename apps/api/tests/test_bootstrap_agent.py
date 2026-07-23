@@ -1,5 +1,7 @@
 """Tests for the agent service-account bootstrap script."""
 
+from uuid import uuid4
+
 from sqlmodel import Session, select
 
 from app.core.auth.password import verify_password
@@ -86,9 +88,12 @@ def test_bootstrap_agent_can_call_admin_endpoints(client):
         json={"email": "agent-call@portal.example.com", "password": password},
     )
 
-    # Use a unique slug so this test stays independent
+    # Per-run unique slug: the created row persists in the session-scoped DB,
+    # so a fixed slug would collide on 409 for any later test (or re-run)
+    # creating the same model.
+    slug = f"agent-bootstrap-smoke-{uuid4().hex[:8]}"
     r2 = client.post(
         "/api/admin/models",
-        json={"name_en": "Agent bootstrap smoke", "slug": "agent-bootstrap-smoke"},
+        json={"name_en": "Agent bootstrap smoke", "slug": slug},
     )
     assert r2.status_code == 201, r2.text

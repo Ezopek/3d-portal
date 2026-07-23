@@ -670,7 +670,9 @@ run_scenario_3() {
 # member" to "auth-boundary probe on ALL /api/* routes". The pre-Init-6 scope
 # (admin-only) missed the read-side /api/sot/* and /api/* surfaces and was
 # the proximate root cause of supplemental finding High-002 (post-cutover
-# anonymous external read of /api/categories).
+# anonymous external read of /api/categories — a route that was live at the
+# time of that finding; the category taxonomy and its routes were later
+# retired by Story 47.5, so this is historical context, not current surface).
 #
 # The new Scenario 4 enumerates the live FastAPI route table via
 # /api/openapi.json, then probes every route as:

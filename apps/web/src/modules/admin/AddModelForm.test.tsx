@@ -61,6 +61,10 @@ describe("AddModelForm (post-cutover, Story 47.5)", () => {
     });
     expect(screen.queryByText(LEGACY_LABEL)).toBeNull();
     expect(screen.queryByText(`— Select ${LEGACY_LABEL.toLowerCase()} —`)).toBeNull();
+    // Structural guard (review repair): exactly the two surviving selects —
+    // source + status. A resurrected taxonomy selector rendering raw i18n
+    // keys would evade the text negatives above but not this count.
+    expect(screen.getAllByRole("combobox")).toHaveLength(2);
   });
 
   it("submits with only a name and POSTs a body without the legacy FK field", async () => {

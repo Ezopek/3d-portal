@@ -437,7 +437,7 @@ def test_known_entity_types_includes_recovery_code() -> None:
     assert row.actor_user_id == actor_id
 
 
-def test_known_entity_types_count_includes_one_new_addition() -> None:
+def test_known_entity_types_count_reflects_taxonomy_retirement() -> None:
     # Story 6.1 brought the count to 13 (added invite_token); Story 7.1 adds
     # recovery_code bringing it to 14; Story 33.2 adds slicer_profile for admin
     # profile-import audit, bringing it to 15; Story 42.4 adds tag_group for the

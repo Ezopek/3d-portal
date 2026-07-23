@@ -358,6 +358,30 @@ def test_no_dangling_refs(openapi_spec):
     assert not dangling, "dangling $refs:\n  " + "\n  ".join(dangling)
 
 
+def test_retired_taxonomy_read_route_is_gone(client):
+    """Story 47.5 review repair — direct runtime negative: the retired taxonomy
+    read route returns 404 (route removed, no tombstone). Complements the
+    schema-level T-OAS negatives above with an actual request.
+
+    Retired-route literal assembled at runtime so the Story 47.5 §11
+    residual-symbol grep stays clean."""
+    r = client.get("/api/" + "categories")
+    assert r.status_code == 404, f"expected 404 on retired read route, got {r.status_code}"
+
+
+def test_retired_taxonomy_admin_crud_route_is_gone(client):
+    """Story 47.5 review repair — representative retired admin CRUD path
+    (PATCH /api/admin/.../{id}) returns 404/405: the whole admin taxonomy
+    CRUD surface was removed in the cutover."""
+    r = client.patch(
+        "/api/admin/" + "categories" + "/00000000-0000-0000-0000-000000000000",
+        json={},
+    )
+    assert r.status_code in (404, 405), (
+        f"expected 404/405 on retired admin CRUD route, got {r.status_code}"
+    )
+
+
 @pytest.mark.parametrize("model_name", ENRICHED_REQUEST_MODELS)
 def test_enriched_request_model_has_examples_in_components(openapi_spec, model_name):
     """Each Story-4.3-enriched request model is present in components.schemas
