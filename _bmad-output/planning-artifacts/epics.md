@@ -4372,4 +4372,232 @@ The catalog was built on a single, hard, mandatory category per model (`Model.ca
 #### Standalone stories — none for Init 25
 
 (All Init 25 work is inside Epics E41–E47. Sprint Planning finalises story IDs/splits and seeds `sprint-status.yaml`; the §8 starter-taxonomy seed vs. migration-embedded seed is an open item resolved at 41.3 story-creation.)
+## Initiative 26 — Catalog Discovery: Independent Browse Categories + Tag-Aware Search + Mobile Gallery Maturity
 
+**Status:** 🚧 planning (started 2026-07-26; controller review iteration applied 2026-07-26). Source SCP: `sprint-change-proposal-2026-07-26-init26-catalog-discovery.md` — direction **operator-approved** via the input packet `/tmp/3d-portal-init26-correct-course-input.md`, and the SCP text **ratified 2026-07-26 by Laura (controller)** after reading the artifacts under the operator-approved packet and the standing `działaj` delegation. **No Ezop sign-off is recorded or implied.** Seven epics **E48–E54**, of which **E48 is already shipped**. Architecture: `architecture.md` § Initiative 26 (Decisions AX data model + migration / AY API contract / AZ migration posture / BA lightbox adoption). **Change class: MAJOR** — new first-class browse entity, additive migration, a search-semantics change on a shipped endpoint, and a catalog navigation cutover. **No destructive DDL and no endpoint retirement anywhere in this initiative.**
+
+**Relationship to Initiative 25 (binding):** Initiative 25 (E41–E47, closed 2026-07-23) retired the **mandatory single category per model** and shipped facet tags. **Nothing here reverses that.** `Model.category_id`, the `category` table contract, the recursive `CategoryTree`, and every deleted `Category*` identifier stay retired; `0019_drop_category` is never reverted. Initiative 26's category is a **new, independent, many-to-many, zero-valid browse entity** using **distinct** identifiers (`browse_category` / `model_browse_category` / `BrowseCategory*` — ratified by the controller 2026-07-26), so no historical statement in this repo becomes ambiguous.
+
+> **Story breakdown is epic-level sketch.** Full ACs, task lists, pre-enumeration saves, test-target counts and review routing are produced per story by `bmad-create-story` at dev-entry. Story keys are seeded in `sprint-status.yaml` at `backlog`; `bmad-sprint-planning` owns any resequencing. **Implementation authorization is truthful and unchanged:** planning may proceed now; code on any story starts only after `bmad-create-story` + `bmad-create-story:validate` and the controller confirming that specific ready story under the user's standing initiative authorization.
+>
+> **`VERIFY-AT-CREATE-STORY` markers below are mandatory.** Per the standing epic:47 PROCESS action item (the stale-dependency-precondition drift class recurred three times across E42, E43/E44 and E47), no sketch here asserts "consumer X is already gone" or "Y is already migrated" as settled fact. Where a story depends on shipped-code state, the sketch names the file and requires a **fresh repo-wide trace at story-creation time**.
+>
+> **Every story must be independently mergeable under this repo's mandatory gates.** A story's branch must be able to pass `infra/scripts/check-all.sh` 16/16 on its own. Two consequences are load-bearing in this decomposition: (a) ORM entities and their Alembic migration are **one atomic story** (the `test_orm_migration_parity.py` `compare_metadata` gate fails on either half alone); (b) **every UI story owns its own i18n keys, component-level a11y assertions, and targeted unit/visual coverage** — E54 is a final cross-surface audit, never the first place proof appears.
+
+### Overview
+
+Facet tags are correct for **refinement** and stay exactly as shipped. Hands-on use showed the same taxonomy was also carrying **navigation**, which it serves badly; that free-text search reads only `name_en`/`name_pl`/`slug` and so cannot reach the tag vocabulary the catalog already owns; and that the fullscreen image viewer — now correctly contained on mobile after Story 48.1 — still cannot zoom or pan. Initiative 26 adds a browse layer, tag-aware search with inline structured suggestions, a browse-vs-filter IA split, and a mature lightbox.
+
+Sequencing inverts Initiative 25's shape deliberately: everything backend is **additive and reversible**, so there is no compatibility bridge to maintain — the whole initiative is one. Data and API (E49) land first, the frontend data/state layer (E50) coexists with today's UI, and only E51 changes what the user sees first.
+
+### Requirements Inventory
+
+**FR ↔ Epic / Story matrix:**
+
+| FR | Epic | Story | Notes |
+|---|---|---|---|
+| FR26-CAT-1 | E49 | 49.1, 49.2, 49.5 | `BrowseCategory` entity + `0020` (atomic) + starter seed + admin CRUD. Not a `TagGroup`, never generated from tags. |
+| FR26-CAT-2 | E49, E51, E52 | 49.1, 49.3, 51.4, 52.2 | M:N `ModelBrowseCategory`; zero categories valid and publicly visible; model detail renders its categories; admin `Uncategorized / needs curation`. |
+| FR26-CAT-3 | E52 | 52.2 | 1–3 per model is a **warning**, never a block; no DB maximum. |
+| FR26-CAT-4 | E49 | 49.1, 49.5 | nullable `parent_id`; product depth ceiling 2 enforced in the service layer; flat MVP UI. |
+| FR26-SEARCH-1 | E49 | 49.4 | `q` also matches `Tag.name_pl`/`Tag.name_en` via a membership disjunct; no row duplication, no `total` inflation. |
+| FR26-SEARCH-2 | E50 | 50.3 | Inline suggestions on the **existing** `GET /api/tags?q=`; distinct query vs `+tag` semantics; ≤6–8 items; dedupe by canonical `tag_id`; group labels resolved from the already-loaded tag-group map. |
+| FR26-BROWSE-1 | E51, E52 | 51.1, 51.3, 52.1 | Categories in navigation; facets into `Filters (n)`; ≤2–4 promoted groups. |
+| FR26-BROWSE-2 | E49, E50, E51 | 49.3, 50.2, 51.2, 51.4 | `?category=<slug>` scope; `/categories/{slug}`; scope chip excluded from the Filters count; "Search entire catalog". |
+| FR26-BROWSE-3 | E49 | 49.3 | OR-within/AND-between + `tag_match` unchanged; category scope **never** folded into `tag_match`. |
+| FR26-ADMIN-1 | E49, E52 | 49.5, 52.2 | Admin CRUD/reorder/replace-set assignment; `409`-unless-`detach=true` delete; audit per write. |
+| FR26-ADMIN-2 | E52 | 52.3 | Curation QA surfaces; advisory only; no inference from tags. |
+| FR26-GOV-1 | E49, E54 | 49.2, 54.3 | Inclusion criterion stored with the entity; governance doc published. |
+| FR26-VIEW-1 | E53 | 53.1, 53.2, 53.3 | Mature lightbox with gestures **and** single-pointer alternatives; adoption not pre-decided. |
+
+**NFR ↔ Epic / Story matrix** *(corrected by the 2026-07-26 controller review — quality NFRs are owned per story at merge time; E54 is the final cross-surface audit + remediation, not the first proof)*:
+
+| NFR | Owned per story (merge gate) | Final audit | Notes |
+|---|---|---|---|
+| NFR26-I18N-1 | **50.3, 51.1–51.4, 52.1–52.3, 53.2** — each UI story ships its own new `en.json`+`pl.json` keys with genuine Polish, and its own key-set diff | 54.1 | 54.1 proves **cross-surface parity** and remediates residue; it is not where a story's keys first appear. |
+| NFR26-A11Y-1 | **50.3, 51.1–51.4, 52.1–52.3, 53.2, 53.3** — each UI story ships component-level a11y assertions for the surface it adds (accessible names, roles, focus order, ≥24×24 / ≥44×44 targets, no gesture-only or drag-only path) | 54.2 | 54.2 is a cross-surface WCAG 2.2 SC 2.5.1/2.5.7/2.5.8 audit + remediation. |
+| NFR26-DARKMODE-1 | **all UI stories** — token-only, light + dark, no color literals, enforced at each story's own gate | 54.2 | Existing ESLint/Stylelint color-literal ban applies per story. |
+| NFR26-VISUAL-1 | **all UI stories** — each ships the targeted pl-PL visual/unit coverage its own surface needs, every screenshot preceded by an explicit `toBeVisible()` | 54.2 | 54.2 owns cross-surface baseline consistency and the `/api/*` route-mock consolidation pass. |
+| NFR26-DETERMINISM-1 | all stories | — | 3× consecutive identical pytest + vitest pass counts before merge. |
+| NFR26-SCHEMA-ADDITIVE-1 | 49.1 | — | `0020` additive **and reversible**, shipped atomically with the ORM; single Alembic head. |
+| NFR26-PERF-1 | 49.4 | — | Query count on the `q` path constant across page size and across the number of matching tags/models (no N+1), proven by equal-count fixture-size comparison, plus distinct-`total` correctness. |
+
+### Epic List
+
+| Epic | Name | Status | Stories |
+|---|---|---|---|
+| E48 | Mobile fullscreen containment quickfix | ✅ **done** (shipped 2026-07-26, `da87e71`) | 48.1 containment + reachable close |
+| E49 | Browse-category data + additive API foundation (backend) | 🚧 backlog | 49.1 entities + `0020` (atomic), 49.2 starter seed, 49.3 read API + model scope, 49.4 tag-aware search, 49.5 admin governance |
+| E50 | Frontend data layer, URL state, search suggestions (additive) | 🚧 backlog | 50.1 types + hooks, 50.2 URL state, 50.3 inline suggestions |
+| E51 | Browse IA — categories as navigation | 🚧 backlog | 51.1 desktop nav, 51.2 `/categories/$slug` + scope chip, 51.3 mobile Browse, 51.4 model-detail category display |
+| E52 | Filters surface + admin curation and governance | 🚧 backlog | 52.1 Filters drawer, 52.2 admin category screen, 52.3 curation QA |
+| E53 | Mature mobile lightbox (separate from the quickfix) | 🚧 backlog | 53.1 adoption spike, 53.2 implementation, 53.3 test contract |
+| E54 | Cross-surface i18n/a11y/visual audit + rollout and docs | 🚧 backlog | 54.1 i18n parity audit, 54.2 a11y + visual audit, 54.3 rollout/docs/governance |
+
+#### Epic E48 — Mobile fullscreen containment quickfix — ✅ DONE (shipped)
+
+**Goal (as delivered):** stop the mobile fullscreen image viewer rendering past the right edge of the visual viewport with its close control unreachable, without adding gestures or a lightbox dependency.
+
+**Reconciled retroactively 2026-07-26 by `bmad-correct-course`.** This epic shipped **before** Initiative 26 was recorded in any planning artifact — `epic-47-retrospective` states plainly that "No next epic (Epic 48 / Initiative 26) is committed in any planning artifact". It was executed as a direct spec → dev → review cycle and did **not** pass through `bmad-sprint-planning` or `bmad-create-story`. It is recorded here so `epics.md` and `sprint-status.yaml` stop under-reporting shipped work. **The identifier `E48.1` is preserved, not renumbered** — it is already written into a merged commit's artifact, and renumbering would falsify shipped history. Initiative 26's *planned* epics therefore begin at E49.
+
+##### Story 48.1 — Mobile fullscreen containment + reachable close — **done**
+
+**Delivered:** commit `da87e71`, merged to `main`, deployed. Spec `_bmad-output/implementation-artifacts/spec-e48-1-mobile-fullscreen-containment.md` (`status: done`, `review_loop_iteration: 2`).
+
+**Measured root cause (from the spec, not restated as new analysis):** `left: 50%` resolves against the **layout** viewport while `w-[98vw]` resolves against the **visual** viewport; mobile Chrome expands the layout viewport as soon as the document overflows horizontally, displacing the dialog right by `(ICB − 100vw) / 2`. Fixed by anchoring offset and size in the same unit (`left-[1vw]` + `translate-x-0`) and moving the height budget from `vh` to `dvh`.
+
+**Gate evidence (verbatim from the spec's Verification section):** `infra/scripts/check-all.sh` **16/16 stages passed**; `npm run test` 785/785; `npm run test:visual` 536 passed / 32 expected skips / 0 failed; `npm run typecheck` and `npm run lint` clean; native BMAD re-review **APPROVE**; independent repo-aware Aider review **APPROVE**. Two mobile baselines regenerated after per-PNG inspection of a sub-pixel rasterization delta — explicitly **not** a blanket regeneration.
+
+**Honesty notes preserved:** the pre-implementation claim "all four visual baselines remain unchanged" was **corrected against the measured result** rather than quietly satisfied; the operator's `min-w-0` hypothesis was tested and **recorded as disproved**, and no inert class was added to make the fix look like the hypothesis.
+
+**Not re-opened by Initiative 26.** No E49–E54 story re-designs or re-implements 48.1. Its `Never:` boundary (no pinch/pan/swipe-to-close, no lightbox dependency, no `user-scalable=no`) governed the quickfix; **E53** adds those capabilities as new work on top, and must keep 48.1's geometry invariants and its regression suite green (Decision BA). 48.1's recorded residual risk — other shared `DialogContent` consumers such as `Viewer3DModal` — is **deferred, not adopted** into E53.
+
+#### Epic E49 — Browse-category data + additive API foundation (backend)
+
+**Goal:** stand up the new browse-category data model, its additive migration, and the additive API contract — the stable foundation every downstream frontend and admin story consumes. **Additive only:** no destructive DDL, no endpoint retirement, no change to any shipped contract's existing behaviour.
+
+**Depends on:** nothing (foundation). **Hard prerequisite for E50–E52.**
+
+> **Renumbered 2026-07-26 by the controller review.** The former 49.1 (entities) and 49.2 (migration) are merged into a single atomic story — they are **not independently mergeable** under this repo's mandatory `test_orm_migration_parity.py` gate (`compare_metadata` on a migration-upgraded scratch DB vs `SQLModel.metadata` must be an empty diff, so an ORM-only branch and a migration-only branch each fail `check-all` on their own; this is the same coupling E41's retro action item #2 and Story 47.5 already established in this codebase). The remaining, **uncommitted** E49 stories are renumbered coherently: former 49.3→**49.2**, 49.4→**49.3**, 49.5→**49.4**, 49.6→**49.5**. No shipped identifier is affected — every renumbered key was `backlog` and had never been created, validated, or implemented.
+
+##### Story 49.1 — `BrowseCategory` + `ModelBrowseCategory` entities **and** Alembic `0020_browse_categories` (atomic) (FR26-CAT-1, FR26-CAT-2, FR26-CAT-4, NFR26-SCHEMA-ADDITIVE-1)
+
+**Sketch (ORM half):** In `apps/api/app/core/db/models/_entities.py` add `BrowseCategory` (`browse_category`: `id` PK, `slug` unique+index, `name_en`, `name_pl?`, `description_en?`, `description_pl?`, `inclusion_criterion?`, `position`, `parent_id?` self-FK `RESTRICT` nullable, `created_at`, `updated_at`, explicit `Index("uq_browse_category_slug", …, unique=True)`) and `ModelBrowseCategory` (`model_browse_category`: composite PK `(model_id, category_id)`, `model_id` → `model.id` `CASCADE`, `category_id` → `browse_category.id` `RESTRICT`, `created_at`, plus `Index("ix_model_browse_category_cat_model", "category_id", "model_id")`). **Reuse the `ModelTag` shape verbatim** (`_entities.py:117-127`) — that composite PK + reverse index *is* the packet's "unique pair, indexed both ways". `Model` gains **no** column; `Tag`/`TagGroup`/`ModelTag` are byte-unchanged; `Tag.group_id` stays a single nullable FK (no Tag↔TagGroup M:N). Explicit index names avoid the auto-naming drift `TagGroup` documents at `_entities.py:31-36`.
+
+**Sketch (migration half — same commit):** `0020_browse_categories`, `down_revision = "0019_drop_category"`. `upgrade()` creates both tables + both indexes, **structural only, no seed content** (41.3 precedent). `downgrade()` is **implemented** (`drop_table("model_browse_category")` then `drop_table("browse_category")`) — a deliberate departure from `0018`/`0019`, which raise: nothing pre-existing is destroyed, so forward-only would remove a genuinely safe rollback for no honesty gain. **No table name is reused** — `0019` dropped `category`, `0020` creates `browse_category` — the concrete discharge of "must not recreate the old dropped category table contract accidentally".
+
+**Why atomic (load-bearing, not stylistic):** `test_orm_migration_parity.py` (shipped in Story 47.5) asserts `alembic.autogenerate.compare_metadata` produces an **empty diff** between the migration-upgraded scratch DB and `SQLModel.metadata`. An entities-only branch fails it (metadata has tables the DB lacks); a migration-only branch fails it (DB has tables metadata lacks). Neither half can pass `check-all` 16/16 alone, so neither half is independently mergeable, so they are one story. This is the same coupling that produced E41 retro action item #2 and forced Story 47.5's single-commit shape — applied here **at decomposition time** rather than discovered at spec-authoring, which is precisely what the standing epic:47 action item asks for.
+
+**Branch shape:** one story branch, one commit, passing `check-all` 16/16 on its own. `VERIFY-AT-CREATE-STORY`: re-check the `test_migration_00xx` family for the head-pinning pattern Story 47.5's `d11` applied against the raising `0019.downgrade()`; confirm a single Alembic head after `0020`. **Gate G26-MIGRATE — explicitly NOT a destructive gate.**
+
+##### Story 49.2 — Idempotent starter-category seed (FR26-CAT-1, FR26-GOV-1) — *renumbered from 49.3*
+
+**Sketch:** admin-run, idempotent seed of ~6–10 broad browse categories with bilingual labels, stable slugs, `position`, and a one-sentence `inclusion_criterion` each. **No model assignments** — models start uncategorized and are curated deliberately (the same reset posture Initiative 25 used for tags). Separate from the migration so content decisions stay out of schema (41.3 precedent). **Gated on G26-CAT-SET, which the controller has routed into the targeted `bmad-ux`/taxonomy pass** (see G26-UXGATE below): the concrete category set and its criteria are owner-authored content produced by that pass, and this story is not created until it exists.
+
+##### Story 49.3 — Category read API + model category scope (FR26-CAT-2, FR26-BROWSE-2, FR26-BROWSE-3) — *renumbered from 49.4*
+
+**Sketch:** `GET /api/categories` (flat, ordered `(position, slug)`, with `model_count` from the same shared-helper approach as `GET /api/tags?with_counts=true`, empty categories included); `GET /api/categories/{slug}` (404 on unknown); `GET /api/models?category=<slug>` — **one** scope, addressed by slug, composing with `q`/`tag_ids`/`tag_match`/`untagged`/`status`/`source`/`sort`/pagination; **unknown slug → empty page with `total = 0`, not 404**. `ModelDetail` gains `categories`; `ModelSummary` deliberately does **not**. Category scope is **never** folded into `tag_match`; the shipped 42.1 AND/OR semantics tests must pass unmodified. `VERIFY-AT-CREATE-STORY`: confirm `_PUBLIC_ROUTES` (`main.py:50-61`) still needs no edit — these reads are authenticated default-deny like every other SoT read.
+
+**Doc-honesty correction ships in THIS story, not in E54** (readiness finding M-1): the moment this story deploys, `docs/operations.md:426,463-464,613-614` and the comment at `infra/scripts/cutover-smoke.sh:397-405` — which state that `/api/categories` is retired — become false. Leaving that correction to Story 54.3 would create a forward dependency where a shipped change is knowingly untrue in live documentation for several epics. 54.3 retains the *remaining* scope (agent runbook, `docs/architecture.md`, and the category governance doc), which does not go stale at this story's deploy.
+
+##### Story 49.4 — Tag-aware free-text search (FR26-SEARCH-1, NFR26-PERF-1) — *renumbered from 49.5*
+
+**Sketch:** add one disjunct **inside** the existing `q` `or_()` (`sot/service.py:258-266`): `Model.id.in_(select(ModelTag.model_id).join(Tag).where(lower(Tag.name_pl) LIKE … OR lower(Tag.name_en) LIKE …))`. **`IN`/`EXISTS`, never a `JOIN`** — a model with three matching tags would appear three times under a join, and `total` is `count(*)` over `base.subquery()` computed before pagination (`:279-280`), so a join inflates both the count and the page. This extends the pattern `tag_ids` (`:216-254`) and `external_url` (`:267-276`) already establish. Recommendation for story-creation: do **not** also match `tag.slug` (slugs are internal; the packet names `name_pl`/`name_en` only).
+
+**Correctness tests:** name-match ∪ tag-match; a model matching on **both** appears exactly once; `total` equals the **distinct** model count; correct composition with `category`, `tag_ids`+`tag_match`, `untagged`, and soft-delete.
+
+**NFR26-PERF-1 — measurable without inventing wall-clock numbers** *(readiness finding M-3, resolved by the 2026-07-26 controller review)*. The assertion is **query count, not latency**: the number of SQL statements executed on the `q` path must be **constant** (a) across page size and (b) across the number of matching tags and matching models — i.e. no N+1 in the tag-membership branch, the count branch, or the eager tag/gallery hydration. Verified by (1) capturing executed-statement counts under two fixture sizes chosen to produce **equal result counts** on the same page, so the comparison isolates fan-out from result volume, and (2) the distinct-`total` correctness assertions above. In-repo precedent: Story 42.2's "constant-query no-N+1 proven". **No wall-clock threshold is asserted**, because none can be honestly baselined here.
+
+##### Story 49.5 — Admin category governance (FR26-ADMIN-1, FR26-CAT-3, FR26-CAT-4) — *renumbered from 49.6*
+
+**Sketch:** `POST/PATCH/DELETE /api/admin/categories` (create / rename+reorder+reparent / delete) under `current_admin`, with an audit row on every write; new audit `entity_type` `browse_category` + `browse_category.*` actions. **Delete = `409 Conflict` while assignments exist**, unless explicit `detach=true`, which detaches and deletes in one transaction and audits both the detached model ids and a count. Depth-2 ceiling and self-cycle rejection enforced in the service layer (SQLite DDL cannot express it). `VERIFY-AT-CREATE-STORY`: `tag_group_admin_router.py` + the 42.4 audit posture as the structural precedent to extend, not parallel-implement.
+
+**Replace-set assignment — `PUT /api/admin/models/{id}/categories`, and its honest concurrency posture** *(corrected by the 2026-07-26 controller review; the earlier claim that replace-set "has no lost-update ambiguity" was **wrong** and is retracted)*. Replace-set sends the whole set in one idempotent call. **Last-writer-wins DOES permit a lost update:** if admin A and admin B both load a model's categories, A adds `lamps` and saves, then B (working from the pre-A snapshot) adds `kitchen` and saves, **A's change is silently discarded** — B's payload never contained it. Replace-set does not prevent this; it only makes the discarded state a whole set rather than a partial merge. **Accepted posture for the current single-admin deployment: explicit, auditable LWW.** Every write already produces an audit row carrying the resulting set, so a lost update is *recoverable and attributable after the fact* rather than invisible — that auditability, not the absence of the race, is the justification. **Named future trigger:** the moment a second concurrent admin editor exists, or an automated/agent writer is added, this needs optimistic concurrency (a `revision` integer or an ETag/`If-Match` precondition returning `409` on stale writes). Until then it is a recorded, accepted risk, **never** a claim that the race does not exist.
+
+#### Epic E50 — Frontend data layer, URL state, and search suggestions (additive)
+
+**Goal:** land the typed data layer, the independent `category` URL-state layer, and the inline structured suggestion surface — all **additive**, coexisting with today's catalog UI. Nothing user-visible changes role in this epic.
+
+**Depends on:** E49 on `main`. **50.3 additionally gated on G26-UXGATE** (the visual distinction between a plain-query row and a `+tag` pill is exactly what the targeted UX pass must settle).
+
+##### Story 50.1 — FE types + hooks (FR26-CAT-1, FR26-CAT-2)
+
+**Sketch:** `apps/web/src/lib/api-types.ts` gains `BrowseCategoryRead` / `BrowseCategorySummary`; `ModelDetail` gains `categories`. Add `useCategories()` and `useCategoryBySlug()`; extend `useModels` with `category`. Purely additive — no existing type, hook or field is removed. A type-level `expectTypeOf` test proves the exact shapes (no `as`/`any`), following the 43.1 precedent. **No new user-visible surface ⇒ no i18n/a11y/visual obligation of its own**; unit coverage for the hooks is still owed at its own gate.
+
+##### Story 50.2 — URL state: category as an independent layer (FR26-BROWSE-2, FR26-BROWSE-3)
+
+**Sketch:** extend the shipped `validateSearch` pattern (`routes/catalog/index.tsx:49-103`) with `category` as an **independent visible layer** alongside `q`/`tag_ids`/`tag_match`/`untagged`/`status`/`source`/`sort`/`page`. Category scope must **not** be folded into `tag_match`, and must **not** contribute to the `Filters (n)` count. The 43.3 canonical-UUID hardening for `tag_ids` stays untouched. Apply [[reference_web_routetree_regen]] if route params change. Owns its own validator unit coverage at its gate.
+
+##### Story 50.3 — Inline structured suggestions (FR26-SEARCH-2, NFR26-A11Y-1, NFR26-I18N-1, NFR26-VISUAL-1)
+
+**Sketch:** suggestion surface built on the **existing** `GET /api/tags?q=&limit=` (`sot/router.py:46-75`) — **a new or duplicate suggestion endpoint is explicitly forbidden**. Typed text stays ordinary `q`; **Enter never converts text into a tag**. Matching tags render as visually distinct pills; selection stores the canonical `tag_id`, deduplicated by ID across bilingual labels, rendering the active-locale label with an optional subtle matched alias. Combined list capped at **6–8** items on mobile and desktop, **no internal scrollbar**.
+
+**Where the group label in `+ Kabel · Zastosowanie` comes from — resolved, not assumed.** The shipped `TagRead` wire carries **`group_id` + `group_position` only**; there is deliberately **no embedded group label** (Decision AW / D-SHAPE-1, `sot/schemas.py:35-47`) — the human label is delivered by `GET /api/tag-groups`, which the catalog already loads via `useTagGroups()` (Story 43.2). Resolution order for this story: **(1)** `VERIFY-AT-CREATE-STORY` that `GET /api/tags` still returns `group_id` on every item; **(2)** resolve `group_id` → group label from the **already-loaded** `useTagGroups()` map, adding no request on the suggestion path; **(3)** if the map is not loaded on the mounting surface, render the pill **without** the group suffix rather than blocking on a fetch — a groupless tag (`group_id IS NULL`) renders without a suffix by definition anyway; **(4)** only if the current contracts genuinely cannot supply the label may the story propose the **smallest additive contract extension** (e.g. an opt-in flag on the existing tags read) at story-creation — **never** a second suggestion endpoint, and never a per-suggestion N+1 lookup.
+
+**Owns at its own merge gate:** its new `en.json`+`pl.json` keys with a key-set diff; component-level a11y assertions — plain-search and `+tag` distinguishable by **accessible name** (not appearance alone), correct listbox/option roles and focus order, ≥24×24 targets; and targeted unit + pl-PL visual coverage of the suggestion surface with an explicit `toBeVisible()` before every screenshot.
+
+#### Epic E51 — Browse IA: categories as navigation
+
+**Goal:** make broad categories the primary browse entry point and move the facet taxonomy out of the navigation role. **This is the one user-visible cutover in Initiative 26**, and it lands only after E49 + E50 are on `main`.
+
+**Depends on:** E49 + E50 on `main`. **Gated on G26-UXGATE** — decided 2026-07-26: a **targeted `bmad-ux` pass runs before E51 story-creation** (see the gate table in the SCP).
+
+**Every story in this epic owns, at its own merge gate:** its new i18n keys (en+pl, with key-set diff), component-level a11y assertions for the surface it adds, and the targeted unit + pl-PL visual coverage that surface needs. E54 audits across surfaces; it is not where this proof first appears.
+
+##### Story 51.1 — Desktop browse navigation (FR26-BROWSE-1)
+
+**Sketch:** the desktop left rail renders **only** broad categories with optional counts — not tag groups, not tags. `VERIFY-AT-CREATE-STORY`: trace `FacetSidebar.tsx`'s actual mount points, props and consumers at that time; whether the component is relocated into the Filters surface or re-rendered there is a story-level decision against then-current code, **not** an assumption carried from this sketch.
+
+##### Story 51.2 — `/categories/$slug` route + scope chip (FR26-BROWSE-2)
+
+**Sketch:** new route `/categories/$slug` (requires `routeTree` regeneration, [[reference_web_routetree_regen]]); active category rendered as a **scope chip above the results** — never another checkbox, and **excluded** from the `Filters (n)` count; a search started inside a category stays scoped by default, with a one-click **"Search entire catalog"** that clears only the scope. `q`/`tag_ids`/`tag_match`/`sort` remain query params.
+
+##### Story 51.3 — Mobile Browse surface (FR26-BROWSE-1)
+
+**Sketch:** a separate mobile Browse surface/menu for categories, distinct from the desktop rail. `Ask First` if it requires changing the mobile `ModuleRail` nav — the same boundary Story 48.1 drew.
+
+##### Story 51.4 — Model-detail category display (FR26-CAT-2, FR26-BROWSE-2)
+
+**Sketch:** render a model's categories on `/catalog/$modelId`, alongside — and visually distinct from — the shipped `TagGroupsSection` tag surface; a category click navigates to that category's browse page (`/categories/{slug}`). A zero-category model renders normally with no empty-state noise for regular users (admin sees the curation affordance, mirroring the 45.2 empty-group posture). **Added 2026-07-26 by `bmad-check-implementation-readiness`** (finding C-1), which caught that the read-API story adds `ModelDetail.categories` and 50.1 types it, but no story consumed it — an API field with no reader, and a coverage hole against FR26-CAT-2's "renders normally" verifiable. `VERIFY-AT-CREATE-STORY`: `CatalogDetail`/`TagGroupsSection` structure as shipped.
+
+#### Epic E52 — Filters surface + admin curation and governance
+
+**Goal:** give facets a proper discoverable home now that they no longer own navigation, and give admins the curation surface the new browse vocabulary needs to stay honest.
+
+**Depends on:** E49 (admin API) + E51 (browse IA patterns). **Gated on G26-UXGATE** (the targeted `bmad-ux` pass covers the Filters drawer and the admin surfaces).
+
+**Every story in this epic owns, at its own merge gate:** its new i18n keys (en+pl, key-set diff), component-level a11y assertions, and targeted unit + pl-PL visual coverage.
+
+##### Story 52.1 — `Filters (n)` drawer/panel (FR26-BROWSE-1)
+
+**Sketch:** consolidate tags/facets into a `Filters (n)` drawer/panel with full tag search inside; at most **2–4** promoted groups outside it, and only when justified. The tiny `+tag` ribbon control (`FilterRibbon.tsx:99-113`) stops being the primary tag path, while the Filters surface stays discoverable. Category scope is **not** counted in `(n)`. `VERIFY-AT-CREATE-STORY`: `FilterRibbon.tsx`'s actual structure and the 50.3 suggestion surface as shipped.
+
+##### Story 52.2 — Admin category management screen (FR26-ADMIN-1, FR26-CAT-2, FR26-CAT-3)
+
+**Sketch:** admin screen for category CRUD, reorder, and per-model **replace-set** assignment; an `Uncategorized / needs curation` queue; an advisory 1–3 warning that never blocks a write. Reuse the E46 admin tag-group screen patterns rather than re-authoring them. **Concurrency honesty carries into the UI:** the surface must not imply merge semantics it does not have — under the accepted LWW posture (Story 49.5) a concurrent editor's change can be silently discarded, so the screen should re-fetch before opening the editor and, where cheap, surface the audit trail rather than suggesting conflict detection exists.
+
+##### Story 52.3 — Curation QA surfaces (FR26-ADMIN-2)
+
+**Sketch:** surface models with zero or unusually many categories; empty/tiny categories; categories behaving like narrow tags; confusing Category/Tag label overlap; and ungrouped user-facing tags (`Tag.group_id IS NULL`) as visible admin hygiene. **Advisory only** — no automatic synchronization and no membership inference from tags in MVP. Story-creation must pick a **concrete number** for "unusually many" rather than inherit the vagueness (readiness finding m-2).
+
+#### Epic E53 — Mature mobile lightbox (separate from the E48.1 quickfix)
+
+**Goal:** make a detailed or panoramic model photo actually inspectable on a phone — pinch/pan/double-tap **plus** single-pointer alternatives — without regressing anything Story 48.1 established.
+
+**Depends on:** nothing in E49–E52 (**independent parallel track**; the E49→E54 numbering is not a strict order for this epic). **Gated on G26-LIB** (Decision BA).
+
+##### Story 53.1 — Lightbox adoption spike + written recommendation (FR26-VIEW-1)
+
+**Sketch:** score **three** options — (1) Yet Another React Lightbox + Zoom, (2) PhotoSwipe 5.4.x, (3) extend the existing in-house viewer — against: measured bundle-size delta; integration cost with both mounts (`ModelGallery` on `/catalog/$modelId`, `ShareCarousel` on `/share/$token`) **without disturbing their `renderImage`/`renderThumb` auth boundaries**; accessibility (WAI-ARIA APG modal-dialog, focus trap + return focus, **visible** zoom controls per WCAG 2.2 SC 2.5.1/2.5.7); and **physical Android Chrome gesture quality**. **Adoption is not pre-decided** — the packet records a research preference, not a decision. Option 3 must be scored seriously: 48.1 proved the component is small, understood, and now covered by a geometry regression suite; a dependency has to earn its place. Output is a written recommendation, not code — so this story owns no i18n/a11y/visual surface of its own.
+
+##### Story 53.2 — Mature viewer implementation (FR26-VIEW-1, NFR26-A11Y-1, NFR26-I18N-1, NFR26-DARKMODE-1, NFR26-VISUAL-1)
+
+**Sketch:** implement the chosen approach — pinch zoom, pan, double-tap, **visible Zoom In / Zoom Out / Reset** as single-pointer alternatives, a toolbar stable **outside** the transform layer, body scroll lock with restoration, focus trap / Escape / return focus, safe-area and dynamic-viewport handling, and explicit swipe-vs-pan conflict rules. **Must preserve every 48.1 invariant** (Decision BA): single-reference-box viewport anchoring, `dvh` height budget, never `user-scalable=no`, `ui/dialog.tsx` is Ask First, and `image-viewer-containment.spec.ts` stays green. **Owns at its own gate:** its new control labels in en+pl, component-level a11y assertions (accessible names for every zoom control, focus trap and return focus, ≥44×44 close target), and targeted pl-PL visual coverage.
+
+##### Story 53.3 — Lightbox test contract (FR26-VIEW-1, NFR26-A11Y-1, NFR26-VISUAL-1)
+
+**Sketch:** Pixel 5 portrait **and** landscape; light **and** dark; panorama 4:1 and 8:1; portrait 1:4; small source; close bounds/hit area **≥44×44**; zero document overflow; rotation refit; zoom/pan clamp and reset; swipe-vs-pan; body-scroll restoration; focus trap / Escape / return focus; error and slow-load; repeated open-close. **Synthetic Playwright touch events are regression evidence only** — final gesture acceptance requires a **physical Android Chrome smoke**, recorded as operator evidence and never simulated or inferred.
+
+#### Epic E54 — Cross-surface i18n/a11y/visual audit + rollout and docs
+
+**Goal:** prove *consistency across* the surfaces E50–E53 already shipped with their own proof, remediate whatever cross-surface residue that audit finds, and leave the documentation truthful.
+
+**Depends on:** E51–E53 surfaces landed.
+
+> **Recast 2026-07-26 by the controller review.** E54.1/E54.2 were previously written as if they were where i18n keys, a11y assertions and visual baselines *first appear*. That is incompatible with every UI story having to pass `check-all` 16/16 on its own branch: a story that ships a surface with no keys and no coverage cannot merge. Per-story ownership is now mandatory (see each epic above); **E54 is the final cross-surface audit + remediation pass, not the first proof.**
+
+##### Story 54.1 — Cross-surface i18n parity audit + remediation (NFR26-I18N-1)
+
+**Sketch:** with every UI story's own keys already shipped and diffed, audit **across** surfaces: full `en.json`/`pl.json` key-set parity for the whole Initiative 26 key space; no placeholder or English-identical Polish left behind; consistent terminology for the same concept across browse nav, scope chip, suggestions, Filters drawer, admin screens and viewer controls (a category is not "Kategoria" in one surface and "Dział" in another). Remediate what the audit finds. `VERIFY-AT-CREATE-STORY`: which keys already exist — the epic:46 I18N SCOPE NOTE recorded a whole planned i18n scope that had already shipped inside earlier epics, and 47.1's real scope collapsed to two keys once traced. **A finding here is a defect in the story that shipped the surface, not new scope invented at the end.**
+
+##### Story 54.2 — Cross-surface a11y + visual audit + remediation (NFR26-A11Y-1, NFR26-VISUAL-1, NFR26-DARKMODE-1)
+
+**Sketch:** with per-story a11y assertions and targeted baselines already green, audit **across** surfaces: end-to-end WCAG 2.2 SC 2.5.1 Pointer Gestures / SC 2.5.7 Dragging Movements / SC 2.5.8 Target Size Minimum over the whole Initiative 26 journey (browse → scope → filter → detail → viewer), including keyboard-only and screen-reader traversal *between* surfaces, which no single component test covers; cross-surface visual consistency in light and dark; and the **`/api/*` route-mock consolidation** pass across the suite. Remediate what the audit finds. The per-screenshot `toBeVisible()` rule is enforced at each story's own gate (epic:45/epic:46 TEST-AUTHORING); this story verifies none slipped.
+
+##### Story 54.3 — Rollout, docs, and category governance (FR26-GOV-1)
+
+**Sketch:** update `docs/architecture.md` and the agent add-model runbook so they distinguish the **retired mandatory single-category taxonomy** from the **new independent M:N browse categories**, and add the agent-facing contract for category assignment. **Scope narrowed 2026-07-26 by `bmad-check-implementation-readiness`:** the passages that go stale *at Story 49.3's deploy* — `docs/operations.md:426,463-464,613-614` and the `infra/scripts/cutover-smoke.sh:397-405` comment (the probe itself is already re-pointed to `/api/tags`, so no gate is broken — verified 2026-07-26) — moved **into Story 49.3**, so no shipped change leaves live documentation knowingly false across several epics. Publish the category governance doc: inclusion criteria, positive and boundary examples, the Category-vs-Tag distinction rule, the periodic QA checklist, and the **recorded LWW concurrency posture** with its named upgrade trigger. **This story exists because the epic:47 CUTOVER-CHECKLIST action item requires operational probes and live documentation to be scanned, not only `apps/` source.**
+
+#### Standalone stories — none for Init 26
+
+(All Initiative 26 work sits inside E48 — shipped — and E49–E54. `bmad-sprint-planning` owns any resequencing, noting that E53 is a parallelizable independent track. Story keys are seeded at `backlog` in `sprint-status.yaml`.)
