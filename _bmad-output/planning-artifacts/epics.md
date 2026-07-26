@@ -4472,7 +4472,7 @@ Sequencing inverts Initiative 25's shape deliberately: everything backend is **a
 
 ##### Story 49.2 — Idempotent starter-category seed (FR26-CAT-1, FR26-GOV-1) — *renumbered from 49.3*
 
-**Sketch:** admin-run, idempotent seed of ~6–10 broad browse categories with bilingual labels, stable slugs, `position`, and a one-sentence `inclusion_criterion` each. **No model assignments** — models start uncategorized and are curated deliberately (the same reset posture Initiative 25 used for tags). Separate from the migration so content decisions stay out of schema (41.3 precedent). **Gated on G26-CAT-SET, which the controller has routed into the targeted `bmad-ux`/taxonomy pass** (see G26-UXGATE below): the concrete category set and its criteria are owner-authored content produced by that pass, and this story is not created until it exists.
+**Sketch:** admin-run, idempotent seed of ~6–10 broad browse categories with bilingual labels, stable slugs, `position`, and a one-sentence `inclusion_criterion` each. **No model assignments** — models start uncategorized and are curated deliberately (the same reset posture Initiative 25 used for tags). Separate from the migration so content decisions stay out of schema (41.3 precedent). **G26-CAT-SET is closed** — 2026-07-26, by commit `48db6bb`, which integrated `_bmad-output/planning-artifacts/ux-designs/ux-3d-portal-2026-07-26/`: `EXPERIENCE.md` fixes eight concrete broad bilingual categories with stable slugs, order, one-sentence inclusion criteria, positive/boundary examples and the Category-vs-Tag governance rule. Story creation is not blocked. **Still owed by this story, and not satisfiable by the UX pass:** the documented **real multi-model distribution check** against the live catalogue before seeding — the UX pass could not honestly derive that evidence without a local catalogue DB, and said so rather than inventing it.
 
 ##### Story 49.3 — Category read API + model category scope (FR26-CAT-2, FR26-BROWSE-2, FR26-BROWSE-3) — *renumbered from 49.4*
 
@@ -4498,7 +4498,7 @@ Sequencing inverts Initiative 25's shape deliberately: everything backend is **a
 
 **Goal:** land the typed data layer, the independent `category` URL-state layer, and the inline structured suggestion surface — all **additive**, coexisting with today's catalog UI. Nothing user-visible changes role in this epic.
 
-**Depends on:** E49 on `main`. **50.3 additionally gated on G26-UXGATE** (the visual distinction between a plain-query row and a `+tag` pill is exactly what the targeted UX pass must settle).
+**Depends on:** E49 on `main`. **G26-UXGATE is closed** — 2026-07-26, by commit `48db6bb`; the targeted UX artifact settles the plain-query vs `+tag` three-channel distinction, the named listbox/option semantics and the no-scroll cap contract that 50.3 builds against.
 
 ##### Story 50.1 — FE types + hooks (FR26-CAT-1, FR26-CAT-2)
 
@@ -4520,7 +4520,7 @@ Sequencing inverts Initiative 25's shape deliberately: everything backend is **a
 
 **Goal:** make broad categories the primary browse entry point and move the facet taxonomy out of the navigation role. **This is the one user-visible cutover in Initiative 26**, and it lands only after E49 + E50 are on `main`.
 
-**Depends on:** E49 + E50 on `main`. **Gated on G26-UXGATE** — decided 2026-07-26: a **targeted `bmad-ux` pass runs before E51 story-creation** (see the gate table in the SCP).
+**Depends on:** E49 + E50 on `main` — this sequencing dependency still binds. **G26-UXGATE is closed** — 2026-07-26, by commit `48db6bb`: the targeted `bmad-ux` pass required before E51 story-creation ran and is integrated at `_bmad-output/planning-artifacts/ux-designs/ux-3d-portal-2026-07-26/` (browse nav, mobile Browse, scope chip, suggestion dropdown, Filters, admin curation, viewer chrome).
 
 **Every story in this epic owns, at its own merge gate:** its new i18n keys (en+pl, with key-set diff), component-level a11y assertions for the surface it adds, and the targeted unit + pl-PL visual coverage that surface needs. E54 audits across surfaces; it is not where this proof first appears.
 
@@ -4544,7 +4544,7 @@ Sequencing inverts Initiative 25's shape deliberately: everything backend is **a
 
 **Goal:** give facets a proper discoverable home now that they no longer own navigation, and give admins the curation surface the new browse vocabulary needs to stay honest.
 
-**Depends on:** E49 (admin API) + E51 (browse IA patterns). **Gated on G26-UXGATE** (the targeted `bmad-ux` pass covers the Filters drawer and the admin surfaces).
+**Depends on:** E49 (admin API) + E51 (browse IA patterns) — this sequencing dependency still binds. **G26-UXGATE is closed** — 2026-07-26, by commit `48db6bb`; the integrated UX artifact covers the Filters drawer and the admin curation surfaces.
 
 **Every story in this epic owns, at its own merge gate:** its new i18n keys (en+pl, key-set diff), component-level a11y assertions, and targeted unit + pl-PL visual coverage.
 
