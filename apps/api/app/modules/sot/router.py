@@ -24,6 +24,7 @@ from app.core.db.session import get_session
 from app.core.etag import file_etag
 from app.core.filenames import safe_filename
 from app.modules.sot.schemas import (
+    BrowseCategoryRead,
     FileListResponse,
     ModelDetail,
     ModelListResponse,
@@ -33,7 +34,9 @@ from app.modules.sot.schemas import (
 from app.modules.sot.service import (
     ModelListSort,
     TagMatch,
+    get_browse_category_by_slug,
     get_model_detail,
+    list_browse_categories,
     list_model_files,
     list_models,
     list_tag_groups,
@@ -101,6 +104,61 @@ def get_tag_groups(
 
 
 @router.get(
+    "/categories",
+    summary="List browse categories (flat, ordered, with per-category model counts)",
+    description=(
+        "Returns the Initiative 26 browse categories as a **flat** JSON array ordered "
+        "by `(position ASC, slug ASC)` (Story 49.3, Decision AY). Each item is "
+        "`{id, slug, name_en, name_pl, description_en, description_pl, position, "
+        "parent_id, model_count}`; `parent_id` is a **scalar** FK (null for a "
+        "top-level category) — the response is never nested and carries no "
+        "`children`/`subcategories` key. `model_count` is required and unconditional "
+        "(unlike `GET /api/tags?with_counts`) and equals the number of distinct "
+        "**non-soft-deleted** models assigned to that category, so it agrees by "
+        "construction with the `total` of `GET /api/models?category=<slug>`. "
+        "Categories with zero assigned models ARE returned, with `model_count: 0` — "
+        "the curation QA surface needs to see them. "
+        "This path hosts a NEW additive contract; the retired Initiative 25 recursive "
+        "single-category taxonomy is permanently gone and is not resurrected here. "
+        "Requires authenticated user (any role: admin / member / agent). Initiative 6 "
+        "default-deny posture (architecture.md § Initiative 6 Decision M)."
+    ),
+    response_model=list[BrowseCategoryRead],
+)
+def get_categories(
+    session: Annotated[Session, Depends(get_session)],
+    _user_id: uuid.UUID = current_user,
+) -> list[BrowseCategoryRead]:
+    return list_browse_categories(session)
+
+
+@router.get(
+    "/categories/{slug}",
+    summary="Get a single browse category by its stable slug",
+    description=(
+        "Returns the one `BrowseCategoryRead` whose `slug` matches exactly, in the "
+        "same nine-key shape as `GET /api/categories` (including `model_count`). "
+        "**404** if no category carries that slug — deliberately unlike "
+        "`GET /api/models?category=<unknown-slug>`, which returns 200 with an empty "
+        "page: 'give me category X' has no resource to return, whereas 'which models "
+        "are in X' degrades honestly to an empty catalogue page (Decision AY). "
+        "Requires authenticated user (any role: admin / member / agent). Initiative 6 "
+        "default-deny posture (architecture.md § Initiative 6 Decision M)."
+    ),
+    response_model=BrowseCategoryRead,
+)
+def get_category(
+    slug: str,
+    session: Annotated[Session, Depends(get_session)],
+    _user_id: uuid.UUID = current_user,
+) -> BrowseCategoryRead:
+    category = get_browse_category_by_slug(session, slug)
+    if category is None:
+        raise HTTPException(status_code=404, detail="Browse category not found")
+    return category
+
+
+@router.get(
     "/models",
     summary="List models with filtering, sorting, pagination",
     description=(
@@ -108,7 +166,14 @@ def get_tag_groups(
         "**`tag_match`** (`all` (default) — AND between facet groups, OR within a "
         "group; `any` — pure OR across all listed tags, grouping ignored) and "
         "**`untagged`** (default false; `true` surfaces zero-tag models, OR-unioned "
-        "with `tag_ids` when both are given). Other filters: `status`, `source`, "
+        "with `tag_ids` when both are given). **`category`** (Initiative 26, Story "
+        "49.3): scopes the page to one browse category addressed by **slug** — exactly "
+        "one value, no `category_id` and no match mode. It composes as a pure AND with "
+        "every other filter and does NOT participate in `tag_match` grouping. An "
+        "**unknown slug returns 200 with an empty page and `total: 0`**, never a 404 "
+        "(same posture as an unknown `tag_ids` entry); use `GET /api/categories/{slug}` "
+        "when you need a 404 on a missing category. A model assigned to several "
+        "categories is returned exactly once. Other filters: `status`, `source`, "
         "`q` (case-insensitive substring across `name_en` / `name_pl` / `slug`; "
         "**does NOT search tag names**), `external_url` (exact match against any of the "
         "model's `model_external_link.url` rows — primary use case is agent-runbook "
@@ -127,6 +192,7 @@ def get_models(
     tag_match: TagMatch = TagMatch.all,
     untagged: bool = False,
     source: ModelSource | None = None,
+    category: str | None = None,
     q: str | None = None,
     external_url: str | None = None,
     sort: ModelListSort = ModelListSort.recent,
@@ -142,6 +208,7 @@ def get_models(
         tag_match=tag_match,
         untagged=untagged,
         source=source,
+        category=category,
         q=q,
         external_url=external_url,
         sort=sort,

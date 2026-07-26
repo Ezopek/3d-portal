@@ -671,8 +671,10 @@ run_scenario_3() {
 # (admin-only) missed the read-side /api/sot/* and /api/* surfaces and was
 # the proximate root cause of supplemental finding High-002 (post-cutover
 # anonymous external read of /api/categories — a route that was live at the
-# time of that finding; the category taxonomy and its routes were later
-# retired by Story 47.5, so this is historical context, not current surface).
+# time of that finding. The recursive category taxonomy it then served was
+# retired by Story 47.5; the path itself is current surface again as of Story
+# 49.3, now hosting the Initiative 26 flat browse-category read behind
+# current_user. The High-002 finding remains historical either way).
 #
 # The new Scenario 4 enumerates the live FastAPI route table via
 # /api/openapi.json, then probes every route as:

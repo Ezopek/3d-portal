@@ -17,8 +17,15 @@ fail this test. Same for a new agent-writable request model without `examples`.
 
 from __future__ import annotations
 
-import pytest
+import uuid
 
+import pytest
+from sqlmodel import Session
+
+from app.core.auth.cookies import ACCESS_COOKIE
+from app.core.auth.jwt import encode_token
+from app.core.db.models import BrowseCategory
+from app.core.db.session import get_engine
 from app.main import create_app
 
 # ---------------------------------------------------------------------------
@@ -359,14 +366,79 @@ def test_no_dangling_refs(openapi_spec):
 
 
 def test_retired_taxonomy_read_route_is_gone(client):
-    """Story 47.5 review repair — direct runtime negative: the retired taxonomy
-    read route returns 404 (route removed, no tombstone). Complements the
-    schema-level T-OAS negatives above with an actual request.
+    """Story 47.5 review repair, RE-POINTED by Story 49.3 (gate G26-ROUTE-PATH).
 
-    Retired-route literal assembled at runtime so the Story 47.5 §11
+    47.5 asserted this path 404s. Story 49.3 re-uses it for the NEW Initiative 26
+    flat browse-category read, so a bare 404 assertion no longer expresses what
+    47.5 actually cared about — that the *retired recursive single-category
+    taxonomy contract* has not come back. The coverage is therefore kept and
+    re-pointed at that contract, not deleted or weakened.
+
+    The probe AUTHENTICATES: the base `client` fixture is anonymous, so an
+    unauthenticated request can only ever observe the default-deny 401 and would
+    assert nothing at all about the response contract.
+
+    This test SEEDS its own uniquely-slugged category before probing. That is
+    not incidental: this module seeds no BrowseCategory of its own, and the
+    Story 49.2 starter seed is an explicit admin CLI with no lifespan wiring, so
+    on a fresh database the endpoint legitimately returns `[]` — under which a
+    contract assertion written as a bare `for item in body:` sweep executes zero
+    times and the test passes while proving nothing. Seeding one row makes the
+    exact-shape assertions below unconditionally executed (native review CR-1).
+
+    Retired-route literal still assembled at runtime so the Story 47.5 §11
     residual-symbol grep stays clean."""
+    slug = f"browse-guard-{uuid.uuid4().hex[:8]}"
+    with Session(get_engine()) as session:
+        session.add(BrowseCategory(slug=slug, name_en="Browse guard"))
+        session.commit()
+
+    client.cookies.set(
+        ACCESS_COOKIE,
+        encode_token(
+            subject=str(uuid.uuid4()),
+            role="admin",
+            secret="test-secret-not-real",
+            ttl_minutes=30,
+        ),
+    )
     r = client.get("/api/" + "categories")
-    assert r.status_code == 404, f"expected 404 on retired read route, got {r.status_code}"
+    assert r.status_code == 200, f"expected 200 on the new browse read, got {r.status_code}"
+
+    body = r.json()
+    assert isinstance(body, list), f"expected a FLAT array, got {type(body).__name__}"
+
+    # Non-vacuous by construction: the row seeded above MUST be in the array,
+    # so every assertion below is guaranteed to execute.
+    seeded = next((i for i in body if i.get("slug") == slug), None)
+    assert seeded is not None, (
+        f"seeded category {slug!r} missing from {[i.get('slug') for i in body]}"
+    )
+
+    # The structural negative that distinguishes this contract from the retired
+    # recursive CategoryTree: no nesting, ever.
+    assert "children" not in seeded, f"recursive taxonomy key resurfaced: {seeded!r}"
+    assert "subcategories" not in seeded, f"recursive taxonomy key resurfaced: {seeded!r}"
+    # ...and the distinguishing browse fields ARE present, model_count included.
+    assert {
+        "id",
+        "slug",
+        "name_en",
+        "name_pl",
+        "description_en",
+        "description_pl",
+        "position",
+        "parent_id",
+        "model_count",
+    } == set(seeded), f"unexpected browse item shape: {sorted(seeded)}"
+    assert isinstance(seeded["model_count"], int)
+    # parent_id is a SCALAR FK (or null) — never an embedded node.
+    assert seeded["parent_id"] is None or isinstance(seeded["parent_id"], str)
+
+    # The nesting negative holds for the whole array, not just the seeded row.
+    for item in body:
+        assert "children" not in item, f"recursive taxonomy key resurfaced: {item!r}"
+        assert "subcategories" not in item, f"recursive taxonomy key resurfaced: {item!r}"
 
 
 def test_retired_taxonomy_admin_crud_route_is_gone(client):

@@ -8,7 +8,7 @@ so they can be built directly from SQLModel rows.
 import datetime
 import uuid
 
-from pydantic import BaseModel, ConfigDict, model_serializer
+from pydantic import BaseModel, ConfigDict, Field, model_serializer
 
 
 class _OrmBase(BaseModel):
@@ -82,6 +82,42 @@ class TagGroupSummary(_OrmBase):
     name_en: str
     name_pl: str | None
     position: int
+
+
+class BrowseCategorySummary(_OrmBase):
+    """Initiative 26 (Story 49.3) — the embeddable browse-category shape.
+
+    Deliberately WITHOUT `model_count`: this is what `ModelDetail.categories`
+    carries, and embedding a count there would cost an aggregate per detail
+    read for a number the detail view never renders (Decision AY).
+
+    Named `BrowseCategory*`, never `Category*` — the retired Initiative 25
+    single-category taxonomy stays retired, and the Story 47.5 guard
+    `test_no_category_schemas_in_components` rejects any `Category*` component.
+    """
+
+    id: uuid.UUID
+    slug: str
+    name_en: str
+    name_pl: str | None
+    position: int
+    parent_id: uuid.UUID | None
+
+
+class BrowseCategoryRead(BrowseCategorySummary):
+    """Standalone GET /api/categories[/{slug}] item — Decision AY's exact
+    nine-key public-read set.
+
+    `model_count` is REQUIRED and unconditional here (unlike `GET /api/tags`,
+    which makes it opt-in via `with_counts`): the browse IA and the curation QA
+    surface both always need it, so there is no count-free variant to serve.
+    `inclusion_criterion` is stored on the entity but deliberately NOT on this
+    contract (Decision AY keyset; a later admin/curation DTO may add it).
+    """
+
+    description_en: str | None
+    description_pl: str | None
+    model_count: int
 
 
 class ModelFileRead(_OrmBase):
@@ -158,6 +194,17 @@ class ModelSummary(_OrmBase):
 class ModelDetail(ModelSummary):
     """Used in single-model GET; full embed of related entities."""
 
+    # Initiative 26 (Story 49.3) — declared on the SUBCLASS only. ModelSummary
+    # deliberately does not gain it: a per-page eager-load for a pixel the MVP
+    # browse IA never renders (Decision AY / AC-20).
+    #
+    # Defaults to [] rather than being required, so that ADDING this field stays
+    # strictly additive for callers that build a ModelDetail from an explicit
+    # payload dict (tests/test_sot_schemas.py does exactly that, and Story 49.3
+    # asserts that file byte-unchanged). `get_model_detail` always populates it
+    # explicitly, so the wire contract is unaffected: a model with no categories
+    # serialises as `categories: []`, never null and never absent (AC-19).
+    categories: list[BrowseCategorySummary] = Field(default_factory=list)
     files: list[ModelFileRead]
     prints: list[PrintRead]
     notes: list[NoteRead]

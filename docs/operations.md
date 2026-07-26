@@ -457,11 +457,17 @@ point — from git history).
 
 ### Active surfaces
 
-- **Public read** (`/api/tags`, `/api/models`,
+- **Public read** (`/api/tags`, `/api/tag-groups`, `/api/categories`,
+  `/api/categories/{slug}`, `/api/models`,
   `/api/models/{id}`, `/api/models/{id}/files`,
   `/api/models/{id}/files/{id}/content`) — serves real DB-backed data.
-  (`/api/categories` was part of this surface until the Story 47.5
-  category-taxonomy cutover retired it.)
+  ("Public read" means the read half of the API, not anonymous access — every
+  route listed here is behind `current_user`.)
+  (`/api/categories` hosts a *new* contract as of Story 49.3: the Initiative 26
+  **flat** browse-category read, additive and unrelated to what came before.
+  The route the Story 47.5 cutover retired was the Initiative 25 **recursive
+  single-category taxonomy**, and that retirement stands — the mandatory
+  single-category model is not coming back.)
 - **Admin write** (`/api/admin/*` for models, files, tags,
   notes, prints, external_links) — JWT-protected; admin role plus the
   newly-enabled `agent` role can both call most endpoints.
@@ -610,10 +616,13 @@ curl -sS -o /dev/null -w "%{http_code}\n" https://3d.ezop.ddns.net/api/tags
 # → 401  (was 403 from temporary allowlist during Initiative 6 build window)
 ```
 
-(The 2026-05-21 verification originally probed `/api/categories`; that route
-was retired by the Story 47.5 category cutover, so the example now uses
-`/api/tags` — an equivalent auth-protected SoT read with the same 401
-default-deny behavior.)
+(The 2026-05-21 verification originally probed `/api/categories`; the Story 47.5
+category cutover retired the recursive taxonomy that path then served, so the
+example was re-pointed to `/api/tags`. The example stays on `/api/tags`: as of
+Story 49.3 `/api/categories` is live again under a different, additive contract
+— the Initiative 26 flat browse-category read — and both routes are equally
+auth-protected SoT reads with the same 401 default-deny behavior, so either
+would verify this property.)
 
 ### Default-deny posture on `/api/*` (Initiative 6 Decision M)
 

@@ -13,7 +13,9 @@ from sqlalchemy import and_, func, nullslast, or_
 from sqlmodel import Session, select
 
 from app.core.db.models import (
+    BrowseCategory,
     Model,
+    ModelBrowseCategory,
     ModelExternalLink,
     ModelFile,
     ModelFileKind,
@@ -26,6 +28,8 @@ from app.core.db.models import (
     TagGroup,
 )
 from app.modules.sot.schemas import (
+    BrowseCategoryRead,
+    BrowseCategorySummary,
     ExternalLinkRead,
     FileListResponse,
     ModelDetail,
@@ -168,6 +172,80 @@ def list_tag_groups(session: Session) -> TagGroupsResponse:
     return TagGroupsResponse(groups=group_reads, groupless=groupless)
 
 
+def _browse_category_model_counts(session: Session) -> dict[uuid.UUID, int]:
+    """Distinct non-deleted models per browse category (Story 49.3 AC-4).
+
+    Sibling of `_tag_model_counts`, deliberately NOT a generalization of it —
+    that one is keyed by tag_id and feeds /api/tags + /api/tag-groups. One
+    GROUP BY over model_browse_category joined to model, filtered to live rows
+    (`Model.deleted_at IS NULL`). Hits the ix_model_browse_category_cat_model
+    covering index. ModelBrowseCategory's composite PK (model_id, category_id)
+    means each row is a distinct model per category, so func.count() is the
+    distinct-model count without DISTINCT. One statement regardless of
+    category or assignment cardinality — that is AC-23(a).
+    """
+    rows = session.exec(
+        select(ModelBrowseCategory.category_id, func.count())
+        .select_from(ModelBrowseCategory)
+        .join(Model, Model.id == ModelBrowseCategory.model_id)
+        .where(Model.deleted_at.is_(None))
+        .group_by(ModelBrowseCategory.category_id)
+    ).all()
+    return {category_id: n for category_id, n in rows}
+
+
+def _browse_category_read(c: BrowseCategory, counts: dict[uuid.UUID, int]) -> BrowseCategoryRead:
+    """Decision AY's nine-key public-read item. `inclusion_criterion` is stored
+    on the entity but deliberately absent from this contract."""
+    return BrowseCategoryRead(
+        id=c.id,
+        slug=c.slug,
+        name_en=c.name_en,
+        name_pl=c.name_pl,
+        description_en=c.description_en,
+        description_pl=c.description_pl,
+        position=c.position,
+        parent_id=c.parent_id,
+        model_count=counts.get(c.id, 0),
+    )
+
+
+def list_browse_categories(session: Session) -> list[BrowseCategoryRead]:
+    """Return every browse category, flat, ordered `(position, slug)`.
+
+    Story 49.3 (Initiative 26, Decision AY). Exactly two reads regardless of
+    cardinality: all BrowseCategory rows (ordered in SQL — unlike
+    list_tag_groups there is no bucketing to do in Python) plus one
+    `_browse_category_model_counts` aggregate. That is AC-23(a).
+
+    The list is FLAT — `parent_id` is exposed as a scalar and no row is nested
+    under another. This is NOT the retired Initiative 25 recursive category
+    tree; it is a new additive browse contract that happens to reuse the path.
+
+    Categories with zero assigned models are RETURNED with `model_count: 0`,
+    never filtered out (AC-3) — the curation QA surface exists precisely to
+    see them. No lifecycle filtering: BrowseCategory has no soft-delete column.
+    """
+    rows = session.exec(
+        select(BrowseCategory).order_by(BrowseCategory.position, BrowseCategory.slug)
+    ).all()
+    counts = _browse_category_model_counts(session)
+    return [_browse_category_read(c, counts) for c in rows]
+
+
+def get_browse_category_by_slug(session: Session, slug: str) -> BrowseCategoryRead | None:
+    """Resolve one browse category by its stable slug, or None if absent.
+
+    Story 49.3 AC-7/AC-8. `slug` is unique (uq_browse_category_slug), so this
+    is an exact single-row lookup. Returning None (rather than raising) keeps
+    the HTTP concern in the router, mirroring `get_model_detail`.
+    """
+    row = session.exec(select(BrowseCategory).where(BrowseCategory.slug == slug)).first()
+    if row is None:
+        return None
+    return _browse_category_read(row, _browse_category_model_counts(session))
+
+
 def list_models(
     session: Session,
     *,
@@ -176,6 +254,7 @@ def list_models(
     tag_match: TagMatch = TagMatch.all,
     untagged: bool = False,
     source: ModelSource | None = None,
+    category: str | None = None,
     q: str | None = None,
     external_url: str | None = None,
     sort: ModelListSort = ModelListSort.recent,
@@ -200,6 +279,12 @@ def list_models(
     - The composed tag/untagged predicate is applied to `base` once, before the
       total-count subquery, so `total` and pagination stay filter-correct.
     - source: exact match.
+    - category: Initiative 26 browse-category scope (Story 49.3), addressed by
+      SLUG, exactly one value, no `category_match` mode. AND-ed onto `base` as
+      its own IN-subquery `.where()` — never folded into the tag composition
+      and never a SQL JOIN. Applied before the total-count subquery, so `total`
+      and pagination stay filter-correct. An unknown slug yields an empty page
+      with `total: 0` (200, never 404).
     - external_url: exact match against a model's `ModelExternalLink.url`
       (any source). Primary use case is agent-runbook dedup-by-source-URL
       pre-flight check (TB-004): hit returns the existing model's UUID,
@@ -255,6 +340,25 @@ def list_models(
 
     if source is not None:
         base = base.where(Model.source == source)
+    if category is not None:
+        # Initiative 26 (Story 49.3) — ONE slug-addressed browse-category scope.
+        # IN-subquery, never a JOIN: keeps the outer SELECT shape unchanged so the
+        # sort / offset-limit / eager-tag / eager-gallery pipeline below applies
+        # untouched, exactly as external_url records at the block just past `q`.
+        # A join would not inflate rows for a single unique slug today, but 49.4
+        # adds a tag-name disjunct that genuinely fans out under one.
+        # Structurally OUTSIDE the tag/untagged composition above, so tag_match
+        # never sees it and the 42.1 AND-between-groups / OR-within-group
+        # semantics are untouched. An unknown slug yields an empty subquery ->
+        # unsatisfiable predicate -> empty page with total=0, matching the
+        # shipped unknown-tag_id posture (never a 404).
+        base = base.where(
+            Model.id.in_(
+                select(ModelBrowseCategory.model_id)
+                .join(BrowseCategory, BrowseCategory.id == ModelBrowseCategory.category_id)
+                .where(BrowseCategory.slug == category)
+            )
+        )
     if q:
         like = f"%{q.lower()}%"
         base = base.where(
@@ -375,6 +479,16 @@ def get_model_detail(
     ).all()
     tags = [TagRead.model_validate(t) for t in tag_rows]
 
+    # Initiative 26 (Story 49.3) — ONE extra statement, constant in the number
+    # of categories the model carries (AC-23(b): measured 7 -> 8 SELECTs).
+    category_rows = session.exec(
+        select(BrowseCategory)
+        .join(ModelBrowseCategory, ModelBrowseCategory.category_id == BrowseCategory.id)
+        .where(ModelBrowseCategory.model_id == model_id)
+        .order_by(BrowseCategory.position, BrowseCategory.slug)
+    ).all()
+    categories = [BrowseCategorySummary.model_validate(c) for c in category_rows]
+
     file_rows = session.exec(
         select(ModelFile)
         .where(ModelFile.model_id == model_id)
@@ -411,6 +525,7 @@ def get_model_detail(
         {
             **m.model_dump(),
             "tags": tags,
+            "categories": categories,
             "gallery_file_ids": gallery_file_ids,
             "image_count": len(gallery_file_ids),
             "files": files,

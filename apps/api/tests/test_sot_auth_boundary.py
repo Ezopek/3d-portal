@@ -27,6 +27,7 @@ from app.core.auth.cookies import ACCESS_COOKIE
 from app.core.auth.jwt import encode_token
 from app.core.config import get_settings
 from app.core.db.models import (
+    BrowseCategory,
     Model,
     ModelFile,
     ModelFileKind,
@@ -113,6 +114,20 @@ def seeded_model(client) -> tuple[uuid.UUID, uuid.UUID]:
         blob_path.unlink()
 
 
+@pytest.fixture
+def seeded_browse_category(client) -> str:
+    """Story 49.3 — one browse category, returning its slug.
+
+    Unique slug: the session-scoped DB persists rows across tests.
+    """
+    with Session(get_engine()) as s:
+        cat = BrowseCategory(slug=f"cat-ab-{uuid.uuid4().hex[:8]}", name_en="AB")
+        s.add(cat)
+        s.commit()
+        s.refresh(cat)
+        return cat.slug
+
+
 # ---------------------------------------------------------------------------
 # Anonymous-rejection tests (AC-3) — 6 endpoints
 # ---------------------------------------------------------------------------
@@ -135,6 +150,20 @@ def test_sot_tag_groups_anonymous_returns_401(client):
     # Story 42.2 — new GET /api/tag-groups stays outside _PUBLIC_ROUTES (AC #6/#7).
     _clear_cookie(client)
     r = client.get("/api/tag-groups")
+    assert r.status_code == 401
+
+
+def test_sot_categories_anonymous_returns_401(client):
+    # Story 49.3 — new GET /api/categories stays outside _PUBLIC_ROUTES (AC-6).
+    _clear_cookie(client)
+    r = client.get("/api/categories")
+    assert r.status_code == 401
+
+
+def test_sot_category_detail_anonymous_returns_401(client, seeded_browse_category):
+    # Story 49.3 — new GET /api/categories/{slug} is default-deny too (AC-9).
+    _clear_cookie(client)
+    r = client.get(f"/api/categories/{seeded_browse_category}")
     assert r.status_code == 401
 
 
@@ -186,6 +215,18 @@ def test_sot_tags_agent_authenticated_returns_200(client):
 def test_sot_tag_groups_agent_authenticated_returns_200(client):
     _mint_cookie(client, "agent")
     r = client.get("/api/tag-groups")
+    assert r.status_code == 200, r.text
+
+
+def test_sot_categories_agent_authenticated_returns_200(client):
+    _mint_cookie(client, "agent")
+    r = client.get("/api/categories")
+    assert r.status_code == 200, r.text
+
+
+def test_sot_category_detail_agent_authenticated_returns_200(client, seeded_browse_category):
+    _mint_cookie(client, "agent")
+    r = client.get(f"/api/categories/{seeded_browse_category}")
     assert r.status_code == 200, r.text
 
 
@@ -243,6 +284,30 @@ def test_sot_tag_groups_member_authenticated_returns_200(client):
 def test_sot_tag_groups_admin_authenticated_returns_200(client):
     _mint_cookie(client, "admin")
     r = client.get("/api/tag-groups")
+    assert r.status_code == 200, r.text
+
+
+def test_sot_categories_member_authenticated_returns_200(client):
+    _mint_cookie(client, "member")
+    r = client.get("/api/categories")
+    assert r.status_code == 200, r.text
+
+
+def test_sot_categories_admin_authenticated_returns_200(client):
+    _mint_cookie(client, "admin")
+    r = client.get("/api/categories")
+    assert r.status_code == 200, r.text
+
+
+def test_sot_category_detail_member_authenticated_returns_200(client, seeded_browse_category):
+    _mint_cookie(client, "member")
+    r = client.get(f"/api/categories/{seeded_browse_category}")
+    assert r.status_code == 200, r.text
+
+
+def test_sot_category_detail_admin_authenticated_returns_200(client, seeded_browse_category):
+    _mint_cookie(client, "admin")
+    r = client.get(f"/api/categories/{seeded_browse_category}")
     assert r.status_code == 200, r.text
 
 

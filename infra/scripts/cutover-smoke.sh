@@ -398,10 +398,14 @@ scenario_4_admin_login() {
 # the app-level default-deny is the load-bearing gate, not the temporary
 # perimeter restoration).
 scenario_5_external_anonymous_probe() {
-  # Probe endpoint re-pointed by Story 47.5: /api/categories was retired in
-  # the category-taxonomy cutover (would 404, false-failing this gate);
-  # /api/tags is a live auth-protected SoT read that preserves the exact
-  # anonymous-external default-deny 401 property this scenario verifies.
+  # Probe endpoint re-pointed by Story 47.5: /api/categories then served the
+  # retired recursive category taxonomy and would have 404'd, false-failing
+  # this gate. Story 49.3 put a NEW additive contract on that path (the
+  # Initiative 26 flat browse-category read), so it now answers 401 to an
+  # anonymous caller — exactly what this scenario wants. The probe stays on
+  # /api/tags anyway: this gate is about the anonymous-external default-deny
+  # 401 property, not about which route happens to host it, and /api/tags is
+  # an equally live auth-protected SoT read.
   local ts code endpoint="/api/tags"
   ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
