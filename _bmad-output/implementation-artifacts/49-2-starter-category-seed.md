@@ -1,12 +1,13 @@
 ---
-baseline_commit: df922f955fea42bbdbc76827406b008d28733718
+baseline_commit: 88a683a51916aa02a57f085471963de4320558e6
+create_validate_baseline_commit: df922f955fea42bbdbc76827406b008d28733718
 ---
 
 # Story 49.2: Idempotent starter-category seed
 
-Status: ready-for-dev
+Status: done
 
-<!-- Provenance. CREATE: native bmad-create-story (action=create, menu CS), 2026-07-26, Claude Opus 5 agent session, routed via native bmad-help -> _bmad/_config/bmad-help.csv row `bmad-create-story`; baseline HEAD df922f9 on branch docs/init26-e49-2-create-validate, working tree clean. VALIDATE: native bmad-create-story (action=validate, menu VS) COMPLETED 2026-07-26 in a fresh independent context at the same baseline -> VERDICT PASS, status ready-for-dev; amendments and the independent re-trace are recorded in §16. NO Ezop review or sign-off is recorded or implied. The native verdict is Claude/BMAD only. Laura/controller later granted this story's G26-DEVGO under the standing Initiative 26 authorization; that controller decision is recorded below and is not an Ezop signature or review. -->
+<!-- Provenance. CREATE: native bmad-create-story (action=create, menu CS), 2026-07-26, Claude Opus 5 agent session, routed via native bmad-help -> _bmad/_config/bmad-help.csv row `bmad-create-story`; baseline HEAD df922f9 on branch docs/init26-e49-2-create-validate, working tree clean. VALIDATE: native bmad-create-story (action=validate, menu VS) COMPLETED 2026-07-26 in a fresh independent context at the same baseline -> VERDICT PASS, status ready-for-dev; amendments and the independent re-trace are recorded in §16. NO Ezop review or sign-off is recorded or implied. The native verdict is Claude/BMAD only. Laura/controller later granted this story's G26-DEVGO under the standing Initiative 26 authorization; that controller decision is recorded below and is not an Ezop signature or review. DEV: native bmad-dev-story (menu DS), 2026-07-26, Claude Opus 5 agent session, on branch feat/E49.2-starter-category-seed in worktree /home/ezop/worktrees/3d-portal-e49-2-dev at implementation baseline 88a683a51916aa02a57f085471963de4320558e6 (`docs: create and validate story 49.2`), working tree clean at start. `baseline_commit` front matter now records that ACTUAL implementation baseline; the create/validate source baseline df922f9 is preserved as historical provenance in `create_validate_baseline_commit`. Implementer only: no native code review, no Aider review, no commit/push/merge/deploy, no live database access. See §15. -->
 
 ## 1. Story
 
@@ -25,7 +26,7 @@ so that **the browse taxonomy exists as real content ready for curation, without
 - **G26-CAT-SET — closed** 2026-07-26 by commit `48db6bb` (`ux-designs/ux-3d-portal-2026-07-26/EXPERIENCE.md`). The eight categories, their slugs, labels, order and one-sentence inclusion criteria are fixed content, not a story-time judgement call. [Source: `epics.md:4475`; `sprint-status.yaml:380`]
 - **The real-distribution evidence obligation that `EXPERIENCE.md:192` left open is DISCHARGED for all eight categories** — read-only, by the controller, before this pass, and re-traced independently at validation. See §6 F-1 and F-3 for the full proof and its one fragile row. This story **cites** that evidence; it does not re-derive it, and it does not re-open the live database.
 - **G26-MIGRATE** — does not apply. This story ships **no DDL at all**: no new revision, no edit to `0020`, no `alembic` invocation in any test.
-- **G26-DEVGO** — open. **No implementation may start** until this story passes `bmad-create-story:validate` **and** the controller confirms this specific ready story under Ezop's standing Initiative 26 authorization. A controller confirmation is *not* a human review of this document or of the diff.
+- **G26-DEVGO — GRANTED** for this story on 2026-07-26 by **Laura/controller**, under Ezop's standing Initiative 26 authorization, after `bmad-create-story:validate` returned `PASS`. Implementation therefore proceeded in this dev-story pass. **This is a controller decision only — it is NOT an Ezop signature, NOT an Ezop review, and NOT a claim that any human read this document or the diff.** The grant is scoped to the three execution-critical product files plus the two workflow records in §7; it authorizes no model assignment, no boot auto-seeding, no migration edit, no API/UI/admin CRUD, no dependency change, no live database access, no production seeding, and no push/merge/deploy. The gate's open-at-validation-time state is preserved historically in §16.
 - **G26-ROUTE-PATH, G26-UXGATE, G26-SCP-RATIFY** — closed; none of them gate this story. G26-LIB (E53) is unrelated.
 - **This story requires no live-DB action of any kind.** Every test runs against a throwaway `tmp_path` SQLite database built by `init_schema` (`session.py:31`), exactly as `test_seed_taxonomy.py` does.
 - **Live posture at this pass (controller-supplied, not re-measured here).** Story 49.1 is merged, **pushed and deployed successfully**. Live Alembic revision is `0020_browse_categories`; both `browse_category` and `model_browse_category` exist; **132 `model` rows preserved**; `browse_category` count **0**; `model_browse_category` count **0**; integrity check ok; foreign-key violations **0**. Consequence for this story: the target table exists live and is empty, so the eventual admin-run seed will be a pure eight-row insert — but **the seed is not run against the live database during dev or review**; that invocation is a controller/admin action after merge.
@@ -140,55 +141,55 @@ The single implementation commit passes `infra/scripts/check-all.sh` **16/16 sta
 
 ### T1 — Baseline (evidence-first, no code change)
 
-- [ ] T1.1 At `df922f9`, run `pytest tests/test_seed_taxonomy.py tests/test_seed.py tests/test_browse_category_entity.py tests/test_orm_migration_parity.py -q` and record the passing counts. This proves every later red is caused by this story.
-- [ ] T1.2 Record `git rev-parse HEAD` and `git status --porcelain` (must be clean).
+- [x] T1.1 At `df922f9`, run `pytest tests/test_seed_taxonomy.py tests/test_seed.py tests/test_browse_category_entity.py tests/test_orm_migration_parity.py -q` and record the passing counts. This proves every later red is caused by this story.
+- [x] T1.2 Record `git rev-parse HEAD` and `git status --porcelain` (must be clean).
 
 ### T2 — RED: author the complete test module before any production code (AC-1 … AC-14)
 
 `apps/api/tests/test_seed_browse_categories.py` is written in full in this task. No line of `seed.py` or `scripts/` is touched until T3.
 
-- [ ] T2.1 Create the module with the imports the story needs: `STARTER_BROWSE_CATEGORIES`, `seed_browse_categories`, `_insert_absent_category` from `app.core.db.seed`; `main as seed_categories_script_main` from `scripts.seed_browse_categories`; `BrowseCategory`, `ModelBrowseCategory`, `Model`, `Tag`, `TagGroup`, `ModelTag` from `app.core.db.models`. Fixture idiom (`create_engine_for_url` + `init_schema` on `tmp_path`) copied verbatim from `test_seed_taxonomy.py:32-35`.
-- [ ] T2.2 Dataset-shape tests (AC-1, AC-2, AC-3, AC-12): exact ordered `(slug, position)` sequence; exact `name_pl` / `name_en` / `inclusion_criterion` per slug compared **literally** against the §4 tables; `description_en` / `description_pl` / `parent_id` absent-or-`None` in every entry; slug charset, lowercase, ASCII, uniqueness; dense `0..7` positions strictly increasing in list order.
-- [ ] T2.3 Behaviour tests, all of AC-5 … AC-11 and AC-13, AC-14 — i.e. every test enumerated in T4, T5 and T6 below, authored **now**, in this module, while the production symbols still do not exist.
-- [ ] T2.4 **RED, observed and quoted** — run `pytest tests/test_seed_browse_categories.py -q`. Expected: a collection error, `ImportError: cannot import name 'STARTER_BROWSE_CATEGORIES' from 'app.core.db.seed'` (or the `ModuleNotFoundError: No module named 'scripts.seed_browse_categories'` raised first, depending on import order — quote whichever actually appears, and quote the second after the first is resolved). Record the full output in §15. **Zero tests may be passing at this point.**
+- [x] T2.1 Create the module with the imports the story needs: `STARTER_BROWSE_CATEGORIES`, `seed_browse_categories`, `_insert_absent_category` from `app.core.db.seed`; `main as seed_categories_script_main` from `scripts.seed_browse_categories`; `BrowseCategory`, `ModelBrowseCategory`, `Model`, `Tag`, `TagGroup`, `ModelTag` from `app.core.db.models`. Fixture idiom (`create_engine_for_url` + `init_schema` on `tmp_path`) copied verbatim from `test_seed_taxonomy.py:32-35`.
+- [x] T2.2 Dataset-shape tests (AC-1, AC-2, AC-3, AC-12): exact ordered `(slug, position)` sequence; exact `name_pl` / `name_en` / `inclusion_criterion` per slug compared **literally** against the §4 tables; `description_en` / `description_pl` / `parent_id` absent-or-`None` in every entry; slug charset, lowercase, ASCII, uniqueness; dense `0..7` positions strictly increasing in list order.
+- [x] T2.3 Behaviour tests, all of AC-5 … AC-11 and AC-13, AC-14 — i.e. every test enumerated in T4, T5 and T6 below, authored **now**, in this module, while the production symbols still do not exist.
+- [x] T2.4 **RED, observed and quoted** — run `pytest tests/test_seed_browse_categories.py -q`. Expected: a collection error, `ImportError: cannot import name 'STARTER_BROWSE_CATEGORIES' from 'app.core.db.seed'` (or the `ModuleNotFoundError: No module named 'scripts.seed_browse_categories'` raised first, depending on import order — quote whichever actually appears, and quote the second after the first is resolved). Record the full output in §15. **Zero tests may be passing at this point.**
 
 ### T3 — GREEN: dataset + seeder (AC-1 … AC-9, AC-12, AC-13, AC-14)
 
-- [ ] T3.1 Add `STARTER_BROWSE_CATEGORIES` and `seed_browse_categories` + `_insert_absent_category` to `apps/api/app/core/db/seed.py`, mirroring `_insert_absent_tag` (`seed.py:217-236`) — including its `try/except IntegrityError → rollback` branch, which AC-14 requires and which the unique index `uq_browse_category_slug` makes load-bearing. Include the module comment carrying the §6 F-1 evidence citation. Add `BrowseCategory` to the existing `from app.core.db.models import …` line (`seed.py:8`).
-- [ ] T3.2 Re-run the module. Everything except the AC-11 script tests must now be green. Record the summary.
-- [ ] T3.3 **Mutation sensitivity check, explicitly labelled — not a RED.** The AC-6 / AC-7 / AC-8 preservation tests pass by construction once create-if-absent exists, so prove they are load-bearing: temporarily change `_insert_absent_category` to overwrite an existing row's fields instead of returning early, observe the AC-6, AC-7 and AC-8 tests fail, revert, and re-run green. §15 records: the mutation diff, the verbatim failure output, and the post-revert `git diff apps/api/app/core/db/seed.py` proving the mutation is gone. Repeat with a second mutation — drop the `try/except IntegrityError` — to prove the AC-14 test is load-bearing rather than trivially satisfied.
+- [x] T3.1 Add `STARTER_BROWSE_CATEGORIES` and `seed_browse_categories` + `_insert_absent_category` to `apps/api/app/core/db/seed.py`, mirroring `_insert_absent_tag` (`seed.py:217-236`) — including its `try/except IntegrityError → rollback` branch, which AC-14 requires and which the unique index `uq_browse_category_slug` makes load-bearing. Include the module comment carrying the §6 F-1 evidence citation. Add `BrowseCategory` to the existing `from app.core.db.models import …` line (`seed.py:8`).
+- [x] T3.2 Re-run the module. Everything except the AC-11 script tests must now be green. Record the summary.
+- [x] T3.3 **Mutation sensitivity check, explicitly labelled — not a RED.** The AC-6 / AC-7 / AC-8 preservation tests pass by construction once create-if-absent exists, so prove they are load-bearing: temporarily change `_insert_absent_category` to overwrite an existing row's fields instead of returning early, observe the AC-6, AC-7 and AC-8 tests fail, revert, and re-run green. §15 records: the mutation diff, the verbatim failure output, and the post-revert `git diff apps/api/app/core/db/seed.py` proving the mutation is gone. Repeat with a second mutation — drop the `try/except IntegrityError` — to prove the AC-14 test is load-bearing rather than trivially satisfied.
 
 ### T4 — Behaviour coverage authored in T2, verified green in T3 (AC-9, AC-10)
 
-- [ ] T4.1 Test (AC-9): pre-insert a `Model`, one `TagGroup` and one `Tag`; seed; assert `select(ModelBrowseCategory)` is empty, and that the `Model`, `Tag`, `TagGroup` and `ModelTag` row sets are unchanged in count and content — the seed touches `browse_category` and nothing else.
-- [ ] T4.2 Test (AC-10): assert `app.main` does not reference `seed_browse_categories` — a source-level assertion on the module (import-free `grep`-equivalent), so a later accidental lifespan wiring fails the suite.
-- [ ] T4.3 Confirm `apps/api/app/main.py` shows in `git diff --stat` as untouched.
+- [x] T4.1 Test (AC-9): pre-insert a `Model`, one `TagGroup` and one `Tag`; seed; assert `select(ModelBrowseCategory)` is empty, and that the `Model`, `Tag`, `TagGroup` and `ModelTag` row sets are unchanged in count and content — the seed touches `browse_category` and nothing else.
+- [x] T4.2 Test (AC-10): assert `app.main` does not reference `seed_browse_categories` — a source-level assertion on the module (import-free `grep`-equivalent), so a later accidental lifespan wiring fails the suite.
+- [x] T4.3 Confirm `apps/api/app/main.py` shows in `git diff --stat` as untouched.
 
 ### T5 — Transaction and race behaviour (AC-13, AC-14)
 
-- [ ] T5.1 Convergence-after-failure test (AC-13): monkeypatch `Session.commit` to raise `RuntimeError` on the Nth call (`N = 4` lands after three of eight rows), assert the committed subset is a **non-empty strict** subset with no duplicates, undo the patch, re-run, assert convergence to exactly 8. Model on `test_seed_taxonomy.py:190-240`. **`RuntimeError`, never `IntegrityError`** — the latter is swallowed by design and would make the test vacuous.
-- [ ] T5.2 Genuine-`IntegrityError` test (AC-14): reuse the `_MissingRow` / `_first_call_misses` idiom (`test_seed_taxonomy.py:262-289`) so the existence `SELECT` misses a row a racer already committed. Assert exactly what `test_insert_absent_tag_tolerates_real_integrity_error` (`test_seed_taxonomy.py:316-348`) asserts, no more: **no raise**, exactly **one** row for that slug, and **the racer's row values preserved** (`name_en == "RACER"`-style check, proving the failed INSERT neither duplicated nor clobbered). Nothing broader than the shipped 41.3 handler is introduced — no re-query-and-adopt, no partial update.
+- [x] T5.1 Convergence-after-failure test (AC-13): monkeypatch `Session.commit` to raise `RuntimeError` on the Nth call (`N = 4` lands after three of eight rows), assert the committed subset is a **non-empty strict** subset with no duplicates, undo the patch, re-run, assert convergence to exactly 8. Model on `test_seed_taxonomy.py:190-240`. **`RuntimeError`, never `IntegrityError`** — the latter is swallowed by design and would make the test vacuous.
+- [x] T5.2 Genuine-`IntegrityError` test (AC-14): reuse the `_MissingRow` / `_first_call_misses` idiom (`test_seed_taxonomy.py:262-289`) so the existence `SELECT` misses a row a racer already committed. Assert exactly what `test_insert_absent_tag_tolerates_real_integrity_error` (`test_seed_taxonomy.py:316-348`) asserts, no more: **no raise**, exactly **one** row for that slug, and **the racer's row values preserved** (`name_en == "RACER"`-style check, proving the failed INSERT neither duplicated nor clobbered). Nothing broader than the shipped 41.3 handler is introduced — no re-query-and-adopt, no partial update.
 
 ### T6 — GREEN: admin-run entrypoint (AC-11)
 
 The AC-11 test is authored in T2 and is red from T2.4 onward with `ModuleNotFoundError: No module named 'scripts.seed_browse_categories'` — quote that failure in §15 before this task's code exists.
 
-- [ ] T6.1 Test content (AC-11, authored in T2.3): call `main(engine=<tmp engine>)`, capture stdout with `capsys`, assert the printed number equals the count **queried from the DB** after seeding **and** equals `8` on a full seed. Precedent: `test_seed_taxonomy.py:351-363`.
-- [ ] T6.2 **GREEN** — create `apps/api/scripts/seed_browse_categories.py` mirroring `scripts/seed_taxonomy.py` (docstring stating why it is *not* lifespan-wired, `main(engine: Engine | None = None)`, DB-queried count, `__main__` guard).
-- [ ] T6.3 Re-run the full module — every test green. Record the summary.
+- [x] T6.1 Test content (AC-11, authored in T2.3): call `main(engine=<tmp engine>)`, capture stdout with `capsys`, assert the printed number equals the count **queried from the DB** after seeding **and** equals `8` on a full seed. Precedent: `test_seed_taxonomy.py:351-363`.
+- [x] T6.2 **GREEN** — create `apps/api/scripts/seed_browse_categories.py` mirroring `scripts/seed_taxonomy.py` (docstring stating why it is *not* lifespan-wired, `main(engine: Engine | None = None)`, DB-queried count, `__main__` guard).
+- [x] T6.3 Re-run the full module — every test green. Record the summary.
 
 ### T7 — Non-regression sweep (AC-15)
 
-- [ ] T7.1 `pytest tests/test_orm_migration_parity.py tests/test_migration_0020.py tests/test_migration_0019.py tests/test_browse_category_entity.py tests/test_seed_taxonomy.py tests/test_seed.py -q` → all green with those files unmodified.
-- [ ] T7.2 `git diff --stat` restricted to product paths (`apps/`, `workers/`, `infra/`, `docs/`, root `*.md`, `pyproject.toml`, `uv.lock`) shows **exactly** the three execution-critical files in §7. Any other product path is a defect. `_bmad-output/**` is **not** counted here — see §7 and §11: the story artifact and `sprint-status.yaml` are workflow records, legitimately part of the same closeout commit.
-- [ ] T7.3 `ruff format --check` and `ruff check` clean in `apps/api`.
+- [x] T7.1 `pytest tests/test_orm_migration_parity.py tests/test_migration_0020.py tests/test_migration_0019.py tests/test_browse_category_entity.py tests/test_seed_taxonomy.py tests/test_seed.py -q` → all green with those files unmodified.
+- [x] T7.2 `git diff --stat` restricted to product paths (`apps/`, `workers/`, `infra/`, `docs/`, root `*.md`, `pyproject.toml`, `uv.lock`) shows **exactly** the three execution-critical files in §7. Any other product path is a defect. `_bmad-output/**` is **not** counted here — see §7 and §11: the story artifact and `sprint-status.yaml` are workflow records, legitimately part of the same closeout commit.
+- [x] T7.3 `ruff format --check` and `ruff check` clean in `apps/api`.
 
 ### T8 — Merge gate (AC-16) — controller-owned, not checkable by the dev agent alone
 
-- [ ] T8.1 `infra/scripts/check-all.sh` standalone, teed to `.hermes/run-logs/`, exit 0, `all green.`, 16/16 stages, no stage skipped.
-- [ ] T8.2 Determinism: three consecutive API pytest runs with identical summaries (NFR26-DETERMINISM-1).
-- [ ] T8.3 Native `bmad-code-review`, then the independent `laura-aider-review-diff` pass. Findings loop back to `bmad-dev-story`.
-- [ ] T8.4 One commit, ff-only merge. **Leave unchecked until a commit actually exists** — do not tick a box for work the controller owns.
+- [x] T8.1 `infra/scripts/check-all.sh` standalone, teed to `.hermes/run-logs/`, exit 0, `all green.`, 16/16 stages, no stage skipped. **DONE — controller-owned frozen run** `.hermes/run-logs/e49-2-controller-check-all-20260726.log`; tracked `seed.py` diff SHA-256 identical before/after (`80af7532…aa11d`); API 1780 passed / 3 skipped, Web 785 passed, visual 536 passed / 32 expected skips.
+- [x] T8.2 Determinism: three consecutive API pytest runs with identical summaries (NFR26-DETERMINISM-1). **DONE — controller-owned**, `.hermes/run-logs/e49-2-controller-api-determinism-proof-20260726.txt`: 3× `(1780 passed, 3 skipped, 2014 warnings)`, every run exit 0, `identical=True`.
+- [x] T8.3 Native `bmad-code-review`, then the independent `laura-aider-review-diff` pass. Findings loop back to `bmad-dev-story`. **DONE** — native Claude/Opus `APPROVE`, Critical 0 / Important 0 (§18); independent Aider/DeepSeek `APPROVE`, Critical 0 / Important 0 (§19). No blocking fix loop was required.
+- [x] T8.4 One commit, ff-only merge. **DONE — controller-owned.** One atomic story commit with subject `feat(api): seed starter browse categories` was created on `feat/E49.2-starter-category-seed`; this final status/evidence closeout is folded into that same commit by amend. The branch is a one-commit descendant of baseline `88a683a` and is integrated into `main` by ff-only immediately after this artifact is committed. The final SHA and merge proof live in Git/run logs rather than this self-referential file.
 
 ## 6. Verify-at-create findings (traced at HEAD `df922f9` this session, not carried from the epic sketch)
 
@@ -413,15 +414,232 @@ The story lands entirely inside the established `apps/api` layout: seed data and
 
 ## 15. Dev Agent Record
 
-*(To be filled by `bmad-dev-story`. Empty is the correct state at create time — do not pre-populate.)*
-
 ### Agent Model Used
+
+**Claude Opus 5** (`claude-opus-5`), native BMAD `bmad-dev-story` workflow (menu **DS**), single continuous agent session, 2026-07-26.
+
+**Route.** Started with native `bmad-help`, which read `_bmad/_config/bmad-help.csv` → row `BMad Method,bmad-dev-story,Dev Story,DS,…,4-implementation,preceded-by bmad-create-story:validate,required=true`, and routed here. Skill customization resolved with `python3 _bmad/scripts/resolve_customization.py --skill <skill-root> --key workflow` → `activation_steps_prepend = []`, `activation_steps_append = []`, `on_complete = ""`, `persistent_facts = ["file:{project-root}/**/project-context.md"]`; **no team or user override** (`_bmad/custom/bmad-dev-story.toml` and `.user.toml` both absent). Config from `_bmad/bmm/config.yaml`: `user_name: Ezop`, `communication_language: Polish`, `document_output_language: English`, `user_skill_level: intermediate`, `implementation_artifacts: {project-root}/_bmad-output/implementation-artifacts`.
+
+**Provisioning note, stated rather than hidden.** The BMAD skill bodies are untracked and exist only in the primary checkout, so the workflow was read from `/home/ezop/repos/3d-portal/.claude/skills/bmad-dev-story/SKILL.md` (read-only) and executed against this worktree. The `persistent_facts` glob `**/project-context.md` matched **no file** in this worktree — recorded as executed-and-empty, not skipped. `apps/api/.venv`, `apps/web/node_modules` and `workers/render/.venv` are local symlinks into the primary checkout's provisioned toolchains; they are locally ignored and **verified absent from `git ls-files`** (see Completion Notes G).
+
+**Environment.** Worktree `/home/ezop/worktrees/3d-portal-e49-2-dev`, branch `feat/E49.2-starter-category-seed`, Python 3.12.3, `pytest` with `asyncio_mode = "auto"`, `ruff` line-length 100.
+
+**Actual implementation baseline: `88a683a51916aa02a57f085471963de4320558e6`** (`docs: create and validate story 49.2`), working tree clean at start (`git status --porcelain` empty). Front matter `baseline_commit` records that commit; the create/validate source baseline `df922f955fea42bbdbc76827406b008d28733718` is preserved as historical provenance in `create_validate_baseline_commit` and throughout §16. `88a683a` is a **docs-only** commit on top of `df922f9`, so all product code under `apps/api/` is byte-identical between the two — the T1.1 baseline measured here is therefore the same code the story was validated against, and the difference is provenance bookkeeping, not a code delta.
 
 ### Debug Log References
 
+All logs are teed under the gitignored `.hermes/run-logs/`. Commands were run with cwd `/home/ezop/worktrees/3d-portal-e49-2-dev/apps/api` unless stated otherwise; `.venv/bin/python` is the symlinked API venv.
+
+**T1 — baseline before any edit (`e49-2-*` context, cwd `apps/api`).**
+
+```
+$ .venv/bin/python -m pytest tests/test_seed_taxonomy.py tests/test_seed.py \
+    tests/test_browse_category_entity.py tests/test_orm_migration_parity.py -q
+...............................                                          [100%]
+31 passed, 1 warning in 4.49s
+```
+
+The single warning is the **pre-existing** `SAWarning: Cannot correctly sort tables; there are unresolvable cycles between tables "model, model_file"` raised by `tests/test_orm_migration_parity.py:66` — present at baseline, unrelated to this story, unchanged afterwards.
+
+```
+$ git rev-parse HEAD
+88a683a51916aa02a57f085471963de4320558e6
+$ git status --porcelain
+(empty — clean)
+$ git rev-parse --abbrev-ref HEAD
+feat/E49.2-starter-category-seed
+```
+
+**T2.4 — RED #1, the whole test module authored before any production symbol existed.** Log: `.hermes/run-logs/e49-2-red-1-t2.4.log`.
+
+```
+$ .venv/bin/python -m pytest tests/test_seed_browse_categories.py -q
+==================================== ERRORS ====================================
+____________ ERROR collecting tests/test_seed_browse_categories.py _____________
+ImportError while importing test module '/home/ezop/worktrees/3d-portal-e49-2-dev/apps/api/tests/test_seed_browse_categories.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_seed_browse_categories.py:30: in <module>
+    from app.core.db.seed import (
+E   ImportError: cannot import name 'STARTER_BROWSE_CATEGORIES' from 'app.core.db.seed' (/home/ezop/worktrees/3d-portal-e49-2-dev/apps/api/app/core/db/seed.py)
+=========================== short test summary info ============================
+ERROR tests/test_seed_browse_categories.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 0.29s
+```
+
+**Zero tests passing at this point** — exactly the state T2 requires, and red because the behaviour is absent, not because any assertion was written false.
+
+**RED #2 — the AC-11 entrypoint, after T3.1 resolved RED #1 and before `scripts/seed_browse_categories.py` existed.** Log: `.hermes/run-logs/e49-2-red-2-t6-script.log`.
+
+```
+$ .venv/bin/python -m pytest tests/test_seed_browse_categories.py -q
+tests/test_seed_browse_categories.py:36: in <module>
+    from scripts.seed_browse_categories import main as seed_categories_script_main
+E   ModuleNotFoundError: No module named 'scripts.seed_browse_categories'
+=========================== short test summary info ============================
+ERROR tests/test_seed_browse_categories.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 0.23s
+```
+
+This is the second predicted collection error, quoted after the first was resolved, exactly as T2.4 / T6 direct. Per F-9 the cause is the missing **module**, not a missing import path (`tests/test_seed_taxonomy.py:23` already imports from `scripts.`).
+
+**GREEN — one genuine defect in my own test code, found and fixed.** Log: `.hermes/run-logs/e49-2-green-1.log`. The first full-module run after T6.2 was `1 failed, 16 passed`: `test_dataset_positions_are_dense_and_strictly_increasing_in_list_order` raised `ValueError: zip() argument 2 is shorter than argument 1` — my adjacent-pair comparison passed `zip(positions, positions[1:], strict=True)` on unequal lengths. This was a **test-code bug, not a production defect**, and it is recorded rather than quietly amended. It was replaced with `itertools.pairwise(positions)` (also what `ruff` RUF007 requires). Logs `e49-2-green-2.log` and the post-mutation re-run:
+
+```
+$ .venv/bin/python -m pytest tests/test_seed_browse_categories.py -q
+.................                                                        [100%]
+17 passed in 1.48s
+```
+
+**T3.3 — labelled mutation sensitivity checks. These are NOT the original RED.** Pre-mutation hash of the production file, recorded before touching it:
+
+```
+$ sha256sum apps/api/app/core/db/seed.py
+3b88dcc220eb732e7d20a4ea6a7532ec371d531df1ddccf7c56d3cf527172350
+```
+
+Each mutation changed **production** code only, was run, then reverted. Verbatim summaries:
+
+| # | Mutation applied to `_insert_absent_category` | Observed result | Log |
+|---|---|---|---|
+| **A** | Replace the `if existing is not None: return` early-out with an **overwrite** of `name_en`, `name_pl`, `position`, `inclusion_criterion` + `commit()` — the "keep labels in sync with the dataset" path R-2 warns about | `2 failed, 15 passed in 1.61s` — `test_admin_edited_row_survives_a_reseed_untouched` (AC-7) and `test_partial_dataset_is_completed_without_disturbing_existing_rows` (AC-8). Failure text: `AssertionError: pre-existing row 'home-decor' was disturbed … At index 6 diff: 'The model is chosen mainly for how it looks in a living space, not for a job it performs.' != None` | `e49-2-mutation-A.log` |
+| **B** | Replace the early-out with **delete-then-recreate** (`session.delete(existing); session.commit()`, then fall through to INSERT) | `3 failed, 14 passed in 1.68s` — AC-6 `test_seed_is_idempotent_and_byte_stable` **plus** AC-7 and AC-8. Failure text: `At index 0 diff: UUID('77222faa-…') != UUID('637cbd5d-…')` — the `id` changed, proving the row was recreated | `e49-2-mutation-B.log` |
+| **C** | **Remove** the `try/except IntegrityError → rollback` around the insert commit | `1 failed, 16 passed in 1.95s` — `test_insert_absent_category_tolerates_a_real_integrity_error` (AC-14), failing with a genuine `sqlalchemy.exc.IntegrityError: (sqlite3.IntegrityError) UNIQUE constraint failed: browse_category.slug` on the `INSERT INTO browse_category …` statement | `e49-2-mutation-C.log` |
+
+**Honest finding about mutation A, recorded rather than papered over.** The story's T3.3 predicted that the overwrite mutation would fail AC-6, AC-7 **and** AC-8. It failed **only AC-7 and AC-8**. AC-6 is unaffected by a pure field overwrite because on an idempotent re-seed the dataset values written are already identical to the stored ones, and `BrowseCategory.updated_at` has a `default_factory` but **no `onupdate`** (`_entities.py:164`), so no observable field changes. That is real information about the suite's sensitivity, not a defect in the check — and it is precisely why **mutation B** was added: recreating the row changes `id` and `created_at`, which is what proves the AC-6 test load-bearing. Both are reported; neither is presented as the original RED, and no knowingly-false assertion was ever written.
+
+**Restoration proven by hash, not asserted.**
+
+```
+$ sha256sum apps/api/app/core/db/seed.py
+3b88dcc220eb732e7d20a4ea6a7532ec371d531df1ddccf7c56d3cf527172350   # identical to pre-mutation
+$ grep -rn "MUTATION" apps/api/app apps/api/scripts apps/api/tests
+(no hits — every temporary mutation removed)
+$ .venv/bin/python -m pytest tests/test_seed_browse_categories.py -q
+17 passed in 1.45s
+```
+
+The shipped helper was re-read after restoration and still contains `if existing is not None: return` followed by the `try/except IntegrityError → session.rollback()` branch with no re-query.
+
+**T7.1 — non-regression sweep (AC-15), with the six named files unmodified.** Log: `.hermes/run-logs/e49-2-regression-t7.1.log`.
+
+```
+$ .venv/bin/python -m pytest tests/test_orm_migration_parity.py tests/test_migration_0020.py \
+    tests/test_migration_0019.py tests/test_browse_category_entity.py \
+    tests/test_seed_taxonomy.py tests/test_seed.py -q
+36 passed, 1 warning in 6.57s      # re-run at closeout: 36 passed, 1 warning in 6.66s
+```
+
+The one warning is the same pre-existing `model`/`model_file` parity `SAWarning` seen at baseline. `alembic` was **not invoked** by any test this story adds.
+
+**T7.2 — exact product-scope proof.**
+
+```
+$ git diff --stat -- apps workers infra docs pyproject.toml uv.lock '*.md'
+ apps/api/app/core/db/seed.py | 181 +++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 180 insertions(+), 1 deletion(-)
+$ git ls-files --others --exclude-standard -- apps workers infra docs
+apps/api/scripts/seed_browse_categories.py
+apps/api/tests/test_seed_browse_categories.py
+$ git diff -U0 -- apps/api/app/core/db/seed.py | grep "^-" | grep -v "^---"
+-from app.core.db.models import Tag, TagGroup, User, UserRole
+```
+
+Exactly the three execution-critical files in §7, and the **only** deleted line in the whole diff is the import line that gained `BrowseCategory` — so `seed_admin`, `STARTER_TAXONOMY`, `seed_taxonomy`, `_upsert_absent_group` and `_insert_absent_tag` are byte-unchanged and the rest of the change is purely additive (`@@ -233,3 +233,182 @@`). Explicit emptiness check on every AC-15 path:
+
+```
+$ git diff --name-only -- apps/api/app/core/db/models/ apps/api/migrations/ \
+    apps/api/tests/test_orm_migration_parity.py apps/api/app/main.py \
+    apps/api/app/core/db/session.py apps/api/scripts/seed_taxonomy.py \
+    apps/web workers infra docs pyproject.toml uv.lock
+(empty — all byte-unchanged)
+$ git diff --check
+(clean — no whitespace errors)
+```
+
+**T7.3 — lint/format, cwd `apps/api`.**
+
+```
+$ .venv/bin/python -m ruff format --check .
+275 files already formatted
+$ .venv/bin/python -m ruff check .
+All checks passed!
+```
+
+`ruff format` did reflow the new test module's long string literals once (recorded, not hidden); `ruff check` initially flagged RUF007 on the same line as the `zip` bug above, and both were resolved before the clean run.
+
+**Preliminary `check-all.sh` — STARTED, INTERRUPTED, never completed. NOT the T8.1 gate and NOT a pass.** A standalone run was launched from the repo root and teed to `.hermes/run-logs/e49-2-dev-check-all.log`. It cleared stages 1–9 of 16 and was **killed mid-way through stage 10/16 (`apps/api pytest`)** when the hosting background task was torn down at `max_turns`; the log therefore has **no `EXIT=` line, no `all green.`, and no 16/16 tally**, and stages 11–16 never ran. The full, exact account is in Completion Notes **H**, where the log is labelled INCOMPLETE / non-gate evidence. **T8.1 stays UNCHECKED**: the frozen final gate is controller-owned, must be re-run from the beginning on the final commit, and no dev-session run — least of all an interrupted one — can discharge it.
+
 ### Completion Notes List
 
+**A. What was actually implemented.** `STARTER_BROWSE_CATEGORIES` (the approved eight rows, in order, with bilingual labels and the canonical English `inclusion_criterion`), `seed_browse_categories(engine)` and `_insert_absent_category(session, category)` appended to `apps/api/app/core/db/seed.py` after `_insert_absent_tag`, plus `BrowseCategory` added to the existing `app.core.db.models` import line; the deliberate admin-run entrypoint `apps/api/scripts/seed_browse_categories.py`; and the 17-test module `apps/api/tests/test_seed_browse_categories.py`. Nothing else.
+
+**B. Contract adherence, item by item.** Create-if-absent keyed on `slug` with an early `return` — there is **no `UPDATE` path and no `DELETE` path** anywhere in the new code (AC-4, AC-6, AC-7, AC-8, §8.2). Per-row commit inside a single `Session`, matching `seed_taxonomy`'s boundary (AC-13). The `IntegrityError` branch is **exactly** `_insert_absent_tag`'s: catch → `rollback()` → return, with an explicit comment recording that `_upsert_absent_group`'s post-rollback `.one()` re-query was deliberately **not** copied because this seed has no id-returning second phase (AC-14, §8.5). `description_en`, `description_pl` and `parent_id` are absent from every dataset entry, so the ORM defaults leave them `None` (AC-3). No new dependency, no `pyproject.toml`/`uv.lock` change, no schema change, no migration, no refactor of the 41.3 seeder.
+
+**C. Dataset provenance re-verified at source, not copied from §6.** `EXPERIENCE.md:84-91` and `:101-156` were read directly this session. The AC-1 rows match byte-for-byte, and each AC-2 string matches its source sentence under exactly the two declared normalisations. Independently confirmed: **only** `storage-organization` carries markdown emphasis (`*other*`) in the source, so the transformation set is complete. **No discrepancy between the §4 tables and `EXPERIENCE.md` was found**, so the "table wins, report the defect" clause was never triggered. The em dash in `printer-3d`, the Oxford comma in `toys-games` and all Polish diacritics survived (R-4); the tests compare the strings literally.
+
+**D. AC-12 honesty, restated because it matters.** The dataset tests are a **post-decision drift guard** over the approved `(slug, position)` sequence, labels, criteria, charset and density. They do **not** re-derive, re-execute or corroborate the live-distribution evidence — a unit test on an empty `tmp_path` SQLite file has no access to the real catalogue. That is stated in the test module docstring and in the `seed.py` dataset comment, which carries the §6 F-1 citation including both independent verdicts and the zero-margin `replacement-parts` finding. **Nothing in this pass re-measured the live catalogue.**
+
+**E. AC-10 verified two ways.** `apps/api/app/main.py` is byte-unchanged (T4.3, empty `git diff --name-only`), and two source-level tests enforce it going forward: `seed_browse_categories` does not appear in `main.py`'s source, and a walk of `app/**/*.py` asserts the only file mentioning the symbol is `app/core/db/seed.py`. Both are import-free grep-equivalents, so an accidental lifespan wiring becomes a failing test rather than a silent behaviour change (R-3).
+
+**F. Test-suite scope.** 17 tests: 6 dataset-shape (AC-1, AC-2, AC-3, AC-12), 5 seeding behaviour (AC-5 … AC-9), 2 no-boot-wiring (AC-10), 2 entrypoint (AC-11), 1 mid-run-failure convergence (AC-13), 1 real-`IntegrityError` race (AC-14). Deliberate non-vacuity measures: the AC-13 test injects `RuntimeError` (never `IntegrityError`, which is swallowed by design) on the **4th** commit so the partial state is a **non-empty strict** subset (R-6); the AC-9 test creates a real `ModelTag` row and asserts `model_tags_before` is non-empty before comparing, so "unchanged" is not trivially true; the AC-11 pair includes a case with one extra admin-created row where the DB holds **9** categories, so printing `len(STARTER_BROWSE_CATEGORIES)` would say 8 and be caught. Every test runs against a throwaway `tmp_path` SQLite database via `create_engine_for_url` + `init_schema` — **no live DB, no Docker, no network, no Redis, no `TestClient`, no Alembic, no sleeps, no randomness**.
+
+**G. Toolchain links never entered the diff.** `git ls-files | grep -E "\.venv|node_modules"` returns nothing, and the final `git status --porcelain --untracked-files=all` lists only the five intended paths. The three symlinked toolchains stayed invisible to git throughout.
+
+**H. Preliminary `check-all.sh` — INTERRUPTED, INCOMPLETE, and explicitly NOT a gate result.**
+
+A standalone `bash infra/scripts/check-all.sh` was started from the repo root and teed to the gitignored `.hermes/run-logs/e49-2-dev-check-all.log`. What actually happened, stated exactly:
+
+- It **started cleanly and advanced through stages 1–9** of 16 — `apps/api ruff format`, `apps/api ruff check`, `workers/render ruff format`, `workers/render ruff check`, `apps/web typecheck`, `apps/web production build`, `apps/web lint (eslint + stylelint)`, `apps/web vitest`, and then entered `apps/api pytest`. The script fails fast, so advancing past a stage implies that stage returned 0; the log shows nine `==>` stage banners and no stage failure.
+- It **entered stage 10/16 (`apps/api pytest`) and was still progressing when it was killed** — last progress observed live in-session at ~44 %, and the partial log ends mid-stage at the `[ 80%]` progress line.
+- **The run was killed, not finished:** the Claude background task hosting it was torn down when that agent run hit `max_turns`. Consequently the log contains **no `EXIT=` line, no `all green.` line, and no 16/16 stage tally** — verified by `grep -n "EXIT=\|all green"` returning **zero matches**.
+- **Therefore there is NO exit-0, NO `all green.`, and NO preliminary PASS.** The file `.hermes/run-logs/e49-2-dev-check-all.log` is **INCOMPLETE, non-gate evidence** and must not be read, cited or summarised as a passing gate run. Stages 11–16 (`infra/scripts pytest`, `apps/web visual regression`, `settings-env-compose-diff`, both `uv-lock-check` stages, `local-env-secrets`) **never ran at all**.
+- **This is not an implementation blocker.** T8.1 is controller-owned by design and will be re-run **from the beginning** on the final commit as the frozen gate. **T8.1 stays UNCHECKED**, exactly as it would have if this preliminary run had never been attempted. No conclusion about the branch's gate status is drawn here in either direction.
+
+**Side effect of that run, found and cleaned up.** The `apps/web typecheck` stage (`tsc -b`) emitted two declaration byproducts, `apps/web/vitest.config.d.ts` and `apps/web/vitest.setup.d.ts`, as **untracked and non-ignored** files at 15:22:50. They contain no authored content, are absent from the primary checkout, and would have polluted a `git add -A` by the controller, so they were **deleted** and the final `git status` re-verified clean. Flagged for the controller because a fresh `check-all.sh` run in this worktree will regenerate them — this is a pre-existing environmental wrinkle of the typecheck stage, not something this story introduced.
+
+**I. Disclosed deviations from the base workflow.**
+
+1. **`baseline_commit` was overwritten**, against the skill's step-4 rule "if front matter already contains `baseline_commit`, preserve the existing value". The controller directed that front matter record the **actual implementation baseline** `88a683a…`; `df922f9` is preserved losslessly in a new `create_validate_baseline_commit` key and in §16. Recorded rather than silently applied.
+2. **`persistent_facts` glob matched no file** in this worktree — executed-and-empty, not skipped.
+3. **The skill body was read from the primary checkout** because `.claude/skills/` is untracked and absent here.
+4. **No subagents and no research tools were used**; this session's harness forbids launching agents unless the user asks. All analysis was inline against `88a683a`.
+5. **§2's G26-DEVGO line was rewritten** from "open" to the granted-by-controller current state. This is a Status/record area correction required by the controller input; §16 still preserves the gate's open-at-validation-time posture.
+
+**J. Limitations, stated plainly.**
+
+- **The seed has never been executed against any real database.** Every run was a scratch `tmp_path` SQLite file. The live invocation is a post-merge controller/admin action and is explicitly **not** done.
+- **No live-catalogue claim is made or re-verified here** (see D).
+- **T1.1 was run at `88a683a`, not literally at `df922f9`** as the task text says. `88a683a` is docs-only on top of `df922f9`, so `apps/api/` is byte-identical; the substitution is recorded for transparency.
+- **One test-code defect of my own** (`zip(..., strict=True)` on unequal lengths) occurred and is recorded above rather than silently amended.
+- **Mutation A did not fail AC-6**, contrary to T3.3's prediction; mutation B was added to prove AC-6 load-bearing. Both outcomes are reported.
+- **The preliminary `check-all.sh` run was interrupted mid-stage-10 and never produced a verdict** — no exit-0, no `all green.`, stages 11–16 unrun (Note H). It discharges nothing, and **T8.1 remains unchecked**. No determinism triple, native code review or Aider review was performed in this session either.
+
+**K. NOT DONE in this pass — explicitly, so no reader infers otherwise.** Native `bmad-code-review` (§18 stays empty) · independent external Aider review `laura-aider-review-diff` (§19 stays empty) · the controller's frozen final `check-all.sh` gate (T8.1) · the NFR26-DETERMINISM-1 three-identical-run determinism triple (T8.2) · review loop-back (T8.3) · commit, push, ff-only merge (T8.4) · deploy · any live-database access or production seeding · controller final disposition (§20 stays empty). **No Ezop signature, Ezop review, controller sign-off or reviewer verdict is recorded, implied or claimable from this record.** The working tree is left **uncommitted** for a fresh reviewer.
+
 ### File List
+
+**Execution-critical product files — exactly 3, as predicted in §7:**
+
+| File | Action |
+|---|---|
+| `apps/api/app/core/db/seed.py` | **MODIFIED** — +180 / −1 (the −1 is the `BrowseCategory` import line; all pre-existing symbols byte-unchanged) |
+| `apps/api/scripts/seed_browse_categories.py` | **NEW** — admin-run entrypoint (AC-11) |
+| `apps/api/tests/test_seed_browse_categories.py` | **NEW** — 17 tests covering AC-1 … AC-14 |
+
+**Workflow records — 2, not counted in the three:**
+
+| File | Action |
+|---|---|
+| `_bmad-output/implementation-artifacts/49-2-starter-category-seed.md` | **MODIFIED** — front matter baselines, `Status: review`, §2 G26-DEVGO current state, T1–T7 checkboxes, this §15, §21 Change Log |
+| `_bmad-output/implementation-artifacts/sprint-status.yaml` | **MODIFIED** — `49-2-starter-category-seed: ready-for-dev → review`, `last_updated`; `epic-49` untouched at `in-progress` |
+
+**Deleted files:** none. **Other tracked files changed:** none. Local `.hermes/run-logs/*` evidence is gitignored and deliberately not tracked.
 
 ## 16. Validation Record
 
@@ -487,12 +705,141 @@ This is a **controller decision**, not an Ezop signature, Ezop review, or claim 
 
 ## 18. Native code-review record (`bmad-code-review`)
 
-*(Empty until `bmad-dev-story` completes and `bmad-code-review` runs.)*
+**VERDICT: `APPROVE`** — Critical 0, Important 0. Minor findings are listed below and are explicitly non-blocking.
+
+### 18.1 Reviewer identity, route and posture
+
+**Claude Opus 5** (`claude-opus-5`), native BMAD `bmad-code-review` workflow (menu **CR**), **fresh independent reviewer context** — no create, validate or dev-story conversation state carried in. 2026-07-26.
+
+**Route.** Started with native `bmad-help` → read `_bmad/_config/bmad-help.csv` → row `BMad Method,bmad-code-review,Code Review,CR,…,4-implementation,preceded-by bmad-dev-story,required=false`, and routed here and nowhere else. Skill customization resolved with `python3 _bmad/scripts/resolve_customization.py --skill <skill-root> --key workflow` → `activation_steps_prepend = []`, `activation_steps_append = []`, `on_complete = ""`, `persistent_facts = ["file:{project-root}/**/project-context.md"]`; **no team or user override** (`_bmad/custom/bmad-code-review.toml` and `.user.toml` both absent). Unlike the dev-story pass, the `persistent_facts` glob **did** match here: `_bmad-output/project-context.md` was loaded as foundational context. Config from `_bmad/bmm/config.yaml` (`user_name: Ezop`, `communication_language: Polish`, `document_output_language: English`). Step files `step-01-gather-context.md` → `step-02-review.md` → `step-03-triage.md` → `step-04-present.md` were executed in order; the skill bodies were read from the primary checkout `/home/ezop/repos/3d-portal/.claude/skills/` because `.claude/skills/` is untracked and absent from this worktree.
+
+**Posture.** Reviewer only. **No product code, test, dependency file, `.gitignore`, planning artifact or toolchain link was modified.** The only file written by this pass is this §18. §15 and §16 were read but **not** altered. No commit, push, merge, deploy, live-database access or seed-CLI invocation against any non-scratch database occurred.
+
+### 18.2 Exact review target
+
+| Item | Value |
+|---|---|
+| Worktree | `/home/ezop/worktrees/3d-portal-e49-2-dev` |
+| Branch | `feat/E49.2-starter-category-seed` |
+| Baseline `HEAD` | `88a683a51916aa02a57f085471963de4320558e6` (verified with `git rev-parse HEAD`) |
+| Diff mode | **uncommitted** (tracked `git diff HEAD` + untracked product files) |
+| Spec | `_bmad-output/implementation-artifacts/49-2-starter-category-seed.md`, `review_mode = full` |
+
+**Tracked-path audit — exactly the five expected paths, no sixth.** `git diff HEAD --name-only` → `apps/api/app/core/db/seed.py`, `_bmad-output/implementation-artifacts/49-2-starter-category-seed.md`, `_bmad-output/implementation-artifacts/sprint-status.yaml`. `git ls-files --others --exclude-standard` → `apps/api/scripts/seed_browse_categories.py`, `apps/api/tests/test_seed_browse_categories.py` (2 untracked, no more). `git ls-files | grep -cE "\.venv|node_modules"` → **0**. `git diff --check` → clean. `sprint-status.yaml` parses as YAML with `49-2-starter-category-seed: review` and `epic-49: in-progress`. Diff size 181 changed lines in `seed.py` (+180 / −1) plus 45 + 505 new lines — well under the step-01 chunking threshold, so the whole diff was reviewed in one pass.
+
+### 18.3 Review layers executed
+
+The three native layers (**Blind Hunter** / `bmad-review-adversarial-general`, **Edge Case Hunter** / `bmad-review-edge-case-hunter`, **Acceptance Auditor**) were all executed against the full diff and this story. `{failed_layers}` is **empty** — no layer failed, timed out or returned empty.
+
+**Disclosed deviation (same class as §15 Note I.4 and §17.3).** Step 2 directs that the layers run as parallel subagents at equal model capability. This session's harness forbids launching agents unless the user asks, and the controller input did not ask. The skill's stated fallback is to emit prompt files and HALT — which would have produced no verdict at all, defeating the controller's explicit requirement. The three layers were therefore executed **inline in this same fresh context**, each following its own native skill body (read from the primary checkout), at full session capability. This is recorded rather than silently applied. Consequence, stated honestly: the layers did not run blind of one another, so cross-layer independence is weaker than the workflow intends. It was compensated for by deriving the findings from **executed evidence** (§18.4) rather than from reading the diff alone.
+
+### 18.4 Independently verified evidence (executed this pass — not read back from §15)
+
+Every item below was produced by this reviewer in this worktree. Nothing here is quoted from the implementer's record.
+
+1. **Dataset byte fidelity against the canonical spine — PASS.** `EXPERIENCE.md:84-91` (rows) and `:103-153` (the eight `- **Inclusion criterion:**` lines, inside the cited `:101-156` block) were parsed mechanically and compared field-by-field against `STARTER_BROWSE_CATEGORIES` extracted from `seed.py` via `ast.literal_eval`. Result: **8/8 rows byte-identical** in `(position, slug, name_pl, name_en)` and in list order; **8/8 criteria byte-identical** under exactly the two declared normalisations (strip `*`, capitalise first letter) and **nothing else**. The `printer-3d` em dash survives as **U+2014** (the only non-ASCII character in any criterion); the `toys-games` Oxford comma, all Polish diacritics and every trailing full stop survive. Independently confirmed that `storage-organization` is the **only** source sentence carrying markdown emphasis, so the declared transformation set is complete. **AC-1 and AC-2 hold at the byte level; the §4 tables, the test's `_APPROVED_*` copies and `EXPERIENCE.md` all agree.**
+2. **Exactly one criterion field, no invented content — PASS.** `_entities.py:157` is `inclusion_criterion: str | None = None` (single field). The extracted dataset carries exactly the keys `{slug, name_en, name_pl, position, inclusion_criterion}` — `description_en`, `description_pl` and `parent_id` appear in **no** entry (AC-3).
+3. **Independent mutation sensitivity checks — the preservation and race tests are load-bearing.** Rather than editing tracked files, `_insert_absent_category` was replaced **in memory** by a reviewer-authored pytest plugin (`-p`, `PYTHONPATH=/tmp`), leaving every repository file untouched. Results: **(A) overwrite-instead-of-skip → 3 failed / 14 passed**; **(B) delete-then-recreate → 4 failed / 13 passed** (adds AC-6 `test_seed_is_idempotent_and_byte_stable`, failing on a changed row `id`); **(C) remove the `try/except IntegrityError` → exactly 1 failed / 16 passed**, and the single failure is `test_insert_absent_category_tolerates_a_real_integrity_error`. My A and B mutants also lack the handler, which is why they additionally fail the AC-14 test — that is an artefact of my harness, **not** a discrepancy with §15's 2/15, 3/14 and 1/16. The load-bearing conclusion is identical and independently reproduced: no preservation test is vacuous, and the `IntegrityError` branch is proven by a genuine `UNIQUE constraint failed: browse_category.slug`, not mocked away.
+4. **AC-13 convergence is non-vacuous — verified by direct probe, not by trusting the test's own assertion.** With `Session.commit` failing on the 4th call, the run leaves **exactly 3** durably committed rows (`storage-organization`, `home-decor`, `holders-mounts`) — a non-empty **strict** subset with no duplicates — and a clean re-run converges to exactly **8** rows with **zero** duplicates. Per-row commit boundary confirmed.
+5. **AC-11 entrypoint exercised against a throwaway scratch SQLite file** (`/tmp`, deleted afterwards): `main(engine=…)` run twice printed `seeded browse categories: 8 categories present` both times — idempotent, and the count is genuinely a post-seed `SELECT` against the database. **No real, live or production database was opened at any point in this review.**
+6. **AC-10 no-boot-wiring — verified two ways beyond the tests.** `app/main.py:64-93` `lifespan` calls `seed_admin` and nothing else, and the file is byte-unchanged in `git diff`. A repo-wide grep for `seed_browse_categories|STARTER_BROWSE_CATEGORIES` returns hits in **only** `app/core/db/seed.py`, `scripts/seed_browse_categories.py` and the new test module — plus `grep -rn` over `infra/` and `docs/` returns **nothing**, so no deploy script or runbook auto-invokes it either.
+7. **Story 41.3 behaviour untouched — PASS.** The **only** deleted line in the entire product diff is the `from app.core.db.models import …` line that gained `BrowseCategory`; the rest is purely additive after `_insert_absent_tag`. `seed_admin`, `STARTER_TAXONOMY`, `seed_taxonomy`, `_upsert_absent_group` and `_insert_absent_tag` are byte-unchanged.
+8. **Targeted regression + lint — PASS, executed by me.** `pytest tests/test_seed_browse_categories.py -q` → **17 passed**. `pytest tests/test_orm_migration_parity.py tests/test_migration_0020.py tests/test_migration_0019.py tests/test_browse_category_entity.py tests/test_seed_taxonomy.py tests/test_seed.py -q` → **36 passed, 1 warning** with all six files unmodified; the one warning is the pre-existing `model`/`model_file` `SAWarning`. `ruff format --check .` → `275 files already formatted`; `ruff check .` → `All checks passed!`. `grep -c alembic` on the new test module → **0**.
+9. **No mutation residue.** `sha256sum apps/api/app/core/db/seed.py` = `3b88dcc220eb732e7d20a4ea6a7532ec371d531df1ddccf7c56d3cf527172350`, matching the value §15 records both before and after its mutation checks; a grep for `MUTATION|TODO|FIXME|XXX|HACK` across all three product files returns **no hits**.
+10. **Provenance claim in the dataset comment is true.** `git show --stat 48db6bb` confirms that commit added `ux-designs/ux-3d-portal-2026-07-26/EXPERIENCE.md`, so "G26-CAT-SET closed this content on 2026-07-26 (commit `48db6bb`)" is accurate rather than asserted.
+
+### 18.5 Acceptance Auditor result
+
+**AC-1 … AC-15: all satisfied**, each against executed evidence rather than the implementer's prose — AC-1/AC-2 by §18.4-1, AC-3 by §18.4-2 plus the persisted-state assertions in `test_seed_populates_exactly_the_eight_approved_rows`, AC-4 by code reading at `seed.py:393-414`, AC-5/AC-6/AC-7/AC-8 by §18.4-3 and the green suite, AC-9 by `test_seed_writes_nothing_outside_browse_category` (which guards its own non-vacuity with `assert model_tags_before`), AC-10 by §18.4-6, AC-11 by §18.4-5, AC-12 by the drift-guard tests plus the honest framing carried in both the module docstring and the `seed.py` comment, AC-13 by §18.4-4, AC-14 by §18.4-3(C), AC-15 by the empty `git diff --name-only` over every named path plus §18.4-8.
+
+**AC-16 is NOT claimed by this review and is NOT dischargeable by it.** It is controller-owned; all four T8 boxes remain unchecked and **this reviewer did not tick any of them**.
+
+**Binding constraints §3.1–§3.10: all held.** In particular §3.3 (no `UPDATE`, no `DELETE` path anywhere in the new code — verified by reading `_insert_absent_category` in full), §3.5 (zero `model_browse_category` writes), §3.6 (no migration touched, no new revision), §3.9 (the 41.3 shape extended, not refactored) and §3.10 (strict RED→GREEN, with the load-bearingness independently re-derived rather than accepted).
+
+### 18.6 Findings
+
+**Critical: 0. Important: 0.**
+
+**Minor — non-blocking, listed for the record; none of them gates the merge, and this reviewer applied no patch.**
+
+| # | Finding | Location | Disposition |
+|---|---|---|---|
+| M-1 | The post-condition prints `COUNT(*)` over the whole table, so "a partial seed is visibly distinguishable from a full one" is strictly true only while the table holds no non-approved rows. A future state with 3 extra admin-created rows and 3 missing approved slugs would also print `8`. | `apps/api/scripts/seed_browse_categories.py:39-41` | **Defer, do not patch.** AC-11 pins both the DB-queried source and the literal output format, so "fixing" this would deviate from the approved AC. It cannot arise on the live first run (§2 records `browse_category` = 0), and the 9-row test already covers the direction that matters. |
+| M-2 | The drift guard compares `STARTER_BROWSE_CATEGORIES` against a hand-copied `_APPROVED_ROWS` / `_APPROVED_CRITERIA` in the test; neither is bound to `EXPERIENCE.md` itself, so a *coordinated* transcription error in both copies would pass. | `apps/api/tests/test_seed_browse_categories.py:50-87` | **Defer.** No such error exists — §18.4-1 verified all three transcriptions against the canonical source byte-for-byte. A markdown-parsing test would couple the suite to a planning artifact's formatting; the deliberate second copy is what AC-12 asked for and is the right call. |
+| M-3 | The dataset comment runs ~40 lines and embeds session provenance, both subagent verdicts and `.hermes/run-logs/` filenames that are gitignored and therefore unverifiable by any future repository reader. Above the project comment policy's "WHY when non-obvious, skip narrative WHATs". | `apps/api/app/core/db/seed.py:242-281` | **Defer.** Its load-bearing half (why never-update, why single-field English, why not a tree) is genuinely non-obvious and belongs there; only the evidence-history half will rot. Trimming it is taste, and §3 forbids opportunistic edits in this commit. |
+| M-4 | `except IntegrityError` catches *any* integrity violation, not only the `uq_browse_category_slug` race, and returns without confirming a row exists for that slug. | `apps/api/app/core/db/seed.py:409-414` | **Dismiss as by-design.** This is exactly the shipped `_insert_absent_tag` contract that §3.9, AC-14 and §8.5 require and explicitly forbid widening; the deliberate comment about not copying `_upsert_absent_group`'s re-query is correct. The table currently carries no other constraint the dataset can violate. |
+| M-5 | *(Edge Case Hunter)* A concurrent SQLite writer raises `OperationalError: database is locked`, not `IntegrityError`; that path is unguarded and aborts the run mid-way. | `apps/api/app/core/db/seed.py:407-414` | **Defer, pre-existing class.** Identical exposure to `seed_taxonomy` and to `seed_admin` at boot; recovery is exactly AC-13's converge-on-re-run, which §18.4-4 proved works. Not caused by this change. |
+
+**Deletion check (Edge Case Hunter step 4):** the single removed line is the import statement, re-established in the same hunk with `BrowseCategory` added. No orphaned reference, no dead code, no retired contract. **No deletion finding.**
+
+**Explicitly checked and found clean** (the controller's adversarial list, each negative confirmed rather than assumed): no tautological dataset comparison (the second copy is deliberate and externally validated); no vacuous assertion (AC-9 and AC-13 both carry explicit non-vacuity guards, and I re-derived AC-13's "3 rows" myself); no implementation-coupled mock that bypasses behaviour (the AC-14 test makes the real database raise a real `IntegrityError` — proven by mutation C); no manufactured RED (both recorded REDs are collection errors from genuinely absent symbols, and no knowingly-false assertion exists anywhere in the module); no hidden mutation residue (hash + grep, §18.4-9); no scope drift (exactly three product files, §18.2); no model↔category assignment; no boot wiring; no schema, migration, ORM, API, UI, locale or dependency change.
+
+**Story-record honesty — audited, and it holds.** §15 and the `sprint-status.yaml` narrative both state plainly that the preliminary dev-agent `check-all.sh` was **started and killed mid-stage-10**, with no `EXIT=`, no `all green.` and no 16/16 tally, and that it discharges nothing. Neither presents it as a PASS. All four T8 boxes are unchecked, §19 and §20 are empty, and no Ezop, Laura or Aider sign-off is claimed anywhere. §15 also volunteers two things against its own interest — a defect in its own test code, and the fact that mutation A did **not** fail AC-6 contrary to T3.3's prediction (the cause it gives, `updated_at` having a `default_factory` but no `onupdate`, is correct: I verified it at `_entities.py:164`). The record is truthful.
+
+### 18.7 Triage summary
+
+**0 `decision-needed`, 0 `patch`, 5 `defer`, 0 dismissed as noise** (M-4 is recorded as by-design rather than dropped, so it stays visible). No finding was rated `high` or `medium`; all five are `low`. **No patch was offered or applied, and no product file was touched by this review.**
+
+### 18.8 Verdict
+
+`APPROVE`
+
+Critical 0 and Important 0, so the verdict contract's `APPROVE` condition is met. The implementation does exactly what Story 49.2 specifies, in exactly the three predicted product files, on the verified 41.3 precedent, with a test suite whose load-bearingness I re-derived independently rather than took on trust.
+
+### 18.9 Limitations of this review, stated plainly
+
+- **Cross-layer independence is weaker than the workflow intends** — the three layers ran inline in one context, not as blind parallel subagents (§18.3). Compensated for with executed evidence, not eliminated.
+- **No live database was opened and no production catalogue claim was re-derived.** Every execution used throwaway `tmp_path` / `/tmp` SQLite files. The §6 F-1 distribution evidence was **not** re-measured by this pass; I verified only that the dataset matches the approved content and that the story's framing of that evidence is honest.
+- **This review did not run `check-all.sh`, the determinism triple, or the full `apps/api` suite to completion.** My targeted runs (§18.4-8) are real and are quoted exactly; the full 16-stage gate is controller-owned and separately evidenced, and **nothing in this section should be read as discharging it**.
+- **Static review of an uncommitted working tree.** The reviewed state is the working tree at `88a683a`; any later edit invalidates this record.
+
+### 18.10 Explicitly NOT done by this pass
+
+Independent external **Aider** code review (`laura-aider-review-diff`) — **not run**; §19 stays empty · **NFR26-DETERMINISM-1 determinism proof** (T8.2) — **not run and not claimed** · the controller's frozen final `check-all.sh` gate (T8.1) — **controller-owned, not run here, and not claimed** · review loop-back (T8.3) and **commit / push / ff-only merge** (T8.4) — **not done** · **deploy** — not done · **any live-database access or production seeding**, including running the new seed CLI against any non-scratch database — **not done** · **controller final disposition** (§20) — **not done, and owned by the controller**.
+
+**Status deliberately left at `review`** in this document, at `review` for the `49-2-starter-category-seed` key in `sprint-status.yaml`, and `epic-49` untouched at `in-progress`. **Disclosed deviation from step-04 §6:** the base workflow would set the story to `done` on a clean review and sync that to `sprint-status.yaml`. The controller directed that the story stay at `review` and owns the final `done`, so neither the Status line nor `sprint-status.yaml` was modified by this pass — recorded here rather than silently applied. **No Ezop signature, Ezop review, Laura sign-off or Aider verdict is recorded, implied or claimable from this section.** This is a Claude/native BMAD reviewer verdict and nothing more.
 
 ## 19. Independent external review record (Aider)
 
-*(Empty. Required by AGENTS.md before merge: `laura-aider-review-diff` after the native review passes. Codex only for fallback / high-stakes / repo-mandated countersignature.)*
+**VERDICT: `APPROVE`** — Critical 0, Important 0. Final output line was literal `APPROVE`.
+
+**Reviewer and mode.** `laura-aider-review-diff`, Aider v0.86.2, `openrouter/deepseek/deepseek-v3.2`, read-only pasted-diff mode (`--chat-mode ask --no-git --no-auto-commits --map-tokens 0`). The input was the complete product diff only: tracked `apps/api/app/core/db/seed.py` plus full no-index patches for the two new files `apps/api/scripts/seed_browse_categories.py` and `apps/api/tests/test_seed_browse_categories.py`. The prompt carried the validated AC contract and explicitly required scrutiny for transaction/race defects, tautological or vacuous tests, manufactured RED and mutation residue. Durable output: `.hermes/run-logs/e49-2-aider-code-review-20260726.log` (local, gitignored).
+
+**Aider's substantive conclusion.** The implementation correctly satisfies the exact-eight dataset, create-if-absent/no-clobber semantics, per-row commits, `IntegrityError` handling, no boot wiring, zero out-of-scope table writes and truthful admin CLI count. It called the test suite thorough across dataset shape, idempotency, admin edits, partial seeds, transaction boundaries and concurrency.
+
+**Controller adjudication of non-blocking notes (no patch applied):**
+
+1. Aider's sole Minor claimed `test_seed_browse_categories_is_referenced_only_by_its_own_definition` would fail because the admin CLI imports the symbol. **False positive:** the test intentionally scans only `(_API_ROOT / "app").rglob("*.py")`; `scripts/seed_browse_categories.py` is outside `app/` and is the one allowed deliberate invocation path. The body and adjacent comment test the runtime/boot boundary, and the test passed in focused, reviewer and full-controller gates. The name is slightly broader than the body, but renaming a green test is not a correctness fix.
+2. Suggested missing test for an unrelated row sharing a `position` is **outside the contract and schema**: `BrowseCategory.position` has no unique constraint; the seed keys solely by slug by design, so such a row cannot produce a position collision in SQLite.
+3. Suggested missing test for a future dataset entry with `inclusion_criterion=None` is **already caught**: the literal `_APPROVED_CRITERIA` comparison fails, and the subsequent `text[0]` / `endswith` checks cannot accept `None`. Adding a redundant bespoke test is unnecessary.
+
+**Disposition.** Critical 0 and Important 0 satisfy the external-review gate. The two Missing-test suggestions and one Minor do not identify a real uncovered contractual failure. No product, test or workflow file was modified by Aider; this §19 is the controller-owned record of its read-only output and adjudication. Codex fallback was not used because Aider returned a complete literal verdict.
+
+**Still not claimed by this section.** The controller determinism triple, final status/commit/push/ff-only integration/deploy/live seed and §20 disposition remain separately controller-owned. No Ezop signature or review is recorded or implied.
 
 ## 20. Controller final disposition
 
-*(Empty. Owned by the controller after §18 and §19 are green and `check-all.sh` is 16/16.)*
+**Disposition: DONE — Laura/controller, 2026-07-26.** This is a controller decision under Ezop's standing Initiative 26 authorization, not an Ezop signature or a claim that Ezop personally reviewed the code.
+
+- Real-distribution gate: **PASS** against all 131 active model names + tags; two independent read-only analyses agree all eight categories clear the ≥3 threshold. Conservative minima are 19 / 14 / 23 / 16 / 6 / 10 / 11 / 3; `replacement-parts` clears at exactly 3. No assignments were created.
+- Native BMAD validation: **PASS**, followed by controller spec audit and independent pre-development Aider **APPROVE**; `G26-DEVGO` was granted by Laura/controller before development.
+- Native BMAD code review: **APPROVE**, Critical 0, Important 0; five non-blocking minors are explicitly triaged in §18.
+- Independent Aider diff review: **APPROVE**, Critical 0, Important 0. Its one claimed Minor was a verified false positive about the deliberate `app/**/*.py` runtime scan; its two suggested tests were redundant or outside the schema contract (§19).
+- Final merge gate: `.hermes/run-logs/e49-2-controller-check-all-20260726.log` → **16/16**, terminal `all green.`, API **1780 passed / 3 skipped**, Web Vitest **785 passed**, visual **536 passed / 32 expected skips**. The tracked `seed.py` diff SHA-256 was identical before and after the gate; the final all-file manifest separately records every current story-file hash.
+- Final determinism: `.hermes/run-logs/e49-2-controller-api-determinism-proof-20260726.txt` plus three per-run logs → API **3× 1780 passed / 3 skipped / 2014 warnings**, every exit 0, normalized summaries identical.
+- Scope: exactly three execution-critical product files plus this story and `sprint-status.yaml`; no dependency, migration, runtime startup wiring, model assignment, live-DB, production or deployment action occurred during create/validate/development/review/gate.
+- The implementation preserves admin edits, tolerates partial seeds and one losing concurrent insert race, commits each newly inserted row independently, exposes a truthful admin-only CLI count, and cannot auto-run from app startup/import paths.
+- Deferred native minors remain explicitly recorded in §18 and are forward hardening/observability ideas, not acceptance failures. No deferred item blocks Story 49.2.
+
+The story branch contains one atomic implementation commit; the final status/evidence closeout is folded into that same commit by amend. No live database was accessed during development or review. The ff-only integration, push, deployment and deliberate live admin seed are controller-owned actions executed immediately after this record is committed; their external SHAs and production evidence belong in Git/deploy/run logs rather than in this self-referential artifact.
+
+## 21. Change Log
+
+| Date | Pass | Change |
+|---|---|---|
+| 2026-07-26 | native `bmad-create-story` (CS, action=create) | Story authored at baseline `df922f9`; `Status: ready-for-validation` |
+| 2026-07-26 | native `bmad-create-story` (VS, action=validate) | Fresh independent context, verdict `PASS`, 11 amendments applied; `Status: ready-for-dev`; §16 recorded |
+| 2026-07-26 | Laura/controller | G26-DEVGO **granted** for this story under Ezop's standing Initiative 26 authorization (controller decision; not an Ezop signature or review) |
+| 2026-07-26 | native `bmad-dev-story` (DS) | Implemented the three product files at actual baseline `88a683a`: `STARTER_BROWSE_CATEGORIES` + `seed_browse_categories` + `_insert_absent_category` in `seed.py`, the admin-run `scripts/seed_browse_categories.py`, and the 17-test `tests/test_seed_browse_categories.py`. Strict RED→GREEN (two recorded REDs, GREEN 17 passed), three labelled mutation sensitivity checks with hash-proven restoration, regression 36 passed, `ruff` clean, product scope proven to exactly three files. Front matter `baseline_commit` → `88a683a` with `df922f9` preserved as `create_validate_baseline_commit`; §2 G26-DEVGO line corrected to its granted current state; T1–T7 checked, **all T8 left unchecked**; §15 Dev Agent Record filled; `Status: review`. No code review, no Aider review, no commit/push/merge/deploy, no live seed. |
+| 2026-07-26 | Laura/controller closeout | Real-distribution PASS; native validation/code review PASS/APPROVE; Aider pre-dev and code review APPROVE; controller `check-all` 16/16; API determinism 3× identical at 1780 passed / 3 skipped / 2014 warnings. T8.1–T8.3 closed, §20 disposition DONE, story/sprint status → `done`; T8.4 intentionally left open until the atomic commit exists. No live DB, push, merge, deploy or live seed in this record. |
+| 2026-07-26 | Laura/controller atomic-commit closeout | Initial atomic commit created; T8.4 then truthfully closed and folded into the same commit by amend. Final SHA and ff-only integration are external Git evidence, deliberately not self-embedded. |
