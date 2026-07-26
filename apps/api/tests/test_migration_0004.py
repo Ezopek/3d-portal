@@ -171,6 +171,10 @@ def test_alembic_and_sqlmodel_emit_equivalent_index_sets(
         "model_print",
         "model_external_link",
         "model_note",
+        # Story 49.1: the browse-category tables must be covered here too,
+        # otherwise this guard stays green while proving nothing about them.
+        "browse_category",
+        "model_browse_category",
     ]
 
     def _index_set(db_path, table):

@@ -16,7 +16,9 @@ from app.modules.invite import models as _invite_models  # noqa: F401
 from ._audit import AuditLog
 from ._auth import RefreshToken
 from ._entities import (
+    BrowseCategory,
     Model,
+    ModelBrowseCategory,
     ModelExternalLink,
     ModelFile,
     ModelNote,
@@ -39,8 +41,10 @@ from ._user import User
 
 __all__ = [
     "AuditLog",
+    "BrowseCategory",
     "ExternalSource",
     "Model",
+    "ModelBrowseCategory",
     "ModelExternalLink",
     "ModelFile",
     "ModelFileKind",

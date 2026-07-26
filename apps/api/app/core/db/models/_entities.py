@@ -127,6 +127,62 @@ class ModelTag(SQLModel, table=True):
     created_at: datetime.datetime = Field(default_factory=_now_utc)
 
 
+class BrowseCategory(SQLModel, table=True):
+    """Initiative 26 browse category — a NEW entity, independent of the retired
+    Initiative 25 single-category taxonomy (dropped by 0019_drop_category).
+
+    Flat MVP with an optional ``parent_id``; the product depth-2 ceiling and
+    self-cycle rejection are SERVICE-layer rules (Story 49.5), deliberately not
+    expressed in DDL.
+    """
+
+    __tablename__ = "browse_category"
+    __table_args__ = (
+        # Explicit index name so the ORM name matches 0020_browse_categories
+        # (op.create_index("uq_browse_category_slug", ...)). The reason is the
+        # NAME, not the object count: Field(unique=True, index=True) — the
+        # Tag.slug pattern above — folds into exactly ONE unique index and no
+        # separate UNIQUE constraint (probed on SQLModel 0.0.38: Tag emits only
+        # ix_tag_slug), but it auto-names that index ix_browse_category_slug and
+        # so drifts against the migration. Follow TagGroup here, never Tag.
+        Index("uq_browse_category_slug", "slug", unique=True),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    slug: str
+    name_en: str
+    name_pl: str | None = None
+    description_en: str | None = None
+    description_pl: str | None = None
+    inclusion_criterion: str | None = None
+    position: int = Field(default=0)
+    parent_id: uuid.UUID | None = Field(
+        default=None,
+        sa_column=uuid_fk("browse_category.id", ondelete="RESTRICT", nullable=True),
+    )
+    created_at: datetime.datetime = Field(default_factory=_now_utc)
+    updated_at: datetime.datetime = Field(default_factory=_now_utc)
+
+
+class ModelBrowseCategory(SQLModel, table=True):
+    """M:N join between Model and BrowseCategory — the ModelTag shape verbatim.
+
+    A Model may have ZERO categories and is fully valid (and public) in that
+    state; nothing here makes a category mandatory.
+    """
+
+    __tablename__ = "model_browse_category"
+    __table_args__ = (Index("ix_model_browse_category_cat_model", "category_id", "model_id"),)
+
+    model_id: uuid.UUID = Field(
+        sa_column=uuid_fk("model.id", ondelete="CASCADE", primary_key=True),
+    )
+    category_id: uuid.UUID = Field(
+        sa_column=uuid_fk("browse_category.id", ondelete="RESTRICT", primary_key=True),
+    )
+    created_at: datetime.datetime = Field(default_factory=_now_utc)
+
+
 class ModelPrint(SQLModel, table=True):
     __tablename__ = "model_print"
 

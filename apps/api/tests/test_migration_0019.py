@@ -3,9 +3,13 @@
 Story 47.5 T-M19: ``upgrade head`` on a scratch SQLite DB leaves no ``category``
 table, no legacy FK column on ``model``, and no legacy FK index, while the
 facet-tag objects (``tag``, ``tag_group``, ``model_tag``) survive untouched;
-``downgrade`` from head raises ``NotImplementedError`` (Decision AV /
-NFR25-SCHEMA-MIGRATION-1 — forward-only); and the script directory has exactly
-one head named ``0019_drop_category``.
+``downgrade`` from ``0019_drop_category`` raises ``NotImplementedError``
+(Decision AV / NFR25-SCHEMA-MIGRATION-1 — forward-only); and the script
+directory has exactly one head named ``0020_browse_categories``.
+
+Story 49.1 re-pinned the two head-coupled assertions below (F-1 / F-2). Both
+keep their original binding intent — only their bound revision changed, because
+``0020_browse_categories`` is now head and it is additive + reversible.
 
 Uses its own tmpdir DB and bypasses the session-scope ``_isolated_db`` fixture by
 overriding ``DATABASE_URL`` for the duration of the test (``env.py`` reads
@@ -88,16 +92,24 @@ def test_upgrade_head_drops_category_schema(_round_trip_db: Path) -> None:
     assert "model_tag" in objs
 
 
-def test_downgrade_from_head_raises_not_implemented(_round_trip_db: Path) -> None:
+def test_downgrade_from_0019_raises_not_implemented(_round_trip_db: Path) -> None:
+    # Story 49.1 (F-2): pinned to 0019_drop_category, NOT "head". Since 0020
+    # became head, a "-1" step from head would exercise 0020.downgrade(), which
+    # IS implemented (additive + reversible by design) — that would turn this
+    # real forward-only proof into a false negative. The intent is unchanged:
+    # 0019.downgrade() must still raise.
     db_path = _round_trip_db
     cfg = _alembic_cfg(db_path)
 
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0019_drop_category")
     with pytest.raises(NotImplementedError):
         command.downgrade(cfg, "-1")
 
 
-def test_single_head_is_0019_drop_category() -> None:
+def test_single_head_is_0020_browse_categories() -> None:
+    # Story 49.1 (F-1): the head id is asserted BY NAME, deliberately — the
+    # value of this assertion is that it names the head, so it is re-pinned
+    # rather than relaxed to a length check.
     cfg = Config(str(Path(__file__).parent.parent / "alembic.ini"))
     script = ScriptDirectory.from_config(cfg)
-    assert script.get_heads() == ["0019_drop_category"]
+    assert script.get_heads() == ["0020_browse_categories"]
