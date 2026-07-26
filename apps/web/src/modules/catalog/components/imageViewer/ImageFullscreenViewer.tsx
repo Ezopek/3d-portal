@@ -225,7 +225,39 @@ export default function ImageFullscreenViewer({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         showCloseButton={false}
-        className="h-[95vh] w-[98vw] max-w-[98vw] p-0 outline-none bg-background/95 backdrop-blur-sm sm:max-w-[98vw]"
+        // E48.1 — geometry is anchored to the viewport origin instead of
+        // inheriting `dialog.tsx`'s `left-1/2 top-1/2 -translate-*` centering.
+        // That centering mixes two different reference boxes: `left: 50%`
+        // resolves against the fixed-position containing block (mobile Chrome's
+        // LAYOUT viewport, which it widens to the document's scroll width the
+        // moment the page overflows horizontally) while `w-[98vw]` resolves
+        // against the VISUAL viewport. Once the two diverge the dialog is
+        // displaced sideways and the top-right close button leaves the visible
+        // area — the reported "only the left half is visible and I can't get
+        // out" trap. Expressing offset and size in the same unit makes the
+        // geometry drift-proof; on a non-overflowing viewport `1vw`/`2.5dvh`
+        // are the same insets the centered layout produced, so the change is
+        // sub-pixel (it did re-rasterise the close glyph in the two mobile
+        // baselines — 32 px / 19 px — but moved no box edge).
+        //
+        // `max-w-[calc(100%-2vw)]` is the counterweight to that anchoring.
+        // `vw` counts the classic-scrollbar gutter, `100%` (the containing
+        // block) does not, so on a platform with non-overlay scrollbars a
+        // plain `left:1vw + width:98vw` would push the right edge — and the
+        // close button on it — past the visible area by the gutter width.
+        // The old centered form absorbed that deficit by splitting it across
+        // both edges; anchoring to the left does not, hence the explicit cap.
+        // It is inert wherever the gutter is 0 (`100% == 100vw`, so the cap
+        // equals `98vw`), which is why headless CI cannot exercise it —
+        // Chromium here uses overlay scrollbars (measured: clientWidth ==
+        // innerWidth == 100vw == 1280).
+        //
+        // `dvh` (not `vh`) for the height budget: on a phone `vh` is the LARGE
+        // viewport — measured with the browser toolbar hidden — so `95vh`
+        // overshoots the area the user can actually see whenever the toolbar
+        // is showing. `dvh` tracks the visible area. (Headless Chromium has no
+        // dynamic toolbar, so this is reasoned, not test-covered.)
+        className="h-[95dvh] w-[98vw] max-w-[calc(100%-2vw)] left-[1vw] top-[2.5dvh] translate-x-0 translate-y-0 p-0 outline-none bg-background/95 backdrop-blur-sm sm:max-w-[calc(100%-2vw)]"
         onKeyDown={onKey}
       >
         <DialogTitle className="sr-only">
@@ -245,17 +277,21 @@ export default function ImageFullscreenViewer({
               Without it, the `<img>`'s intrinsic 4k/8k height would expand
               the flex item, pushing the strip + nav chevrons OFF the
               viewport on wide screens. */}
-          <div className="relative flex flex-1 min-h-0 items-center justify-center overflow-hidden">
+          <div
+            data-testid="image-viewer-frame"
+            className="relative flex flex-1 min-h-0 items-center justify-center overflow-hidden"
+          >
             {renderImage({
               src: active.fullUrl,
               alt: active.alt,
-              // Story 26.1 (Init 17 / TB-044): explicit max-h-[calc(95vh-5rem)]
-              // (DialogContent height = 95vh; strip height = h-20 = 5rem)
+              // Story 26.1 (Init 17 / TB-044): explicit max-h-[calc(95dvh-5rem)]
+              // (DialogContent height = 95dvh; strip height = h-20 = 5rem)
               // so the image NEVER computes a height larger than the
               // available main-frame area. Combined with `min-h-0` above,
               // this keeps the strip + nav chevrons always in viewport
-              // regardless of source image aspect ratio.
-              className: "max-h-[calc(95vh-5rem)] max-w-full object-contain",
+              // regardless of source image aspect ratio. E48.1 moved the unit
+              // from `vh` to `dvh` so it keeps matching DialogContent's height.
+              className: "max-h-[calc(95dvh-5rem)] max-w-full object-contain",
             })}
 
             {/* Chrome layer — counter, close, chevrons. Fades when

@@ -257,8 +257,9 @@ export async function stubSotList(
   );
 }
 
-export async function stubSotDetail(page: Page) {
+export async function stubSotDetail(page: Page, options: { imageCount?: 1 | 2 } = {}) {
   const id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  const imageCount = options.imageCount ?? 1;
   await page.route(`**/api/models/${id}`, (route: Route) =>
     route.fulfill({
       status: 200,
@@ -319,6 +320,22 @@ export async function stubSotDetail(page: Page) {
             position: null,
             created_at: "",
           },
+          ...(imageCount === 2
+            ? [
+                {
+                  id: "f3",
+                  model_id: id,
+                  kind: "image",
+                  original_name: "side.png",
+                  storage_path: "",
+                  sha256: "",
+                  size_bytes: 1024,
+                  mime_type: "image/png",
+                  position: 2,
+                  created_at: "",
+                },
+              ]
+            : []),
         ],
         prints: [
           {
