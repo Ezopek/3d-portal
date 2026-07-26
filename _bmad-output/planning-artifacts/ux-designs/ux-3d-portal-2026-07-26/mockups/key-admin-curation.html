@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<title>Key screen — admin categories + curation QA</title>
+<style>
+/* Governed by: DESIGN.md § Components (Admin category row, admin criterion
+   text, Curation warning row) · EXPERIENCE.md § Component Patterns (Admin
+   category row, Admin replace-set editor, Curation QA queue), § State Patterns
+   (stale, admin write fails, curation queue empty), § Voice and Tone, Flow 3.
+   Warning is the ONLY colour permitted on the QA surface — nothing here is
+   destructive, every finding is advisory. */
+:root{
+  --background:hsl(0 0% 100%); --foreground:hsl(222 47% 11%); --card:hsl(0 0% 100%);
+  --muted-foreground:hsl(216.923 20.635% 37.059%); --primary:hsl(221 83% 53%);
+  --primary-foreground:hsl(0 0% 100%); --border:hsl(214 32% 91%);
+  --warning:hsl(38 92% 50%); --destructive:hsl(0 84% 60%);
+  --accent:hsl(214.286 31.818% 91.373%); --accent-foreground:hsl(222 47% 11%);
+}
+.dark{
+  --background:hsl(222 47% 7%); --foreground:hsl(210 40% 98%); --card:hsl(222 47% 11%);
+  --muted-foreground:hsl(215 20% 65%); --primary:hsl(217 91% 60%);
+  --primary-foreground:hsl(222 47% 11%); --border:hsl(217 33% 20%);
+  --warning:hsl(38 92% 60%); --destructive:hsl(0 84% 70%);
+  --accent:hsl(216.667 30.508% 23.137%); --accent-foreground:hsl(210 40% 98%);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:14px/1.45 Inter,system-ui,sans-serif;background:#e9edf3;padding:24px;color:#111}
+h1{font-size:13px;font-weight:600;color:#334;margin:0 0 4px}
+p.cap{font-size:12px;color:#556;margin:0 0 12px;max-width:960px}
+.frame{border:1px solid #c6cedb;border-radius:10px;overflow:hidden;margin-bottom:28px;box-shadow:0 1px 3px #0002}
+.chrome{background:#dde3ec;padding:6px 10px;font-size:11px;color:#445;border-bottom:1px solid #c6cedb}
+.app{background:var(--background);color:var(--foreground);padding:16px}
+.tabs{display:flex;gap:8px;border-bottom:1px solid var(--border);margin-bottom:16px}
+.tabs a{padding:8px 12px;font-size:13px;font-weight:500;border-bottom:2px solid transparent;color:var(--muted-foreground);text-decoration:none}
+.tabs a.on{border-bottom-color:var(--primary);color:var(--foreground)}
+.catrow{display:flex;align-items:flex-start;gap:12px;border:1px solid var(--border);background:var(--card);border-radius:.5rem;padding:10px 12px;margin-bottom:8px}
+.catrow .pos{font-size:11px;color:var(--muted-foreground);font-variant-numeric:tabular-nums;width:18px;padding-top:2px}
+.catrow .main{flex:1;min-width:0}
+.catrow .nm{font-weight:500;font-size:13px}
+.catrow .slug{font:11px ui-monospace,monospace;color:var(--muted-foreground)}
+.catrow .crit{font-size:12px;color:var(--muted-foreground);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:520px}
+.catrow .n{font-size:12px;font-variant-numeric:tabular-nums;color:var(--muted-foreground);padding-top:2px}
+.catrow .menu{color:var(--muted-foreground);padding:0 4px}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-foreground);margin:22px 0 10px}
+.warn{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-radius:.5rem;padding:9px 12px;margin-bottom:7px}
+.warn .mk{color:var(--warning);font-size:15px;line-height:1.2}
+.warn .body{flex:1;font-size:13px}
+.warn .sub{font-size:11px;color:var(--muted-foreground)}
+.warn a{color:var(--primary);font-size:12px;text-decoration:underline;white-space:nowrap}
+.empty{font-size:13px;color:var(--muted-foreground);padding:12px 0}
+/* replace-set editor */
+.dlg{max-width:460px;border:1px solid var(--border);border-radius:.75rem;background:var(--card);padding:16px;box-shadow:0 12px 30px #0003}
+.dlg h3{font-size:14px;font-weight:600;margin-bottom:2px}
+.dlg .meta{font-size:11px;color:var(--muted-foreground);margin-bottom:12px}
+.chk{display:flex;align-items:center;gap:8px;min-height:32px;font-size:13px}
+.chk input{width:15px;height:15px}
+.advis{display:flex;gap:8px;font-size:12px;margin:10px 0 4px;padding:8px 10px;border:1px solid var(--border);border-radius:.5rem}
+.advis .mk{color:var(--warning)}
+.acts{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+.pri{background:var(--primary);color:var(--primary-foreground);border-radius:.5rem;padding:7px 14px;font-size:13px;font-weight:500}
+.sec{border:1px solid var(--border);border-radius:.5rem;padding:7px 14px;font-size:13px}
+.conflict{border:1px solid var(--destructive);border-radius:.5rem;padding:10px 12px;font-size:12px;color:var(--destructive);max-width:460px;margin-top:14px}
+</style>
+</head>
+<body>
+
+<h1>1 · /admin/categories — the eight starter categories, criterion visible in the list</h1>
+<p class="cap">A new tab beside the shipped <em>Grupy tagów</em>; category and tag-group governance stay separate surfaces. The inclusion criterion renders inline because it <em>is</em> the admission test — an admin comparing two categories must see both criteria at once, not open two dialogs.</p>
+<div class="frame">
+  <div class="chrome">portal.local /admin/categories</div>
+  <div class="app">
+    <nav class="tabs"><a>Użytkownicy</a><a>Zaproszenia</a><a>Kolejki</a><a>Grupy tagów</a><a class="on">Kategorie</a></nav>
+    <div class="catrow"><div class="pos">0</div><div class="main"><div class="nm">Przechowywanie i organizacja <span class="slug">storage-organization</span></div><div class="crit">Model służy przede wszystkim do przechowywania, sortowania lub porządkowania innych przedmiotów.</div></div><div class="n">34</div><div class="menu">⋯</div></div>
+    <div class="catrow"><div class="pos">1</div><div class="main"><div class="nm">Dekoracje i wystrój <span class="slug">home-decor</span></div><div class="crit">Model wybiera się głównie ze względu na wygląd w przestrzeni mieszkalnej, a nie pełnioną funkcję.</div></div><div class="n">21</div><div class="menu">⋯</div></div>
+    <div class="catrow"><div class="pos">2</div><div class="main"><div class="nm">Uchwyty i mocowania <span class="slug">holders-mounts</span></div><div class="crit">Model istnieje po to, by trzymać jeden konkretny przedmiot w ustalonej pozycji lub przymocować coś do powierzchni.</div></div><div class="n">18</div><div class="menu">⋯</div></div>
+    <div class="catrow"><div class="pos">3</div><div class="main"><div class="nm">Elektronika i kable <span class="slug">electronics-cables</span></div><div class="crit">Model mieści, prowadzi, chroni lub mocuje elektronikę, okablowanie albo złącza.</div></div><div class="n">11</div><div class="menu">⋯</div></div>
+    <div class="catrow"><div class="pos">4</div><div class="main"><div class="nm">Narzędzia i warsztat <span class="slug">tools-workshop</span></div><div class="crit">Model jest narzędziem, przyrządem lub pomocą używaną podczas wytwarzania, mierzenia albo naprawiania.</div></div><div class="n">9</div><div class="menu">⋯</div></div>
+    <div class="catrow"><div class="pos">5</div><div class="main"><div class="nm">Drukarka 3D i akcesoria <span class="slug">printer-3d</span></div><div class="crit">Model ma sens wyłącznie dla osoby posiadającej drukarkę 3D — ulepsza ją, serwisuje albo zasila.</div></div><div class="n">14</div><div class="menu">⋯</div></div>
+    <div class="catrow"><div class="pos">6</div><div class="main"><div class="nm">Zabawki, gry i figurki <span class="slug">toys-games</span></div><div class="crit">Model służy zabawie, kolekcjonowaniu albo ekspozycji jako postać lub obiekt zainteresowania.</div></div><div class="n">7</div><div class="menu">⋯</div></div>
+    <div class="catrow"><div class="pos">7</div><div class="main"><div class="nm">Części zamienne <span class="slug">replacement-parts</span></div><div class="crit">Model zastępuje lub naprawia zepsutą albo brakującą część istniejącego wyrobu.</div></div><div class="n">0</div><div class="menu">⋯</div></div>
+  </div>
+</div>
+
+<h1>2 · Curation QA — six advisory checks (Flow 3 climax)</h1>
+<p class="cap">Warning amber only. Nothing here blocks a write, nothing is auto-applied, and no membership is ever inferred from tags. The queue is what told Michał his new <em>Wazony</em> category was behaving like a narrow tag.</p>
+<div class="frame">
+  <div class="chrome">portal.local /admin/categories — kolejka porządkowa</div>
+  <div class="app">
+    <h2 style="margin-top:0">Do sprawdzenia (6)</h2>
+    <div class="warn"><div class="mk">⚠</div><div class="body">Kategoria „Wazony" ma 1 model<div class="sub">Bardzo mała kategoria — rozważ scalenie z „Dekoracje i wystrój".</div></div><a>Otwórz kategorię</a></div>
+    <div class="warn"><div class="mk">⚠</div><div class="body">Kolizja etykiet: kategoria „Wazony" / tag „Wazony" (Typ)<div class="sub">Podobne etykiety są dozwolone tylko z zapisanym rozróżnieniem semantycznym.</div></div><a>Rozstrzygnij</a></div>
+    <div class="warn"><div class="mk">⚠</div><div class="body">Model „Wazon spiralny" ma 4 kategorie<div class="sub">Sugerowana norma to 1–3. To ostrzeżenie, nie błąd.</div></div><a>Edytuj kategorie</a></div>
+    <div class="warn"><div class="mk">⚠</div><div class="body">Kategoria „Części zamienne" jest pusta<div class="sub">Pusta kategoria zostaje widoczna w nawigacji, wyszarzona.</div></div><a>Otwórz kategorię</a></div>
+    <div class="warn"><div class="mk">⚠</div><div class="body">17 modeli bez kategorii<div class="sub">To poprawny stan — modele pozostają publiczne. Kolejka kuratorska.</div></div><a>Pokaż listę</a></div>
+    <div class="warn"><div class="mk">⚠</div><div class="body">3 tagi użytkowe bez grupy<div class="sub">Tag.group_id IS NULL — higiena admina, nie awaria.</div></div><a>Grupy tagów</a></div>
+    <h2>Gdy nic nie wymaga uwagi</h2>
+    <div class="empty">Nic nie wymaga uwagi.</div>
+  </div>
+</div>
+
+<h1>3 · Replace-set editor — advisory over 3, and the honest concurrency copy</h1>
+<p class="cap">Re-fetches on open, names the last audited writer, saves as <strong>Zastąp kategorie</strong> — never “Zapisz zmiany”, because under the accepted last-writer-wins posture a concurrent edit is silently discarded and the copy must not promise a merge it does not perform. Right: the 409 delete path, the one place <em>destructive</em> is the correct colour.</p>
+<div class="frame">
+  <div class="chrome">Model „Wazon spiralny" — kategorie</div>
+  <div class="app" style="display:flex;gap:24px;flex-wrap:wrap">
+    <div class="dlg">
+      <h3>Kategorie modelu</h3>
+      <div class="meta">Ostatnia zmiana: Michał, 21:04</div>
+      <label class="chk"><input type="checkbox" checked> Dekoracje i wystrój</label>
+      <label class="chk"><input type="checkbox" checked> Przechowywanie i organizacja</label>
+      <label class="chk"><input type="checkbox" checked> Zabawki, gry i figurki</label>
+      <label class="chk"><input type="checkbox" checked> Wazony</label>
+      <label class="chk"><input type="checkbox"> Uchwyty i mocowania</label>
+      <div class="advis"><span class="mk">⚠</span><span>4 kategorie — sugerowana norma to 1–3. Zapis nie jest blokowany.</span></div>
+      <div class="acts"><span class="sec">Anuluj</span><span class="pri">Zastąp kategorie</span></div>
+    </div>
+    <div>
+      <div class="conflict"><strong>409 — nie można usunąć</strong><br>Kategoria „Wazony" ma 1 przypisany model. Usuń przypisanie i kategorię w jednej operacji (zostanie zapisana w audycie) albo anuluj.</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

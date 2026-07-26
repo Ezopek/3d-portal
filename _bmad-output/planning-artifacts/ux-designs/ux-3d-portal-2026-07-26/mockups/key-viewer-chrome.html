@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<title>Key screen — lightbox chrome and interaction states (library-agnostic)</title>
+<style>
+/* Governed by: DESIGN.md § Components (Lightbox toolbar, zoom control, close),
+   § Elevation & Depth (toolbar outside the transform layer) · EXPERIENCE.md
+   § Component Patterns (Fullscreen image viewer), § State Patterns (loading,
+   error, zoomed, rotation), § Interaction Primitives (gesture arbitration),
+   § Accessibility Floor (SC 2.5.1 / 2.5.7 / 2.5.8), Flow 4.
+   NO LIBRARY IS CHOSEN HERE — this is the contract every scored option in
+   Story 53.1 must satisfy. Gallery-control tokens are theme-invariant by
+   design (theme.css), so this surface does not flip with the theme. */
+:root{
+  --background:hsl(0 0% 100%); --foreground:hsl(222 47% 11%);
+  --muted-foreground:hsl(216.923 20.635% 37.059%); --border:hsl(214 32% 91%);
+  --primary:hsl(221 83% 53%); --destructive:hsl(0 84% 60%);
+  --gallery:hsl(0 0% 0%); --gallery-fg:hsl(0 0% 100%);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:14px/1.45 Inter,system-ui,sans-serif;background:#e9edf3;padding:24px;color:#111}
+h1{font-size:13px;font-weight:600;color:#334;margin:0 0 4px}
+p.cap{font-size:12px;color:#556;margin:0 0 12px;max-width:960px}
+.row{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:28px}
+.phone{width:250px;border:8px solid #23272e;border-radius:26px;overflow:hidden;position:relative;height:520px;background:var(--background)}
+.vp{position:absolute;inset:1% 1% 1% 1%;background:color-mix(in srgb,var(--background) 95%,transparent);display:flex;flex-direction:column}
+.frame{flex:1;min-height:0;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center}
+/* the transformed layer — everything that scales/pans lives here */
+.imglayer{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+.pano{width:92%;height:56px;background:repeating-linear-gradient(90deg,#7c8ea3 0 18px,#93a4b8 18px 36px);border-radius:4px}
+.pano.zoom{width:260%;height:150px;transform:translateX(-18%)}
+/* chrome layers */
+.chrome{position:absolute;inset:0;pointer-events:none}
+.chrome.hidden{opacity:0}
+.counter{position:absolute;left:10px;top:10px;background:color-mix(in srgb,var(--background) 60%,transparent);color:var(--muted-foreground);font-size:11px;padding:2px 7px;border-radius:.375rem}
+.close{position:absolute;right:10px;top:10px;width:44px;height:44px;border-radius:9999px;background:color-mix(in srgb,var(--gallery) 40%,transparent);color:var(--gallery-fg);display:grid;place-items:center;font-size:18px}
+.chev{position:absolute;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:9999px;background:color-mix(in srgb,var(--gallery) 40%,transparent);color:var(--gallery-fg);display:grid;place-items:center}
+.chev.l{left:10px}.chev.r{right:10px}
+/* ALWAYS-MOUNTED toolbar — outside the transform layer, outside the hide layer */
+.toolbar{position:absolute;left:50%;transform:translateX(-50%);bottom:96px;display:flex;gap:8px;padding:5px;border-radius:9999px;background:color-mix(in srgb,var(--gallery) 40%,transparent)}
+.zc{width:40px;height:40px;border-radius:9999px;background:color-mix(in srgb,var(--gallery) 40%,transparent);color:var(--gallery-fg);display:grid;place-items:center;font-size:15px}
+.zc.off{opacity:.45}
+.zlevel{position:absolute;left:50%;transform:translateX(-50%);bottom:142px;font-size:10px;color:var(--gallery-fg);background:color-mix(in srgb,var(--gallery) 40%,transparent);padding:1px 8px;border-radius:9999px}
+.strip{height:64px;flex:0 0 64px;display:flex;gap:6px;align-items:center;padding:6px 10px;background:color-mix(in srgb,var(--background) 70%,transparent);overflow-x:auto}
+.strip.hidden{opacity:0}
+.th{width:48px;height:48px;flex:0 0 48px;border-radius:.375rem;background:#8c9bad}
+.th.on{outline:2px solid var(--primary)}
+.err{color:var(--destructive);font-size:12px;text-align:center;padding:0 20px}
+.skel{width:82%;height:56px;border-radius:4px;background:color-mix(in srgb,var(--muted-foreground) 16%,transparent)}
+.note{font-size:11px;color:#667;max-width:250px}
+.legend{font-size:11px;color:#556;margin-top:6px}
+kbd{font:11px ui-monospace,monospace;background:#dde3ec;border:1px solid #c6cedb;border-radius:3px;padding:0 4px}
+</style>
+</head>
+<body>
+
+<h1>Lightbox chrome contract — Pixel-5-class viewport, four states</h1>
+<p class="cap">
+Every control here is ≥ 24×24 and the close is ≥ 44×44. <strong>The zoom toolbar is always mounted</strong> — it sits outside both the transform layer and the tap-to-hide chrome layer, so a zoomed-in one-handed user always has a way back (WCAG 2.2 SC 2.5.1 / 2.5.7). Keyboard equivalents: <kbd>←</kbd> <kbd>→</kbd> navigate, <kbd>+</kbd> <kbd>-</kbd> zoom, <kbd>0</kbd> reset, <kbd>Esc</kbd> close.
+</p>
+
+<div class="row">
+
+  <div>
+    <div class="phone"><div class="vp">
+      <div class="frame">
+        <div class="imglayer"><div class="pano"></div></div>
+        <div class="chrome">
+          <div class="counter">1 / 6</div><div class="close">✕</div>
+          <div class="chev l">‹</div><div class="chev r">›</div>
+        </div>
+        <div class="toolbar"><div class="zc">＋</div><div class="zc off">－</div><div class="zc off">⤢</div></div>
+      </div>
+      <div class="strip"><div class="th on"></div><div class="th"></div><div class="th"></div><div class="th"></div></div>
+    </div></div>
+    <div class="legend"><strong>A · Rest, scale 1.0.</strong> Zoom-out and Reset are disabled-and-announced, not hidden. Horizontal drag <em>navigates</em>.</div>
+  </div>
+
+  <div>
+    <div class="phone"><div class="vp">
+      <div class="frame">
+        <div class="imglayer"><div class="pano zoom"></div></div>
+        <div class="chrome">
+          <div class="counter">1 / 6</div><div class="close">✕</div>
+          <div class="chev l">‹</div><div class="chev r">›</div>
+        </div>
+        <div class="zlevel">220%</div>
+        <div class="toolbar"><div class="zc">＋</div><div class="zc">－</div><div class="zc">⤢</div></div>
+      </div>
+      <div class="strip"><div class="th on"></div><div class="th"></div><div class="th"></div><div class="th"></div></div>
+    </div></div>
+    <div class="legend"><strong>B · Zoomed, scale 2.2.</strong> Toolbar did <em>not</em> scale — it is outside the transform layer. Drag now <em>pans</em> and never navigates; chevrons, strip and arrow keys remain the navigation path. Zoom level announces politely.</div>
+  </div>
+
+  <div>
+    <div class="phone"><div class="vp">
+      <div class="frame">
+        <div class="imglayer"><div class="pano zoom"></div></div>
+        <div class="chrome hidden">
+          <div class="counter">1 / 6</div><div class="close">✕</div>
+          <div class="chev l">‹</div><div class="chev r">›</div>
+        </div>
+        <div class="zlevel">220%</div>
+        <div class="toolbar"><div class="zc">＋</div><div class="zc">－</div><div class="zc">⤢</div></div>
+      </div>
+      <div class="strip hidden"><div class="th on"></div><div class="th"></div></div>
+    </div></div>
+    <div class="legend"><strong>C · Chrome hidden, still zoomed — the load-bearing state.</strong> Counter, close, chevrons and strip faded on tap; the zoom controls stayed. This single difference from the shipped viewer is what keeps SC 2.5.1 satisfiable.</div>
+  </div>
+
+  <div>
+    <div class="phone"><div class="vp">
+      <div class="frame">
+        <div class="imglayer"><div class="skel"></div></div>
+        <div class="chrome"><div class="counter">2 / 6</div><div class="close">✕</div></div>
+        <div class="toolbar"><div class="zc off">＋</div><div class="zc off">－</div><div class="zc off">⤢</div></div>
+      </div>
+      <div class="strip"><div class="th"></div><div class="th on"></div><div class="th"></div></div>
+    </div></div>
+    <div class="legend"><strong>D · Slow load.</strong> Toolbar mounted but disabled and announced as such. Close stays live.</div>
+  </div>
+
+  <div>
+    <div class="phone"><div class="vp">
+      <div class="frame">
+        <div class="imglayer"><div class="err">Nie udało się wczytać zdjęcia.</div></div>
+        <div class="chrome"><div class="counter">3 / 6</div><div class="close">✕</div><div class="chev l">‹</div><div class="chev r">›</div></div>
+        <div class="toolbar"><div class="zc off">＋</div><div class="zc off">－</div><div class="zc off">⤢</div></div>
+      </div>
+      <div class="strip"><div class="th"></div><div class="th"></div><div class="th on"></div></div>
+    </div></div>
+    <div class="legend"><strong>E · Image error.</strong> Error renders inside the frame; close, chevrons and strip stay reachable. <em>A broken image never traps the user.</em></div>
+  </div>
+
+</div>
+
+<p class="cap"><strong>Preserved E48.1 invariants (visible in every frame above):</strong> geometry anchored in a single reference box (<code>left-[1vw]</code> + <code>translate-x-0</code>), <code>max-w-[calc(100%-2vw)]</code> gutter counterweight, <code>dvh</code> not <code>vh</code> for the height budget, never <code>user-scalable=no</code>, <code>ui/dialog.tsx</code> is Ask First, and <code>image-viewer-containment.spec.ts</code> stays green.</p>
+
+</body>
+</html>

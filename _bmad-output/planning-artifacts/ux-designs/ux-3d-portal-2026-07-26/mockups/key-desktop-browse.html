@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<title>Key screen — desktop browse rail + scope chip</title>
+<style>
+/* Governed by: DESIGN.md § Components (Browse rail, Rail row active/count/empty,
+   Scope chip, Scope chip action, Filters trigger) · EXPERIENCE.md § Information
+   Architecture, § Component Patterns (Browse rail, Rail count, Scope chip,
+   Filters (n) trigger), § State Patterns (cold load, empty), Flow 1.
+   Tokens quoted from apps/web/src/styles/theme.css. No new token. */
+:root{
+  --background:hsl(0 0% 100%); --foreground:hsl(222 47% 11%);
+  --card:hsl(0 0% 100%); --muted-foreground:hsl(216.923 20.635% 37.059%);
+  --primary:hsl(221 83% 53%); --primary-foreground:hsl(0 0% 100%);
+  --accent:hsl(214.286 31.818% 91.373%); --accent-foreground:hsl(222 47% 11%);
+  --border:hsl(214 32% 91%); --ring:hsl(221 83% 53%);
+}
+.dark{
+  --background:hsl(222 47% 7%); --foreground:hsl(210 40% 98%);
+  --card:hsl(222 47% 11%); --muted-foreground:hsl(215 20% 65%);
+  --primary:hsl(217 91% 60%); --primary-foreground:hsl(222 47% 11%);
+  --accent:hsl(216.667 30.508% 23.137%); --accent-foreground:hsl(210 40% 98%);
+  --border:hsl(217 33% 20%); --ring:hsl(217 91% 60%);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:14px/1.45 Inter,system-ui,sans-serif;background:#e9edf3;padding:24px;color:#111}
+h1{font-size:13px;font-weight:600;color:#334;margin:0 0 4px}
+p.cap{font-size:12px;color:#556;margin:0 0 12px}
+.frame{border:1px solid #c6cedb;border-radius:10px;overflow:hidden;margin-bottom:28px;box-shadow:0 1px 3px #0002}
+.chrome{background:#dde3ec;padding:6px 10px;font-size:11px;color:#445;border-bottom:1px solid #c6cedb}
+.app{display:flex;background:var(--background);color:var(--foreground);height:520px}
+/* --- module rail (shipped, unchanged) --- */
+.modrail{width:200px;flex:0 0 200px;border-right:1px solid var(--border);background:var(--card);padding:12px 8px}
+.modrail .title{font-size:16px;font-weight:600;padding:4px 8px 12px}
+.modrail a{display:flex;gap:10px;align-items:center;padding:8px 12px;border-radius:.5rem;color:var(--muted-foreground);text-decoration:none}
+.modrail a.on{background:color-mix(in srgb,var(--primary) 10%,transparent);color:var(--foreground);font-weight:500;box-shadow:inset 0 0 0 1px var(--primary)}
+/* --- browse rail (NEW — 51.1) --- */
+.rail{width:240px;flex:0 0 240px;border-right:1px solid var(--border);background:var(--card);padding:16px 8px;overflow:auto}
+.rail h2{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-foreground);padding:0 8px 8px}
+.rail a{display:flex;align-items:center;gap:8px;min-height:36px;padding:4px 12px;border-radius:.5rem;color:var(--muted-foreground);text-decoration:none}
+.rail a .lbl{flex:1}
+.rail a .n{font-size:12px;font-variant-numeric:tabular-nums}
+.rail a.on{background:color-mix(in srgb,var(--primary) 10%,transparent);color:var(--foreground);font-weight:500;box-shadow:inset 0 0 0 1px var(--primary)}
+.rail a.empty{opacity:.6}
+.rail hr{border:0;border-top:1px solid var(--border);margin:8px 4px}
+/* --- main --- */
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.toolbar{display:flex;gap:8px;align-items:center;padding:12px;border-bottom:1px solid var(--border)}
+.input{flex:1;min-width:0;height:34px;border:1px solid var(--border);border-radius:.5rem;background:var(--background);color:var(--muted-foreground);display:flex;align-items:center;padding:0 10px;font-size:13px}
+.btn{height:34px;min-width:24px;display:inline-flex;align-items:center;gap:6px;padding:0 12px;border:1px solid var(--border);border-radius:.5rem;background:transparent;color:var(--foreground);font-size:13px}
+.badge{background:var(--primary);color:var(--primary-foreground);border-radius:9999px;font-size:10px;font-weight:600;padding:1px 6px}
+/* --- scope chip (NEW — 51.2) --- */
+.scoperow{padding:10px 12px}
+.chip{display:flex;align-items:center;gap:10px;min-height:24px;padding:6px 10px;border-radius:.5rem;background:color-mix(in srgb,var(--primary) 10%,transparent);box-shadow:inset 0 0 0 1px var(--primary)}
+.chip .ico{opacity:.8}
+.chip .name{flex:1;font-weight:500}
+.chip .sep{width:1px;align-self:stretch;background:color-mix(in srgb,var(--primary) 40%,transparent)}
+.chip .act{color:var(--foreground);font-size:13px;text-decoration:underline;min-height:24px;display:inline-flex;align-items:center;padding:0 4px}
+/* --- grid --- */
+.grid{flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:0 12px 12px;overflow:hidden}
+.card{border:1px solid var(--border);border-radius:.5rem;background:var(--card);overflow:hidden}
+.card .ph{height:78px;background:color-mix(in srgb,var(--muted-foreground) 12%,transparent)}
+.card .body{padding:8px}
+.card .nm{font-size:12px;font-weight:500;margin-bottom:6px}
+.tagchip{display:inline-block;background:var(--accent);color:var(--accent-foreground);border-radius:9999px;font-size:10px;padding:1px 7px;margin-right:4px}
+.skel{background:color-mix(in srgb,var(--muted-foreground) 14%,transparent);border-radius:.5rem;height:28px;margin:0 8px 6px}
+.note{font-size:11px;color:#667;padding:6px 10px}
+</style>
+</head>
+<body>
+
+<h1>1 · Desktop, scoped browse — light</h1>
+<p class="cap">Flow 1 step 4: category scope active, one tag selected. Rail active row and scope chip share the <em>location</em> vocabulary; the tag chip on the card uses <em>accent</em>. Filters badge reads 1 — the category is not counted.</p>
+<div class="frame">
+  <div class="chrome">portal.local /categories/storage-organization?tag_ids=…&amp;page=1</div>
+  <div class="app">
+    <nav class="modrail">
+      <div class="title">3d-portal</div>
+      <a class="on">◧ Katalog</a><a>▤ Kolejka</a><a>◎ Szpule</a><a>⎙ Drukarka</a><a>✉ Zgłoszenia</a>
+    </nav>
+    <nav class="rail">
+      <h2>Przeglądaj</h2>
+      <a><span class="lbl">Wszystkie modele</span><span class="n">128</span></a>
+      <hr>
+      <a class="on"><span class="lbl">Przechowywanie i organizacja</span><span class="n">34</span></a>
+      <a><span class="lbl">Dekoracje i wystrój</span><span class="n">21</span></a>
+      <a><span class="lbl">Uchwyty i mocowania</span><span class="n">18</span></a>
+      <a><span class="lbl">Elektronika i kable</span><span class="n">11</span></a>
+      <a><span class="lbl">Narzędzia i warsztat</span><span class="n">9</span></a>
+      <a><span class="lbl">Drukarka 3D i akcesoria</span><span class="n">14</span></a>
+      <a><span class="lbl">Zabawki, gry i figurki</span><span class="n">7</span></a>
+      <a class="empty"><span class="lbl">Części zamienne</span><span class="n">0</span></a>
+    </nav>
+    <div class="main">
+      <div class="toolbar">
+        <div class="input">Szukaj…</div>
+        <button class="btn">⚙ Filtry <span class="badge">1</span></button>
+        <button class="btn">+ Dodaj model</button>
+      </div>
+      <div class="scoperow">
+        <div class="chip">
+          <span class="ico">🗂</span>
+          <span class="name">Przechowywanie i organizacja</span>
+          <span class="sep"></span>
+          <a class="act" href="#">Szukaj w całym katalogu</a>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="card"><div class="ph"></div><div class="body"><div class="nm">Gridfinity 2×2 bin</div><span class="tagchip">Gridfinity</span><span class="tagchip">PETG</span></div></div>
+        <div class="card"><div class="ph"></div><div class="body"><div class="nm">Wkładka do szuflady 60 mm</div><span class="tagchip">Gridfinity</span></div></div>
+        <div class="card"><div class="ph"></div><div class="body"><div class="nm">Baseplate 4×4</div><span class="tagchip">Gridfinity</span></div></div>
+        <div class="card"><div class="ph"></div><div class="body"><div class="nm">Pojemnik na wkręty</div><span class="tagchip">Gridfinity</span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h1>2 · Desktop, same surface — dark · plus the two degraded states</h1>
+<p class="cap">Left: dark rendering, identical tokens. Right column below: rail cold-load skeleton, and the rail error degradation (All catalog + retry) with the grid still fully painted — State Patterns rows “Cold load / Browse rail” and “Error / Category read fails”.</p>
+<div class="frame">
+  <div class="chrome">portal.local /categories/storage-organization — dark</div>
+  <div class="app dark">
+    <nav class="modrail">
+      <div class="title">3d-portal</div>
+      <a class="on">◧ Katalog</a><a>▤ Kolejka</a><a>◎ Szpule</a>
+    </nav>
+    <nav class="rail">
+      <h2>Przeglądaj</h2>
+      <a><span class="lbl">Wszystkie modele</span><span class="n">128</span></a>
+      <hr>
+      <a class="on"><span class="lbl">Przechowywanie i organizacja</span><span class="n">34</span></a>
+      <a><span class="lbl">Dekoracje i wystrój</span><span class="n">21</span></a>
+      <a><span class="lbl">Uchwyty i mocowania</span><span class="n">18</span></a>
+      <a><span class="lbl">Elektronika i kable</span><span class="n">11</span></a>
+      <a class="empty"><span class="lbl">Części zamienne</span><span class="n">0</span></a>
+    </nav>
+    <div class="main">
+      <div class="toolbar"><div class="input">kabel</div><button class="btn">⚙ Filtry</button></div>
+      <div class="scoperow">
+        <div class="chip"><span class="ico">🗂</span><span class="name">Przechowywanie i organizacja</span><span class="sep"></span><a class="act" href="#">Szukaj w całym katalogu</a></div>
+      </div>
+      <div class="grid">
+        <div class="card"><div class="ph"></div><div class="body"><div class="nm">Organizer kabli USB</div><span class="tagchip">Kabel</span></div></div>
+        <div class="card"><div class="ph"></div><div class="body"><div class="nm">Klips do kabla 6 mm</div><span class="tagchip">Kabel</span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="frame">
+  <div class="chrome">Rail — cold load (left) · Rail — read failed, grid intact (right)</div>
+  <div class="app">
+    <nav class="rail">
+      <h2>Przeglądaj</h2>
+      <div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div>
+    </nav>
+    <nav class="rail">
+      <h2>Przeglądaj</h2>
+      <a><span class="lbl">Wszystkie modele</span></a>
+      <div class="note">Nie udało się wczytać kategorii. <a href="#">Spróbuj ponownie</a></div>
+    </nav>
+    <div class="main">
+      <div class="toolbar"><div class="input">Szukaj…</div><button class="btn">⚙ Filtry</button></div>
+      <div class="grid" style="padding-top:12px">
+        <div class="card"><div class="ph"></div><div class="body"><div class="nm">Model 1</div></div></div>
+        <div class="card"><div class="ph"></div><div class="body"><div class="nm">Model 2</div></div></div>
+        <div class="card"><div class="ph"></div><div class="body"><div class="nm">Model 3</div></div></div>
+        <div class="card"><div class="ph"></div><div class="body"><div class="nm">Model 4</div></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
