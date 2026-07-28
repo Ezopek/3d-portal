@@ -171,4 +171,30 @@ describe("useModels", () => {
     resolveSecond(new Response(JSON.stringify(EMPTY), { status: 200 }));
     await waitFor(() => expect(result.current.data?.items).toEqual([]));
   });
+
+  // Initiative 26 Story 50.1 — `category` carries ONE browse-category SLUG
+  // (never a UUID, never an array) and is AND-composed by the backend rather
+  // than folded into tag_match.
+  it("emits category=<slug> when a category filter is set", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EMPTY), { status: 200 }));
+    renderHook(() => useModels({ category: "kitchen" }), { wrapper: wrap() });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const url = fetchMock.mock.calls[0]?.[0] as string;
+    expect(url).toContain("category=kitchen");
+  });
+
+  it("omits category entirely when empty or undefined", async () => {
+    // empty string → omitted (no `category=` noise in the URL)
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EMPTY), { status: 200 }));
+    const { unmount } = renderHook(() => useModels({ category: "" }), { wrapper: wrap() });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0]?.[0] as string).not.toContain("category");
+    unmount();
+
+    // absent → omitted; every pre-50.1 caller keeps a byte-identical URL
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(EMPTY), { status: 200 }));
+    renderHook(() => useModels({}), { wrapper: wrap() });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls[1]?.[0] as string).not.toContain("category");
+  });
 });

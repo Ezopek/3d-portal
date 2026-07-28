@@ -39,6 +39,7 @@ function makeDetail(over: Partial<ModelDetail> = {}): ModelDetail {
     files: [],
     prints: [],
     notes: [],
+    categories: [],
     external_links: [],
     gallery_file_ids: [],
     image_count: 0,

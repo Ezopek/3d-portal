@@ -92,6 +92,33 @@ export interface TagGroupSummary {
   position: number;
 }
 
+// --- Browse categories (Initiative 26, Story 49.3) ---
+
+// Embeddable browse-category shape — what ModelDetail.categories carries.
+// Deliberately WITHOUT model_count: embedding a count here would cost an
+// aggregate per detail read for a number the detail view never renders
+// (Decision AY). `parent_id` is a scalar FK — the contract is FLAT and
+// carries no children/subcategories key.
+export interface BrowseCategorySummary {
+  id: string;
+  slug: string;
+  name_en: string;
+  name_pl: string | null;
+  position: number;
+  parent_id: string | null; // null = top-level
+}
+
+// GET /api/categories item and GET /api/categories/{slug} body.
+// model_count is REQUIRED and unconditional here (unlike TagListItem's
+// opt-in ?with_counts count) — browse IA and curation QA always need it.
+// inclusion_criterion is deliberately absent from the public read contract
+// (it lives on the admin-only BrowseCategoryAdminRead, Story 52.2).
+export interface BrowseCategoryRead extends BrowseCategorySummary {
+  description_en: string | null;
+  description_pl: string | null;
+  model_count: number;
+}
+
 // --- Files ---
 
 export type ModelFileKind =
@@ -204,6 +231,15 @@ export interface ModelSummary {
 }
 
 export interface ModelDetail extends ModelSummary {
+  // Initiative 26 (Story 49.3) — declared on ModelDetail only; ModelSummary
+  // deliberately does NOT carry it (list cards render no categories in the
+  // MVP IA). The backend always emits the key: `[]` for a zero-category
+  // model, never null and never absent (FR26-CAT-2). Typed REQUIRED because
+  // this file mirrors the WIRE, not the OpenAPI document — the generated doc
+  // lists it as non-required only because the Pydantic field carries a
+  // default_factory, while the single get_model_detail constructor writes it
+  // unconditionally.
+  categories: BrowseCategorySummary[];
   files: ModelFileRead[];
   prints: PrintRead[];
   notes: NoteRead[];
