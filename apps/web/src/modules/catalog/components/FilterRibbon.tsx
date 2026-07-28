@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ModelSource, ModelStatus, TagRead } from "@/lib/api-types";
+import { SearchSuggest } from "@/modules/catalog/components/SearchSuggest";
 import { useTags } from "@/modules/catalog/hooks/useTags";
 import type { ModelListSort } from "@/modules/catalog/hooks/useModels";
 import type { TagMatch } from "@/routes/catalog/index";
@@ -65,10 +66,11 @@ export function FilterRibbon({ state, tagsById, onChange }: Props) {
   const matchMode = state.tag_match ?? "all";
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background/95 p-3">
-      <Input
-        value={state.q}
-        onChange={(e) => onChange({ ...state, q: e.target.value })}
-        placeholder={t("common.search")}
+      <SearchSuggest
+        q={state.q}
+        tagIds={state.tag_ids}
+        onQueryChange={(q) => onChange({ ...state, q })}
+        onSelectTag={(tagId) => onChange({ ...state, tag_ids: [...state.tag_ids, tagId], q: "" })}
         className="min-w-[160px] flex-1"
       />
       <div className="flex flex-wrap items-center gap-1">

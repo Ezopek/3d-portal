@@ -1,11 +1,11 @@
 import "@/locales/i18n";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
+import { useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { FilterRibbon } from "./FilterRibbon";
+import { FilterRibbon, type FilterRibbonState } from "./FilterRibbon";
 
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
@@ -239,5 +239,54 @@ describe("FilterRibbon", () => {
     const group = screen.getByRole("group", { name: /tag match/i });
     expect(within(group).getByRole("button", { name: /^Any$/i }).getAttribute("aria-pressed")).toBe("true");
     expect(within(group).getByRole("button", { name: /^All$/i }).getAttribute("aria-pressed")).toBe("false");
+  });
+
+  // Story 50.3 — the new inline SearchSuggest combobox mounts in place of the
+  // plain <Input>. Selecting a suggested tag must only touch tag_ids/q — the
+  // `Filters (n)` badge (activeFilterCount) counts status/source/sort, never
+  // tag_ids, so it stays put by construction (AC 14). The existing +tag
+  // picker (already exercised by the tests above) is unchanged (AC 13).
+  it("selecting a suggested tag updates tag_ids and q, leaving status/source/sort untouched", async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes("/tag-groups")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ groups: [], groupless: [] }), { status: 200 }),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify(TAGS), { status: 200 }));
+    });
+    const calls: Array<{ q: string; tag_ids: string[]; source?: string; sort: string }> = [];
+    function Harness() {
+      const [state, setState] = useState<FilterRibbonState>({
+        q: "",
+        tag_ids: [],
+        status: undefined,
+        source: "printables",
+        sort: "name_asc",
+      });
+      return (
+        <FilterRibbon
+          state={state}
+          tagsById={new Map()}
+          onChange={(s) => {
+            calls.push(s);
+            setState(s);
+          }}
+        />
+      );
+    }
+    render(withQuery(<Harness />));
+    const input = screen.getByPlaceholderText(/search/i);
+    fireEvent.change(input, { target: { value: "drag" } });
+    await waitFor(() => {
+      expect(screen.getAllByRole("option").length).toBeGreaterThan(1);
+    });
+    const tagOption = screen.getByRole("option", { name: /add filter: dragon/i });
+    fireEvent.click(tagOption);
+    const last = calls.at(-1)!;
+    expect(last.tag_ids).toEqual(["t1"]);
+    expect(last.q).toBe("");
+    expect(last.source).toBe("printables");
+    expect(last.sort).toBe("name_asc");
   });
 });
