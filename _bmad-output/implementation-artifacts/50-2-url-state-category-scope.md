@@ -5,7 +5,7 @@ baseline_commit: c436f619d26ed9f1262c2566af797afeee002ba5
 # Story 50.2 — URL state: `category` as an independent layer (FR26-BROWSE-2, FR26-BROWSE-3)
 
 - **Epic:** E50 — Frontend data layer, URL state, and search suggestions (Initiative 26 — Catalog Discovery)
-- **Status:** `review` — **native `bmad-code-review` (CR) reviewed 2026-07-28, literal verdict `APPROVE`; independent Aider review also `APPROVE`; full `infra/scripts/check-all.sh` passed 16/16 all-green (§18).** Status deliberately **left at `review`, NOT flipped to `done`** until commit, ff-only merge, push, deploy and post-deploy smoke complete. Implemented 2026-07-28 by native `bmad-dev-story` (DS) under Laura/controller **G26-DEVGO** (see §16). Previously: created **and** validated 2026-07-28 by native `bmad-create-story` (Create + Validate), validation verdict **PASS** (§12); that create/validate run recorded **no** G26-DEVGO, which the controller granted separately for this DS run.
+- **Status:** `done` — CLOSED 2026-07-28 by Laura/controller after native `bmad-dev-story`, native `bmad-code-review` APPROVE, independent Aider APPROVE, full `infra/scripts/check-all.sh` 16/16 all-green, fast-forward merge to `main`, push, deploy and post-deploy smoke (§19). Implemented 2026-07-28 by native `bmad-dev-story` (DS) under Laura/controller **G26-DEVGO** (see §16). Previously: created **and** validated 2026-07-28 by native `bmad-create-story` (Create + Validate), validation verdict **PASS** (§12); that create/validate run recorded **no** G26-DEVGO, which the controller granted separately for this DS run.
 - **Author:** Claude (native `bmad-create-story`, Create + Validate). **Controller:** Laura.
 - **Authorization posture, stated plainly:** Laura/controller granted this create + validate pass under the standing Initiative 26 authorization. **This is NOT Ezop human review and NOT an Ezop signature.** No human of any kind reviewed this artifact. No Codex, no Gemini, no Aider in this pass. No code was written, no gate was run, no commit / stage / push / merge / deploy / migration / seed / live-DB / network action was taken.
 - **Created:** 2026-07-28 via native `bmad-create-story` after a mandatory `bmad-help` run. Canonical route from `_bmad/_config/bmad-help.csv:26-28`: `bmad-create-story:create` (CS, phase `4-implementation`, preceded-by `bmad-sprint-planning` — done) → `bmad-create-story:validate` (VS) → `bmad-dev-story` (DS) → `bmad-code-review` (CR). Canonical skill ID/path confirmed at `_bmad/_config/skill-manifest.csv:40` (`_bmad/bmm/4-implementation/bmad-create-story/SKILL.md`).
@@ -507,5 +507,16 @@ The CR skill's step 4 §6 would set a clean-review story to `done` and sync that
 ## 18. Controller closeout pre-merge record — 2026-07-28
 
 - **Independent external review:** `laura-aider-review-diff` run on the Story 50.2 diff; verdict **APPROVE**. Critical: none. Important: none. Minor only: the already-documented category-only empty-state handoff to 51.2, pre-existing prettier drift, and optional future hardening for additional `...prev` navigation paths.
-- **Full gate:** `infra/scripts/check-all.sh` passed **16/16**, `all green.`, log `.hermes/run-logs/check-all-e50-2-20260728_193627.log`, exit marker `CHECK_ALL_RC=0 2026-07-28T19:47:29+02:00`.
+- **Full gate:** `infra/scripts/check-all.sh` passed **16/16**, `all green.`, log `.hermes/run-logs/check-all-e50-2-20260728_193636.log`, exit marker `CHECK_ALL_RC=0 2026-07-28T19:47:29+02:00`.
 - **Status:** still `review` at this pre-merge checkpoint. Remaining controller closeout: commit, ff-only merge to `main`, push, deploy, post-deploy smoke, then flip Story 50.2 to `done` in a docs closeout commit.
+
+
+---
+
+## 19. Controller final closeout — 2026-07-28
+
+- **Implementation commit:** `0093187` (`feat(web): add catalog category URL state`), directly on baseline `c436f61`.
+- **Merge/push:** branch `feat/E50.2-url-state-category-scope` fast-forward merged to `main`; `git push origin main` succeeded, log `.hermes/run-logs/push-e50-2-20260728_195021.log`, lean pre-push gate **11/11 passed**.
+- **Deploy:** `infra/scripts/deploy.sh` succeeded for release `0.1.0+0093187`, log `.hermes/run-logs/deploy-e50-2-20260728_195051.log`, exit marker `DEPLOY_RC=0 2026-07-28T19:54:08+02:00`. Images built and shipped to `.190`; API, arq-worker and web were recreated; alembic ran; slicer-worker overlay correctly skipped because the deploy range was frontend-only; GlitchTip symbolication smoke matched issue id `317` with top frame `apps/web/src/main.tsx` and release `0.1.0+0093187`; smoke issue deleted; runbook fingerprint OK.
+- **Post-deploy smoke:** `.190` compose ps showed api, arq-worker, redis, slicer-worker, web and worker all running. LAN API `http://192.168.2.190:8090/api/health` returned `{"status":"ok","version":"0.1.0"}`. LAN web `/`, production HTTPS `/`, and production HTTPS `/catalog/?category=home-decor` all returned HTTP 200 with the freshly deployed `Last-Modified: Tue, 28 Jul 2026 17:52:07 GMT`. Smoke log `.hermes/run-logs/smoke-e50-2-20260728_195424.log`.
+- **Final status:** `done`. `epic-50` remains `in-progress`; `50-3-inline-structured-suggestions` remains `backlog`.
