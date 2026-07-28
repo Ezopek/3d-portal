@@ -159,12 +159,71 @@ const DEFAULT_TAG_GROUPS = {
   groupless: [],
 };
 
+// Default `/api/categories*` fixture for `stubSotList` — the browse rail's
+// source since Story 51.1. Three rows: two populated and one deliberately at
+// `model_count: 0`, so the dimmed-empty-category treatment is exercised by the
+// default fixture rather than only by an opt-in one. Ordered as the backend
+// orders (`position, slug`); the rail renders this array verbatim.
+const DEFAULT_BROWSE_CATEGORIES = [
+  {
+    id: "44444444-4444-4444-4444-444444444444",
+    slug: "organizery",
+    name_en: "Organisers",
+    name_pl: "Organizery",
+    position: 0,
+    parent_id: null,
+    description_en: null,
+    description_pl: null,
+    model_count: 12,
+  },
+  {
+    id: "55555555-5555-5555-5555-555555555555",
+    slug: "uchwyty",
+    name_en: "Mounts",
+    name_pl: "Uchwyty i mocowania",
+    position: 1,
+    parent_id: null,
+    description_en: null,
+    description_pl: null,
+    model_count: 7,
+  },
+  {
+    id: "66666666-6666-6666-6666-666666666666",
+    slug: "dekoracje",
+    name_en: "Decor",
+    name_pl: "Dekoracje i wystrój",
+    position: 2,
+    parent_id: null,
+    description_en: null,
+    description_pl: null,
+    model_count: 0,
+  },
+];
+
 export async function stubSotList(
   page: Page,
-  opts: { tags?: TagListItem[]; tagGroups?: TagGroupsResponse } = {},
+  opts: {
+    tags?: TagListItem[];
+    tagGroups?: TagGroupsResponse;
+    /** Story 51.1 — browse-rail rows. `"never"` leaves the request hanging so
+     *  the rail's cold-load state can be captured; `"error"` fails it so the
+     *  degraded "All catalog + retry" state can be captured. */
+    categories?: typeof DEFAULT_BROWSE_CATEGORIES | "never" | "error";
+  } = {},
 ) {
   const tags = opts.tags ?? DEFAULT_TAGS;
   const tagGroups = opts.tagGroups ?? DEFAULT_TAG_GROUPS;
+  const categories = opts.categories ?? DEFAULT_BROWSE_CATEGORIES;
+
+  await page.route("**/api/categories*", (route: Route) => {
+    if (categories === "never") return; // deliberately never fulfilled
+    if (categories === "error") return route.fulfill({ status: 500, body: "boom" });
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(categories),
+    });
+  });
   await page.route("**/api/tags*", (route: Route) =>
     route.fulfill({
       status: 200,

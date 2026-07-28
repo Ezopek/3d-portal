@@ -12,7 +12,7 @@ import {
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import type { ModelSummary, TagGroupsResponse } from "@/lib/api-types";
+import type { BrowseCategoryRead, ModelSummary, TagGroupsResponse } from "@/lib/api-types";
 import { CatalogList } from "@/modules/catalog/routes/CatalogList";
 import i18n from "@/locales/i18n";
 import { Route as CatalogRoute } from "@/routes/catalog/index";
@@ -89,15 +89,50 @@ function oneModel(): ModelSummary {
   };
 }
 
-// Stub the three CatalogList data endpoints. Models come back EMPTY unless the
+function browseCategories(): BrowseCategoryRead[] {
+  return [
+    {
+      id: "44444444-4444-4444-4444-444444444444",
+      slug: "organizery",
+      name_en: "Organisers",
+      name_pl: "Organizery",
+      position: 0,
+      parent_id: null,
+      description_en: null,
+      description_pl: null,
+      model_count: 12,
+    },
+    {
+      id: "55555555-5555-5555-5555-555555555555",
+      slug: "uchwyty",
+      name_en: "Mounts",
+      name_pl: "Uchwyty i mocowania",
+      position: 1,
+      parent_id: null,
+      description_en: null,
+      description_pl: null,
+      model_count: 7,
+    },
+  ];
+}
+
+// Stub the CatalogList data endpoints. Models come back EMPTY unless the
 // request carries `tag_match=any` (the OR broadening), so a ≥2-tag AND lands on
 // the AND-too-narrow empty state and "Switch to OR" visibly recovers.
-function installFetch() {
+function installFetch(opts: { categories?: "ok" | "error" | "pending" } = {}) {
   const calls: string[] = [];
+  const categoriesMode = opts.categories ?? "ok";
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = typeof input === "string" ? input : input.toString();
     calls.push(url);
     if (url.includes("/api/tag-groups")) return json(tagGroups());
+    // Story 51.1 — the browse rail's source. `pending` never settles, which is
+    // exactly how the "rail still loading" case is proven not to blank the grid.
+    if (url.includes("/api/categories")) {
+      if (categoriesMode === "error") return new Response("boom", { status: 500 });
+      if (categoriesMode === "pending") return new Promise<Response>(() => {});
+      return json(browseCategories());
+    }
     if (url.includes("/api/tags")) return json([]);
     if (url.includes("/api/models")) {
       if (url.includes("tag_match=any")) {
@@ -289,13 +324,133 @@ describe("CatalogList browse-category scope (Story 50.2)", () => {
     // INTENTIONAL, not an oversight (D-6): `filtersActive` is deliberately NOT
     // extended with `category`, because adding it would make "Clear filters"
     // wipe the scope. The designed escape for this state is FR26-BROWSE-2's
-    // "Search entire catalog" control, which Story 51.2 owns. Reachable today
-    // only by a hand-crafted URL — no UI emits `category` until 51.2.
+    // "Search entire catalog" control, which Story 51.2 owns. Since Story 51.1
+    // the browse rail emits `category`, so this state is now reachable from the
+    // UI — which makes the missing escape a real (and deliberately deferred)
+    // gap, not a hypothetical one.
     installFetch();
     await mountAt("/catalog/?category=home-decor");
 
     await screen.findByText(/No models match the filter\.|Brak modeli pasujących do filtra\./);
     expect(screen.queryByRole("button", switchToOr)).toBeNull();
     expect(screen.queryByRole("button", clearFilters)).toBeNull();
+  });
+});
+
+// Story 51.1 (Initiative 26) — the desktop left column is browse navigation.
+// The facet surface is relocated behind the shipped Tags sheet, and the rail's
+// own loading/error states must never blank the grid.
+describe("CatalogList desktop browse navigation (Story 51.1)", () => {
+  const allCatalog = { name: /All catalog|Cały katalog/ };
+
+  it("mounts the browse rail and no longer renders a standalone facet sidebar", async () => {
+    installFetch();
+    await mountAt("/catalog/");
+
+    const rail = await screen.findByRole("navigation", { name: /Browse categories|Przeglądaj/ });
+    expect(rail).toBeTruthy();
+    expect(await screen.findByRole("button", { name: /Organisers, 12 models/ })).toBeTruthy();
+
+    // The relocated FacetSidebar lives behind the Sheet trigger now, so no tag
+    // checkbox and no "Untagged models" row is present at rest.
+    expect(screen.queryByRole("checkbox", { name: /Untagged models|Modele bez tagów/ })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: /PLA/ })).toBeNull();
+  });
+
+  it("keeps the grouped facet surface one interaction away behind the Tags trigger", async () => {
+    installFetch();
+    await mountAt("/catalog/");
+
+    fireEvent.click(await screen.findByRole("button", { name: /^(Tags|Tagi)$/ }));
+
+    // One click reveals the shipped FacetSidebar verbatim: its group tree, its
+    // per-tag checkbox and the pinned Untagged row.
+    expect(
+      await screen.findByRole("checkbox", { name: /Untagged models|Modele bez tagów/ }),
+    ).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: /PLA/ })).toBeTruthy();
+  });
+
+  it("writes ?category=<slug> and preserves q and tag_ids when a rail row is activated", async () => {
+    const { calls } = installFetch();
+    await mountAt(`/catalog/?q=vase&tag_ids=${TAG_A}`);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Mounts, 7 models/ }));
+
+    await waitFor(() => {
+      expect(
+        calls.some(
+          (u) =>
+            u.includes("/api/models") &&
+            u.includes("category=uchwyty") &&
+            u.includes("q=vase") &&
+            u.includes(TAG_A),
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it("replaces rather than accumulates the scope when a second category is picked", async () => {
+    const { calls } = installFetch();
+    await mountAt("/catalog/?category=organizery");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Mounts, 7 models/ }));
+
+    await waitFor(() => {
+      expect(calls.some((u) => u.includes("/api/models") && u.includes("category=uchwyty"))).toBe(
+        true,
+      );
+    });
+    for (const url of calls.filter((u) => u.includes("category=uchwyty"))) {
+      expect(url.includes("category=organizery")).toBe(false);
+    }
+  });
+
+  it("clears only the scope when All catalog is activated, keeping every other layer", async () => {
+    const { calls } = installFetch();
+    await mountAt("/catalog/?category=organizery&status=printed&q=vase");
+
+    fireEvent.click(await screen.findByRole("button", allCatalog));
+
+    await waitFor(() => {
+      expect(
+        calls.some(
+          (u) =>
+            u.includes("/api/models") &&
+            !u.includes("category=") &&
+            u.includes("status=printed") &&
+            u.includes("q=vase"),
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it("marks the active category row aria-current from the URL scope", async () => {
+    installFetch();
+    await mountAt("/catalog/?category=uchwyty");
+
+    const active = await screen.findByRole("button", { name: /Mounts, 7 models/ });
+    expect(active.getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", allCatalog).getAttribute("aria-current")).toBeNull();
+  });
+
+  it("keeps the grid rendered when the category read FAILS (rail degrades, catalog does not)", async () => {
+    installFetch({ categories: "error" });
+    await mountAt("/catalog/?page=2");
+
+    // The grid's own recovery affordance still renders — proof the failed
+    // navigation aid did not take the catalog down with it.
+    expect(await screen.findByRole("button", backToPage1)).toBeTruthy();
+    expect(screen.getByRole("button", allCatalog)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Retry|Spróbuj ponownie/ })).toBeTruthy();
+  });
+
+  it("keeps the grid rendered while the category read is still PENDING", async () => {
+    installFetch({ categories: "pending" });
+    await mountAt("/catalog/?page=2");
+
+    expect(await screen.findByRole("button", backToPage1)).toBeTruthy();
+    expect(screen.getByRole("button", allCatalog)).toBeTruthy();
+    expect(screen.getAllByTestId("browse-rail-skeleton").length).toBeGreaterThan(0);
   });
 });

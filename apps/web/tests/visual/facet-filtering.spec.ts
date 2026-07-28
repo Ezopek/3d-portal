@@ -1,4 +1,4 @@
-import type { Route } from "@playwright/test";
+import type { Page, Route } from "@playwright/test";
 
 import { expect, test } from "./_test";
 import { stubSotList } from "./api-stubs";
@@ -123,14 +123,16 @@ const RICH_TAGS: TagListItem[] = [
   ...RICH_FIXTURE.groupless,
 ];
 
-// FacetSidebar's desktop `<aside>` carries `hidden ... lg:flex` — real
-// desktop-only chrome, distinct from the mobile Sheet-triggered instance.
-// Copied from the established pattern in filter-ribbon-selects-open.spec.ts.
-function skipOnMobile(testInfo: { project: { name: string } }) {
-  test.skip(
-    testInfo.project.name.startsWith("mobile-"),
-    "FacetSidebar's standalone <aside> renders desktop-only (hidden lg:flex); mobile uses the Sheet-triggered instance, out of this test's scope.",
-  );
+// Story 51.1 moved browse navigation into the desktop left column, so
+// FacetSidebar's standalone desktop `<aside>` no longer exists — the
+// Sheet-triggered instance is now the ONLY mount, on every viewport. These
+// tests therefore run on all four projects (no desktop-only skip) and reach
+// the facet surface the way a user does: one click on the toolbar trigger.
+async function openFacetSheet(page: Page) {
+  await page.getByRole("button", { name: "Tagi", exact: true }).click();
+  const sidebar = page.getByRole("complementary");
+  await expect(sidebar).toBeVisible();
+  return sidebar;
 }
 
 test.describe("FacetSidebar — default/collapsed/untagged baselines", () => {
@@ -140,8 +142,7 @@ test.describe("FacetSidebar — default/collapsed/untagged baselines", () => {
   // Playwright gives every test a fresh, isolated browser context. If this
   // suite is ever reconfigured toward a shared/serial context, this
   // assumption would need re-verifying (review finding).
-  test("default state: groups 1-2 expanded, group 3 collapsed", async ({ page }, testInfo) => {
-    skipOnMobile(testInfo);
+  test("default state: groups 1-2 expanded, group 3 collapsed", async ({ page }) => {
     await stubSotList(page, { tagGroups: RICH_FIXTURE, tags: RICH_TAGS });
     await page.goto("/catalog");
     await waitForReady(page);
@@ -150,7 +151,7 @@ test.describe("FacetSidebar — default/collapsed/untagged baselines", () => {
     // catalog grid's `ModelCard` also renders `Smok`/tag-slug text (the
     // fixture "dragon" model card), so an unscoped page-wide text match is
     // ambiguous.
-    const sidebar = page.getByRole("complementary");
+    const sidebar = await openFacetSheet(page);
 
     // Groups 1-2 (by `position`) expanded: their tag rows render.
     await expect(sidebar.getByRole("button", { name: "Zwiń Motyw" })).toBeVisible();
@@ -173,15 +174,12 @@ test.describe("FacetSidebar — default/collapsed/untagged baselines", () => {
     await expect(page).toHaveScreenshot("facet-sidebar-default.png", { fullPage: true });
   });
 
-  test("group-expand: clicking the collapsed group reveals its tag row", async ({
-    page,
-  }, testInfo) => {
-    skipOnMobile(testInfo);
+  test("group-expand: clicking the collapsed group reveals its tag row", async ({ page }) => {
     await stubSotList(page, { tagGroups: RICH_FIXTURE, tags: RICH_TAGS });
     await page.goto("/catalog");
     await waitForReady(page);
 
-    const sidebar = page.getByRole("complementary");
+    const sidebar = await openFacetSheet(page);
     await sidebar.getByRole("button", { name: "Rozwiń Kolekcja" }).click();
 
     await expect(sidebar.getByRole("button", { name: "Zwiń Kolekcja" })).toBeVisible();
@@ -190,12 +188,12 @@ test.describe("FacetSidebar — default/collapsed/untagged baselines", () => {
     await expect(page).toHaveScreenshot("facet-sidebar-group-expanded.png", { fullPage: true });
   });
 
-  test("untagged checkbox renders checked from ?untagged=true", async ({ page }, testInfo) => {
-    skipOnMobile(testInfo);
+  test("untagged checkbox renders checked from ?untagged=true", async ({ page }) => {
     await stubSotList(page, { tagGroups: RICH_FIXTURE, tags: RICH_TAGS });
     await page.goto("/catalog?untagged=true");
     await waitForReady(page);
 
+    await openFacetSheet(page);
     const untaggedCheckbox = page.getByRole("checkbox", { name: "Modele bez tagów" });
     await expect(untaggedCheckbox).toBeVisible();
     await expect(untaggedCheckbox).toBeChecked();
@@ -204,11 +202,10 @@ test.describe("FacetSidebar — default/collapsed/untagged baselines", () => {
   });
 });
 
-// Unlike FacetSidebar's standalone `<aside>` (desktop-only, gated above via
-// skipOnMobile), FilterRibbon's tag chips/picker/match-mode toggle render
-// unconditionally on every viewport — they're not behind any `md:`/`lg:`
-// responsive class in FilterRibbon.tsx — so these tests run on all 4
-// projects without a skip.
+// FilterRibbon's tag chips/picker/match-mode toggle render unconditionally on
+// every viewport — they're not behind any `md:`/`lg:` responsive class in
+// FilterRibbon.tsx — so these tests run on all 4 projects without a skip, and
+// (unlike the block above) without opening any sheet first.
 test.describe("FilterRibbon — tag-picker + UI-driven match-mode reveal", () => {
   test("tag picker opens listing all fixture tags", async ({ page }) => {
     await stubSotList(page, { tagGroups: RICH_FIXTURE, tags: RICH_TAGS });

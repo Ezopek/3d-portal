@@ -3,8 +3,10 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AddModelButton } from "@/modules/admin/AddModelButton";
+import { BrowseRail } from "@/modules/catalog/components/BrowseRail";
 import { FacetSidebar } from "@/modules/catalog/components/FacetSidebar";
 import { FilterRibbon, type FilterRibbonState } from "@/modules/catalog/components/FilterRibbon";
+import { useCategories } from "@/modules/catalog/hooks/useCategories";
 import { useModels } from "@/modules/catalog/hooks/useModels";
 import { useTagGroups } from "@/modules/catalog/hooks/useTagGroups";
 import { useTags } from "@/modules/catalog/hooks/useTags";
@@ -31,6 +33,11 @@ export function CatalogList() {
 
   const tagGroups = useTagGroups();
   const tags = useTags();
+  // Initiative 26 (Story 51.1) — the browse rail's data source. Deliberately
+  // NOT part of either fatal guard below: a pending or failed navigation aid
+  // must never blank an already-painted grid (EXPERIENCE.md:242, :253). The
+  // rail owns its own loading/error/retry surface.
+  const categories = useCategories();
   const tagsData = tags.data;
   const tagsById = useMemo(() => {
     const m = new Map<string, NonNullable<typeof tagsData>[number]>();
@@ -112,6 +119,22 @@ export function CatalogList() {
     });
   }
 
+  // Initiative 26 (Story 51.1). Category is a browse SCOPE, not a filter: it
+  // REPLACES (never accumulates), and clearing it leaves every other layer —
+  // q / tag_ids / tag_match / untagged / status / source / sort — untouched.
+  // This is the mirror of the Story 50.2 rule that "Clear filters" must not
+  // drop the scope: each control clears exactly its own layer (FR26-BROWSE-2).
+  function setCategory(slug: string | undefined) {
+    void navigate({
+      search: (prev: CatalogSearch): CatalogSearch => ({
+        ...prev,
+        category: slug,
+        page: undefined, // a new scope means a new result set — back to page 1
+      }),
+      replace: true,
+    });
+  }
+
   function setPage(page: number) {
     void navigate({
       search: (prev: CatalogSearch): CatalogSearch => ({
@@ -180,20 +203,38 @@ export function CatalogList() {
 
   return (
     <div className="flex">
-      <FacetSidebar
-        groups={tagGroups.data.groups}
-        groupless={tagGroups.data.groupless}
-        selectedTagIds={search.tag_ids ?? []}
-        onToggleTag={toggleTag}
-        untaggedActive={search.untagged ?? false}
-        onToggleUntagged={toggleUntagged}
+      {/* Initiative 26 (Story 51.1) — the desktop left column is browse
+          navigation now: broad categories only, never tag groups or tags
+          (FR26-BROWSE-1). It occupies the exact `w-60 border-r` geometry the
+          FacetSidebar <aside> held, so the cutover is a swap in one column
+          rather than a grid reflow (DESIGN.md:242). The mobile Browse surface
+          is Story 51.3; the scope chip and /categories/$slug are Story 51.2. */}
+      <BrowseRail
+        categories={categories.data ?? []}
+        activeSlug={search.category}
+        onSelect={setCategory}
+        isLoading={categories.data === undefined && !categories.isError}
+        isError={categories.isError}
+        onRetry={() => void categories.refetch()}
       />
       <div className="min-w-0 flex-1">
-        <div className="border-b border-border bg-background/95 px-3 pt-3 lg:hidden">
+        {/* The facet surface is RELOCATED, not removed: this Sheet-triggered
+            FacetSidebar was already the mobile tag path, and dropping its
+            `lg:hidden` gate makes the shipped grouped-facet surface reachable
+            in one interaction on EVERY viewport — which is what FR26-BROWSE-1's
+            second verifiable requires. Story 52.1 owns the consolidated
+            `Filters (n)` surface (badge, promoted groups, in-panel tag search)
+            and will re-home this trigger; until then it keeps its shipped
+            label and side. FacetSidebar itself is untouched. */}
+        <div className="border-b border-border bg-background/95 px-3 pt-3">
           <Sheet open={mobileTagsOpen} onOpenChange={setMobileTagsOpen}>
+            {/* `w-full` was correct while this control was mobile-only. Now
+                that it also renders at `lg`+, it shrinks to its label there
+                rather than stretching into a full-width bar across the results
+                column — mobile keeps the shipped geometry byte-for-byte. */}
             <SheetTrigger
               render={
-                <Button variant="outline" size="sm" className="w-full justify-start">
+                <Button variant="outline" size="sm" className="w-full justify-start lg:w-auto">
                   {t("catalog.filters.openTags")}
                 </Button>
               }
