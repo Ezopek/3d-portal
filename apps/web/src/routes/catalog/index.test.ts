@@ -1,4 +1,7 @@
-import { defaultParseSearch, defaultStringifySearch } from "@tanstack/react-router";
+import {
+  defaultParseSearch,
+  defaultStringifySearch,
+} from "@tanstack/react-router";
 import { describe, expect, it } from "vitest";
 
 import { Route as LoginRoute } from "@/routes/login";
@@ -12,7 +15,9 @@ import { Route, type CatalogSearch } from "./index";
 // `CatalogSearch` RETURN type, so it does NOT mask the type-level RED for the
 // new `tag_match`/`untagged` fields (property access below still fails to
 // compile until the interface gains them); it only makes the validator callable.
-const v = Route.options.validateSearch as (raw: Record<string, unknown>) => CatalogSearch;
+const v = Route.options.validateSearch as (
+  raw: Record<string, unknown>,
+) => CatalogSearch;
 
 // Same accessor precedent for the login route (test-only; no login prod change).
 const loginValidate = LoginRoute.options.validateSearch as (
@@ -31,7 +36,9 @@ describe("catalog validateSearch — tag_match (Story 43.3 AC #1, Story 44.2 nor
       tag_match: "any",
       tag_ids: [UUID_A, UUID_B],
     });
-    expect(v({ tag_match: "any", tag_ids: [UUID_A, UUID_B] }).tag_match).toBe("any");
+    expect(v({ tag_match: "any", tag_ids: [UUID_A, UUID_B] }).tag_match).toBe(
+      "any",
+    );
   });
 
   it("omits the 'all' default", () => {
@@ -59,7 +66,9 @@ describe("catalog validateSearch — tag_match (Story 43.3 AC #1, Story 44.2 nor
   // hand-crafted URLs so URL state stays consistent with `setFilters`.
   it("drops 'any' when fewer than 2 tags are selected", () => {
     expect(v({ tag_match: "any" })).toEqual({});
-    expect(v({ tag_match: "any", tag_ids: [UUID_A] })).toEqual({ tag_ids: [UUID_A] });
+    expect(v({ tag_match: "any", tag_ids: [UUID_A] })).toEqual({
+      tag_ids: [UUID_A],
+    });
   });
 
   it("drops 'any' when tag_ids are present in the raw input but none survive validation", () => {
@@ -86,7 +95,9 @@ describe("catalog validateSearch — untagged (AC #2)", () => {
 
 describe("catalog validateSearch — tag_ids hardening [H] (AC #3)", () => {
   it("preserves canonical UUIDs in first-seen order", () => {
-    expect(v({ tag_ids: [UUID_A, UUID_B] })).toEqual({ tag_ids: [UUID_A, UUID_B] });
+    expect(v({ tag_ids: [UUID_A, UUID_B] })).toEqual({
+      tag_ids: [UUID_A, UUID_B],
+    });
   });
 
   it("coerces a single UUID string to a one-element array", () => {
@@ -94,7 +105,9 @@ describe("catalog validateSearch — tag_ids hardening [H] (AC #3)", () => {
   });
 
   it("dedupes preserving first-seen order", () => {
-    expect(v({ tag_ids: [UUID_A, UUID_A, UUID_B] })).toEqual({ tag_ids: [UUID_A, UUID_B] });
+    expect(v({ tag_ids: [UUID_A, UUID_A, UUID_B] })).toEqual({
+      tag_ids: [UUID_A, UUID_B],
+    });
   });
 
   it("drops non-UUID and empty entries", () => {
@@ -124,7 +137,11 @@ describe("catalog validateSearch — tag_ids hardening [H] (AC #3)", () => {
 
 describe("catalog validateSearch — serialization & omit-default (AC #4, #5)", () => {
   it("round-trips through the TanStack default (de)serializers", () => {
-    const round = { tag_ids: [UUID_A, UUID_B], tag_match: "any", untagged: true };
+    const round = {
+      tag_ids: [UUID_A, UUID_B],
+      tag_match: "any",
+      untagged: true,
+    };
     const qs = defaultStringifySearch(round);
     // Canonical browser wire = URL-encoded JSON array (`%5B` = `[`), NOT repeated params.
     expect(qs).toContain("tag_ids=%5B");
@@ -182,7 +199,9 @@ describe("catalog validateSearch — category (Story 50.2)", () => {
   });
 
   it("trims surrounding whitespace", () => {
-    expect(v({ category: "  home-decor  " })).toEqual({ category: "home-decor" });
+    expect(v({ category: "  home-decor  " })).toEqual({
+      category: "home-decor",
+    });
   });
 
   it("drops empty and whitespace-only values", () => {
@@ -212,13 +231,25 @@ describe("catalog validateSearch — category (Story 50.2)", () => {
     // than the contract and would delete legitimately admin-created slugs. The
     // backend match is `BrowseCategory.slug == category` — exact and
     // case-sensitive — so no lowercasing either.
-    for (const value of ["UPPER_case", "kategoria-łazienka", "a", "x".repeat(200), "has.dots"]) {
+    for (const value of [
+      "UPPER_case",
+      "kategoria-łazienka",
+      "a",
+      "x".repeat(200),
+      "has.dots",
+    ]) {
       expect(v({ category: value })).toEqual({ category: value });
     }
   });
 
   it("leaves the tag facets exactly as the 43.3/44.2 rules already produce them", () => {
-    expect(v({ category: "home-decor", tag_ids: [UUID_A, UUID_B], tag_match: "any" })).toEqual({
+    expect(
+      v({
+        category: "home-decor",
+        tag_ids: [UUID_A, UUID_B],
+        tag_match: "any",
+      }),
+    ).toEqual({
       category: "home-decor",
       tag_ids: [UUID_A, UUID_B],
       tag_match: "any",
@@ -226,7 +257,9 @@ describe("catalog validateSearch — category (Story 50.2)", () => {
   });
 
   it("neither rescues a stranded tag_match nor relaxes the tag_ids hardening", () => {
-    expect(v({ category: "home-decor", tag_match: "any" })).toEqual({ category: "home-decor" });
+    expect(v({ category: "home-decor", tag_match: "any" })).toEqual({
+      category: "home-decor",
+    });
     expect(v({ category: "home-decor", tag_ids: ["not-a-uuid"] })).toEqual({
       category: "home-decor",
     });
@@ -240,11 +273,15 @@ describe("catalog validateSearch — category (Story 50.2)", () => {
 
     // A value needing percent-encoding survives the round trip unchanged.
     const encoded = { category: "a b" };
-    expect(v(defaultParseSearch(defaultStringifySearch(encoded)))).toEqual(encoded);
+    expect(v(defaultParseSearch(defaultStringifySearch(encoded)))).toEqual(
+      encoded,
+    );
   });
 
   it("serializes a normalized-away category to a query string with no category key", () => {
-    expect(defaultStringifySearch(v({ category: "" }))).not.toContain("category");
+    expect(defaultStringifySearch(v({ category: "" }))).not.toContain(
+      "category",
+    );
   });
 
   it("coexists with every other key while unknown keys are still stripped", () => {
@@ -260,13 +297,16 @@ describe("catalog validateSearch — category (Story 50.2)", () => {
       page: 2,
     };
     expect(v({ legacy_param: "x", ...expected })).toEqual(expected);
-    expect(v({ legacy_param: "x", category: "home-decor" })).toEqual({ category: "home-decor" });
+    expect(v({ legacy_param: "x", category: "home-decor" })).toEqual({
+      category: "home-decor",
+    });
   });
 });
 
 describe("catalog params survive login redirect `next` (AC #7, test-only)", () => {
   it("keeps a catalog URL carrying the new params as a safe next", () => {
-    const next = "/catalog?tag_ids=%5B%22" + UUID_A + "%22%5D&tag_match=any&untagged=true";
+    const next =
+      "/catalog?tag_ids=%5B%22" + UUID_A + "%22%5D&tag_match=any&untagged=true";
     expect(loginValidate({ next })).toEqual({ next });
   });
 });

@@ -33,11 +33,11 @@ test.describe("BrowseRail — desktop browse navigation", () => {
     const rail = page.getByRole("navigation", RAIL);
     await expect(rail).toBeVisible();
 
-    const allCatalog = rail.getByRole("button", { name: "Cały katalog" });
+    const allCatalog = rail.getByRole("link", { name: "Cały katalog" });
     await expect(allCatalog).toBeVisible();
     await expect(allCatalog).toHaveAttribute("aria-current", "page");
-    await expect(rail.getByRole("button", { name: /Organizery, 12 modeli/ })).toBeVisible();
-    await expect(rail.getByRole("button", { name: /Uchwyty i mocowania, 7 modeli/ })).toBeVisible();
+    await expect(rail.getByRole("link", { name: /Organizery, 12 modeli/ })).toBeVisible();
+    await expect(rail.getByRole("link", { name: /Uchwyty i mocowania, 7 modeli/ })).toBeVisible();
 
     await expect(page).toHaveScreenshot("browse-rail-default.png", { fullPage: true });
   });
@@ -47,14 +47,14 @@ test.describe("BrowseRail — desktop browse navigation", () => {
   }, testInfo) => {
     skipOnMobile(testInfo);
     await stubSotList(page);
-    await page.goto("/catalog?category=uchwyty");
+    await page.goto("/categories/uchwyty");
     await waitForReady(page);
 
     const rail = page.getByRole("navigation", RAIL);
-    const active = rail.getByRole("button", { name: /Uchwyty i mocowania, 7 modeli/ });
+    const active = rail.getByRole("link", { name: /Uchwyty i mocowania, 7 modeli/ });
     await expect(active).toBeVisible();
     await expect(active).toHaveAttribute("aria-current", "page");
-    await expect(rail.getByRole("button", { name: "Cały katalog" })).not.toHaveAttribute(
+    await expect(rail.getByRole("link", { name: "Cały katalog" })).not.toHaveAttribute(
       "aria-current",
       "page",
     );
@@ -71,7 +71,7 @@ test.describe("BrowseRail — desktop browse navigation", () => {
     await waitForReady(page);
 
     const rail = page.getByRole("navigation", RAIL);
-    const empty = rail.getByRole("button", { name: /Dekoracje i wystrój, 0 modeli/ });
+    const empty = rail.getByRole("link", { name: /Dekoracje i wystrój, 0 modeli/ });
     await expect(empty).toBeVisible();
     await expect(empty).toBeEnabled();
     // Focusable: keyboard users must still be able to reach an empty category.
@@ -92,7 +92,7 @@ test.describe("BrowseRail — desktop browse navigation", () => {
     // `waitForReady`'s networkidle would never settle with a hanging request,
     // so wait on the concrete state and disable animations by hand instead.
     const rail = page.getByRole("navigation", RAIL);
-    await expect(rail.getByRole("button", { name: "Cały katalog" })).toBeVisible();
+    await expect(rail.getByRole("link", { name: "Cały katalog" })).toBeVisible();
     await expect(page.getByTestId("browse-rail-skeleton").first()).toBeVisible();
     // The catalogue itself must be fully painted while the rail is still pending.
     await expect(page.getByRole("link", { name: /Dragon|Smok/ }).first()).toBeVisible();
@@ -113,7 +113,7 @@ test.describe("BrowseRail — desktop browse navigation", () => {
     await waitForReady(page);
 
     const rail = page.getByRole("navigation", RAIL);
-    await expect(rail.getByRole("button", { name: "Cały katalog" })).toBeVisible();
+    await expect(rail.getByRole("link", { name: "Cały katalog" })).toBeVisible();
     await expect(rail.getByRole("button", { name: "Spróbuj ponownie" })).toBeVisible();
     // The navigation aid failed; the catalogue did not.
     await expect(page.getByRole("link", { name: /Dragon|Smok/ }).first()).toBeVisible();

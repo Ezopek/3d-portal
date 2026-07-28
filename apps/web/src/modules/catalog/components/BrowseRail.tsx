@@ -1,7 +1,9 @@
+import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import type { BrowseCategoryRead } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
+import type { CatalogListSearch } from "@/routes/catalog/index";
 
 // Number of placeholder rows painted while the category read is pending. Sized
 // to the ratified starter taxonomy (eight governed categories, G26-CAT-SET) so
@@ -16,8 +18,8 @@ interface Props {
   categories: BrowseCategoryRead[];
   /** `undefined` => no browse scope is active, so "All catalog" is current. */
   activeSlug: string | undefined;
-  /** Called with `undefined` to clear the scope, or a category slug to set it. */
-  onSelect: (slug: string | undefined) => void;
+  /** Current URL search layer, carried across every row's navigation (AC-14). */
+  search: CatalogListSearch;
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
@@ -29,14 +31,16 @@ interface Props {
 // "which category am I in" reads as location exactly like "which module am I
 // in" (DESIGN.md:269, :194). Primary — never accent — because accent is the
 // selected-tag vocabulary and would collide with the tag chips (DESIGN.md:204).
-const ROW_BASE = "flex min-h-9 w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm";
-const ROW_ACTIVE = "bg-primary/10 text-foreground font-medium ring-1 ring-inset ring-primary";
+const ROW_BASE =
+  "flex min-h-9 w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm";
+const ROW_ACTIVE =
+  "bg-primary/10 text-foreground font-medium ring-1 ring-inset ring-primary";
 const ROW_IDLE = "text-muted-foreground hover:text-foreground hover:bg-accent";
 
 export function BrowseRail({
   categories,
   activeSlug,
-  onSelect,
+  search,
   isLoading,
   isError,
   onRetry,
@@ -57,15 +61,30 @@ export function BrowseRail({
       className="hidden w-60 shrink-0 flex-col border-r border-border bg-card lg:flex"
     >
       <ul className="flex flex-col gap-1 p-2">
+        {/* Story 51.2 D-4 — rows are `Link`s, discharging the divergence 51.1
+            recorded (EXPERIENCE.md:219 says each row IS a Link; 51.1 deferred it
+            only because the target route did not exist yet). An anchor gives
+            middle-click, copy-link-address and the browser's own hover URL for
+            free, which is exactly what a NAVIGATION surface owes. A scope change
+            is a real navigation, so these PUSH (no `replace`) and Back returns
+            to the previous category (D-5). `page` resets because the result set
+            changes; every other URL layer is forwarded verbatim.
+
+            An explicit search OBJECT rather than an updater: an updater's `prev`
+            is typed as the union across every registered route, which is the
+            same silent-widening trap D-2 rejected `useSearch({strict:false})`
+            for. `CatalogListSearch` is exact at both link targets. */}
         <li>
-          <button
-            type="button"
+          <Link
+            to="/catalog"
             aria-current={allActive ? "page" : undefined}
-            onClick={() => onSelect(undefined)}
+            search={{ ...search, page: undefined }}
             className={cn(ROW_BASE, allActive ? ROW_ACTIVE : ROW_IDLE)}
           >
-            <span className="flex-1 truncate">{t("catalog.browse.allCatalog")}</span>
-          </button>
+            <span className="flex-1 truncate">
+              {t("catalog.browse.allCatalog")}
+            </span>
+          </Link>
         </li>
         {/* Rendered in API order — the backend sorts by `(position, slug)` and
             owns that contract (architecture.md Decision AY); re-sorting here
@@ -76,8 +95,9 @@ export function BrowseRail({
           const label = labelOf(c);
           return (
             <li key={c.id}>
-              <button
-                type="button"
+              <Link
+                to="/categories/$slug"
+                params={{ slug: c.slug }}
                 aria-current={active ? "page" : undefined}
                 // Label and count are folded into ONE accessible name so a
                 // screen reader announces the row as a single item rather than
@@ -86,7 +106,7 @@ export function BrowseRail({
                   name: label,
                   count: c.model_count,
                 })}
-                onClick={() => onSelect(c.slug)}
+                search={{ ...search, page: undefined }}
                 className={cn(ROW_BASE, active ? ROW_ACTIVE : ROW_IDLE)}
               >
                 <span
@@ -94,13 +114,17 @@ export function BrowseRail({
                     "flex-1 truncate",
                     // An empty category is dimmed but stays focusable and
                     // navigable — never hidden (DESIGN.md:271).
-                    c.model_count === 0 && !active && "text-muted-foreground/60",
+                    c.model_count === 0 &&
+                      !active &&
+                      "text-muted-foreground/60",
                   )}
                 >
                   {label}
                 </span>
-                <span className="text-xs tabular-nums text-muted-foreground">{c.model_count}</span>
-              </button>
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {c.model_count}
+                </span>
+              </Link>
             </li>
           );
         })}

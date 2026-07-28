@@ -26,6 +26,7 @@ import { Route as SettingsSessionsRouteImport } from './routes/settings/sessions
 import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
 import { Route as Settings2faRouteImport } from './routes/settings/2fa'
 import { Route as DevComponentsRouteImport } from './routes/dev/components'
+import { Route as CategoriesSlugRouteImport } from './routes/categories/$slug'
 import { Route as CatalogIdRouteImport } from './routes/catalog/$id'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
 import { Route as AdminTagGroupsRouteImport } from './routes/admin/tag-groups'
@@ -120,6 +121,11 @@ const DevComponentsRoute = DevComponentsRouteImport.update({
   path: '/dev/components',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CategoriesSlugRoute = CategoriesSlugRouteImport.update({
+  id: '/categories/$slug',
+  path: '/categories/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CatalogIdRoute = CatalogIdRouteImport.update({
   id: '/catalog/$id',
   path: '/catalog/$id',
@@ -173,6 +179,7 @@ export interface FileRoutesByFullPath {
   '/admin/tag-groups': typeof AdminTagGroupsRoute
   '/admin/users': typeof AdminUsersRoute
   '/catalog/$id': typeof CatalogIdRoute
+  '/categories/$slug': typeof CategoriesSlugRoute
   '/dev/components': typeof DevComponentsRoute
   '/settings/2fa': typeof Settings2faRoute
   '/settings/profile': typeof SettingsProfileRoute
@@ -200,6 +207,7 @@ export interface FileRoutesByTo {
   '/admin/tag-groups': typeof AdminTagGroupsRoute
   '/admin/users': typeof AdminUsersRoute
   '/catalog/$id': typeof CatalogIdRoute
+  '/categories/$slug': typeof CategoriesSlugRoute
   '/dev/components': typeof DevComponentsRoute
   '/settings/2fa': typeof Settings2faRoute
   '/settings/profile': typeof SettingsProfileRoute
@@ -228,6 +236,7 @@ export interface FileRoutesById {
   '/admin/tag-groups': typeof AdminTagGroupsRoute
   '/admin/users': typeof AdminUsersRoute
   '/catalog/$id': typeof CatalogIdRoute
+  '/categories/$slug': typeof CategoriesSlugRoute
   '/dev/components': typeof DevComponentsRoute
   '/settings/2fa': typeof Settings2faRoute
   '/settings/profile': typeof SettingsProfileRoute
@@ -257,6 +266,7 @@ export interface FileRouteTypes {
     | '/admin/tag-groups'
     | '/admin/users'
     | '/catalog/$id'
+    | '/categories/$slug'
     | '/dev/components'
     | '/settings/2fa'
     | '/settings/profile'
@@ -284,6 +294,7 @@ export interface FileRouteTypes {
     | '/admin/tag-groups'
     | '/admin/users'
     | '/catalog/$id'
+    | '/categories/$slug'
     | '/dev/components'
     | '/settings/2fa'
     | '/settings/profile'
@@ -311,6 +322,7 @@ export interface FileRouteTypes {
     | '/admin/tag-groups'
     | '/admin/users'
     | '/catalog/$id'
+    | '/categories/$slug'
     | '/dev/components'
     | '/settings/2fa'
     | '/settings/profile'
@@ -339,6 +351,7 @@ export interface RootRouteChildren {
   AdminTagGroupsRoute: typeof AdminTagGroupsRoute
   AdminUsersRoute: typeof AdminUsersRoute
   CatalogIdRoute: typeof CatalogIdRoute
+  CategoriesSlugRoute: typeof CategoriesSlugRoute
   DevComponentsRoute: typeof DevComponentsRoute
   Settings2faRoute: typeof Settings2faRoute
   SettingsProfileRoute: typeof SettingsProfileRoute
@@ -476,6 +489,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DevComponentsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/categories/$slug': {
+      id: '/categories/$slug'
+      path: '/categories/$slug'
+      fullPath: '/categories/$slug'
+      preLoaderRoute: typeof CategoriesSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/catalog/$id': {
       id: '/catalog/$id'
       path: '/catalog/$id'
@@ -547,6 +567,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminTagGroupsRoute: AdminTagGroupsRoute,
   AdminUsersRoute: AdminUsersRoute,
   CatalogIdRoute: CatalogIdRoute,
+  CategoriesSlugRoute: CategoriesSlugRoute,
   DevComponentsRoute: DevComponentsRoute,
   Settings2faRoute: Settings2faRoute,
   SettingsProfileRoute: SettingsProfileRoute,

@@ -35,8 +35,14 @@ describe("EmptyState", () => {
     render(
       <EmptyState
         messageKey="catalog.empty"
-        action={{ labelKey: "catalog.actions.switch_to_or", onClick: onPrimary }}
-        secondaryAction={{ labelKey: "catalog.actions.clear_filters", onClick: onSecondary }}
+        action={{
+          labelKey: "catalog.actions.switch_to_or",
+          onClick: onPrimary,
+        }}
+        secondaryAction={{
+          labelKey: "catalog.actions.clear_filters",
+          onClick: onSecondary,
+        }}
       />,
     );
     const buttons = screen.getAllByRole("button");

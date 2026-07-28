@@ -1,11 +1,15 @@
-import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AddModelButton } from "@/modules/admin/AddModelButton";
 import { BrowseRail } from "@/modules/catalog/components/BrowseRail";
 import { FacetSidebar } from "@/modules/catalog/components/FacetSidebar";
-import { FilterRibbon, type FilterRibbonState } from "@/modules/catalog/components/FilterRibbon";
+import {
+  FilterRibbon,
+  type FilterRibbonState,
+} from "@/modules/catalog/components/FilterRibbon";
+import { ScopeChip } from "@/modules/catalog/components/ScopeChip";
 import { useCategories } from "@/modules/catalog/hooks/useCategories";
 import { useModels } from "@/modules/catalog/hooks/useModels";
 import { useTagGroups } from "@/modules/catalog/hooks/useTagGroups";
@@ -25,10 +29,28 @@ import {
 
 const PAGE_SIZE = 48;
 
-export function CatalogList() {
-  const { t } = useTranslation();
-  const search = useSearch({ from: "/catalog/" });
-  const navigate = useNavigate({ from: "/catalog/" });
+interface Props {
+  /** Path-borne browse scope. `undefined` on /catalog — the unscoped catalogue. */
+  scopeSlug: string | undefined;
+  search: CatalogSearch;
+  /** Route-bound search updater. Always replace:true — the shipped behaviour. */
+  onSearchChange: (updater: (prev: CatalogSearch) => CatalogSearch) => void;
+}
+
+// Story 51.2 D-2 — this component is shared verbatim by `/catalog` and
+// `/categories/$slug`, so it no longer binds itself to one route id. Each route
+// file resolves `search` / `params` / `navigate` through its own strictly-typed
+// `Route.use*` hooks and passes the three props above. `useSearch({strict:false})`
+// was rejected: its result is the union across every registered route, so
+// `search.q` would only typecheck by accident and would widen silently whenever
+// an unrelated route changed.
+export function CatalogList({ scopeSlug, search, onSearchChange }: Props) {
+  const { t, i18n } = useTranslation();
+  // Unbound on purpose: the ONLY navigation this component owns that leaves the
+  // current route is the scope escape, and it targets one literal path with an
+  // explicit (not updater-derived) search object — so it stays exactly typed
+  // without reintroducing the route-tree coupling D-2 removed.
+  const navigate = useNavigate();
   const [mobileTagsOpen, setMobileTagsOpen] = useState(false);
 
   const tagGroups = useTagGroups();
@@ -51,11 +73,67 @@ export function CatalogList() {
     untagged: search.untagged,
     status: search.status,
     source: search.source,
-    category: search.category,
+    // Story 51.2 D-1 — the scope comes from the PATH now, never from a search
+    // param. One source of truth for the chip, the rail's active row and this
+    // query, so they cannot disagree.
+    category: scopeSlug,
     q: search.q,
     sort: search.sort,
     page: search.page,
   });
+
+  // Story 51.2 D-7 — the chip's label reads the ALREADY-loaded category list
+  // (mounted unconditionally above), so a scope change costs zero extra
+  // requests. `useCategoryBySlug` is deliberately NOT mounted here: it 404s on
+  // an unknown slug, and the UX contract requires an unknown slug to render an
+  // empty page with a working escape, never an error surface
+  // (EXPERIENCE.md:258). Falling back to the raw slug covers all three
+  // non-resolving states — unknown slug, pending list, failed list — in one path.
+  const preferPl = i18n.language.startsWith("pl");
+  const categoriesData = categories.data;
+  const scopeLabel = useMemo(() => {
+    if (scopeSlug === undefined) return undefined;
+    const hit = categoriesData?.find((c) => c.slug === scopeSlug);
+    if (hit === undefined) return scopeSlug;
+    return preferPl && hit.name_pl ? hit.name_pl : hit.name_en;
+  }, [categoriesData, scopeSlug, preferPl]);
+
+  // Story 51.2 D-10 — EXPERIENCE.md:324 puts focus on the results heading after
+  // a scope change, not at the top of the document.
+  //
+  // Two things make this trickier than a `useEffect` on `scopeSlug`. First,
+  // `/catalog` and `/categories/$slug` are different routes, so a scope change
+  // REMOUNTS this component — a "previous scope" ref cannot survive it to tell a
+  // navigation apart from a cold load. The history index can: it is 0 for the
+  // entry the session started on and increments on every push, and it lives in
+  // the router, not in React. Second, a remount lands on the loading branch
+  // below (a fresh query key has no data yet), so the heading does not exist
+  // when a mount effect would run — hence a ref CALLBACK, which fires when the
+  // node actually attaches.
+  //
+  // Net effect: focus moves when the user navigates to a scope, and does NOT
+  // move on a cold load (which would strand Tab past the browse rail) or on a
+  // filter / sort / page change (all `replace`, so the index does not move and
+  // the callback identity is stable, so it is never re-invoked).
+  const arrivedByNavigation = useRouterState({
+    select: (s) => s.location.state.__TSR_index > 0,
+  });
+  const headingRef = useCallback(
+    (node: HTMLHeadingElement | null) => {
+      if (node !== null && arrivedByNavigation) node.focus();
+    },
+    [arrivedByNavigation],
+  );
+
+  // Story 51.2 D-1 — the search layer this component hands onward (rail hrefs,
+  // the chip escape) must never carry `category`. The scoped route's
+  // `validateSearch` already strips it, but TanStack merges the ROOT match's
+  // RAW parsed search into every child match, so a hand-crafted
+  // `/categories/uchwyty?category=organizery` puts the stray token back and it
+  // would ride forward into every onward URL — resurrecting the second scope
+  // source D-1 exists to abolish. Dropped once, here, at the single seam.
+  const { category: scopeLivesInThePath, ...forwardSearch } = search;
+  void scopeLivesInThePath;
 
   const filterState: FilterRibbonState = {
     q: search.q ?? "",
@@ -67,8 +145,8 @@ export function CatalogList() {
   };
 
   function setFilters(next: FilterRibbonState) {
-    void navigate({
-      search: (prev: CatalogSearch): CatalogSearch => ({
+    onSearchChange(
+      (prev: CatalogSearch): CatalogSearch => ({
         ...prev,
         q: next.q.length > 0 ? next.q : undefined,
         tag_ids: next.tag_ids.length > 0 ? next.tag_ids : undefined,
@@ -85,63 +163,55 @@ export function CatalogList() {
         sort: next.sort === "recent" ? undefined : next.sort,
         page: undefined, // reset to page 1 on any filter change
       }),
-      replace: true,
-    });
+    );
   }
 
   function toggleTag(id: string) {
-    void navigate({
-      search: (prev: CatalogSearch): CatalogSearch => {
-        const current = prev.tag_ids ?? [];
-        const next = current.includes(id)
-          ? current.filter((tid) => tid !== id)
-          : [...current, id];
-        return {
-          ...prev,
-          // Let validateSearch normalize a now-stranded tag_match (a non-default
-          // value only survives with ≥2 tags — E44.2 enforcement layer).
-          tag_ids: next.length > 0 ? next : undefined,
-          page: undefined,
-        };
-      },
-      replace: true,
+    onSearchChange((prev: CatalogSearch): CatalogSearch => {
+      const current = prev.tag_ids ?? [];
+      const next = current.includes(id)
+        ? current.filter((tid) => tid !== id)
+        : [...current, id];
+      return {
+        ...prev,
+        // Let validateSearch normalize a now-stranded tag_match (a non-default
+        // value only survives with ≥2 tags — E44.2 enforcement layer).
+        tag_ids: next.length > 0 ? next : undefined,
+        page: undefined,
+      };
     });
   }
 
   function toggleUntagged() {
-    void navigate({
-      search: (prev: CatalogSearch): CatalogSearch => ({
+    onSearchChange(
+      (prev: CatalogSearch): CatalogSearch => ({
         ...prev,
         untagged: prev.untagged ? undefined : true,
         page: undefined,
       }),
-      replace: true,
-    });
-  }
-
-  // Initiative 26 (Story 51.1). Category is a browse SCOPE, not a filter: it
-  // REPLACES (never accumulates), and clearing it leaves every other layer —
-  // q / tag_ids / tag_match / untagged / status / source / sort — untouched.
-  // This is the mirror of the Story 50.2 rule that "Clear filters" must not
-  // drop the scope: each control clears exactly its own layer (FR26-BROWSE-2).
-  function setCategory(slug: string | undefined) {
-    void navigate({
-      search: (prev: CatalogSearch): CatalogSearch => ({
-        ...prev,
-        category: slug,
-        page: undefined, // a new scope means a new result set — back to page 1
-      }),
-      replace: true,
-    });
+    );
   }
 
   function setPage(page: number) {
-    void navigate({
-      search: (prev: CatalogSearch): CatalogSearch => ({
+    onSearchChange(
+      (prev: CatalogSearch): CatalogSearch => ({
         ...prev,
         page: page === 1 ? undefined : page,
       }),
-      replace: true,
+    );
+  }
+
+  // Story 51.2 D-5 / AC-10 — the ONE navigation the scope escape performs, from
+  // both the chip and the scoped empty states. It leaves the route, and leaving
+  // the route IS the whole of the clearing: `q`, `tag_ids`, `tag_match`,
+  // `untagged`, `status`, `source` and `sort` all ride along untouched, and only
+  // `page` resets because the result set changes. Deliberately NOT
+  // `replace: true` — a scope change is a genuine navigation, so Back returns
+  // to the category you escaped (EXPERIENCE.md:387, D-5).
+  function escapeScope() {
+    void navigate({
+      to: "/catalog",
+      search: { ...forwardSearch, page: undefined },
     });
   }
 
@@ -208,16 +278,32 @@ export function CatalogList() {
           (FR26-BROWSE-1). It occupies the exact `w-60 border-r` geometry the
           FacetSidebar <aside> held, so the cutover is a swap in one column
           rather than a grid reflow (DESIGN.md:242). The mobile Browse surface
-          is Story 51.3; the scope chip and /categories/$slug are Story 51.2. */}
+          is Story 51.3. Since Story 51.2 the rows are `Link`s to
+          /categories/$slug, so the rail owns no navigation callback. */}
       <BrowseRail
         categories={categories.data ?? []}
-        activeSlug={search.category}
-        onSelect={setCategory}
+        activeSlug={scopeSlug}
+        search={forwardSearch}
         isLoading={categories.data === undefined && !categories.isError}
         isError={categories.isError}
         onRetry={() => void categories.refetch()}
       />
       <div className="min-w-0 flex-1">
+        {/* Story 51.2 D-10 — the results heading 51.1 deferred here because no
+            heading existed. `sr-only` + `tabIndex={-1}`: it is the focus target
+            for a scope change, never a tab stop, and it adds no pixels, so it
+            cannot move a visual baseline. */}
+        <h2 ref={headingRef} tabIndex={-1} className="sr-only">
+          {scopeLabel ?? t("catalog.browse.allCatalog")}
+        </h2>
+        {/* Story 51.2 D-11 — ONE polite live region for the whole surface, not
+            one per control (EXPERIENCE.md:314-316). Keying it on the result
+            count satisfies all three required triggers at once — scope change,
+            filter change and query commit each change `total`. The scope chip
+            is deliberately NOT a live region; the count is. */}
+        <p role="status" aria-live="polite" className="sr-only">
+          {total} {t("catalog.totalSuffix")}
+        </p>
         {/* The facet surface is RELOCATED, not removed: this Sheet-triggered
             FacetSidebar was already the mobile tag path, and dropping its
             `lg:hidden` gate makes the shipped grouped-facet surface reachable
@@ -234,12 +320,19 @@ export function CatalogList() {
                 column — mobile keeps the shipped geometry byte-for-byte. */}
             <SheetTrigger
               render={
-                <Button variant="outline" size="sm" className="w-full justify-start lg:w-auto">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start lg:w-auto"
+                >
                   {t("catalog.filters.openTags")}
                 </Button>
               }
             />
-            <SheetContent side="left" className="w-80 max-w-[85vw] overflow-y-auto p-0">
+            <SheetContent
+              side="left"
+              className="w-80 max-w-[85vw] overflow-y-auto p-0"
+            >
               <SheetHeader>
                 <SheetTitle>{t("catalog.filters.openTags")}</SheetTitle>
               </SheetHeader>
@@ -270,12 +363,27 @@ export function CatalogList() {
             alignment canonically. */}
         <div className="flex items-center justify-between gap-3 px-3 pt-3">
           <div className="min-w-0 flex-1">
-            <FilterRibbon state={filterState} tagsById={tagsById} onChange={setFilters} />
+            <FilterRibbon
+              state={filterState}
+              tagsById={tagsById}
+              onChange={setFilters}
+            />
           </div>
           <div className="shrink-0">
             <AddModelButton />
           </div>
         </div>
+        {/* Story 51.2 AC-6/AC-7 — one full-width row between the toolbar and the
+            grid, present on every viewport and absent from the DOM (not merely
+            hidden) when nothing is scoped. `scopeLabel` is defined exactly when
+            `scopeSlug` is, so this is the same condition stated once. */}
+        {scopeLabel !== undefined && (
+          <ScopeChip
+            label={scopeLabel}
+            otherConstraintsActive={filtersActive}
+            search={forwardSearch}
+          />
+        )}
         {items.length === 0 ? (
           andTooNarrow ? (
             <EmptyState
@@ -283,26 +391,23 @@ export function CatalogList() {
               action={{
                 labelKey: "catalog.actions.switch_to_or",
                 onClick: () => {
-                  void navigate({
-                    search: (prev: CatalogSearch): CatalogSearch => ({
+                  onSearchChange(
+                    (prev: CatalogSearch): CatalogSearch => ({
                       ...prev,
                       tag_match: "any",
                       page: undefined,
                     }),
-                    replace: true,
-                  });
+                  );
                 },
               }}
               secondaryAction={{
                 labelKey: "catalog.actions.clear_filters",
                 onClick: () => {
-                  void navigate({
-                    // Category is a SCOPE, not a filter (FR26-BROWSE-2), so
-                    // "Clear filters" must not silently drop it. Clearing the
-                    // scope is Story 51.2's "Search entire catalog" control.
-                    search: (prev: CatalogSearch): CatalogSearch => ({ category: prev.category }),
-                    replace: true,
-                  });
+                  // Category is a SCOPE, not a filter (FR26-BROWSE-2), so
+                  // "Clear filters" must not silently drop it. Since Story 51.2
+                  // the scope lives in the PATH, so it now survives STRUCTURALLY
+                  // — this handler cannot drop it even by mistake (AC-26).
+                  onSearchChange(() => ({}));
                 },
               }}
             />
@@ -319,6 +424,37 @@ export function CatalogList() {
                 onClick: () => setPage(1),
               }}
             />
+          ) : scopeLabel !== undefined ? (
+            // Story 51.2 AC-23/AC-24 — the scoped empty states, slotted AFTER
+            // the shipped `andTooNarrow` and page-overshoot branches so neither
+            // is shadowed (EXPERIENCE.md:247, AC-22/AC-25). Both offer the
+            // scope escape as the primary recovery, because widening the place
+            // is the only move that can turn an empty scoped page into results.
+            filtersActive ? (
+              <EmptyState
+                messageKey="catalog.emptyInCategory"
+                messageParams={{ name: scopeLabel }}
+                action={{
+                  // Keeps `q` and the tags, drops only the scope.
+                  labelKey: "catalog.browse.searchEntireCatalog",
+                  onClick: escapeScope,
+                }}
+                secondaryAction={{
+                  // The mirror image: keeps the scope (structurally — it is in
+                  // the path), drops everything else (EXPERIENCE.md:385).
+                  labelKey: "catalog.actions.clear_filters",
+                  onClick: () => onSearchChange(() => ({})),
+                }}
+              />
+            ) : (
+              <EmptyState
+                messageKey="catalog.emptyCategory"
+                action={{
+                  labelKey: "catalog.browse.searchEntireCatalog",
+                  onClick: escapeScope,
+                }}
+              />
+            )
           ) : (
             <EmptyState
               messageKey="catalog.empty"
@@ -326,18 +462,7 @@ export function CatalogList() {
                 filtersActive
                   ? {
                       labelKey: "catalog.actions.clear_filters",
-                      onClick: () => {
-                        void navigate({
-                          // Category is a SCOPE, not a filter (FR26-BROWSE-2),
-                          // so "Clear filters" must not silently drop it.
-                          // Clearing the scope is Story 51.2's "Search entire
-                          // catalog" control.
-                          search: (prev: CatalogSearch): CatalogSearch => ({
-                            category: prev.category,
-                          }),
-                          replace: true,
-                        });
-                      },
+                      onClick: () => onSearchChange(() => ({})),
                     }
                   : undefined
               }
