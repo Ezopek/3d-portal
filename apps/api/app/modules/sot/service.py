@@ -27,6 +27,7 @@ from app.core.db.models import (
     Tag,
     TagGroup,
 )
+from app.core.db.session import unicode_lower
 from app.modules.sot.schemas import (
     BrowseCategoryRead,
     BrowseCategorySummary,
@@ -289,6 +290,20 @@ def list_models(
       (any source). Primary use case is agent-runbook dedup-by-source-URL
       pre-flight check (TB-004): hit returns the existing model's UUID,
       miss returns empty so the agent proceeds with a fresh import.
+    - q: Initiative 26 (Story 49.4) case-insensitive substring over a model's own
+      `name_en` / `name_pl` / `slug` PLUS the `name_pl` / `name_en` of any tag
+      ASSIGNED to it. The tag branch is one extra disjunct inside the same
+      `or_()`, expressed as an `IN` membership subquery (`model_tag` joined to
+      `tag`) so the outer SELECT shape — and therefore `total`, sorting and
+      pagination — stays unchanged and a model matching several tags is still
+      returned exactly once. `tag.slug` is deliberately NOT matched (unlike
+      `GET /api/tags?q=`, which does): slugs are internal. Tag-name matching does
+      not enter `tag_match` grouping and does not widen `untagged`, which can
+      never satisfy a membership predicate. The tag columns are folded with
+      `unicode_lower` (full Unicode, so `Łazienka` is reachable by `łazienka`);
+      the model-name columns keep the shipped ASCII-only `lower()`, an
+      inherited limitation recorded in `deferred-work.md` rather than widened
+      here.
     - sort: ModelListSort enum; default = recent (created_at desc).
     """
     base = select(Model)
@@ -361,11 +376,40 @@ def list_models(
         )
     if q:
         like = f"%{q.lower()}%"
+        tag_lower = unicode_lower(session)
         base = base.where(
             or_(
                 func.lower(Model.name_en).like(like),
                 func.lower(Model.name_pl).like(like),
                 func.lower(Model.slug).like(like),
+                # Initiative 26 (Story 49.4, FR26-SEARCH-1) — tag-name membership.
+                # IN-subquery, never a JOIN onto `base`: a model carrying three
+                # matching tags would appear three times under a join, and `total`
+                # is count(*) over base.subquery() computed BEFORE pagination
+                # (just below), so a join inflates both the page and the count. The
+                # join below is INSIDE the subquery (model_tag -> tag) and does not
+                # multiply outer rows. `tag.slug` is deliberately NOT matched —
+                # slugs are internal (architecture.md § Initiative 26) and matching
+                # them would couple the session-scoped test DB's per-module slug
+                # prefixes. No soft-delete filter here on purpose: liveness is
+                # owned by the outer query above so `include_deleted=true` keeps
+                # working symmetrically for name- and tag-matched rows.
+                # Case-folded with `unicode_lower`, NOT SQLite's ASCII-only
+                # lower(): the shipped taxonomy stores Tag.name_pl values such
+                # as "Łazienka" (seed.py), which plain lower() leaves unfolded
+                # and therefore unreachable by any casing of themselves. The
+                # model-name disjuncts above keep the shipped lower() — widening
+                # them is a separate, pre-existing concern (deferred-work.md).
+                Model.id.in_(
+                    select(ModelTag.model_id)
+                    .join(Tag, Tag.id == ModelTag.tag_id)
+                    .where(
+                        or_(
+                            tag_lower(Tag.name_pl).like(like),
+                            tag_lower(Tag.name_en).like(like),
+                        )
+                    )
+                ),
             )
         )
     if external_url is not None:

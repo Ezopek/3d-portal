@@ -32,12 +32,45 @@ def test_get_tags_returns_seeded_tags(client):
         s.add(Tag(slug="tag-3-articulated", name_en="Articulated"))
         s.commit()
 
-    r = client.get("/api/tags")
+    # Explicit window, matching the rest of this module. `GET /api/tags` returns
+    # a slug-ordered page truncated at `limit` (default 50), so asserting
+    # membership over the DEFAULT window silently made this test depend on how
+    # many earlier-sorting slugs other modules happened to have minted in the
+    # session-scoped DB — a probabilistic failure (Story 49.4 review finding
+    # R-4). The API's own maximum, 200, is the bound; the length assertion below
+    # turns a future saturation into a loud, deterministic failure instead.
+    r = client.get("/api/tags?limit=200")
     assert r.status_code == 200
     body = r.json()
+    assert len(body) < 200, "tag window saturated at the API maximum — see R-4"
     slugs = {t["slug"] for t in body}
     assert "tag-3-dragon" in slugs
     assert "tag-3-articulated" in slugs
+
+
+def test_tag_window_is_bounded_by_limit_not_by_insertion_order(client):
+    """Story 49.4 R-4 regression — pins BOTH halves of the mechanism that made
+    `test_get_tags_returns_seeded_tags` above probabilistic.
+
+    `list_tags` orders by slug and truncates at `limit`, so a window narrower
+    than the matching set drops its tail deterministically — which is exactly
+    how unrelated `tag-<uuid>` fixtures minted elsewhere could push
+    `tag-3-dragon` out of the default 50-row window. A window that covers the
+    matching set returns all of it. This is test-side only: `GET /api/tags`
+    keeps its shipped `default=50, le=200` contract untouched.
+    """
+    p = f"tag-3win-{uuid.uuid4().hex[:6]}"
+    engine = get_engine()
+    with Session(engine) as s:
+        for i in range(3):
+            s.add(Tag(slug=f"{p}-{i}", name_en=f"{p} {i}"))
+        s.commit()
+
+    truncated = client.get(f"/api/tags?q={p}&limit=2").json()
+    assert [t["slug"] for t in truncated] == [f"{p}-0", f"{p}-1"]  # tail dropped
+
+    covering = client.get(f"/api/tags?q={p}&limit=200").json()
+    assert [t["slug"] for t in covering] == [f"{p}-0", f"{p}-1", f"{p}-2"]
 
 
 def test_get_tags_filters_by_q(client):
