@@ -5,7 +5,7 @@ baseline_commit: 0f722d270ae30d97423e6b1d2ceb71d59975b785
 # Story 51.1 — Desktop browse navigation (FR26-BROWSE-1, NFR26-A11Y-1, NFR26-I18N-1, NFR26-VISUAL-1, NFR26-DARKMODE-1)
 
 - **Epic:** E51 — Browse IA: categories as navigation (Initiative 26 — Catalog Discovery). **This is the one user-visible cutover in Initiative 26.**
-- **Status:** `review` — implemented 2026-07-28 by native `bmad-dev-story` (DS) on branch `feat/E51.1-desktop-browse-navigation`, under Laura/controller **G26-DEVGO** (standing Initiative 26 authorization). All 12 tasks complete, all 27 ACs satisfied. Native BMAD CR and independent Aider review both approved; the aggregate `check-all.sh` closeout gate is green (§16–§18). Not yet committed, pushed, merged, or deployed at this artifact update point.
+- **Status:** `done` — implemented 2026-07-28 by native `bmad-dev-story` (DS) on branch `feat/E51.1-desktop-browse-navigation`, under Laura/controller **G26-DEVGO** (standing Initiative 26 authorization). All 12 tasks complete, all 27 ACs satisfied. Native BMAD CR and independent Aider review both approved; the aggregate `check-all.sh` closeout gate is green (§16–§18). Fast-forward merged to `main`, pushed, deployed, and smoke-verified on 2026-07-29 (§19).
 - **Author:** Claude (native `bmad-create-story`, Create + Validate). **Controller:** Laura.
 - **Authorization posture, stated plainly:** this create + validate pass was delegated by **Laura/controller under the standing Initiative 26 authorization**. **G26-DEVGO is recorded here as Laura/controller authorization under that standing Initiative 26 authorization** — it is **NOT** an Ezop signature, **NOT** Ezop review, and **NOT** human review of any kind. No human reviewed this artifact. No Codex, no Gemini, no Aider participated. No app code was written, no gate/test/build/script was run, no branch was created, and no commit / stage / push / merge / deploy / migration / seed / live-DB / network action was taken. This pass edited exactly two files: this artifact and `sprint-status.yaml` status fields.
 - **Created:** 2026-07-28 via native `bmad-create-story` after a mandatory `bmad-help` run. Canonical route from `_bmad/_config/bmad-help.csv:26-28`: `bmad-create-story:create` (**CS**, phase `4-implementation`, `preceded-by bmad-sprint-planning` — done, `required=true`) → `bmad-create-story:validate` (**VS**) → `bmad-dev-story` (**DS**) → `bmad-code-review` (**CR**).
@@ -549,7 +549,7 @@ The 6 new `facet-sidebar-*-mobile-*` PNGs are **untracked/new**, not rewrites �
 - Native `bmad-code-review` (CR) — run and approved; see §17.
 - Independent external review — **Aider via `laura-aider-review-diff`** approved full text/code diff; see §18.
 - `infra/scripts/check-all.sh` — standalone rerun passed **16/16 all green** at `.hermes/run-logs/check-all-e51-1-rerun-20260728_235414.log`; see §18.
-- Commit, ff-merge, push, deploy, post-deploy smoke — still owed at this artifact update point.
+- Commit, ff-merge, push, deploy, post-deploy smoke — completed; see §19.
 
 ---
 
@@ -592,3 +592,13 @@ Deferred:
 - **Post-CR fix verification:** focused `npm run test -- src/modules/catalog/browse-i18n.test.ts src/modules/catalog/components/BrowseRail.test.tsx` passed 2 files / 21 tests, full `npm run test` passed 143 files / 879 tests, `npm run typecheck` rc=0, and `npm run lint` rc=0.
 - **Visual follow-up:** CR's pluralization fix changed legitimate rendered accessible strings; browse-rail visual assertions were updated from `modeli: N` to plural-aware `N modeli`, targeted `npm run test:visual -- tests/visual/browse-rail.spec.ts --update-snapshots` passed 14 / 10 skipped, then the aggregate visual gate passed 560 / 36 skipped.
 - **Aggregate closeout:** `infra/scripts/check-all.sh` rerun passed **16/16 all green**. Log: `.hermes/run-logs/check-all-e51-1-rerun-20260728_235414.log`; marker: `CHECK_ALL_RC=0 2026-07-29T00:04:54+02:00`.
+
+---
+
+## 19. Merge, deploy, and smoke — 2026-07-29
+
+- **Commit:** `e15b8fe60530af5ac79bee84e9e64bfdc6a93ad2` (`feat(web): add desktop browse navigation`). The commit message includes `baseline-reviewed:` lines for all 46 PNG baselines naming `Claude Opus 5`, not a human.
+- **Merge:** branch `feat/E51.1-desktop-browse-navigation` fast-forward merged into `main`; no merge commit, no squash.
+- **Push:** `origin/main` verified at `e15b8fe60530af5ac79bee84e9e64bfdc6a93ad2`.
+- **Deploy:** `infra/scripts/deploy.sh` succeeded. Log: `.hermes/run-logs/deploy-e51-1-20260729_000734.log`; marker: `DEPLOY_RC=0 2026-07-29T00:10:10+02:00`. Images were rebuilt/shipped; api, arq-worker, and web were recreated; alembic ran; slicer overlay was correctly skipped as not needed; GlitchTip symbolication matched issue id=319 with release `0.1.0+e15b8fe`; runbook fingerprint verified.
+- **Smoke:** `.190` compose services are up from `/home/ezop/repos/3d-portal/infra`; LAN API health returned HTTP 200 with `{"status":"ok","version":"0.1.0"}`; LAN `/`, production HTTPS `/`, and production HTTPS `/catalog/?category=uchwyty` all returned HTTP 200. Logs: `.hermes/run-logs/smoke-e51-1-20260729_001029.log` and `.hermes/run-logs/smoke-e51-1-compose-ps-20260729_001048.log`.
