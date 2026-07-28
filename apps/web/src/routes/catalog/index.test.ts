@@ -170,6 +170,100 @@ describe("catalog validateSearch — unknown keys stripped + unrelated keys coex
   });
 });
 
+// Story 50.2 (Initiative 26) — `category` is an INDEPENDENT browse-scope layer:
+// never folded into `tag_match`, never counted in the FilterRibbon's Filters (n)
+// badge. No existing block above is edited; none of them passes `category`, so
+// their exact-object assertions keep proving the pre-50.2 shape.
+describe("catalog validateSearch — category (Story 50.2)", () => {
+  it("accepts a plain slug", () => {
+    expect(v({ category: "home-decor" })).toEqual({ category: "home-decor" });
+    // Type-level RED anchor: `.category` is absent from CatalogSearch until T3.
+    expect(v({ category: "home-decor" }).category).toBe("home-decor");
+  });
+
+  it("trims surrounding whitespace", () => {
+    expect(v({ category: "  home-decor  " })).toEqual({ category: "home-decor" });
+  });
+
+  it("drops empty and whitespace-only values", () => {
+    // Load-bearing, not cosmetic: the backend guard is `if category is not None`
+    // (sot/service.py:357), so `category=""` is a REAL filter with an
+    // unsatisfiable predicate — a blank catalog with no visible cause.
+    expect(v({ category: "" })).toEqual({});
+    expect(v({ category: "   " })).toEqual({});
+  });
+
+  it("drops non-string shapes wholesale, never silently picking one element", () => {
+    // FR26-BROWSE-2 allows exactly ONE active scope, so `?category=a&category=b`
+    // is dropped rather than reduced to "a": a silent pick would leave the URL
+    // claiming two scopes while the app honours one.
+    expect(v({ category: ["a", "b"] })).toEqual({});
+    expect(v({ category: 5 })).toEqual({});
+    expect(v({ category: true })).toEqual({});
+    expect(v({ category: null })).toEqual({});
+    expect(v({ category: {} })).toEqual({});
+  });
+
+  it("applies no format validation — any non-empty string survives verbatim", () => {
+    // Deliberately NOT mirroring the `tag_ids` UUID hardening four lines above:
+    // the wire type is a bare `str | None` (sot/router.py:196) so no 422 is
+    // reachable, and the admin authoring field is `Field(min_length=1)` with NO
+    // pattern (sot/admin_schemas.py:302). A frontend regex would be stricter
+    // than the contract and would delete legitimately admin-created slugs. The
+    // backend match is `BrowseCategory.slug == category` — exact and
+    // case-sensitive — so no lowercasing either.
+    for (const value of ["UPPER_case", "kategoria-łazienka", "a", "x".repeat(200), "has.dots"]) {
+      expect(v({ category: value })).toEqual({ category: value });
+    }
+  });
+
+  it("leaves the tag facets exactly as the 43.3/44.2 rules already produce them", () => {
+    expect(v({ category: "home-decor", tag_ids: [UUID_A, UUID_B], tag_match: "any" })).toEqual({
+      category: "home-decor",
+      tag_ids: [UUID_A, UUID_B],
+      tag_match: "any",
+    });
+  });
+
+  it("neither rescues a stranded tag_match nor relaxes the tag_ids hardening", () => {
+    expect(v({ category: "home-decor", tag_match: "any" })).toEqual({ category: "home-decor" });
+    expect(v({ category: "home-decor", tag_ids: ["not-a-uuid"] })).toEqual({
+      category: "home-decor",
+    });
+  });
+
+  it("round-trips through the TanStack default (de)serializers", () => {
+    const round = { category: "home-decor", q: "vase" };
+    const qs = defaultStringifySearch(round);
+    expect(qs).toContain("category=home-decor");
+    expect(v(defaultParseSearch(qs))).toEqual(round);
+
+    // A value needing percent-encoding survives the round trip unchanged.
+    const encoded = { category: "a b" };
+    expect(v(defaultParseSearch(defaultStringifySearch(encoded)))).toEqual(encoded);
+  });
+
+  it("serializes a normalized-away category to a query string with no category key", () => {
+    expect(defaultStringifySearch(v({ category: "" }))).not.toContain("category");
+  });
+
+  it("coexists with every other key while unknown keys are still stripped", () => {
+    const expected = {
+      tag_ids: [UUID_A, UUID_B],
+      tag_match: "any",
+      untagged: true,
+      q: "vase",
+      status: "printed",
+      source: "printables",
+      category: "home-decor",
+      sort: "name_asc",
+      page: 2,
+    };
+    expect(v({ legacy_param: "x", ...expected })).toEqual(expected);
+    expect(v({ legacy_param: "x", category: "home-decor" })).toEqual({ category: "home-decor" });
+  });
+});
+
 describe("catalog params survive login redirect `next` (AC #7, test-only)", () => {
   it("keeps a catalog URL carrying the new params as a safe next", () => {
     const next = "/catalog?tag_ids=%5B%22" + UUID_A + "%22%5D&tag_match=any&untagged=true";

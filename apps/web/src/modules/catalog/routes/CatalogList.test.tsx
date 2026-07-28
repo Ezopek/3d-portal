@@ -198,3 +198,104 @@ describe("CatalogList facet empty states (E44.3)", () => {
     });
   });
 });
+
+// Story 50.2 (Initiative 26) — `category` is a browse SCOPE, not another filter:
+// it reaches the models query, it does not move the Filters (n) badge, and it
+// survives both a filter/search change and "Clear filters".
+describe("CatalogList browse-category scope (Story 50.2)", () => {
+  it("sends category=<slug> to the models query when the URL carries a category", async () => {
+    const { calls } = installFetch();
+    await mountAt("/catalog/?category=home-decor");
+
+    await waitFor(() => {
+      expect(calls.some((u) => u.includes("/api/models") && u.includes("category=home-decor"))).toBe(
+        true,
+      );
+    });
+  });
+
+  it("sends no category key at all when the URL carries none", async () => {
+    const { calls } = installFetch();
+    await mountAt("/catalog/?status=printed");
+
+    await waitFor(() => {
+      expect(calls.some((u) => u.includes("/api/models"))).toBe(true);
+    });
+    // Regression lock: adding the filter key must be byte-identical on the wire
+    // for every user who has no category (the query-key hash is unchanged too —
+    // TanStack's hashKey drops undefined-valued properties).
+    for (const url of calls.filter((u) => u.includes("/api/models"))) {
+      expect(url.includes("category=")).toBe(false);
+    }
+  });
+
+  it("leaves the Filters (n) badge identical whether or not a category is active", async () => {
+    // FR26-BROWSE-2's verifiable, satisfied by adding NOTHING to
+    // FilterRibbonState / activeFilterCount (which count only status, source and
+    // a non-default sort). Asserted through the real component so the fence
+    // cannot be vacuous.
+    installFetch();
+    await mountAt("/catalog/?status=printed");
+    const withoutCategory = (await screen.findByRole("button", { name: "Filters" })).textContent;
+    // Pin the count so the comparison below cannot pass on two empty strings.
+    expect(withoutCategory).toContain("1");
+    cleanup();
+
+    installFetch();
+    await mountAt("/catalog/?status=printed&category=home-decor");
+    const withCategory = (await screen.findByRole("button", { name: "Filters" })).textContent;
+    expect(withCategory).toBe(withoutCategory);
+  });
+
+  it("keeps the scope through a search change made in the real UI", async () => {
+    // No bespoke preservation code: every navigation helper spreads `...prev`,
+    // so a present category survives a filter/search change for free.
+    const { calls } = installFetch();
+    await mountAt("/catalog/?category=home-decor");
+
+    fireEvent.change(await screen.findByPlaceholderText("Search"), {
+      target: { value: "vase" },
+    });
+
+    await waitFor(() => {
+      expect(
+        calls.some(
+          (u) =>
+            u.includes("/api/models") && u.includes("q=vase") && u.includes("category=home-decor"),
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it("preserves the scope when Clear filters clears the filters", async () => {
+    const { calls } = installFetch();
+    await mountAt("/catalog/?category=home-decor&status=printed");
+
+    fireEvent.click(await screen.findByRole("button", clearFilters));
+
+    await waitFor(() => {
+      expect(
+        calls.some(
+          (u) =>
+            u.includes("/api/models") &&
+            u.includes("category=home-decor") &&
+            !u.includes("status="),
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it("offers no recovery action for a category-only empty result", async () => {
+    // INTENTIONAL, not an oversight (D-6): `filtersActive` is deliberately NOT
+    // extended with `category`, because adding it would make "Clear filters"
+    // wipe the scope. The designed escape for this state is FR26-BROWSE-2's
+    // "Search entire catalog" control, which Story 51.2 owns. Reachable today
+    // only by a hand-crafted URL — no UI emits `category` until 51.2.
+    installFetch();
+    await mountAt("/catalog/?category=home-decor");
+
+    await screen.findByText(/No models match the filter\.|Brak modeli pasujących do filtra\./);
+    expect(screen.queryByRole("button", switchToOr)).toBeNull();
+    expect(screen.queryByRole("button", clearFilters)).toBeNull();
+  });
+});

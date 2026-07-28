@@ -39,6 +39,11 @@ export interface CatalogSearch {
   untagged?: boolean;
   status?: ModelStatus;
   source?: ModelSource;
+  // Initiative 26 (Story 50.2) — ONE browse-category slug. An INDEPENDENT
+  // visible URL layer: never folded into tag_match, never counted in the
+  // FilterRibbon's Filters (n) badge. The scope chip and the
+  // "Search entire catalog" escape are Story 51.2.
+  category?: string;
   sort?: ModelListSort;
   q?: string;
   page?: number;
@@ -86,6 +91,20 @@ export const Route = createFileRoute("/catalog/")({
     }
     if (typeof raw.source === "string" && (SOURCES as readonly string[]).includes(raw.source)) {
       out.source = raw.source as ModelSource;
+    }
+    // Initiative 26 (Story 50.2). A SINGLE slug — an array (`?category=a&category=b`)
+    // is dropped wholesale rather than silently reduced to one element, because
+    // FR26-BROWSE-2 allows exactly one active scope and a silent pick would make
+    // the URL lie about which one. No format check: the wire type is a bare
+    // `str | None` (`sot/router.py:196`) and an unknown slug returns 200 + an
+    // empty page (`service.py:357-375`), so there is no 422 to protect against —
+    // unlike `tag_ids`, whose wire type IS `uuid.UUID`. Trim + drop-if-empty is
+    // required, not cosmetic: the backend treats `category=""` as a real,
+    // unsatisfiable filter (`if category is not None`), which would blank the
+    // catalog with no visible cause.
+    if (typeof raw.category === "string") {
+      const trimmed = raw.category.trim();
+      if (trimmed.length > 0) out.category = trimmed;
     }
     if (typeof raw.sort === "string" && (SORTS as readonly string[]).includes(raw.sort)) {
       out.sort = raw.sort as ModelListSort;

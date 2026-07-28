@@ -44,6 +44,7 @@ export function CatalogList() {
     untagged: search.untagged,
     status: search.status,
     source: search.source,
+    category: search.category,
     q: search.q,
     sort: search.sort,
     page: search.page,
@@ -254,7 +255,13 @@ export function CatalogList() {
               secondaryAction={{
                 labelKey: "catalog.actions.clear_filters",
                 onClick: () => {
-                  void navigate({ search: {}, replace: true });
+                  void navigate({
+                    // Category is a SCOPE, not a filter (FR26-BROWSE-2), so
+                    // "Clear filters" must not silently drop it. Clearing the
+                    // scope is Story 51.2's "Search entire catalog" control.
+                    search: (prev: CatalogSearch): CatalogSearch => ({ category: prev.category }),
+                    replace: true,
+                  });
                 },
               }}
             />
@@ -279,7 +286,16 @@ export function CatalogList() {
                   ? {
                       labelKey: "catalog.actions.clear_filters",
                       onClick: () => {
-                        void navigate({ search: {}, replace: true });
+                        void navigate({
+                          // Category is a SCOPE, not a filter (FR26-BROWSE-2),
+                          // so "Clear filters" must not silently drop it.
+                          // Clearing the scope is Story 51.2's "Search entire
+                          // catalog" control.
+                          search: (prev: CatalogSearch): CatalogSearch => ({
+                            category: prev.category,
+                          }),
+                          replace: true,
+                        });
                       },
                     }
                   : undefined
