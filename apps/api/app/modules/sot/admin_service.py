@@ -17,7 +17,7 @@ import os
 import re
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.exc import IntegrityError
@@ -26,7 +26,9 @@ from sqlmodel import Session, select
 from app.core.audit import record_event
 from app.core.db.models import (
     AuditLog,
+    BrowseCategory,
     Model,
+    ModelBrowseCategory,
     ModelExternalLink,
     ModelFile,
     ModelFileKind,
@@ -39,8 +41,11 @@ from app.core.db.models import (
 )
 from app.core.db.session import get_engine
 from app.modules.sot.admin_schemas import (
+    BrowseCategoryCreate,
+    BrowseCategoryPatch,
     ExternalLinkCreate,
     ExternalLinkPatch,
+    ModelCategoriesReplace,
     ModelCreate,
     ModelFilePatch,
     ModelPatch,
@@ -1280,6 +1285,469 @@ def delete_tag_group(
 
     session.delete(tg)
     session.commit()  # FK ON DELETE SET NULL nulls member tags' group_id
+
+
+# ---------------------------------------------------------------------------
+# Browse categories (Story 49.5 — admin governance)
+# ---------------------------------------------------------------------------
+
+
+def _browse_category_snapshot(cat: BrowseCategory) -> dict:
+    """Full bounded before/after snapshot for a `browse_category.*` audit row.
+
+    UUIDs / strings / ints / nulls only — no PII, no unbounded growth
+    (D-AUDIT-2). The one intentionally-unbounded field, `detached_model_ids`,
+    is added by `delete_browse_category` alone and always paired with a count.
+    """
+    return {
+        "slug": cat.slug,
+        "name_en": cat.name_en,
+        "name_pl": cat.name_pl,
+        "description_en": cat.description_en,
+        "description_pl": cat.description_pl,
+        "inclusion_criterion": cat.inclusion_criterion,
+        "position": cat.position,
+        "parent_id": str(cat.parent_id) if cat.parent_id is not None else None,
+    }
+
+
+def browse_category_model_count(session: Session, category_id: uuid.UUID) -> int:
+    """Live-model assignment count for ONE category.
+
+    Scoped sibling of the read-side `_browse_category_model_counts` aggregate
+    and deliberately not a reuse of it: the admin write response needs exactly
+    one category's count, not a whole-table GROUP BY. Same semantics though —
+    soft-deleted models do not count.
+    """
+    rows = session.exec(
+        select(ModelBrowseCategory.model_id)
+        .join(Model, Model.id == ModelBrowseCategory.model_id)
+        .where(
+            ModelBrowseCategory.category_id == category_id,
+            Model.deleted_at.is_(None),
+        )
+    ).all()
+    return len(rows)
+
+
+def _browse_category_children(session: Session, category_id: uuid.UUID) -> list[uuid.UUID]:
+    rows = session.exec(
+        select(BrowseCategory.id).where(BrowseCategory.parent_id == category_id)
+    ).all()
+    return list(rows)
+
+
+def _browse_category_assignments(
+    session: Session, category_id: uuid.UUID
+) -> list[ModelBrowseCategory]:
+    rows = session.exec(
+        select(ModelBrowseCategory).where(ModelBrowseCategory.category_id == category_id)
+    ).all()
+    return list(rows)
+
+
+def _validate_browse_category_ids(session: Session, category_ids: list[uuid.UUID]) -> None:
+    """Every id in a replace-set payload must resolve to a real BrowseCategory.
+
+    Extracted so the commit-time safety net can re-derive the same cause after a
+    rollback, exactly as `delete_browse_category` re-derives its two conflict
+    sources — one definition, used both proactively and reactively.
+
+    Raises:
+        ValueError("category not found: <id>")
+    """
+    for cid in category_ids:
+        if session.get(BrowseCategory, cid) is None:
+            raise ValueError(f"category not found: {cid}")
+
+
+def _raise_model_categories_commit_error(
+    session: Session,
+    exc: IntegrityError,
+    *,
+    model_id: uuid.UUID,
+    category_ids: list[uuid.UUID],
+) -> NoReturn:
+    """Re-derive WHICH referenced row vanished during a replace-set write.
+
+    `ModelBrowseCategory` carries two `ondelete="RESTRICT"` FKs, so a model or a
+    category deleted between validation and the flush/COMMIT fires an
+    IntegrityError that the route would otherwise leak as a 500 — while its
+    description promises a 404 for exactly those causes. Both are re-checked
+    once the rollback has left a usable session, mapping onto the SAME
+    LookupError/ValueError semantics the proactive checks already raise.
+
+    Anything else is re-raised unchanged: a duplicate payload is already a 400
+    before this point, and inventing a 404 for an unrelated integrity failure
+    would be a confident wrong answer.
+
+    Always raises.
+    """
+    session.rollback()
+    _get_model_active(session, model_id)
+    _validate_browse_category_ids(session, category_ids)
+    raise exc
+
+
+def _raise_browse_category_flush_error(
+    session: Session,
+    exc: IntegrityError,
+    parent_id: uuid.UUID | None,
+) -> NoReturn:
+    """Re-derive WHICH constraint an INSERT/UPDATE flush violated, after rollback.
+
+    `BrowseCategory` carries two of them — `uq_browse_category_slug` and the
+    `parent_id` self-FK — and SQLite's message names neither reliably. A blanket
+    `slug_conflict` would blame a provably-unique slug whenever the parent
+    vanished between validation and flush, and retrying with a new slug would
+    never help. So the parent is simply re-checked once the rollback has left a
+    usable session; everything else stays the shipped slug conflict.
+
+    Always raises.
+    """
+    session.rollback()
+    if parent_id is not None and session.get(BrowseCategory, parent_id) is None:
+        raise LookupError("parent not found") from exc
+    raise ValueError("slug_conflict") from exc
+
+
+def _validate_parent_is_root(session: Session, parent_id: uuid.UUID) -> None:
+    """FR26-CAT-4 depth-2 ceiling, target side.
+
+    Raises:
+        LookupError("parent not found") — no such category.
+        ValueError("parent_not_root") — the target parent is itself a child, so
+            attaching under it would create a depth-3 grandchild.
+    """
+    parent = session.get(BrowseCategory, parent_id)
+    if parent is None:
+        raise LookupError("parent not found")
+    if parent.parent_id is not None:
+        raise ValueError("parent_not_root")
+
+
+def create_browse_category(
+    session: Session,
+    *,
+    payload: BrowseCategoryCreate,
+    actor_user_id: uuid.UUID,
+) -> BrowseCategory:
+    """Create a new BrowseCategory.
+
+    Parent validation runs BEFORE the insert so an unknown or non-root parent
+    is a clean 404/422 rather than a raw IntegrityError.
+
+    Raises:
+        LookupError("parent not found")
+        ValueError("parent_not_root")
+        ValueError("slug_conflict") — uq_browse_category_slug.
+    """
+    if payload.parent_id is not None:
+        _validate_parent_is_root(session, payload.parent_id)
+
+    now = datetime.datetime.now(datetime.UTC)
+    cat = BrowseCategory(
+        slug=payload.slug,
+        name_en=payload.name_en,
+        name_pl=payload.name_pl,
+        description_en=payload.description_en,
+        description_pl=payload.description_pl,
+        inclusion_criterion=payload.inclusion_criterion,
+        position=payload.position,
+        parent_id=payload.parent_id,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(cat)
+
+    try:
+        session.flush()
+    except IntegrityError as exc:
+        _raise_browse_category_flush_error(session, exc, payload.parent_id)
+
+    _audit_entity(
+        session,
+        action="browse_category.create",
+        entity_type="browse_category",
+        entity_id=cat.id,
+        actor_user_id=actor_user_id,
+        after=_browse_category_snapshot(cat),
+    )
+
+    session.commit()
+    session.refresh(cat)
+    return cat
+
+
+def update_browse_category(
+    session: Session,
+    *,
+    category_id: uuid.UUID,
+    patch: BrowseCategoryPatch,
+    actor_user_id: uuid.UUID,
+) -> BrowseCategory:
+    """Partially update a BrowseCategory (rename / reorder / reparent).
+
+    Explicit null on the NOT NULL fields (slug/name_en/position) is rejected as
+    422 at the schema layer (D-NULLSEM-1), so it never reaches `setattr` here.
+    An empty patch is a no-op that still writes one `browse_category.update`
+    row with before == after (unconditional audit).
+
+    Reparenting runs THREE independent checks, in this order, and only when
+    `parent_id` is being set to a non-null value — clearing it to null can
+    never increase any depth and is always allowed:
+
+      1. self-cycle — a category may not be its own parent;
+      2. target side — the new parent must itself be a root (depth-2 ceiling);
+      3. source side — a category that currently HAS children may not move
+         under any parent, because that would push those children to depth 3.
+
+    Raises:
+        LookupError("category not found")
+        LookupError("parent not found")
+        ValueError("self_cycle" | "parent_not_root" | "reparent_exceeds_depth")
+        ValueError("slug_conflict")
+    """
+    cat = session.get(BrowseCategory, category_id)
+    if cat is None:
+        raise LookupError("category not found")
+
+    before = _browse_category_snapshot(cat)
+    data = patch.model_dump(exclude_unset=True)
+
+    if data.get("parent_id") is not None:
+        new_parent_id = data["parent_id"]
+        if new_parent_id == category_id:
+            raise ValueError("self_cycle")
+        _validate_parent_is_root(session, new_parent_id)
+        if _browse_category_children(session, category_id):
+            raise ValueError("reparent_exceeds_depth")
+
+    for field, value in data.items():
+        setattr(cat, field, value)
+
+    cat.updated_at = datetime.datetime.now(datetime.UTC)
+    after = _browse_category_snapshot(cat)
+
+    session.add(cat)
+
+    try:
+        session.flush()
+    except IntegrityError as exc:
+        _raise_browse_category_flush_error(session, exc, data.get("parent_id"))
+
+    _audit_entity(
+        session,
+        action="browse_category.update",
+        entity_type="browse_category",
+        entity_id=cat.id,
+        actor_user_id=actor_user_id,
+        before=before,
+        after=after,
+    )
+
+    session.commit()
+    session.refresh(cat)
+    return cat
+
+
+def delete_browse_category(
+    session: Session,
+    *,
+    category_id: uuid.UUID,
+    detach: bool,
+    actor_user_id: uuid.UUID,
+) -> None:
+    """Delete a BrowseCategory. TWO independent conflict sources, checked in a
+    fixed order, both defending a real `ondelete="RESTRICT"` FK:
+
+      1. CHILD CATEGORIES — checked FIRST and UNCONDITIONALLY, before `detach`
+         is even consulted. `BrowseCategory.parent_id` is RESTRICT, so a
+         childful category cannot be deleted; `detach=true` is documented as
+         MODEL-assignment detach only and deliberately does NOT reparent or
+         cascade-delete children. Clearing a child's parent (`PATCH
+         {"parent_id": null}`) or deleting the child is a separate prior
+         request.
+      2. MODEL ASSIGNMENTS — `ModelBrowseCategory.category_id` is RESTRICT too.
+         409 unless the caller explicitly opts into `detach=true`, which then
+         detaches and deletes in ONE transaction.
+
+    Both conflicts are NORMALLY detected by a proactive pre-query rather than by
+    catching an IntegrityError, because SQLite's message does not name which FK
+    fired and the two 409s could not otherwise be told apart. The pre-queries
+    cannot close the window between themselves and the COMMIT, though, so the
+    commit carries a safety net that rolls back and RE-DERIVES the cause from
+    the post-rollback state — children first, preserving the same precedence.
+    That mirrors the ratified `delete_tag` rollback/mapping and guarantees a
+    racing insert surfaces as the documented 409, never as an unhandled 500.
+    Because the rollback also restores the assignments a `detach=true` request
+    deleted, only rows the request had not already accounted for count as that
+    racing insert — otherwise an unrelated integrity failure would be reported
+    as a `category_in_use` the caller's own `detach=true` was meant to resolve.
+
+    Model assignments are NOT filtered to live models: a row whose model is
+    soft-deleted still blocks an ordinary delete, so a `restore_model` can find
+    its category relationships intact. `model_count` counts only NON-deleted
+    models (Decision AY) and may therefore truthfully read 0 while such a row
+    protects the category; `detach=true` is the explicit destructive opt-in.
+
+    Raises:
+        LookupError("category not found")
+        ValueError("category_has_children")
+        ValueError("category_in_use")
+    """
+    cat = session.get(BrowseCategory, category_id)
+    if cat is None:
+        raise LookupError("category not found")
+
+    if _browse_category_children(session, category_id):
+        raise ValueError("category_has_children")
+
+    assignment_rows = _browse_category_assignments(session, category_id)
+    if assignment_rows and not detach:
+        raise ValueError("category_in_use")
+
+    before = _browse_category_snapshot(cat)
+    detached_ids: list[uuid.UUID] = []
+    if assignment_rows:
+        # The one intentionally-unbounded audit field (epic:42 `detached_tag_ids`
+        # precedent), ALWAYS paired with a count so a reader never has to count
+        # array elements to know the scale. Absent entirely when nothing was
+        # detached — `detach=true` never fabricates a detach record.
+        detached_ids = [row.model_id for row in assignment_rows]
+        before["detached_model_ids"] = [str(m) for m in detached_ids]
+        before["detached_model_count"] = len(detached_ids)
+        for row in assignment_rows:
+            session.delete(row)
+        session.flush()
+
+    _audit_entity(
+        session,
+        action="browse_category.delete",
+        entity_type="browse_category",
+        entity_id=cat.id,
+        actor_user_id=actor_user_id,
+        before=before,
+    )
+
+    try:
+        session.delete(cat)
+        session.commit()
+    except IntegrityError as exc:
+        # Safety net for the pre-query -> COMMIT window: a child or an
+        # assignment inserted in between still fires the RESTRICT FK here. The
+        # rollback discards the audit row too, so a losing race stays free of
+        # side effects, exactly like the proactive 409s above.
+        session.rollback()
+        if _browse_category_children(session, category_id):
+            raise ValueError("category_has_children") from exc
+        remaining = _browse_category_assignments(session, category_id)
+        # The rollback also RESTORES the rows a `detach=true` request had just
+        # deleted, so their mere presence proves nothing: only an assignment
+        # this request had NOT already accounted for can be the racing insert
+        # that fired the RESTRICT FK. With `detach=false` nothing was accounted
+        # for, so any row still means `category_in_use`, exactly as before.
+        if remaining and not {row.model_id for row in remaining} <= set(detached_ids):
+            raise ValueError("category_in_use") from exc
+        # Neither RESTRICT FK is actually violated, so this integrity failure
+        # came from somewhere else — the commit also flushes the audit row,
+        # whose actor FK fails when the acting admin's `user` row is gone.
+        # Claiming `category_in_use` here would be a confident wrong answer the
+        # client cannot falsify (`detach=true` fails identically and there is
+        # nothing left to detach). Re-raise instead, so the cause surfaces
+        # exactly as it already does on the sibling routes.
+        raise
+
+
+def replace_model_categories(
+    session: Session,
+    *,
+    model_id: uuid.UUID,
+    payload: ModelCategoriesReplace,
+    actor_user_id: uuid.UUID,
+) -> list[BrowseCategory]:
+    """Replace ALL browse categories for a model with the provided set.
+
+    Whole-set, idempotent, explicit last-writer-wins. There is no merge, no
+    diff and no optimistic-concurrency precondition (no `revision`, no
+    `If-Match`) — the contract must never claim conflict detection it does not
+    have.
+
+    The ENTIRE payload is validated before ANY row is touched, so a rejected
+    call leaves the existing set provably unchanged rather than half-replaced.
+    The empty set is valid and clears every assignment: a model with zero
+    categories stays fully valid and public (FR26-CAT-2).
+
+    Validation cannot close the window between itself and the flush/COMMIT,
+    though, so the write carries the same safety net `delete_browse_category`
+    does: a model or category that vanishes in that window fires one of
+    `ModelBrowseCategory`'s two RESTRICT FKs, and the cause is re-derived from
+    the post-rollback state onto the documented 404 rather than leaking a 500.
+
+    The duplicate-id pre-check is a deliberate improvement over the structural
+    precedent `replace_model_tags`, which promises it in its docstring but does
+    not implement it — a literal-duplicate payload there reaches an uncaught
+    IntegrityError on the composite PK. That precedent is NOT retro-patched
+    here; this is a different, closed story's surface.
+
+    Raises:
+        LookupError("model not found") — model absent or soft-deleted.
+        ValueError("duplicate_category_ids")
+        ValueError("category not found: <id>")
+    """
+    _get_model_active(session, model_id)
+
+    if len(payload.category_ids) != len(set(payload.category_ids)):
+        raise ValueError("duplicate_category_ids")
+
+    _validate_browse_category_ids(session, payload.category_ids)
+
+    existing_rows = session.exec(
+        select(ModelBrowseCategory).where(ModelBrowseCategory.model_id == model_id)
+    ).all()
+    before_ids = [row.category_id for row in existing_rows]
+    after_ids = list(payload.category_ids)
+
+    try:
+        for row in existing_rows:
+            session.delete(row)
+        session.flush()
+
+        for cid in payload.category_ids:
+            session.add(ModelBrowseCategory(model_id=model_id, category_id=cid))
+        session.flush()
+
+        # Reuses the existing entity_type="model" / action="model.update" convention
+        # `replace_model_tags` established — no new M:N-specific entity_type.
+        _audit_entity(
+            session,
+            action="model.update",
+            entity_type="model",
+            entity_id=model_id,
+            actor_user_id=actor_user_id,
+            before={"category_ids": [str(c) for c in before_ids]},
+            after={"category_ids": [str(c) for c in after_ids]},
+        )
+
+        session.commit()
+    except IntegrityError as exc:
+        # Safety net for the validation -> flush/COMMIT window, the sibling of
+        # the one `delete_browse_category` already carries. The rollback also
+        # discards the audit row, so a losing race leaves the existing set
+        # provably unchanged — the same no-partial-replace guarantee the
+        # proactive validation gives.
+        _raise_model_categories_commit_error(
+            session, exc, model_id=model_id, category_ids=payload.category_ids
+        )
+
+    if not after_ids:
+        return []
+    cats = session.exec(
+        select(BrowseCategory)
+        .where(BrowseCategory.id.in_(after_ids))  # type: ignore[attr-defined]
+        .order_by(BrowseCategory.position, BrowseCategory.slug)
+    ).all()
+    return list(cats)
 
 
 # ---------------------------------------------------------------------------

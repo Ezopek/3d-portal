@@ -24,7 +24,7 @@ from sqlmodel import Session
 
 from app.core.auth.cookies import ACCESS_COOKIE
 from app.core.auth.jwt import encode_token
-from app.core.db.models import BrowseCategory
+from app.core.db.models import BrowseCategory, User, UserRole
 from app.core.db.session import get_engine
 from app.main import create_app
 
@@ -259,6 +259,12 @@ _GOVERNANCE_ROUTES = {
     ("PATCH", "/api/admin/tag-groups/{group_id}"),
     ("DELETE", "/api/admin/tag-groups/{group_id}"),
     ("POST", "/api/admin/tags"),
+    # Story 49.5 — admin browse-category governance. Same posture: admin
+    # curation, never agent ingestion, so never `agent-write`.
+    ("POST", "/api/admin/categories"),
+    ("PATCH", "/api/admin/categories/{category_id}"),
+    ("DELETE", "/api/admin/categories/{category_id}"),
+    ("PUT", "/api/admin/models/{model_id}/categories"),
 }
 
 # Retained tag write routes that MUST stay on the agent-write surface.
@@ -441,17 +447,91 @@ def test_retired_taxonomy_read_route_is_gone(client):
         assert "subcategories" not in item, f"recursive taxonomy key resurfaced: {item!r}"
 
 
-def test_retired_taxonomy_admin_crud_route_is_gone(client):
-    """Story 47.5 review repair — representative retired admin CRUD path
-    (PATCH /api/admin/.../{id}) returns 404/405: the whole admin taxonomy
-    CRUD surface was removed in the cutover."""
+def test_admin_category_write_carries_no_recursive_taxonomy_contract(client):
+    """Story 47.5 review repair, RE-POINTED by Story 49.5 — exactly as Story
+    49.3 re-pointed the sibling read guard above under gate G26-ROUTE-PATH.
+
+    The NAME describes what this guard asserts TODAY: the admin category write
+    on this path answers with the flat Initiative 26 browse contract and never
+    with the retired recursive taxonomy shape. It was previously called
+    `test_retired_taxonomy_admin_crud_route_is_gone`, which asserted the
+    opposite of what the body now checks — the route is deliberately PRESENT
+    and returns 200 (review finding #11).
+
+    47.5 asserted this admin path 404/405s. Story 49.5 re-uses it for the NEW
+    Initiative 26 admin browse-category governance write (Decision AY,
+    architecture.md:3334-3341), so a bare 404/405 assertion no longer expresses
+    what 47.5 actually cared about — that the *retired recursive
+    single-category taxonomy CRUD contract* has not come back. The coverage is
+    therefore kept and re-pointed at that contract, not deleted or weakened.
+
+    NOTE — this is the one place Story 49.5 had to touch an existing test BODY
+    rather than only extend `_GOVERNANCE_ROUTES`; the story's §7/AC-36
+    "byte-unmodified" prediction for this file did not foresee the path
+    collision, and the deviation is disclosed in the story's Dev Agent Record.
+
+    The probe AUTHENTICATES as a REAL admin User row (not just a minted JWT):
+    the base `client` fixture is anonymous and would only ever observe the
+    default-deny 401, and unlike the read-side guard this write inserts an
+    audit_log row whose `actor_user_id` FKs `user.id` under
+    PRAGMA foreign_keys=ON.
+
+    Retired-route literal still assembled at runtime so the Story 47.5 §11
+    residual-symbol grep stays clean."""
+    with Session(get_engine()) as session:
+        admin = User(
+            email=f"admin-retired-guard-{uuid.uuid4().hex[:6]}@test.local",
+            display_name="Admin",
+            role=UserRole.admin,
+            password_hash="x",
+        )
+        session.add(admin)
+        category = BrowseCategory(slug=f"admin-guard-{uuid.uuid4().hex[:8]}", name_en="Admin guard")
+        session.add(category)
+        session.commit()
+        admin_id, category_id = admin.id, category.id
+
+    client.cookies.set(
+        ACCESS_COOKIE,
+        encode_token(
+            subject=str(admin_id),
+            role="admin",
+            secret="test-secret-not-real",
+            ttl_minutes=30,
+        ),
+    )
     r = client.patch(
-        "/api/admin/" + "categories" + "/00000000-0000-0000-0000-000000000000",
-        json={},
+        "/api/admin/" + "categories" + f"/{category_id}",
+        json={"position": 1},
     )
-    assert r.status_code in (404, 405), (
-        f"expected 404/405 on retired admin CRUD route, got {r.status_code}"
+    assert r.status_code == 200, (
+        f"expected 200 on the new admin browse-category write, got {r.status_code}"
     )
+
+    body = r.json()
+
+    # The structural negative that distinguishes this contract from the retired
+    # recursive CategoryTree CRUD: no nesting, ever.
+    assert "children" not in body, f"recursive taxonomy key resurfaced: {body!r}"
+    assert "subcategories" not in body, f"recursive taxonomy key resurfaced: {body!r}"
+    # ...and the distinguishing admin browse fields ARE present — the nine-key
+    # public read set plus `inclusion_criterion` (Story 49.5 AC-1).
+    assert {
+        "id",
+        "slug",
+        "name_en",
+        "name_pl",
+        "description_en",
+        "description_pl",
+        "inclusion_criterion",
+        "position",
+        "parent_id",
+        "model_count",
+    } == set(body), f"unexpected admin browse item shape: {sorted(body)}"
+    assert body["position"] == 1
+    assert isinstance(body["model_count"], int)
+    # parent_id is a SCALAR FK (or null) — never an embedded node.
+    assert body["parent_id"] is None or isinstance(body["parent_id"], str)
 
 
 @pytest.mark.parametrize("model_name", ENRICHED_REQUEST_MODELS)

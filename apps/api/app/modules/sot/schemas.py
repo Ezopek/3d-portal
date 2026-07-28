@@ -120,6 +120,19 @@ class BrowseCategoryRead(BrowseCategorySummary):
     model_count: int
 
 
+class BrowseCategoryAdminRead(BrowseCategoryRead):
+    """Story 49.5 — the admin write-response shape for `/api/admin/categories`.
+
+    `BrowseCategoryRead`'s nine public-read keys PLUS `inclusion_criterion`.
+    The asymmetry is deliberate: Decision AY's keyset governs the PUBLIC read
+    contract (`GET /api/categories[/{slug}]`, which keeps omitting the field),
+    and this is the "later admin/curation DTO" Story 49.3 §6 F-12 deferred.
+    Additive only — `BrowseCategorySummary`/`BrowseCategoryRead` are untouched.
+    """
+
+    inclusion_criterion: str | None
+
+
 class ModelFileRead(_OrmBase):
     id: uuid.UUID
     model_id: uuid.UUID

@@ -12,6 +12,15 @@ from app.core.db.models import AuditLog
 # record_event call site is expected to use one of these constants. Tightening
 # the column to a strict enum in Slice 2 is a no-op once every caller is on
 # the closed set.
+#   browse_category      — browse_category.create/update/delete (Story 49.5 admin
+#                          category governance; entity_id = browse_category.id UUID).
+#                          The delete row's `before` carries the bounded entity
+#                          snapshot plus — ONLY when `detach=true` actually detached
+#                          rows — `detached_model_ids` (unbounded list, the epic:42
+#                          precedented exception) paired with `detached_model_count`.
+#                          Model↔category assignment changes are NOT audited here:
+#                          the replace-set endpoint reuses entity_type="model" /
+#                          action="model.update", as `replace_model_tags` established.
 #   catalog              — admin.refresh_catalog (entity_id always None)
 #   invite_token         — auth.invite.generated/used/revoked (entity_id = invite_tokens.id UUID)
 #   model                — admin.render.trigger + model CRUD (Slice 2C.1)
@@ -50,6 +59,7 @@ from app.core.db.models import AuditLog
 #                          via PATCH /api/auth/me/display-name; actor==target)
 KNOWN_ENTITY_TYPES: frozenset[str] = frozenset(
     {
+        "browse_category",
         "catalog",
         "invite_token",
         "model",

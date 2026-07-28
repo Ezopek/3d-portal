@@ -281,6 +281,96 @@ class TagGroupPatch(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Browse categories (Story 49.5 — admin governance)
+# ---------------------------------------------------------------------------
+
+
+class BrowseCategoryCreate(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "slug": "functional-parts",
+                    "name_en": "Functional parts",
+                    "name_pl": "Części funkcjonalne",
+                    "position": 0,
+                }
+            ]
+        }
+    )
+
+    slug: str = Field(min_length=1)
+    name_en: str = Field(min_length=1)
+    name_pl: str | None = None
+    description_en: str | None = None
+    description_pl: str | None = None
+    inclusion_criterion: str | None = None
+    position: int = 0
+    # Flat MVP with an optional parent. The depth-2 ceiling and self-cycle
+    # rejection are SERVICE-layer rules (FR26-CAT-4), not DDL — a bare nullable
+    # self-FK cannot express "parent must itself be a root".
+    parent_id: uuid.UUID | None = None
+
+
+class BrowseCategoryPatch(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {"name_pl": "Części funkcjonalne"},
+                {"position": 2},
+                {"parent_id": None},
+            ]
+        },
+    )
+
+    slug: str | None = Field(default=None, min_length=1)
+    name_en: str | None = Field(default=None, min_length=1)
+    name_pl: str | None = None
+    description_en: str | None = None
+    description_pl: str | None = None
+    inclusion_criterion: str | None = None
+    position: int | None = None
+    parent_id: uuid.UUID | None = None
+
+    @field_validator("slug", "name_en", "position")
+    @classmethod
+    def _reject_explicit_null(cls, v: object) -> object:
+        # `BrowseCategory.slug/name_en/position` are NOT NULL — same D-NULLSEM-1
+        # posture as `TagGroupPatch`. The nullable fields (name_pl, both
+        # descriptions, inclusion_criterion, parent_id) get no validator: an
+        # explicit null CLEARS them, and for `parent_id` that is the documented
+        # "make this child a root again" operation.
+        if v is None:
+            raise ValueError("field may not be null")
+        return v
+
+
+class ModelCategoriesReplace(BaseModel):
+    """Whole-set replace payload for `PUT /api/admin/models/{id}/categories`.
+
+    An empty list is valid and clears every assignment — a model with zero
+    categories stays fully valid and public (FR26-CAT-2).
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "category_ids": [
+                        "66666666-6666-6666-6666-666666666666",
+                        "77777777-7777-7777-7777-777777777777",
+                    ]
+                },
+                {"category_ids": []},
+            ]
+        }
+    )
+
+    category_ids: list[uuid.UUID]
+
+
+# ---------------------------------------------------------------------------
 # Notes
 # ---------------------------------------------------------------------------
 

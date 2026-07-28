@@ -65,6 +65,7 @@ def test_record_event_rejects_unknown_entity_type(tmp_path):
 def test_known_entity_types_covers_all_call_site_resources():
     """All resources currently audit-logged in app/modules/ must be in the set."""
     expected = {
+        "browse_category",
         "catalog",
         "invite_token",
         "model",
