@@ -4,9 +4,9 @@ baseline_commit: 513f4bdd1c9a63fc9ba6df18d61396dcbf24ba04
 
 # Story 53.1 — Lightbox adoption spike + written recommendation (FR26-VIEW-1)
 
-Status: review
+Status: done
 
-<!-- Held at `review` 2026-07-29 after BOTH review gates returned APPROVE (native `bmad-code-review` 7/7 closed; independent external Aider v0.86.2 rc 0). The flip to `done` is the controller's post-merge act — see § 6 "Closeout disposition — 2026-07-29". -->
+<!-- Closed 2026-07-29 by controller after docs-only post-merge closeout: work commit de7d3b4 fast-forward merged to main, AC-6 post-commit range check confirmed exactly the same four `_bmad-output/**` paths, native `bmad-code-review` APPROVE, independent Aider APPROVE rc 0, and no product/package/infra paths changed. -->
 <!-- Created 2026-07-29 by native `bmad-create-story` (Create action) at `main` @ `513f4bd`. -->
 <!-- Validated 2026-07-29 by native `bmad-create-story` Validate (checklist pass) at the same commit. See the Change Log for the two repairs applied. -->
 
