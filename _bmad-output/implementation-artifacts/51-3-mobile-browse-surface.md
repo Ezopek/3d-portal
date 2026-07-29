@@ -5,7 +5,7 @@ baseline_commit: 916b04887583af8f41257542ae50078881603977
 # Story 51.3 — Mobile Browse surface (FR26-BROWSE-1, NFR26-A11Y-1, NFR26-I18N-1, NFR26-VISUAL-1, NFR26-DARKMODE-1)
 
 - **Epic:** E51 — Browse IA: categories as navigation (Initiative 26 — Catalog Discovery).
-- **Status:** `review`.
+- **Status:** `done`.
 - **Author:** Claude (native `bmad-create-story`, Create + Validate). **Authorization posture:** delegated by Laura/controller under the standing Initiative 26 authorization. **NOT** an Ezop signature, **NOT** human review of any kind; no Codex, no Gemini, no Aider. No app code written, no gate/test/build run, no branch/commit/merge/deploy. This pass edited exactly two files: this artifact and `sprint-status.yaml`.
 - **Created:** 2026-07-29 at `main` @ `916b048` (clean tree), directly after Story 51.2's full closeout. `epic-51` already `in-progress`; no epic flip owed.
 - **Duplicate check:** only `51-1-desktop-browse-navigation.md` and `51-2-categories-route-and-scope-chip.md` exist under `51-*`; no pre-existing `51-3` artifact.
@@ -232,3 +232,14 @@ This discharges the routine independent-review obligation for Story 51.3. Status
 - **Figures read from the log:** apps/web visual regression 574 passed / 42 skipped; apps/web vitest passed; apps/api pytest passed; workers/render pytest passed; infra/scripts pytest passed; apps/web typecheck, production build, and lint (eslint + stylelint) passed; apps/api + workers/render ruff format and ruff check passed; settings-env-compose-diff, uv-lock-check (apps/api), uv-lock-check (workers/render), and local-env-secrets all passed.
 - Together with §9 (native `bmad-code-review` — **APPROVE**) and §10 (independent `laura-aider-review-diff` — **APPROVE**), this discharges every pre-merge gate this story owes.
 - **Status HELD at `review` (NOT `done`):** commit, ff-only merge to main, push, deploy, and post-deploy smoke remain controller-owned and unrun.
+
+---
+
+## 12. Controller Full Closeout (commit / merge / push / deploy / smoke)
+
+- **Implementation commit:** `94cf8773621866e530442787678f480e412d3ca4` (`feat(web): add mobile browse surface`).
+- **Merge:** branch `feat/E51.3-mobile-browse-surface` fast-forward merged into `main`.
+- **Push:** succeeded; `origin/main` verified at `94cf8773621866e530442787678f480e412d3ca4`. Lean pre-push transport gate passed 11/11.
+- **Deploy:** `.hermes/run-logs/deploy-e51-3-20260729_033457.log`, `DEPLOY_RC=0` at 2026-07-29T03:38:31+02:00 — images built/shipped, stack restarted, alembic ran, `slicer-worker` overlay correctly skipped (no portal-api/slicer-adjacent change in `916b04887583af8f41257542ae50078881603977..HEAD`), GlitchTip symbolication matched issue id=322 release `0.1.0+94cf877`, runbook fingerprint OK.
+- **Post-deploy smoke:** `.190` compose services api/arq-worker/redis/slicer-worker/web/worker all running; LAN API health `{"status":"ok","version":"0.1.0"}`; LAN `/` HTTP 200; production `/` HTTP 200; production `/catalog/` HTTP 200; production `/categories/uchwyty` HTTP 200.
+- **Status:** `done`. No human review/Ezop signature at any stage; no Codex, no Gemini. Native `bmad-code-review` APPROVE (§9) and independent `laura-aider-review-diff` APPROVE (§10) stand as the review record. `epic-51` left `in-progress` (51.4 backlog; `epic-51-retrospective` optional).
