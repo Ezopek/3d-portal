@@ -12,6 +12,32 @@
 
 ## Active candidates
 
+### TB-056 — WITHDRAWN (invalid premise) — the claimed `ShareCarousel` naming drift does not exist
+
+**Status:** **withdrawn 2026-07-29 — invalid premise. No doc correction is owed and none may be applied.** Filed at create time by native `bmad-create-story` for Story 53.1 on a **misread grep**; falsified by native `bmad-code-review` (finding **R-1**, high) on the same day and retracted by the `bmad-dev-story` review-repair pass. **Do not promote. Do not route to `bmad-correct-course`.**
+**Type:** withdrawn candidate, retained for provenance per this file's hygiene rule (mark fate, do not delete).
+**Priority:** n/a — nothing to do.
+
+**Why it is withdrawn — the code.** `ShareCarousel` **is a real component**. At `513f4bd`:
+
+- `apps/web/src/routes/share/$token.tsx:239` declares `function ShareCarousel({ thumbnailUrl, imageUrls, altLabel })`; its body spans **`:239-391`**.
+- It is rendered at **`$token.tsx:530`** from `AnonymousShareView`.
+- The `<ImageFullscreenViewer>` mount (`{fullscreenOpen && <Suspense fallback={null}>` at `:371-372`, `renderImage={AnonymousImage}` at `:377`, `renderThumb={LazyAnonymousImage}` at `:385`) is **inside** that component's body, not "the route module itself".
+- `grep -rn "ShareCarousel" apps/web/src` returns **eight** hits, not four: the declaration (`$token.tsx:239`), the render site (`$token.tsx:530`), and six comment-prose mentions (`$token.tsx:26`, `:525`, `ImageFullscreenViewer.tsx:3`, `:58`, `imageViewer/index.ts:2`, `ModelGallery.tsx:32`).
+
+**Consequence.** `epics.md:4571` (Story 53.1 sketch), `architecture.md:3369` (Decision BA), the SCP § 6 and the `sprint-status.yaml` comment are all **correct as written** — `ShareCarousel` on `/share/$token` and `ModelGallery` on `/catalog/$modelId` are both real components. The withdrawn acceptance criteria would have replaced a **correct component name with a file path**, i.e. *introduced* drift into accurate planning docs and misled Stories 53.2 and 53.3 about the mount they must integrate with. That is the harm this withdrawal prevents.
+
+**Note on the original anchor (review finding R-2).** The withdrawn entry cited `epics.md:4567` as the Story 53.1 sketch. `:4567` is the "**Depends on:** … **Gated on G26-LIB**" line; the sketch naming `ShareCarousel` is `epics.md:4571`. Recorded for completeness only — the entry is withdrawn regardless, so no anchor is load-bearing any more.
+
+**Superseded original text (2026-07-29, `bmad-create-story`) — RETAINED FOR PROVENANCE ONLY. EVERY CLAIM IN THIS BLOCK IS FALSE:**
+
+> ~~**Trigger.** Four planning surfaces name `ShareCarousel` as the `/share/$token` lightbox mount: `epics.md:4567` (Story 53.1 sketch), `architecture.md:3369` (Decision BA), `sprint-status.yaml` (`53-1-lightbox-adoption-spike` comment), `sprint-change-proposal-2026-07-26-init26-catalog-discovery.md` § 6.~~
+> ~~**Code-falsifiable.** `grep -rn "ShareCarousel" apps/web/src` at `513f4bd` returns only comment prose — `ImageFullscreenViewer.tsx:3,58`, `imageViewer/index.ts:2`, `$token.tsx:26`. No file matches `*ShareCarousel*`; no such symbol is declared, exported or imported anywhere. The real mount is the route module itself.~~ — **FALSE.** The grep was misreported: it returns eight hits including the declaration at `$token.tsx:239` and the render at `:530`.
+> ~~**Origin.** "ShareCarousel" was the Story 22.3-era *conceptual* name … it never became a component.~~ — **FALSE.** It became a component in Init 12 Story 19.5 — commit `822d3c3` *"feat(share): carousel + thumbnail strip on anonymous /share/$token view (Story 19.5, FR12-SHARE-CAROUSEL-1)"* — as this very file already records at **TB-026** ("sub#1 carousel: DONE via Init 12 Story 19.5 (commit 822d3c3 — ShareCarousel with thumbnail strip)"), and as `$token.tsx:525-530` states in the comment directly above the render site.
+> ~~**Acceptance criteria (doc-only).** Replace `ShareCarousel` with `apps/web/src/routes/share/$token.tsx` in `epics.md`, `architecture.md` Decision BA and the SCP § 6 …~~ — **WITHDRAWN AND FORBIDDEN.** Applying it would corrupt correct planning docs.
+
+**Lesson recorded.** A `VERIFY-AT-CREATE-STORY` row that asserts a *negative* ("no such symbol exists") from a grep must show the grep's **full hit count** and account for every hit, not quote a subset. The create-time row quoted four comment-prose hits and never reconciled them against the eight the command actually returns.
+
 ### TB-055 — architecture.md §3211 (Init 25 Decision AW) mislabels authenticated SoT reads as "public" + wrong `_PUBLIC_ROUTES` claim
 
 **Status:** resolved 2026-07-19 — the §3211 "Default-deny auth posture" paragraph was corrected in `_bmad-output/planning-artifacts/architecture.md` (Decision AW) by the E42 `bmad-correct-course` APPLY pass (SCP `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-19-e42-deferred-coupled-cutover.md`). The prose now states the SoT catalog reads (`GET /api/models`/`/api/tags`/`/api/tag-groups`) are **authenticated default-deny (`current_user`, any role), outside `_PUBLIC_ROUTES`**, that category-route removal needs **no** allowlist edit, and that no Init 25 read is anonymous (with the correct general-rule caveat retained). The AW Update block + the top "Last updated" marker also record it. Doc-only; no code was ever owed. **Prior status preserved below for history.**
