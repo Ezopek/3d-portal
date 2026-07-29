@@ -498,6 +498,7 @@ Confirmed against `git status` (123 entries: 8 source/spec/doc + 28 new baseline
 | 2026-07-29 | Story 52.1 implemented by native `bmad-dev-story` (Claude Opus 5, repo-local). Three refinement controls consolidated into one `FiltersPanel`; `(n)` formula rewritten per `EXPERIENCE.md:227`; `TagPicker` retired; sheet exclusivity collapsed to two booleans; toolbar rows swapped for AC-18 tab order; i18n 921 → 920 keys; 106 baselines touched (28 new / 64 regenerated / 14 deleted) after per-image bounding-box triage. Status `ready-for-dev` → `review`. |
 | 2026-07-29 | Native `bmad-code-review` pass (Claude Opus 5, repo-local). **Verdict `APPROVE`.** One `patch` applied — to the Dev Agent Record's `browse-rail` desktop bbox claim, not to any code file. Two `defer` observations added to §11 and to `deferred-work.md`. Zero code, test, locale, spec or baseline files changed by the review. Status deliberately left at `review`. |
 | 2026-07-29 | Independent Aider review (`laura-aider-review-diff`, DeepSeek v3.2) recorded **Verdict `APPROVE`** from a text-only diff with PNG paths listed, no binary bytes. Full `infra/scripts/check-all.sh` closeout gate passed **16/16 all green**. Story remains `review` until commit/merge/deploy/smoke closeout. |
+| 2026-07-29 | Controller full closeout complete. Implementation commit `3202b7c66aa2eff8ba5c75c7374e0084904d5a14` was fast-forward merged to `main`, pushed, deployed to `.190`, and smoke-tested green. Status `review` → `done`. |
 
 ---
 
@@ -581,6 +582,22 @@ This is not an Ezop signature and not human review.
 - In-log headline counts: apps/web vitest **149 files / 985 tests passed**; apps/web visual regression **600 passed / 36 skipped**; check-all summary literal trailer `all green.`.
 
 This discharges the pre-merge full-gate obligation. Remaining controller-owned steps: commit, ff-only merge to `main`, push, deploy, post-deploy smoke, then story/status flip to `done`.
+
+---
+
+## Controller Full Closeout
+
+Story 52.1 is **done**.
+
+- Implementation commit: `3202b7c66aa2eff8ba5c75c7374e0084904d5a14` (`feat(web): consolidate catalog filters panel`).
+- Branch: `feat/E52.1-filters-drawer-consolidation` fast-forward merged into `main`.
+- Push: `.hermes/run-logs/push-e52-1-20260729_063441.log`, `PUSH_RC=0`; lean pre-push gate **11/11 passed**.
+- Deploy: `.hermes/run-logs/deploy-e52-1-20260729_063513.log`, `DEPLOY_RC=0`, `2026-07-29T06:38:36+02:00`.
+- Deploy evidence: images built and shipped; docker compose restarted `api`, `arq-worker`, and `web`; alembic migrations ran; slicer-worker overlay correctly skipped because no portal-api/slicer-adjacent change in `ed4d58df3d5d28afa73d27902ee855174a97ae17..HEAD`; GlitchTip symbolication matched issue id `324` with release `0.1.0+3202b7c` and the smoke issue was deleted; runbook fingerprint OK.
+- Post-deploy smoke: `.190` compose services `api`, `arq-worker`, `redis`, `slicer-worker`, `web`, and `worker` all running; LAN API health `http://192.168.2.190:8090/api/health` returned `{"status":"ok","version":"0.1.0"}`; LAN `/` returned 200; production HTTPS `/`, `/catalog/`, and `/categories/uchwyty` all returned 200.
+- `main` and `origin/main` verified at `3202b7c66aa2eff8ba5c75c7374e0084904d5a14` before this docs closeout edit.
+
+No human review or human sign-off is claimed. Closeout authority is native BMAD review + Aider review + full gate + controller-run merge/push/deploy/smoke.
 
 ---
 
