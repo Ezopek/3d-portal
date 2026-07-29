@@ -1,6 +1,6 @@
 import { expect, test } from "./_test";
 
-import { stubSotDetail, stubSotList } from "./api-stubs";
+import { stubSotDetail } from "./api-stubs";
 import { loginAsAdmin, waitForReady } from "./helpers";
 import type { Page, Route } from "@playwright/test";
 
@@ -8,10 +8,15 @@ import type { Page, Route } from "@playwright/test";
 //   - RenderSheet (form branch, from ModelHero admin kebab "Re-render")
 //   - AddPrintSheet (from PrintsTab "+ Dodaj wydruk")
 //   - AddNoteSheet (from OperationalNotesTab "+ Dodaj notatkę")
-//   - FilterRibbon mobile-filters Sheet (mobile projects only — md:hidden)
-//   - CatalogList mobile-filters Sheet (mobile projects only — lg:hidden)
 // RenderSheet "success" branch is post-submit confirmation and would require
 // faking a mutation response; deferred to operator (see commit-msg footer).
+//
+// Story 52.1 retired the two catalog-toolbar entries this file used to carry
+// (the `md:hidden` "Filtry" select sheet and the all-viewport "Tagi" facet
+// sheet). Both controls are gone from the DOM; their single consolidated
+// successor has its own dedicated spec, `filters-panel.spec.ts`, which covers
+// the right-panel AND bottom-sheet presentations. Nothing here clicks a
+// deleted control.
 
 const MODEL_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
@@ -36,20 +41,6 @@ async function setupDetail(page: Page) {
   await stubSotDetail(page);
   await page.goto(`/catalog/${MODEL_ID}`);
   await waitForReady(page);
-}
-
-async function setupCatalog(page: Page) {
-  await stubAdminAuth(page);
-  await stubSotList(page);
-  await page.goto("/catalog");
-  await waitForReady(page);
-}
-
-function skipOnDesktop(testInfo: { project: { name: string } }) {
-  test.skip(
-    testInfo.project.name.startsWith("desktop-"),
-    "Mobile-only surface — desktop viewports render an inline sidebar/inline selects, no Sheet trigger.",
-  );
 }
 
 test.describe("Remaining sheets — open-state baselines (E5.12d)", () => {
@@ -88,27 +79,4 @@ test.describe("Remaining sheets — open-state baselines (E5.12d)", () => {
     await expect(sheet).toHaveScreenshot("add-note-sheet-open.png");
   });
 
-  test("FilterRibbon mobile-filters Sheet open", async ({ page }, testInfo) => {
-    skipOnDesktop(testInfo);
-    await setupCatalog(page);
-    // catalog.filters.openFilters = "Filtry" — the SheetTrigger button label.
-    // Visible only when md:hidden does NOT hide it (i.e. viewport <768px).
-    await page.getByRole("button", { name: /^Filtry$/i }).click();
-    const sheet = page.locator("[data-slot='sheet-content']");
-    await sheet.waitFor({ state: "visible" });
-    await page.waitForTimeout(50);
-    await expect(sheet).toHaveScreenshot("filter-ribbon-mobile-filters-sheet-open.png");
-  });
-
-  test("CatalogList mobile-tags Sheet open", async ({ page }, testInfo) => {
-    skipOnDesktop(testInfo);
-    await setupCatalog(page);
-    // catalog.filters.openTags = "Tagi" — the FacetSidebar SheetTrigger label.
-    // Visible only when lg:hidden does NOT hide it (viewport <1024px).
-    await page.getByRole("button", { name: /^Tagi$/i }).click();
-    const sheet = page.locator("[data-slot='sheet-content']");
-    await sheet.waitFor({ state: "visible" });
-    await page.waitForTimeout(50);
-    await expect(sheet).toHaveScreenshot("catalog-list-mobile-tags-sheet-open.png");
-  });
 });

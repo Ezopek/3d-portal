@@ -19,7 +19,7 @@ const TRIGGER = { name: "Przeglądaj" };
 const DIALOG = { name: "Przeglądaj kategorie" };
 
 test.describe("BrowseSheet — mobile Browse surface", () => {
-  test("closed: the Browse trigger is visible, distinct from Tagi/Filtry", async ({
+  test("closed: the Browse trigger is visible, distinct from the Filtry trigger", async ({
     page,
   }, testInfo) => {
     skipOnDesktop(testInfo);
@@ -29,7 +29,10 @@ test.describe("BrowseSheet — mobile Browse surface", () => {
 
     const trigger = page.getByRole("button", TRIGGER);
     await expect(trigger).toBeVisible();
-    await expect(page.getByRole("button", { name: "Tagi", exact: true })).toBeVisible();
+    // Story 52.1 — the "Tagi" trigger is gone; the toolbar now carries exactly
+    // one refinement trigger beside Browse (AC-1).
+    await expect(page.getByRole("button", { name: "Tagi", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Filtry", exact: true })).toBeVisible();
     await expect(page.getByRole("dialog", DIALOG)).not.toBeVisible();
 
     await expect(page).toHaveScreenshot("browse-sheet-closed.png", { fullPage: true });

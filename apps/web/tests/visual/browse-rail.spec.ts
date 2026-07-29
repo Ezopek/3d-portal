@@ -130,7 +130,10 @@ test("grouped facets stay one interaction away on every viewport", async ({ page
   await page.goto("/catalog");
   await waitForReady(page);
 
-  await page.getByRole("button", { name: "Tagi", exact: true }).click();
+  // Story 52.1 — the one interaction is now the consolidated "Filtry" trigger;
+  // the "Tagi" trigger it replaced is deleted. The guarantee is unchanged: the
+  // shipped grouped-tag surface is one click from the toolbar on every viewport.
+  await page.getByRole("button", { name: "Filtry", exact: true }).click();
 
   const untagged = page.getByRole("checkbox", { name: "Modele bez tagów" });
   await expect(untagged).toBeVisible();

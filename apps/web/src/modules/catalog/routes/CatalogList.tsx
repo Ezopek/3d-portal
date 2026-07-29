@@ -5,11 +5,11 @@ import { useTranslation } from "react-i18next";
 import { AddModelButton } from "@/modules/admin/AddModelButton";
 import { BrowseRail } from "@/modules/catalog/components/BrowseRail";
 import { BrowseSheet } from "@/modules/catalog/components/BrowseSheet";
-import { FacetSidebar } from "@/modules/catalog/components/FacetSidebar";
 import {
   FilterRibbon,
   type FilterRibbonState,
 } from "@/modules/catalog/components/FilterRibbon";
+import { FiltersPanel } from "@/modules/catalog/components/FiltersPanel";
 import { ScopeChip } from "@/modules/catalog/components/ScopeChip";
 import { useCategories } from "@/modules/catalog/hooks/useCategories";
 import { useModels } from "@/modules/catalog/hooks/useModels";
@@ -20,13 +20,6 @@ import { Button } from "@/ui/button";
 import { EmptyState } from "@/ui/custom/EmptyState";
 import { LoadingState } from "@/ui/custom/LoadingState";
 import { ModelCard } from "@/ui/custom/ModelCard";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/ui/sheet";
 
 const PAGE_SIZE = 48;
 
@@ -52,34 +45,24 @@ export function CatalogList({ scopeSlug, search, onSearchChange }: Props) {
   // explicit (not updater-derived) search object — so it stays exactly typed
   // without reintroducing the route-tree coupling D-2 removed.
   const navigate = useNavigate();
-  // Story 51.3 D-4 — three mobile-only left/bottom sheets (Browse, Tagi,
-  // Filters) must never be open simultaneously. Each setter below closes the
-  // other two when opening its own, so "opening one closes the other" holds
-  // pairwise across all three, not just for one pairing.
+  // Story 52.1 D-5 — 51.3's three-boolean invariant collapses to two. There is
+  // exactly ONE filter surface now, so the Browse sheet and the Filters sheet
+  // are siblings: opening one closes the other (EXPERIENCE.md:62, :333). The
+  // second boolean is `filtersOpen`, NOT `mobileFiltersOpen` — after D-6 the
+  // panel exists on desktop too, so a `mobile` prefix would be a lie.
+  //
+  // Per EXPERIENCE.md:367 neither open state is written to the URL or
+  // persisted; the panel is deliberately not a linkable surface.
   const [mobileBrowseOpen, setMobileBrowseOpenState] = useState(false);
-  const [mobileTagsOpen, setMobileTagsOpenState] = useState(false);
-  const [mobileFiltersOpen, setMobileFiltersOpenState] = useState(false);
+  const [filtersOpen, setFiltersOpenState] = useState(false);
 
   function setMobileBrowseOpen(open: boolean) {
     setMobileBrowseOpenState(open);
-    if (open) {
-      setMobileTagsOpenState(false);
-      setMobileFiltersOpenState(false);
-    }
+    if (open) setFiltersOpenState(false);
   }
-  function setMobileTagsOpen(open: boolean) {
-    setMobileTagsOpenState(open);
-    if (open) {
-      setMobileBrowseOpenState(false);
-      setMobileFiltersOpenState(false);
-    }
-  }
-  function setMobileFiltersOpen(open: boolean) {
-    setMobileFiltersOpenState(open);
-    if (open) {
-      setMobileBrowseOpenState(false);
-      setMobileTagsOpenState(false);
-    }
+  function setFiltersOpen(open: boolean) {
+    setFiltersOpenState(open);
+    if (open) setMobileBrowseOpenState(false);
   }
 
   const tagGroups = useTagGroups();
@@ -333,17 +316,40 @@ export function CatalogList({ scopeSlug, search, onSearchChange }: Props) {
         <p role="status" aria-live="polite" className="sr-only">
           {total} {t("catalog.totalSuffix")}
         </p>
-        {/* The facet surface is RELOCATED, not removed: this Sheet-triggered
-            FacetSidebar was already the mobile tag path, and dropping its
-            `lg:hidden` gate makes the shipped grouped-facet surface reachable
-            in one interaction on EVERY viewport — which is what FR26-BROWSE-1's
-            second verifiable requires. Story 52.1 owns the consolidated
-            `Filters (n)` surface (badge, promoted groups, in-panel tag search)
-            and will re-home this trigger; until then it keeps its shipped
-            label and side. FacetSidebar itself is untouched. */}
+        {/* Story 52.1 D-12 / AC-18 — the search row now comes FIRST, so the
+            toolbar's reading AND tab order is search → Browse → Filters,
+            matching EXPERIENCE.md:278. Before this story the two triggers sat
+            above the search input, which put them ahead of it in both orders.
+            No positive `tabIndex` is involved: DOM order does the whole job.
+
+            Initiative 13 Story 20.2 — admin-only "Add Model" CTA in the
+            catalog toolbar. Operator-aligned 2026-05-23: top-right placement
+            next to filter controls. AddModelButton role-gates on isAdmin
+            (non-admin users see nothing in this slot).
+            Story 28.1 (Init 17 / TB-048): outer flex uses `items-center`
+            so the AddModelButton's vertical center aligns with the
+            FilterRibbon's (FilterRibbon is internally a single-row
+            `items-center` flex of search input + active-constraint chips).
+            The previous `items-start` + magic `pt-1` on the button
+            wrapper produced a small mis-baseline that operator's
+            hands-on (`tmp/add_model_misalligned.png`) flagged. The
+            `pt-1` hack is now removed since `items-center` does the
+            alignment canonically. */}
+        <div className="flex items-center justify-between gap-3 px-3 pt-3">
+          <div className="min-w-0 flex-1">
+            <FilterRibbon
+              state={filterState}
+              tagsById={tagsById}
+              onChange={setFilters}
+            />
+          </div>
+          <div className="shrink-0">
+            <AddModelButton />
+          </div>
+        </div>
         <div className="flex items-center gap-2 border-b border-border bg-background/95 px-3 pt-3">
-          {/* Story 51.3 D-3 — the Browse trigger sits before the Tagi trigger
-              in the same toolbar row, distinct in both icon and label
+          {/* Story 51.3 D-3 — the Browse trigger sits before the refinement
+              trigger in the same toolbar row, distinct in both icon and label
               (EXPERIENCE.md:333). `lg:hidden` lives on the trigger itself
               (inside `BrowseSheet`) since the desktop rail already covers
               `lg`+. */}
@@ -357,68 +363,23 @@ export function CatalogList({ scopeSlug, search, onSearchChange }: Props) {
             open={mobileBrowseOpen}
             onOpenChange={setMobileBrowseOpen}
           />
-          <Sheet open={mobileTagsOpen} onOpenChange={setMobileTagsOpen}>
-            {/* `flex-1` was `w-full` before Story 51.3 added the Browse
-                trigger as a row sibling — it still fills the remaining row
-                width on mobile (same full-bar geometry), now sharing the row
-                instead of owning it alone. At `lg`+, `flex-none`/`w-auto`
-                shrink it back to its label, same as before. */}
-            <SheetTrigger
-              render={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 justify-start lg:w-auto lg:flex-none"
-                >
-                  {t("catalog.filters.openTags")}
-                </Button>
-              }
-            />
-            <SheetContent
-              side="left"
-              className="w-80 max-w-[85vw] overflow-y-auto p-0"
-            >
-              <SheetHeader>
-                <SheetTitle>{t("catalog.filters.openTags")}</SheetTitle>
-              </SheetHeader>
-              <FacetSidebar
-                groups={tagGroups.data.groups}
-                groupless={tagGroups.data.groupless}
-                selectedTagIds={search.tag_ids ?? []}
-                onToggleTag={toggleTag}
-                untaggedActive={search.untagged ?? false}
-                onToggleUntagged={toggleUntagged}
-                mobile
-              />
-            </SheetContent>
-          </Sheet>
-        </div>
-        {/* Initiative 13 Story 20.2 — admin-only "Add Model" CTA in the
-            catalog toolbar. Operator-aligned 2026-05-23: top-right placement
-            next to filter controls. AddModelButton role-gates on isAdmin
-            (non-admin users see nothing in this slot).
-            Story 28.1 (Init 17 / TB-048): outer flex uses `items-center`
-            so the AddModelButton's vertical center aligns with the
-            FilterRibbon's (FilterRibbon is internally a single-row
-            `items-center` flex of search input + facet dropdowns).
-            The previous `items-start` + magic `pt-1` on the button
-            wrapper produced a small mis-baseline that operator's
-            hands-on (`tmp/add_model_misalligned.png`) flagged. The
-            `pt-1` hack is now removed since `items-center` does the
-            alignment canonically. */}
-        <div className="flex items-center justify-between gap-3 px-3 pt-3">
-          <div className="min-w-0 flex-1">
-            <FilterRibbon
-              state={filterState}
-              tagsById={tagsById}
-              onChange={setFilters}
-              filtersSheetOpen={mobileFiltersOpen}
-              onFiltersSheetOpenChange={setMobileFiltersOpen}
-            />
-          </div>
-          <div className="shrink-0">
-            <AddModelButton />
-          </div>
+          {/* Story 52.1 D-1 — the ONE refinement control, replacing the "Tagi"
+              facet sheet, the `md:hidden` "Filtry" sheet and the desktop
+              inline select row. It receives no category/scope prop, which is
+              why the browse scope cannot reach its `(n)` badge even by mistake
+              (D-7). The three write paths stay separate (D-11): `setFilters`
+              for the Selects, `toggleTag` / `toggleUntagged` for the facets. */}
+          <FiltersPanel
+            state={filterState}
+            onChange={setFilters}
+            groups={tagGroups.data.groups}
+            groupless={tagGroups.data.groupless}
+            onToggleTag={toggleTag}
+            untaggedActive={search.untagged ?? false}
+            onToggleUntagged={toggleUntagged}
+            open={filtersOpen}
+            onOpenChange={setFiltersOpen}
+          />
         </div>
         {/* Story 51.2 AC-6/AC-7 — one full-width row between the toolbar and the
             grid, present on every viewport and absent from the DOM (not merely

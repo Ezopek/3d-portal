@@ -4,12 +4,15 @@ import { stubSotList } from "./api-stubs";
 import { waitForReady } from "./helpers";
 import type { Page, Route } from "@playwright/test";
 
-// FilterRibbon renders three desktop-inline Selects (status / source / sort)
-// at /catalog. Each SelectTrigger carries a locale-bound aria-label
+// The three refinement Selects (status / source / sort) used to render inline
+// in `FilterRibbon` on desktop and inside a `md:hidden` sheet on mobile. Story
+// 52.1 consolidated both into the single `FiltersPanel` surface, so they are
+// now reached the same way on EVERY viewport: open "Filtry", then open the
+// Select. These tests therefore run on all four projects without a skip.
+//
+// Each SelectTrigger still carries its locale-bound aria-label
 // (t("catalog.filters.<key>")), so under playwright.config.ts locale="pl-PL"
-// the resolved strings are "Status", "Źródło", "Sortowanie". Mobile viewports
-// hide these triggers (md:hidden inverted) — there the trio lives inside the
-// mobile-filters Sheet covered by 5.12d.
+// the resolved strings remain "Status", "Źródło", "Sortowanie".
 
 async function stubAuth(page: Page) {
   await page.route("**/api/auth/me", (route: Route) =>
@@ -33,50 +36,48 @@ async function setup(page: Page) {
   await waitForReady(page);
 }
 
+async function openPanel(page: Page) {
+  // catalog.filters.openFilters = "Filtry" — at n === 0 that is the whole
+  // accessible name of the one refinement trigger.
+  await page.getByRole("button", { name: "Filtry", exact: true }).click();
+  const sheet = page.locator("[data-slot='sheet-content']");
+  await expect(sheet).toBeVisible();
+  return sheet;
+}
+
 async function openSelectAndSnapshot(
   page: Page,
   ariaLabelPattern: RegExp,
   snapshotName: string,
 ) {
-  const trigger = page.getByRole("combobox", { name: ariaLabelPattern });
-  await trigger.waitFor({ state: "visible" });
+  const sheet = await openPanel(page);
+  const trigger = sheet.getByRole("combobox", { name: ariaLabelPattern });
+  await expect(trigger).toBeVisible();
   await trigger.click();
   const content = page.locator("[data-slot='select-content']");
-  await content.waitFor({ state: "visible" });
+  await expect(content).toBeVisible();
   // The global helper disables animations; one frame keeps the popper
   // transform/position settled across browsers.
   await page.waitForTimeout(50);
   await expect(page.locator("body")).toHaveScreenshot(snapshotName);
 }
 
-// The desktop-inline Selects are hidden on mobile viewports (the inline
-// container uses md:hidden inversion). Skip the mobile-* projects per test.
-function skipOnMobile(testInfo: { project: { name: string } }) {
-  test.skip(
-    testInfo.project.name.startsWith("mobile-"),
-    "FilterRibbon Selects render inline on desktop only; mobile uses the Filters Sheet (covered by 5.12d).",
-  );
-}
-
-test.describe("FilterRibbon Selects — open-state baselines (E5.12a)", () => {
-  test("status Select open", async ({ page }, testInfo) => {
-    skipOnMobile(testInfo);
+test.describe("FiltersPanel Selects — open-state baselines (Story 52.1)", () => {
+  test("status Select open", async ({ page }) => {
     await setup(page);
     // Polish aria-label from catalog.filters.status = "Status".
-    await openSelectAndSnapshot(page, /^Status$/i, "filter-ribbon-status-open.png");
+    await openSelectAndSnapshot(page, /^Status$/i, "filters-panel-status-open.png");
   });
 
-  test("source Select open", async ({ page }, testInfo) => {
-    skipOnMobile(testInfo);
+  test("source Select open", async ({ page }) => {
     await setup(page);
     // Polish aria-label from catalog.filters.source = "Źródło".
-    await openSelectAndSnapshot(page, /^Źródło$/i, "filter-ribbon-source-open.png");
+    await openSelectAndSnapshot(page, /^Źródło$/i, "filters-panel-source-open.png");
   });
 
-  test("sort Select open", async ({ page }, testInfo) => {
-    skipOnMobile(testInfo);
+  test("sort Select open", async ({ page }) => {
     await setup(page);
     // Polish aria-label from catalog.filters.sort = "Sortowanie".
-    await openSelectAndSnapshot(page, /^Sortowanie$/i, "filter-ribbon-sort-open.png");
+    await openSelectAndSnapshot(page, /^Sortowanie$/i, "filters-panel-sort-open.png");
   });
 });

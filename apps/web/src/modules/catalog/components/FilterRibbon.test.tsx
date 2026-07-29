@@ -25,6 +25,10 @@ const TAGS = [
   { id: "t2", slug: "articulated", name_en: "Articulated", name_pl: null, group_id: null, group_position: 0 },
 ];
 
+// Story 52.1 D-1 — `FilterRibbon` is now purely ACTIVE-CONSTRAINT DISPLAY:
+// search, selected-tag chips, match-mode toggle. The status/source/sort
+// Selects, the `+ tag` picker, the mobile Filters sheet and the `(n)` badge all
+// live in `FiltersPanel` and are covered by `FiltersPanel.test.tsx`.
 describe("FilterRibbon", () => {
   it("renders the search input and current value", () => {
     render(
@@ -33,8 +37,6 @@ describe("FilterRibbon", () => {
           state={{ q: "dragon", tag_ids: [], status: undefined, source: undefined, sort: "recent" }}
           tagsById={new Map()}
           onChange={() => {}}
-        filtersSheetOpen={false}
-        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -50,8 +52,6 @@ describe("FilterRibbon", () => {
           state={{ q: "", tag_ids: [], status: undefined, source: undefined, sort: "recent" }}
           tagsById={new Map()}
           onChange={(s) => calls.push(s)}
-        filtersSheetOpen={false}
-        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -70,8 +70,6 @@ describe("FilterRibbon", () => {
           state={{ q: "", tag_ids: ["t1"], status: undefined, source: undefined, sort: "recent" }}
           tagsById={tagsById}
           onChange={(s) => calls.push(s)}
-        filtersSheetOpen={false}
-        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -80,82 +78,50 @@ describe("FilterRibbon", () => {
     expect(calls.at(-1)?.tag_ids).toEqual([]);
   });
 
-  it("offers status and source dropdowns", () => {
-    render(
-      withQuery(
-        <FilterRibbon
-          state={{ q: "", tag_ids: [], status: undefined, source: undefined, sort: "recent" }}
-          tagsById={new Map()}
-          onChange={() => {}}
-        filtersSheetOpen={false}
-        onFiltersSheetOpenChange={() => {}}
-        />,
-      ),
-    );
-    expect(screen.getByLabelText(/status/i)).toBeTruthy();
-    expect(screen.getByLabelText(/source/i)).toBeTruthy();
-  });
-
-  it("renders localized placeholder labels in unset status/source triggers", () => {
-    render(
-      withQuery(
-        <FilterRibbon
-          state={{ q: "", tag_ids: [], status: undefined, source: undefined, sort: "recent" }}
-          tagsById={new Map()}
-          onChange={() => {}}
-        filtersSheetOpen={false}
-        onFiltersSheetOpenChange={() => {}}
-        />,
-      ),
-    );
-    const statusTrigger = screen.getByLabelText(/status/i);
-    const sourceTrigger = screen.getByLabelText(/source/i);
-    expect(statusTrigger.textContent ?? "").toMatch(/Any status/i);
-    expect(sourceTrigger.textContent ?? "").toMatch(/Any source/i);
-    // The raw sentinel must NOT appear in the trigger.
-    expect(statusTrigger.textContent ?? "").not.toMatch(/__any_status__/);
-    expect(sourceTrigger.textContent ?? "").not.toMatch(/__any_source__/);
-  });
-
-  it("shows the current sort value", () => {
+  // AC-4 / AC-12 — the three controls this story removed from the ribbon. Each
+  // is asserted ABSENT here and PRESENT in `FiltersPanel.test.tsx`, so the
+  // consolidation cannot silently leave two write paths behind.
+  it("no longer renders the status/source/sort Selects — they live in the Filters panel", () => {
     render(
       withQuery(
         <FilterRibbon
           state={{ q: "", tag_ids: [], status: undefined, source: undefined, sort: "name_asc" }}
           tagsById={new Map()}
           onChange={() => {}}
-        filtersSheetOpen={false}
-        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
-    // The sort select displays its current value as a label
-    expect(screen.getByLabelText(/sort/i).textContent ?? "").toMatch(/name_asc|A→Z|Name/i);
+    expect(screen.queryByRole("combobox", { name: /status/i })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: /source/i })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: /sort/i })).toBeNull();
   });
 
-  it("closes the tag picker when the Cancel trigger is clicked (regression: 212c025 outside-click race)", () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify([]), { status: 200 }),
-    );
+  it("no longer renders the + tag picker path", () => {
     render(
       withQuery(
         <FilterRibbon
           state={{ q: "", tag_ids: [], status: undefined, source: undefined, sort: "recent" }}
           tagsById={new Map()}
           onChange={() => {}}
-        filtersSheetOpen={false}
-        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
-    // Open via "+ tag" button (label localized; regex matches both EN/PL).
-    fireEvent.click(screen.getByRole("button", { name: /tag|cancel|anuluj/i }));
-    expect(screen.getByRole("dialog", { name: /add tags|dodaj tagi/i })).toBeTruthy();
-    // Click the same button — now labelled "Cancel"/"Anuluj" — to close.
-    // Pre-fix: outside-click listener queues close, then the button's
-    // functional `(v) => !v` toggle re-opens. Asserts the picker is gone.
-    fireEvent.click(screen.getByRole("button", { name: /cancel|anuluj/i }));
+    expect(screen.queryByRole("button", { name: /^\+\s*tag$/i })).toBeNull();
     expect(screen.queryByRole("dialog", { name: /add tags|dodaj tagi/i })).toBeNull();
+  });
+
+  it("no longer renders a Filters trigger or an (n) badge of its own", () => {
+    render(
+      withQuery(
+        <FilterRibbon
+          state={{ q: "", tag_ids: ["t1"], status: "printed", source: undefined, sort: "recent" }}
+          tagsById={new Map(TAGS.map((t) => [t.id, t]))}
+          onChange={() => {}}
+        />,
+      ),
+    );
+    expect(screen.queryByRole("button", { name: /^Filters/i })).toBeNull();
+    expect(screen.queryByTestId("filters-trigger-badge")).toBeNull();
   });
 
   it("does not render the AND/OR toggle with zero tags", () => {
@@ -165,8 +131,6 @@ describe("FilterRibbon", () => {
           state={{ q: "", tag_ids: [], status: undefined, source: undefined, sort: "recent" }}
           tagsById={new Map()}
           onChange={() => {}}
-        filtersSheetOpen={false}
-        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -181,8 +145,6 @@ describe("FilterRibbon", () => {
           state={{ q: "", tag_ids: ["t1"], status: undefined, source: undefined, sort: "recent" }}
           tagsById={tagsById}
           onChange={() => {}}
-        filtersSheetOpen={false}
-        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -197,8 +159,6 @@ describe("FilterRibbon", () => {
           state={{ q: "", tag_ids: ["t1", "t2"], status: undefined, source: undefined, sort: "recent" }}
           tagsById={tagsById}
           onChange={() => {}}
-        filtersSheetOpen={false}
-        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -218,8 +178,6 @@ describe("FilterRibbon", () => {
           state={{ q: "", tag_ids: ["t1", "t2"], status: undefined, source: undefined, sort: "recent" }}
           tagsById={tagsById}
           onChange={(s) => calls.push(s)}
-        filtersSheetOpen={false}
-        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -238,8 +196,6 @@ describe("FilterRibbon", () => {
           state={{ q: "", tag_ids: ["t1", "t2"], tag_match: "any", status: undefined, source: undefined, sort: "recent" }}
           tagsById={tagsById}
           onChange={(s) => calls.push(s)}
-        filtersSheetOpen={false}
-        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -257,8 +213,6 @@ describe("FilterRibbon", () => {
           state={{ q: "", tag_ids: ["t1", "t2"], tag_match: "any", status: undefined, source: undefined, sort: "recent" }}
           tagsById={tagsById}
           onChange={() => {}}
-        filtersSheetOpen={false}
-        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -267,11 +221,10 @@ describe("FilterRibbon", () => {
     expect(within(group).getByRole("button", { name: /^All$/i }).getAttribute("aria-pressed")).toBe("false");
   });
 
-  // Story 50.3 — the new inline SearchSuggest combobox mounts in place of the
-  // plain <Input>. Selecting a suggested tag must only touch tag_ids/q — the
-  // `Filters (n)` badge (activeFilterCount) counts status/source/sort, never
-  // tag_ids, so it stays put by construction (AC 14). The existing +tag
-  // picker (already exercised by the tests above) is unchanged (AC 13).
+  // Story 50.3 — the inline SearchSuggest combobox. Story 52.1 adds NO
+  // behaviour here: selecting a suggested tag still only touches tag_ids/q, and
+  // status/source/sort still ride through untouched (they are simply written by
+  // a different surface now).
   it("selecting a suggested tag updates tag_ids and q, leaving status/source/sort untouched", async () => {
     fetchMock.mockImplementation((url: string) => {
       if (url.includes("/tag-groups")) {
@@ -298,8 +251,6 @@ describe("FilterRibbon", () => {
             calls.push(s);
             setState(s);
           }}
-          filtersSheetOpen={false}
-          onFiltersSheetOpenChange={() => {}}
         />
       );
     }

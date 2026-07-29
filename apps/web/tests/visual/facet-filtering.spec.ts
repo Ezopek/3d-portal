@@ -6,9 +6,12 @@ import { waitForReady } from "./helpers";
 import type { TagGroupsResponse, TagListItem } from "@/lib/api-types";
 
 // E47 47.2 — facet-surface visual specs: FacetSidebar's default-expanded/
-// collapsed/groupless/untagged states, FilterRibbon's tag-picker + UI-driven
-// (not URL-preset) 2-tag match-mode reveal, and the AND-too-narrow
-// EmptyState. Per Epic 45/46's test-authoring rule, every `toHaveScreenshot`
+// collapsed/groupless/untagged states, the UI-driven (not URL-preset) 2-tag
+// match-mode reveal, and the AND-too-narrow EmptyState. Story 52.1 re-pointed
+// every entry here at the consolidated `Filters (n)` panel: the "Tagi" trigger
+// and the `+ tag` TagPicker it used to drive are both deleted, and the same
+// FacetSidebar surface (verbatim, zero-line diff) is now reached by opening
+// "Filtry". Per Epic 45/46's test-authoring rule, every `toHaveScreenshot`
 // below is preceded by a `toBeVisible()`/visible-text assertion on the
 // concrete state being captured. The harness forces `pl-PL`
 // (playwright.config.ts), so text matchers are the actual pl.json strings.
@@ -115,7 +118,7 @@ const RICH_FIXTURE: TagGroupsResponse = {
 
 // Derived from `RICH_FIXTURE` (not hand-duplicated) so the flat tag list
 // FilterRibbon's `tagsById` lookup uses and the grouped tree FacetSidebar/
-// TagPicker render can never drift apart — review finding: two independently
+// the Filters panel renders can never drift apart — review finding: two independently
 // hand-authored literals for the same 5 tags would silently disagree on a
 // future edit to one and not the other.
 const RICH_TAGS: TagListItem[] = [
@@ -123,16 +126,31 @@ const RICH_TAGS: TagListItem[] = [
   ...RICH_FIXTURE.groupless,
 ];
 
-// Story 51.1 moved browse navigation into the desktop left column, so
-// FacetSidebar's standalone desktop `<aside>` no longer exists — the
-// Sheet-triggered instance is now the ONLY mount, on every viewport. These
+// Story 51.1 moved browse navigation into the desktop left column and Story
+// 52.1 consolidated the remaining refinement controls into one panel — the
+// Sheet-mounted FacetSidebar is the ONLY facet mount, on every viewport. These
 // tests therefore run on all four projects (no desktop-only skip) and reach
-// the facet surface the way a user does: one click on the toolbar trigger.
-async function openFacetSheet(page: Page) {
-  await page.getByRole("button", { name: "Tagi", exact: true }).click();
+// the facet surface the way a user does: one click on the toolbar trigger,
+// which is now "Filtry" (catalog.filters.openFilters) rather than the retired
+// "Tagi" trigger.
+// The trigger's accessible name CARRIES the count (D-10), so it is "Filtry" at
+// n === 0 and "Filtry (n)" above it. Tests that arrive with a constraint
+// already in the URL (e.g. `?untagged=true`) would miss an exact "Filtry".
+const FILTERS_TRIGGER = /^Filtry(\s\(\d+\))?$/;
+
+async function openFiltersPanel(page: Page) {
+  await page.getByRole("button", { name: FILTERS_TRIGGER }).click();
   const sidebar = page.getByRole("complementary");
   await expect(sidebar).toBeVisible();
   return sidebar;
+}
+
+async function closeFiltersPanel(page: Page) {
+  // The chips and the match-mode toggle live OUTSIDE the panel (D-1), behind
+  // the modal backdrop while it is open, so the panel is dismissed before they
+  // are asserted or captured.
+  await page.keyboard.press("Escape");
+  await expect(page.locator("[data-slot='sheet-content']")).toHaveCount(0);
 }
 
 test.describe("FacetSidebar — default/collapsed/untagged baselines", () => {
@@ -151,7 +169,7 @@ test.describe("FacetSidebar — default/collapsed/untagged baselines", () => {
     // catalog grid's `ModelCard` also renders `Smok`/tag-slug text (the
     // fixture "dragon" model card), so an unscoped page-wide text match is
     // ambiguous.
-    const sidebar = await openFacetSheet(page);
+    const sidebar = await openFiltersPanel(page);
 
     // Groups 1-2 (by `position`) expanded: their tag rows render.
     await expect(sidebar.getByRole("button", { name: "Zwiń Motyw" })).toBeVisible();
@@ -179,7 +197,7 @@ test.describe("FacetSidebar — default/collapsed/untagged baselines", () => {
     await page.goto("/catalog");
     await waitForReady(page);
 
-    const sidebar = await openFacetSheet(page);
+    const sidebar = await openFiltersPanel(page);
     await sidebar.getByRole("button", { name: "Rozwiń Kolekcja" }).click();
 
     await expect(sidebar.getByRole("button", { name: "Zwiń Kolekcja" })).toBeVisible();
@@ -193,7 +211,7 @@ test.describe("FacetSidebar — default/collapsed/untagged baselines", () => {
     await page.goto("/catalog?untagged=true");
     await waitForReady(page);
 
-    await openFacetSheet(page);
+    await openFiltersPanel(page);
     const untaggedCheckbox = page.getByRole("checkbox", { name: "Modele bez tagów" });
     await expect(untaggedCheckbox).toBeVisible();
     await expect(untaggedCheckbox).toBeChecked();
@@ -202,35 +220,43 @@ test.describe("FacetSidebar — default/collapsed/untagged baselines", () => {
   });
 });
 
-// FilterRibbon's tag chips/picker/match-mode toggle render unconditionally on
-// every viewport — they're not behind any `md:`/`lg:` responsive class in
-// FilterRibbon.tsx — so these tests run on all 4 projects without a skip, and
-// (unlike the block above) without opening any sheet first.
-test.describe("FilterRibbon — tag-picker + UI-driven match-mode reveal", () => {
-  test("tag picker opens listing all fixture tags", async ({ page }) => {
+// Story 52.1 replaced the `+ tag` TagPicker with in-panel tag selection: every
+// tag the picker could reach is reachable inside the Filters panel, grouped and
+// with per-tag counts (AC-14). The selected-tag chips and the ≥2-tag match-mode
+// toggle stay OUTSIDE the panel, in `FilterRibbon`, because active constraints
+// must remain visible regardless of where they were selected
+// (EXPERIENCE.md:347) — so the panel is dismissed before they are captured.
+test.describe("Filters panel — in-panel tag selection + UI-driven match-mode reveal", () => {
+  test("panel lists every fixture tag, grouped, with per-tag counts", async ({ page }) => {
     await stubSotList(page, { tagGroups: RICH_FIXTURE, tags: RICH_TAGS });
     await page.goto("/catalog");
     await waitForReady(page);
 
-    await page.getByRole("button", { name: "+ tag", exact: true }).click();
+    const sidebar = await openFiltersPanel(page);
 
-    const picker = page.getByRole("dialog", { name: "Dodaj tagi" });
-    await expect(picker).toBeVisible();
-    await expect(picker.getByRole("option", { name: "dragon" })).toBeVisible();
-    await expect(picker.getByRole("option", { name: "castle" })).toBeVisible();
-    await expect(picker.getByRole("option", { name: "pla" })).toBeVisible();
-    await expect(picker.getByRole("option", { name: "vehicles" })).toBeVisible();
-    await expect(picker.getByRole("option", { name: "misc" })).toBeVisible();
+    // Groups 1-2 are expanded by the shipped default rule, so their tags show
+    // directly; groups 3 and the groupless section are one click away, and the
+    // in-panel search reaches all of them without any expanding at all.
+    await expect(sidebar.getByRole("checkbox", { name: /^Smok/ })).toBeVisible();
+    await expect(sidebar.getByRole("checkbox", { name: /^Zamek/ })).toBeVisible();
+    await expect(sidebar.getByRole("checkbox", { name: /^PLA/ })).toBeVisible();
+    await sidebar.getByRole("button", { name: "Rozwiń Kolekcja" }).click();
+    await expect(sidebar.getByRole("checkbox", { name: /^Pojazdy/ })).toBeVisible();
+    await sidebar.getByRole("button", { name: "Rozwiń Bez grupy" }).click();
+    await expect(sidebar.getByRole("checkbox", { name: /^Różne/ })).toBeVisible();
 
-    await expect(page).toHaveScreenshot("filter-ribbon-tag-picker-open.png", { fullPage: true });
+    await expect(page).toHaveScreenshot("filters-panel-all-tags-open.png", {
+      fullPage: true,
+    });
   });
 
   // Deliberately UI-driven (not a `?tag_ids=...` URL preset): closes
   // deferred-work.md's "story 44.2 dev repair review" STILL-OPEN item — the
-  // FilterRibbon-originated `setFilters` `>=2` gate that reveals the
-  // match-mode toggle, previously only reasoned about at the
-  // `validateSearch`/`useModels.buildParams` layers.
-  test("selecting 2 tags one-by-one through the picker reveals the match-mode toggle", async ({
+  // `>=2` gate that reveals the match-mode toggle, previously only reasoned
+  // about at the `validateSearch`/`useModels.buildParams` layers. Since Story
+  // 52.1 the two tags are selected through the panel's facet checkboxes, which
+  // route through `toggleTag` (D-11), not through `setFilters`.
+  test("selecting 2 tags one-by-one in the panel reveals the match-mode toggle", async ({
     page,
   }) => {
     await stubSotList(page, { tagGroups: RICH_FIXTURE, tags: RICH_TAGS });
@@ -247,13 +273,17 @@ test.describe("FilterRibbon — tag-picker + UI-driven match-mode reveal", () =>
       .getByTestId("tag-chip")
       .filter({ has: page.getByRole("button", { name: /^Usuń tag /i }) });
 
-    await page.getByRole("button", { name: "+ tag", exact: true }).click();
-    await page.getByRole("option", { name: "dragon" }).click();
+    const sidebar = await openFiltersPanel(page);
+    await sidebar.getByRole("checkbox", { name: /^Smok/ }).check();
+    await expect(sidebar.getByRole("checkbox", { name: /^Smok/ })).toBeChecked();
+    await sidebar.getByRole("checkbox", { name: /^Zamek/ }).check();
+    await expect(sidebar.getByRole("checkbox", { name: /^Zamek/ })).toBeChecked();
 
-    await expect(ribbonChips).toHaveCount(1);
+    // AC-6/AC-8 — each selected tag counts as one, so the trigger's badge and
+    // accessible name now read 2.
+    await expect(page.getByTestId("filters-trigger-badge")).toHaveText("2");
 
-    await page.getByRole("button", { name: "+ tag", exact: true }).click();
-    await page.getByRole("option", { name: "castle" }).click();
+    await closeFiltersPanel(page);
 
     await expect(ribbonChips).toHaveCount(2);
     await expect(ribbonChips.filter({ hasText: "dragon" })).toBeVisible();

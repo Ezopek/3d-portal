@@ -316,24 +316,36 @@ describe("CatalogList browse-category scope (Story 50.2)", () => {
 
   it("leaves the Filters (n) badge identical whether or not a category is active", async () => {
     // FR26-BROWSE-2's verifiable, satisfied by adding NOTHING to
-    // FilterRibbonState / activeFilterCount (which count only status, source and
-    // a non-default sort). Asserted through the real component so the fence
-    // cannot be vacuous.
+    // FilterRibbonState / the count. Story 52.1 D-7 hardens it: `FiltersPanel`
+    // receives no category/scope prop at all, so the scope is not merely
+    // excluded, it is unreachable. Asserted through the real component so the
+    // fence cannot be vacuous.
     installFetch();
     await mountAt("/catalog/?status=printed");
     const withoutCategory = (
-      await screen.findByRole("button", { name: "Filters" })
+      await screen.findByRole("button", { name: "Filters (1)" })
     ).textContent;
     // Pin the count so the comparison below cannot pass on two empty strings.
     expect(withoutCategory).toContain("1");
     cleanup();
 
     installFetch();
-    await mountAt("/catalog/?status=printed&category=home-decor");
+    await mountAt("/categories/home-decor?status=printed");
     const withCategory = (
-      await screen.findByRole("button", { name: "Filters" })
+      await screen.findByRole("button", { name: "Filters (1)" })
     ).textContent;
     expect(withCategory).toBe(withoutCategory);
+  });
+
+  // Story 52.1 AC-10 — an active browse scope and NOTHING else must leave the
+  // badge absent entirely, not merely showing a subtracted 0.
+  it("renders no badge at all on a scoped route with no other constraint", async () => {
+    installFetch();
+    await mountAt("/categories/home-decor");
+
+    // The exact accessible name (no parenthesised count) IS the n === 0 proof.
+    expect(await screen.findByRole("button", { name: "Filters" })).toBeTruthy();
+    expect(screen.queryByTestId("filters-trigger-badge")).toBeNull();
   });
 
   it("keeps the scope through a search change made in the real UI", async () => {
@@ -422,13 +434,13 @@ describe("CatalogList desktop browse navigation (Story 51.1)", () => {
     expect(screen.queryByRole("checkbox", { name: /PLA/ })).toBeNull();
   });
 
-  it("keeps the grouped facet surface one interaction away behind the Tags trigger", async () => {
+  it("keeps the grouped facet surface one interaction away behind the Filters trigger", async () => {
+    // Story 52.1 — the surface moved from the retired "Tagi" sheet into the
+    // consolidated Filters panel; the one-interaction guarantee is unchanged.
     installFetch();
     await mountAt("/catalog/");
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: /^(Tags|Tagi)$/ }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Filters" }));
 
     // One click reveals the shipped FacetSidebar verbatim: its group tree, its
     // per-tag checkbox and the pinned Untagged row.
@@ -859,37 +871,42 @@ describe("CatalogList category route + scope chip (Story 51.2)", () => {
   });
 });
 
-// Story 51.3 (Initiative 26) — the mobile Browse sheet, and the three-way
-// mobile-sheet exclusivity (Browse / Tagi / Filters) D-4 requires. Dialog
-// accessible names ("Browse categories" / "Tags" / "Filters") are distinct,
-// so each sheet's open/closed state can be asserted unambiguously.
-describe("CatalogList mobile Browse sheet + sheet exclusivity (Story 51.3)", () => {
+// Story 51.3 (Initiative 26) — the mobile Browse sheet. Story 52.1 D-5 collapses
+// 51.3's THREE-way exclusivity (Browse / Tagi / Filters) to a TWO-way
+// Browse ↔ Filters invariant: there is exactly one refinement surface now, and
+// EXPERIENCE.md:62 / :333 make the two sheets siblings — opening one closes the
+// other, and they are never merged into one sheet with tabs. Dialog accessible
+// names ("Browse categories" / "Filters") stay distinct, so each sheet's
+// open/closed state is assertable unambiguously.
+describe("CatalogList Browse ↔ Filters sheet exclusivity (Story 52.1 D-5)", () => {
   // `hidden: true` on the triggers only: a modal sheet's backdrop marks the
   // REST of the page `aria-hidden` (and visually covers it) while open, so a
-  // background trigger is not reachable by a real pointer click until the
-  // open sheet is dismissed first — same as any modal dialog. D-4.3's
-  // "opening one closes the other two" is a state-level invariant (it also
-  // guards a sheet left open by a non-pointer path, e.g. a future
-  // programmatic open), so these tests drive the trigger directly rather
-  // than asserting an interaction a mouse user cannot perform through an
-  // active backdrop. Dialog queries stay strict: a closed `Sheet` unmounts
-  // its content rather than merely hiding it (confirmed by
-  // `BrowseSheet.test.tsx`'s "does not render... while closed").
+  // background trigger is not reachable by a real pointer click until the open
+  // sheet is dismissed first — same as any modal dialog. "Opening one closes
+  // the other" is a state-level invariant (it also guards a sheet left open by
+  // a non-pointer path), so these tests drive the trigger directly rather than
+  // asserting an interaction a mouse user cannot perform through an active
+  // backdrop. Dialog queries stay strict: a closed `Sheet` unmounts its content
+  // rather than merely hiding it (`BrowseSheet.test.tsx` / `FiltersPanel.test.tsx`).
   const browseTrigger = { name: "Browse", hidden: true };
-  const tagsTrigger = { name: "Tags", hidden: true };
   const filtersTrigger = { name: "Filters", hidden: true };
   const browseDialog = { name: "Browse categories" };
-  const tagsDialog = { name: "Tags" };
   const filtersDialog = { name: "Filters" };
 
-  it("renders a Browse trigger distinct from the Tags and Filters triggers", async () => {
+  it("renders exactly ONE refinement trigger, distinct from the Browse trigger", async () => {
     installFetch();
     await mountAt("/catalog/");
 
     await screen.findByRole("navigation", { name: /Browse categories/ });
     expect(screen.getByRole("button", browseTrigger)).toBeTruthy();
-    expect(screen.getByRole("button", tagsTrigger)).toBeTruthy();
     expect(screen.getByRole("button", filtersTrigger)).toBeTruthy();
+    // AC-1 — the two retired triggers are gone from the DOM at every viewport.
+    expect(
+      screen.queryAllByRole("button", { name: /^(Tags|Tagi)$/, hidden: true }),
+    ).toHaveLength(0);
+    expect(
+      screen.queryAllByRole("button", { name: "Filters", hidden: true }),
+    ).toHaveLength(1);
   });
 
   it("opens the Browse sheet listing the same categories the rail shows", async () => {
@@ -921,43 +938,6 @@ describe("CatalogList mobile Browse sheet + sheet exclusivity (Story 51.3)", () 
     });
   });
 
-  it("closes the Tagi and Filters sheets when the Browse sheet opens", async () => {
-    installFetch();
-    await mountAt("/catalog/");
-
-    fireEvent.click(await screen.findByRole("button", tagsTrigger));
-    await screen.findByRole("dialog", tagsDialog);
-
-    fireEvent.click(screen.getByRole("button", browseTrigger));
-    await screen.findByRole("dialog", browseDialog);
-    expect(screen.queryByRole("dialog", tagsDialog)).toBeNull();
-  });
-
-  it("closes the Browse sheet when the Tagi sheet opens", async () => {
-    installFetch();
-    await mountAt("/catalog/");
-
-    fireEvent.click(await screen.findByRole("button", browseTrigger));
-    await screen.findByRole("dialog", browseDialog);
-
-    fireEvent.click(screen.getByRole("button", tagsTrigger));
-    await screen.findByRole("dialog", tagsDialog);
-    expect(screen.queryByRole("dialog", browseDialog)).toBeNull();
-  });
-
-  it("closes the Browse and Tagi sheets when the Filters sheet opens", async () => {
-    installFetch();
-    await mountAt("/catalog/");
-
-    fireEvent.click(await screen.findByRole("button", tagsTrigger));
-    await screen.findByRole("dialog", tagsDialog);
-
-    fireEvent.click(screen.getByRole("button", filtersTrigger));
-    await screen.findByRole("dialog", filtersDialog);
-    expect(screen.queryByRole("dialog", tagsDialog)).toBeNull();
-    expect(screen.queryByRole("dialog", browseDialog)).toBeNull();
-  });
-
   it("closes the Filters sheet when the Browse sheet opens", async () => {
     installFetch();
     await mountAt("/catalog/");
@@ -970,18 +950,103 @@ describe("CatalogList mobile Browse sheet + sheet exclusivity (Story 51.3)", () 
     expect(screen.queryByRole("dialog", filtersDialog)).toBeNull();
   });
 
-  it("never has two of the three mobile sheets open at once, across every pairwise transition", async () => {
+  it("closes the Browse sheet when the Filters sheet opens", async () => {
     installFetch();
     await mountAt("/catalog/");
 
-    const triggers = [browseTrigger, tagsTrigger, filtersTrigger];
-    const dialogs = [browseDialog, tagsDialog, filtersDialog];
+    fireEvent.click(await screen.findByRole("button", browseTrigger));
+    await screen.findByRole("dialog", browseDialog);
+
+    fireEvent.click(screen.getByRole("button", filtersTrigger));
+    await screen.findByRole("dialog", filtersDialog);
+    expect(screen.queryByRole("dialog", browseDialog)).toBeNull();
+  });
+
+  it("never has both sheets open at once, across every transition", async () => {
+    installFetch();
+    await mountAt("/catalog/");
+
+    const triggers = [browseTrigger, filtersTrigger, browseTrigger, filtersTrigger];
+    const dialogs = [browseDialog, filtersDialog];
     for (const trigger of triggers) {
       fireEvent.click(await screen.findByRole("button", trigger));
       await waitFor(() => {
         const openCount = dialogs.filter((d) => screen.queryByRole("dialog", d) !== null).length;
         expect(openCount).toBe(1);
       });
+    }
+  });
+
+  // AC-2 — the consolidated surface reaches the facets AND the three Selects in
+  // one interaction, which is the whole point of the consolidation.
+  it("opens one sheet holding the facet surface and the status/source/sort Selects", async () => {
+    installFetch();
+    await mountAt("/catalog/");
+
+    fireEvent.click(await screen.findByRole("button", filtersTrigger));
+    const dialog = await screen.findByRole("dialog", filtersDialog);
+
+    expect(within(dialog).getByRole("checkbox", { name: /PLA/ })).toBeTruthy();
+    expect(
+      within(dialog).getByRole("checkbox", { name: /Untagged models/ }),
+    ).toBeTruthy();
+    expect(within(dialog).getByRole("combobox", { name: "Status" })).toBeTruthy();
+    expect(within(dialog).getByRole("combobox", { name: "Source" })).toBeTruthy();
+    expect(within(dialog).getByRole("combobox", { name: "Sort" })).toBeTruthy();
+  });
+
+  // AC-5a / D-11 — a facet toggle inside the panel still routes through
+  // `CatalogList`'s `toggleTag`, which lets `validateSearch` normalise a
+  // stranded `tag_match`; it is NOT funnelled through `setFilters`.
+  it("routes an in-panel tag toggle through toggleTag, reaching the models query", async () => {
+    const { calls } = installFetch();
+    await mountAt("/catalog/");
+
+    fireEvent.click(await screen.findByRole("button", filtersTrigger));
+    const dialog = await screen.findByRole("dialog", filtersDialog);
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /PLA/ }));
+
+    await waitFor(() => {
+      expect(
+        calls.some((u) => u.includes("/api/models") && u.includes(`tag_ids=${TAG_A}`)),
+      ).toBe(true);
+    });
+  });
+
+  // AC-17 — the panel's open state is deliberately not a URL layer
+  // (EXPERIENCE.md:367), so opening it must not touch the location at all.
+  it("does not write the panel's open state to the URL", async () => {
+    installFetch();
+    const { router } = await mountAt("/catalog/?q=vase");
+    const before = router.state.location.searchStr;
+
+    fireEvent.click(await screen.findByRole("button", filtersTrigger));
+    await screen.findByRole("dialog", filtersDialog);
+
+    expect(router.state.location.searchStr).toBe(before);
+    expect(router.state.location.searchStr).not.toMatch(/filters|open|panel/i);
+  });
+
+  // AC-18 / D-12 — EXPERIENCE.md:278 fixes the toolbar reading order as
+  // search → Browse → Filters. DOM order alone must produce it; no positive
+  // `tabIndex` is introduced anywhere.
+  it("orders the toolbar search → Browse → Filters in the DOM, with no positive tabIndex", async () => {
+    installFetch();
+    await mountAt("/catalog/");
+
+    const search = await screen.findByPlaceholderText("Search");
+    const browse = screen.getByRole("button", browseTrigger);
+    const filters = screen.getByRole("button", filtersTrigger);
+
+    expect(
+      search.compareDocumentPosition(browse) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      browse.compareDocumentPosition(filters) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    for (const el of document.querySelectorAll("[tabindex]")) {
+      expect(Number(el.getAttribute("tabindex"))).toBeLessThanOrEqual(0);
     }
   });
 });
