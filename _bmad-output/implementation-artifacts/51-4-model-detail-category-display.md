@@ -404,3 +404,18 @@ All **16/16** stages passed:
 - local-env-secrets
 
 This discharges the full pre-merge gate. **Remaining controller-owned steps:** commit, ff-merge, push, deploy, post-deploy smoke, and flip to `done`.
+
+---
+
+## Controller Closeout Record
+
+Story 51.4 was closed by the controller after the full closeout chain.
+
+- **Implementation commit:** `ed4d58df3d5d28afa73d27902ee855174a97ae17` (`feat(web): show categories on model detail`).
+- **Merge:** branch `feat/E51.4-model-detail-category-display` fast-forward merged to `main`, then deleted locally.
+- **Push:** `origin/main` verified at `ed4d58df3d5d28afa73d27902ee855174a97ae17`; lean pre-push transport gate passed 11/11. Log: `.hermes/run-logs/push-e51-4-20260729_045422.log`, `PUSH_RC=0`.
+- **Deploy:** `infra/scripts/deploy.sh` completed successfully and wrote `.last-deploy-sha=ed4d58df3d5d28afa73d27902ee855174a97ae17`. Log: `.hermes/run-logs/deploy-e51-4-20260729_045448.log`, `DEPLOY_RC=0 2026-07-29T04:58:18+02:00`. The wrapper process returned a non-zero shell status after remote logout, but the deploy script's own recorded marker, `Done.` trailer, `.last-deploy-sha`, and post-deploy smoke all confirm deploy success.
+- **Deploy details:** portal images built/shipped, web container recreated, Alembic migrations ran, slicer-worker overlay correctly skipped for non-slicer range `94cf8773621866e530442787678f480e41257542ae50078881603977..HEAD`, GlitchTip symbolication matched issue id=323 release `0.1.0+ed4d58d`, runbook fingerprint OK.
+- **Post-deploy smoke:** `.190` compose services `api`, `arq-worker`, `redis`, `slicer-worker`, `web`, and `worker` running; LAN API health `200` with `{"status":"ok","version":"0.1.0"}`; LAN `/` `200`; production HTTPS `/` `200`; production HTTPS `/catalog/` `200`; production HTTPS `/catalog/1` `200`; production HTTPS `/categories/uchwyty` `200`.
+
+No human review or Ezop signature is claimed at any stage; closeout authority is native BMAD review APPROVE + independent Aider APPROVE + full `check-all.sh` 16/16 + controller-run merge/push/deploy/smoke.
