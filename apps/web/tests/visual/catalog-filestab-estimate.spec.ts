@@ -63,6 +63,11 @@ async function stubModelDetail(page: Page) {
         created_at: "2026-04-12T00:00:00Z",
         updated_at: "2026-04-12T00:00:00Z",
         tags: [],
+        // Story 51.4 — `ModelDetail.categories` is a required wire field, so
+        // the hero's category section would read `undefined` without it. Zero,
+        // not populated: this spec is about the FilesTab estimate chip and its
+        // screenshots are scoped to the tabpanel, so no baseline here moves.
+        categories: [],
         files: [
           {
             id: "f1",

@@ -203,6 +203,9 @@ describe("Story 30.2 — ShareTokenRoute conditional render", () => {
             created_at: "",
             updated_at: "",
             tags: [],
+            // Story 51.4 — part of that minimum: ModelHero's category section
+            // reads `detail.categories` unguarded (it is a required field).
+            categories: [],
             files: [],
             prints: [],
             notes: [],

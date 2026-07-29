@@ -9,6 +9,7 @@ import { RatingPopover } from "@/modules/catalog/components/popovers/RatingPopov
 import { StatusPopover } from "@/modules/catalog/components/popovers/StatusPopover";
 import { EditDescriptionSheet } from "@/modules/catalog/components/sheets/EditDescriptionSheet";
 import { EditTagsSheet } from "@/modules/catalog/components/sheets/EditTagsSheet";
+import { ModelCategoriesSection } from "@/modules/catalog/components/ModelCategoriesSection";
 import { RenderSheet } from "@/modules/catalog/components/sheets/RenderSheet";
 import { TagGroupsSection } from "@/modules/catalog/components/TagGroupsSection";
 import { useAuth } from "@/shell/AuthContext";
@@ -120,6 +121,9 @@ export function ModelHero({ detail }: { detail: ModelDetail }) {
           </button>
         )}
       </div>
+      {/* Categories read BEFORE tags: they answer "where does this live",
+          tags answer "what properties does it have" (Story 51.4 D-2). */}
+      <ModelCategoriesSection detail={detail} isAdmin={isAdmin} />
       <TagGroupsSection detail={detail} isAdmin={isAdmin} onAddTags={() => setTagsOpen(true)} />
       {isAdmin && (
         <>

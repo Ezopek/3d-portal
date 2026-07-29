@@ -299,6 +299,8 @@
   "catalog.browse.activeScope": "Active category: {{name}}",
   "catalog.browse.searchEntireCatalog": "Search entire catalog",
   "catalog.browse.clearCategory": "Clear category",
+  "catalog.browse.modelCategoriesLabel": "Categories",
+  "catalog.browse.noCategoriesAdmin": "No categories — needs curation",
   "catalog.sort.recent": "Recently added",
   "catalog.sort.oldest": "Oldest first",
   "catalog.sort.name_asc": "Name A–Z",

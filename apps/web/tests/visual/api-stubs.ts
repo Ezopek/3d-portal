@@ -4,7 +4,11 @@ import { fileURLToPath } from "node:url";
 
 import type { Page, Route } from "@playwright/test";
 
-import type { TagGroupsResponse, TagListItem } from "@/lib/api-types";
+import type {
+  BrowseCategorySummary,
+  TagGroupsResponse,
+  TagListItem,
+} from "@/lib/api-types";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -60,6 +64,11 @@ export async function stubViewerModelDetail(
         created_at: "2026-05-06T00:00:00Z",
         updated_at: "2026-05-06T00:00:00Z",
         tags: [],
+        // Story 51.4 — `ModelDetail.categories` is a required wire field and
+        // `ModelCategoriesSection` reads it unguarded. Zero, not populated:
+        // these specs are about the 3D viewer, so the hero stays as quiet as
+        // the contract allows (same posture as catalog-filestab-estimate).
+        categories: [],
         gallery_file_ids: [],
         image_count: 0,
         files: [
@@ -316,9 +325,39 @@ export async function stubSotList(
   );
 }
 
-export async function stubSotDetail(page: Page, options: { imageCount?: 1 | 2 } = {}) {
+// Default `ModelDetail.categories` payload (Story 51.4). Non-empty on purpose:
+// the shared fixture should exercise the real shipped detail surface, which
+// makes the zero-category state an explicit `categories: []` opt-in rather
+// than something a spec falls into by accident. `position` 0 and 2 are
+// non-contiguous (the backend sorts by (position, slug) and owns that
+// contract), and the second entry's `name_pl: null` exercises the pl-PL
+// `labelOf` fallback the Playwright harness's forced locale runs through.
+const DEFAULT_MODEL_CATEGORIES: BrowseCategorySummary[] = [
+  {
+    id: "bc1",
+    slug: "storage-organization",
+    name_en: "Storage & organization",
+    name_pl: "Przechowywanie i organizacja",
+    position: 0,
+    parent_id: null,
+  },
+  {
+    id: "bc2",
+    slug: "holders-mounts",
+    name_en: "Holders & mounts",
+    name_pl: null,
+    position: 2,
+    parent_id: null,
+  },
+];
+
+export async function stubSotDetail(
+  page: Page,
+  options: { imageCount?: 1 | 2; categories?: BrowseCategorySummary[] } = {},
+) {
   const id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
   const imageCount = options.imageCount ?? 1;
+  const categories = options.categories ?? DEFAULT_MODEL_CATEGORIES;
   await page.route(`**/api/models/${id}`, (route: Route) =>
     route.fulfill({
       status: 200,
@@ -354,6 +393,7 @@ export async function stubSotDetail(page: Page, options: { imageCount?: 1 | 2 } 
             group_position: 0,
           },
         ],
+        categories,
         files: [
           {
             id: "f1",

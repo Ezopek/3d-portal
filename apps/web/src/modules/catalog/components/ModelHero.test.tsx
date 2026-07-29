@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import "@/locales/i18n";
@@ -31,6 +31,24 @@ vi.mock("@/modules/catalog/components/TagGroupsSection", () => ({
   TagGroupsSection: (props: TagGroupsSectionProps) => mockTagGroupsSection(props),
 }));
 
+// Same treatment as TagGroupsSection above (Story 51.4): the section renders
+// `<Link>`s and has its own dedicated, router-mounted test file
+// (ModelCategoriesSection.test.tsx) covering the I/O matrix; mocking it keeps
+// this suite router-free and leaves only the prop wiring to assert here.
+interface ModelCategoriesSectionProps {
+  detail: ModelDetail;
+  isAdmin: boolean;
+}
+// Renders a marker (rather than null like the mock above) so the mount
+// POSITION is assertable: AC-2 fixes it between the badge row and the tags.
+const mockModelCategoriesSection = vi.fn<
+  (props: ModelCategoriesSectionProps) => ReactElement
+>(() => <div data-testid="model-categories-section" />);
+vi.mock("@/modules/catalog/components/ModelCategoriesSection", () => ({
+  ModelCategoriesSection: (props: ModelCategoriesSectionProps) =>
+    mockModelCategoriesSection(props),
+}));
+
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
 
@@ -50,6 +68,7 @@ beforeEach(() => {
   });
   mockUseAuth.mockReturnValue({ isAdmin: false });
   mockTagGroupsSection.mockClear();
+  mockModelCategoriesSection.mockClear();
 });
 
 afterEach(() => {
@@ -126,6 +145,35 @@ describe("ModelHero", () => {
     // EditTagsSheet the pencil button opens (no new sheet built).
     act(() => props.onAddTags());
     expect(screen.getByText("Edit tags")).toBeTruthy();
+  });
+
+  it("mounts ModelCategoriesSection once, between the badge row and the tags (Story 51.4)", () => {
+    mockUseAuth.mockReturnValue({ isAdmin: true });
+    const detail = makeDetail();
+    render(<ModelHero detail={detail} />, { wrapper: wrap() });
+
+    expect(mockModelCategoriesSection).toHaveBeenCalledTimes(1);
+    const call = mockModelCategoriesSection.mock.calls[0];
+    if (call === undefined) throw new Error("ModelCategoriesSection was not called");
+    const [props] = call;
+    expect(props.detail).toBe(detail);
+    expect(props.isAdmin).toBe(true);
+    // No sheet callback: this surface is read-only — category assignment is
+    // Story 52.2 (D-5).
+    expect(Object.keys(props).sort()).toEqual(["detail", "isAdmin"]);
+
+    // Immediately AFTER the status/rating/source badge row...
+    const marker = screen.getByTestId("model-categories-section");
+    const previous = marker.previousElementSibling;
+    expect(previous?.textContent?.toLowerCase()).toContain("printables");
+    // ...and BEFORE the tag sections (which mock to null, so order is read off
+    // the render sequence rather than the DOM).
+    const categoriesOrder = mockModelCategoriesSection.mock.invocationCallOrder[0];
+    const tagsOrder = mockTagGroupsSection.mock.invocationCallOrder[0];
+    if (categoriesOrder === undefined || tagsOrder === undefined) {
+      throw new Error("both sections must render");
+    }
+    expect(categoriesOrder).toBeLessThan(tagsOrder);
   });
 
   it("does not render rating when null", () => {
