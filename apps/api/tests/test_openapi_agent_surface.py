@@ -265,6 +265,11 @@ _GOVERNANCE_ROUTES = {
     ("PATCH", "/api/admin/categories/{category_id}"),
     ("DELETE", "/api/admin/categories/{category_id}"),
     ("PUT", "/api/admin/models/{model_id}/categories"),
+    # Story 52.3 — the curation-QA over-categorized read. A pure GET, but it
+    # belongs here for the same reason the writes do: `sot-admin-governance` is
+    # outside `TARGET_ROUTER_TAGS`, so without this entry nothing gates its
+    # summary/description at all.
+    ("GET", "/api/admin/models/over-categorized"),
 }
 
 # Retained tag write routes that MUST stay on the agent-write surface.

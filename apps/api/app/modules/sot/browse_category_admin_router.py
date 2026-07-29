@@ -17,12 +17,23 @@ Owns:
   PATCH  /api/admin/categories/{category_id}      — rename/reorder/reparent
   DELETE /api/admin/categories/{category_id}      — delete (409 unless clean or detach=true)
   PUT    /api/admin/models/{model_id}/categories  — replace-set assignment
+  GET    /api/admin/models/over-categorized       — curation-QA read (Story 52.3)
+
+Route-shadowing note for `GET /models/over-categorized`. `sot/admin_router.py`
+also mounts at prefix `/api/admin` and is included BEFORE this router
+(`app/router.py`), and it owns `/models/{model_id}` with `model_id: uuid.UUID`
+— a path template that DOES match `/api/admin/models/over-categorized`. The GET
+survives only because that file registers no GET at all, so Starlette's
+method-mismatch partial match falls through to here. Adding a
+`GET /api/admin/models/{model_id}` there would shadow this route into a 422 on
+the UUID coercion. This router's own `PUT /models/{model_id}/categories`
+differs in both segment count and method, so it is not a factor.
 """
 
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session
 
 from app.core.auth.dependencies import current_admin
@@ -38,10 +49,15 @@ from app.modules.sot.admin_service import (
     create_browse_category,
     delete_browse_category,
     list_browse_categories_admin,
+    list_over_categorized_models,
     replace_model_categories,
     update_browse_category,
 )
-from app.modules.sot.schemas import BrowseCategoryAdminRead, BrowseCategorySummary
+from app.modules.sot.schemas import (
+    BrowseCategoryAdminRead,
+    BrowseCategorySummary,
+    OverCategorizedResponse,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["sot-admin-governance"])
 
@@ -93,6 +109,41 @@ def admin_list_categories(
     _actor_user_id: uuid.UUID = current_admin,
 ) -> list[BrowseCategoryAdminRead]:
     return list_browse_categories_admin(session)
+
+
+@router.get(
+    "/models/over-categorized",
+    summary="List models carrying unusually many browse categories (curation QA)",
+    description=(
+        "Returns `{items, total}` for the curation-QA panel's over-categorized "
+        "check (Story 52.3 / FR26-CAT-3). Each item is `{model_id, slug, "
+        "name_en, name_pl, category_count}`, ordered `(category_count DESC, "
+        "slug ASC)` — worst first, deterministically.\n\n"
+        "`min_categories` (default **4**, `ge=1 le=50`) is INCLUSIVE: at the "
+        "default a model with exactly 3 categories is absent and one with "
+        "exactly 4 is present. The default encodes FR26-CAT-3's 1-3 advisory "
+        "norm so a direct API caller gets the documented value; the web client "
+        "always sends it explicitly from its shared `ADVISORY_MAX` constant.\n\n"
+        "Soft-deleted models are excluded (`Model.deleted_at IS NULL`), matching "
+        "the read-side aggregate this query mirrors. `total` counts ALL "
+        "qualifying models and is independent of `limit` (default 50, max 200), "
+        "because the panel's overflow line states the true remaining count.\n\n"
+        "Nothing here blocks a write and nothing is auto-applied: exceeding the "
+        "norm is an advisory finding, never an error. This is a **pure read** — "
+        "it writes no audit row and mutates nothing. It exists because no "
+        "shipped contract can produce a per-model category count: `list_models` "
+        "has no such predicate and `ModelSummary` deliberately omits categories "
+        "(Decision AY). Admin-only (`current_admin`); never agent-readable."
+    ),
+    response_model=OverCategorizedResponse,
+)
+def admin_list_over_categorized_models(
+    session: Annotated[Session, Depends(get_session)],
+    min_categories: Annotated[int, Query(ge=1, le=50)] = 4,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    _actor_user_id: uuid.UUID = current_admin,
+) -> OverCategorizedResponse:
+    return list_over_categorized_models(session, min_categories=min_categories, limit=limit)
 
 
 @router.post(

@@ -133,6 +133,34 @@ class BrowseCategoryAdminRead(BrowseCategoryRead):
     inclusion_criterion: str | None
 
 
+class OverCategorizedModelRead(BaseModel):
+    """Story 52.3 (B-1) — one over-categorized model, WITH its category count.
+
+    A deliberately narrow admin-only shape rather than a new field on
+    `ModelSummary`: that contract is consumed by every catalogue surface and
+    Decision AY (architecture.md:3312) ratified its exclusion of categories.
+    Carries only what the curation-QA row renders — the model's identity and
+    the number the finding is about.
+    """
+
+    model_id: uuid.UUID
+    slug: str
+    name_en: str
+    name_pl: str | None
+    category_count: int
+
+
+class OverCategorizedResponse(BaseModel):
+    """`total` is the count of ALL qualifying models, independent of `limit`.
+
+    The panel's overflow line states the true remaining count, so a `total`
+    that tracked `limit` would make the cap read as "these are all of them".
+    """
+
+    items: list[OverCategorizedModelRead]
+    total: int
+
+
 class ModelFileRead(_OrmBase):
     id: uuid.UUID
     model_id: uuid.UUID

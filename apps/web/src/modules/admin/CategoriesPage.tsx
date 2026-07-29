@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { ApiError } from "@/lib/api";
 import type { BrowseCategoryAdminRead } from "@/lib/api-types";
 import { useModels } from "@/modules/catalog/hooks/useModels";
+import { useTagGroups } from "@/modules/catalog/hooks/useTagGroups";
 import { Button } from "@/ui/button";
 import {
   DropdownMenu,
@@ -15,6 +16,8 @@ import {
 } from "@/ui/dropdown-menu";
 
 import { AdminTabs } from "./AdminTabs";
+import { CurationQaPanel } from "./CurationQaPanel";
+import { ADVISORY_MAX } from "./curationThresholds";
 import { mapCategoryApiError } from "./dialogs/apiErrorMessage";
 import { CategoryFormDialog, type CategoryFormValues } from "./dialogs/CategoryFormDialog";
 import { DeleteCategoryDialog, type DeleteConflict } from "./dialogs/DeleteCategoryDialog";
@@ -25,6 +28,7 @@ import {
   useUpdateBrowseCategory,
   type BrowseCategoryPatchBody,
 } from "./hooks/useAdminCategories";
+import { useOverCategorizedModels } from "./hooks/useOverCategorizedModels";
 import { ModelCategoriesDialog } from "./ModelCategoriesDialog";
 
 // Locale-aware naming, module-local by the same intentional-duplication rule
@@ -63,7 +67,10 @@ function CategoryRow({
   const name = localize(category.name_en, category.name_pl);
   return (
     <li
-      className="flex items-start gap-3 rounded-md border border-border bg-card px-3 py-2.5"
+      className="flex scroll-mt-4 items-start gap-3 rounded-md border border-border bg-card px-3 py-2.5"
+      // Anchor target for the curation-QA panel's "Open category" action
+      // (Story 52.3). Additive attribute only — no behaviour change here.
+      id={`browse-category-${category.slug}`}
       data-testid={`browse-category-${category.slug}`}
     >
       <span className="w-5 pt-0.5 text-xs tabular-nums text-muted-foreground">
@@ -144,6 +151,15 @@ export function CategoriesPage() {
   // no client-side derivation available: `ModelSummary` carries no categories by
   // ratified design, so the backend `uncategorized` filter is the only source.
   const uncategorized = useModels({ uncategorized: true, sort: "name_asc" });
+
+  // Story 52.3 — the two extra reads the curation-QA panel needs. The tag-group
+  // read is the SHIPPED catalog hook, imported cross-module exactly as
+  // TagGroupsPage already does: an admin-local copy would fork the
+  // ["sot","tag-groups"] cache. The over-categorized read is the story's single
+  // additive admin endpoint; the threshold travels from the shared constant so
+  // the panel and the replace-set editor can never disagree.
+  const tagGroups = useTagGroups();
+  const overCategorized = useOverCategorizedModels(ADVISORY_MAX + 1);
 
   const createCategory = useCreateBrowseCategory();
   const updateCategory = useUpdateBrowseCategory();
@@ -292,6 +308,21 @@ export function CategoriesPage() {
         ) : null}
       </header>
 
+      {/* Advisory preface to the list it is advising about — the
+          DuplicateTagsPanel mount position, between the header and the primary
+          surface. It performs no write: every action navigates, anchors, or
+          opens the shipped replace-set editor below. */}
+      <CurationQaPanel
+        categories={query}
+        uncategorized={uncategorized}
+        tagGroups={tagGroups}
+        overCategorized={overCategorized}
+        localize={localize}
+        onEditModelCategories={(modelId, modelName) =>
+          openDialog({ kind: "assign", modelId, modelName })
+        }
+      />
+
       {data ? (
         // Prefer already-loaded data over a background-refetch error, mirroring
         // TagGroupsPage: a transient refetch failure must not hide still-valid rows.
@@ -313,7 +344,13 @@ export function CategoriesPage() {
         )
       ) : query.isError ? (
         // Fails closed: never fabricate an empty/green state on a failed read.
-        <div className="flex flex-col items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-4">
+        // The testid is the stable hook tests scope the retry to: the QA panel
+        // owns a second "Spróbuj ponownie" that is legitimately on screen when
+        // the category read is the source that failed.
+        <div
+          data-testid="categories-error"
+          className="flex flex-col items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-4"
+        >
           <p className="text-sm font-medium text-destructive">
             {t("modules.admin.categories.error_title")}
           </p>
@@ -334,7 +371,14 @@ export function CategoriesPage() {
         </div>
       )}
 
-      <section className="flex flex-col gap-2" data-testid="curation-queue">
+      {/* `id` is the anchor target for the QA panel's "Show list" action
+          (Story 52.3) — the panel links to this shipped queue, it does not
+          rebuild it. Additive attribute only. */}
+      <section
+        className="flex scroll-mt-4 flex-col gap-2"
+        id="curation-queue"
+        data-testid="curation-queue"
+      >
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {/* No count until one has actually been read: `?? 0` rendered
               "Needs curation (0)" over an unresolved query, which is the same

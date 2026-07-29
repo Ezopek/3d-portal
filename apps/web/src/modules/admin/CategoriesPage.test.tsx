@@ -20,7 +20,11 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("@sentry/react", () => ({ setTag: vi.fn() }));
 
 import i18n from "@/locales/i18n";
-import type { BrowseCategoryAdminRead } from "@/lib/api-types";
+import type {
+  BrowseCategoryAdminRead,
+  OverCategorizedResponse,
+  TagGroupsResponse,
+} from "@/lib/api-types";
 import { CategoriesPage } from "@/modules/admin/CategoriesPage";
 import { AuthProvider } from "@/shell/AuthContext";
 import { toast } from "sonner";
@@ -85,6 +89,12 @@ interface FetchOpts {
   categoriesPending?: boolean;
   categoriesError?: boolean;
   queueError?: boolean;
+  /** Story 52.3 — the two reads the curation-QA panel added to this route. */
+  tagGroups?: TagGroupsResponse;
+  tagGroupsError?: boolean;
+  tagGroupsPending?: boolean;
+  overCategorized?: OverCategorizedResponse;
+  overCategorizedError?: boolean;
   /** Status returned for writes; 409 bodies carry `detail` so the conflict split is exercised. */
   writeStatus?: number;
   writeDetail?: string;
@@ -116,6 +126,20 @@ function installFetch(opts: FetchOpts = {}) {
 
     if (method === "GET" && url.includes("/api/admin/audit-log")) {
       return json({ items: [] });
+    }
+
+    // Story 52.3 — the curation-QA panel's two extra sources. Checked before
+    // the model routes below: neither path substring overlaps, but keeping the
+    // admin read adjacent to its sibling keeps the ordering obvious.
+    if (method === "GET" && url.includes("/api/admin/models/over-categorized")) {
+      if (opts.overCategorizedError) return json({ detail: "boom" }, 500);
+      return json(opts.overCategorized ?? { items: [], total: 0 });
+    }
+
+    if (method === "GET" && url.includes("/api/tag-groups")) {
+      if (opts.tagGroupsPending) return new Promise<Response>(() => {});
+      if (opts.tagGroupsError) return json({ detail: "boom" }, 500);
+      return json(opts.tagGroups ?? { groups: [], groupless: [] });
     }
 
     // The model DETAIL read the editor re-fetches on open. Checked before the
@@ -257,7 +281,12 @@ describe("CategoriesPage — list (Story 52.2)", () => {
 
     expect(await screen.findByText("Could not load browse categories")).toBeTruthy();
     expect(screen.queryByText("No browse categories yet.")).toBeNull();
-    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    // Scoped to the LIST's error banner: Story 52.3's QA panel owns its own
+    // "Retry" for the partial-failure branch, and both are legitimately present
+    // when the category read is the source that failed.
+    const banner = screen.getByText("Could not load browse categories").closest("div");
+    expect(banner).toBeTruthy();
+    expect(within(banner as HTMLElement).getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
   it("renders the distinct empty-state copy for zero categories", async () => {
@@ -339,6 +368,12 @@ describe("CategoriesPage — reorder (Story 52.2)", () => {
         return json({ id: ADMIN_ID, email: "a@b.c", display_name: "Admin", role: "admin" });
       }
       if (method === "GET" && url.includes("/api/admin/categories")) return json(CATEGORIES);
+      if (method === "GET" && url.includes("/api/admin/models/over-categorized")) {
+        return json({ items: [], total: 0 });
+      }
+      if (method === "GET" && url.includes("/api/tag-groups")) {
+        return json({ groups: [], groupless: [] });
+      }
       if (method === "GET" && url.includes("/api/models")) {
         return json({ items: [], total: 0, offset: 0, limit: 48 });
       }
@@ -820,6 +855,12 @@ describe("ModelCategoriesDialog — replace-set editor (Story 52.2)", () => {
         });
       }
       if (method === "GET" && url.includes("/api/admin/categories")) return json(CATEGORIES);
+      if (method === "GET" && url.includes("/api/admin/models/over-categorized")) {
+        return json({ items: [], total: 0 });
+      }
+      if (method === "GET" && url.includes("/api/tag-groups")) {
+        return json({ groups: [], groupless: [] });
+      }
       if (method === "GET" && /\/api\/models\/[^?]+/.test(url)) {
         return json({ id: "m1", slug: "spiral-vase", name_en: "Spiral vase", name_pl: null, categories: [], tags: [] });
       }

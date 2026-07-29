@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 from fastapi import HTTPException, UploadFile
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -60,7 +61,11 @@ from app.modules.sot.admin_schemas import (
     TagPatch,
     TagsReplace,
 )
-from app.modules.sot.schemas import BrowseCategoryAdminRead
+from app.modules.sot.schemas import (
+    BrowseCategoryAdminRead,
+    OverCategorizedModelRead,
+    OverCategorizedResponse,
+)
 from app.modules.sot.service import _browse_category_model_counts
 
 _MAX_FILE_BYTES = 500 * 1024 * 1024  # 500 MB
@@ -1699,6 +1704,76 @@ def list_browse_categories_admin(session: Session) -> list[BrowseCategoryAdminRe
         )
         for c in rows
     ]
+
+
+def list_over_categorized_models(
+    session: Session,
+    *,
+    min_categories: int,
+    limit: int,
+) -> OverCategorizedResponse:
+    """Story 52.3 (B-1) — models carrying at least `min_categories` categories.
+
+    The `model_id`-grouped MIRROR of the read-side `_browse_category_model_counts`
+    (service.py), which groups the same join by `category_id`. Same join, same
+    live-row filter, same covering index — only the grouping key and the HAVING
+    differ. Written as a mirror rather than a generalization for the reason that
+    helper already records about `_tag_model_counts`: the two answer different
+    questions and share no caller.
+
+    `ModelBrowseCategory`'s composite PK `(model_id, category_id)` makes
+    `func.count()` a distinct-category count without `DISTINCT`.
+
+    Exactly TWO statements regardless of catalogue or assignment cardinality:
+    one grouped read for `items` and one COUNT over the same grouped set for
+    `total`. `total` deliberately ignores `limit` — the panel's overflow line
+    states the true remaining count, so a limit-tracking total would make the
+    cap read as "these are all of them".
+    """
+    grouped = (
+        select(ModelBrowseCategory.model_id)
+        .select_from(ModelBrowseCategory)
+        .join(Model, Model.id == ModelBrowseCategory.model_id)
+        .where(Model.deleted_at.is_(None))
+        .group_by(ModelBrowseCategory.model_id)
+        .having(func.count() >= min_categories)
+    )
+
+    rows = session.exec(
+        select(
+            ModelBrowseCategory.model_id,
+            Model.slug,
+            Model.name_en,
+            Model.name_pl,
+            func.count().label("category_count"),
+        )
+        .select_from(ModelBrowseCategory)
+        .join(Model, Model.id == ModelBrowseCategory.model_id)
+        .where(Model.deleted_at.is_(None))
+        # Grouping by the model's own projected columns as well as the id keeps
+        # this valid under strict GROUP BY (Postgres) — the id is the PK, so the
+        # extra keys cannot change the grouping.
+        .group_by(ModelBrowseCategory.model_id, Model.slug, Model.name_en, Model.name_pl)
+        .having(func.count() >= min_categories)
+        .order_by(func.count().desc(), Model.slug.asc())
+        .limit(limit)
+    ).all()
+
+    total = session.exec(select(func.count()).select_from(grouped.subquery())).one()
+
+    return OverCategorizedResponse(
+        items=[
+            OverCategorizedModelRead(
+                model_id=model_id,
+                slug=slug,
+                name_en=name_en,
+                name_pl=name_pl,
+                category_count=category_count,
+            )
+            for model_id, slug, name_en, name_pl, category_count in rows
+        ],
+        total=total,
+    )
 
 
 def replace_model_categories(

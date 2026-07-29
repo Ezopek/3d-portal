@@ -126,6 +126,25 @@ export interface BrowseCategoryAdminRead extends BrowseCategoryRead {
   inclusion_criterion: string | null;
 }
 
+// GET /api/admin/models/over-categorized item (Story 52.3). A deliberately
+// narrow admin-only shape: `ModelSummary` carries no category count by ratified
+// design (Decision AY), and adding one there for a single admin panel would
+// change a contract every catalogue surface consumes.
+export interface OverCategorizedModelRead {
+  model_id: string;
+  slug: string;
+  name_en: string;
+  name_pl: string | null;
+  category_count: number;
+}
+
+// `total` counts ALL qualifying models and is independent of `limit`, so the
+// panel's overflow line can state the true remaining count.
+export interface OverCategorizedResponse {
+  items: OverCategorizedModelRead[];
+  total: number;
+}
+
 // --- Files ---
 
 export type ModelFileKind =

@@ -18,13 +18,9 @@ import {
   DialogTitle,
 } from "@/ui/dialog";
 
+import { ADVISORY_MAX } from "./curationThresholds";
 import { mapCategoryApiError } from "./dialogs/apiErrorMessage";
 import { useReplaceModelCategories } from "./hooks/useAdminCategories";
-
-// The advisory norm from FR26-CAT-3. Above this the editor WARNS and still
-// saves — there is no hard database maximum and no write-blocking enforcement,
-// so a client-side block would be a lie about the contract.
-const ADVISORY_MAX = 3;
 
 // A replace-set write is audited as `entity_type="model"` / `action="model.update"`
 // with `category_ids` in both `before` and `after` — the convention

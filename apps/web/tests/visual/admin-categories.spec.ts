@@ -138,6 +138,76 @@ const AUDIT = {
   ],
 };
 
+// Story 52.3 — the curation-QA panel's two extra reads. The DEFAULTS are
+// deliberately empty so the shipped 52.2 baselines gain only the findings that
+// follow from their own fixtures (the zero-model category and the queue count),
+// and the panel's own baselines opt into richer payloads explicitly.
+const EMPTY_TAG_GROUPS = { groups: [], groupless: [] };
+const EMPTY_OVER_CATEGORIZED = { items: [], total: 0 };
+
+// One payload per check kind, so a single screenshot proves all six render.
+const QA_TAG_GROUPS = {
+  groups: [
+    {
+      id: "g1",
+      slug: "type",
+      name_en: "Type",
+      name_pl: "Typ",
+      position: 0,
+      tags: [
+        {
+          id: "t1",
+          slug: "vases",
+          name_en: "Vases",
+          name_pl: "Wazony",
+          group_id: "g1",
+          group_position: 0,
+          model_count: 4,
+        },
+      ],
+    },
+  ],
+  // Three user-facing tags with no group — `Tag.group_id IS NULL` is the whole
+  // definition; no lifecycle or hidden flag exists to filter on.
+  groupless: [
+    { id: "t7", slug: "loose-a", name_en: "Loose A", name_pl: "Luźny A", group_id: null, group_position: 0, model_count: 1 },
+    { id: "t8", slug: "loose-b", name_en: "Loose B", name_pl: "Luźny B", group_id: null, group_position: 0, model_count: 2 },
+    { id: "t9", slug: "loose-c", name_en: "Loose C", name_pl: "Luźny C", group_id: null, group_position: 0, model_count: 3 },
+  ],
+};
+
+const QA_OVER_CATEGORIZED = {
+  items: [
+    {
+      model_id: "m1",
+      slug: "spiral-vase",
+      name_en: "Spiral vase",
+      name_pl: "Wazon spiralny",
+      category_count: 4,
+    },
+  ],
+  total: 1,
+};
+
+// The eight starter rows plus Flow 3's ninth category: `Wazony` lands with ONE
+// model, which is simultaneously the tiny-category finding and the other half of
+// the label collision against the `Wazony` tag.
+const QA_CATEGORIES = [
+  ...CATEGORIES,
+  {
+    id: "c9",
+    slug: "vases",
+    name_en: "Vases",
+    name_pl: "Wazony",
+    description_en: null,
+    description_pl: null,
+    position: 5,
+    parent_id: null,
+    model_count: 1,
+    inclusion_criterion: "Modele wazonów.",
+  },
+];
+
 async function stubAdminCategories(
   page: Page,
   opts: {
@@ -147,8 +217,38 @@ async function stubAdminCategories(
     /** Status for DELETE, so the 409 conflict state can be baselined. */
     deleteStatus?: number;
     deleteDetail?: string;
+    tagGroups?: unknown;
+    overCategorized?: unknown;
+    /** Fails the over-categorized read only, for the partial-failure branch. */
+    overCategorizedError?: boolean;
   } = {},
 ) {
+  // Registered FIRST and kept narrow. Without these two, every test in this
+  // spec 404s the moment the QA panel mounts: unstubbed `/api/**` is a 404 in
+  // this harness. `**/api/admin/models/**` does not overlap `**/api/models**` —
+  // the latter needs the literal `/api/models` segment, which the admin path
+  // does not contain.
+  await page.route("**/api/admin/models/over-categorized**", (route) => {
+    if (opts.overCategorizedError) {
+      return route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "boom" }),
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(opts.overCategorized ?? EMPTY_OVER_CATEGORIZED),
+    });
+  });
+  await page.route("**/api/tag-groups**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(opts.tagGroups ?? EMPTY_TAG_GROUPS),
+    }),
+  );
   await page.route("**/api/admin/categories**", (route) => {
     if (route.request().method() === "DELETE") {
       return route.fulfill({
@@ -232,8 +332,12 @@ test.describe("/admin/categories baselines", () => {
     await waitForReady(page);
 
     await expect(page.getByText("Brak kategorii przeglądania.")).toBeVisible();
-    // Not an error, not a celebration.
-    await expect(page.getByText("Nic nie wymaga uwagi.")).toBeVisible();
+    // Not an error, not a celebration. Scoped to the QUEUE: Story 52.3's QA
+    // panel deliberately ships the same sentence (EXPERIENCE.md:252), so the
+    // page now legitimately carries it twice.
+    await expect(
+      page.getByTestId("curation-queue").getByText("Nic nie wymaga uwagi."),
+    ).toBeVisible();
     // baseline-reviewed:
     await expect(page).toHaveScreenshot("admin-categories-empty.png", { fullPage: true });
   });
@@ -245,9 +349,102 @@ test.describe("/admin/categories baselines", () => {
     await waitForReady(page);
 
     await expect(page.getByText("Nie udało się wczytać kategorii przeglądania")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Spróbuj ponownie" })).toBeVisible();
+    // Scoped to the LIST's fails-closed banner. Story 52.3's QA panel owns its
+    // own retry for the partial-failure branch, and when the CATEGORY read is
+    // the source that failed both are legitimately on the page at once.
+    await expect(
+      page.getByTestId("categories-error").getByRole("button", { name: "Spróbuj ponownie" }),
+    ).toBeVisible();
     // baseline-reviewed:
     await expect(page).toHaveScreenshot("admin-categories-error.png", { fullPage: true });
+  });
+});
+
+test.describe("/admin/categories curation QA (Story 52.3)", () => {
+  test("populated — all six advisory checks, warning amber only, nothing blocked", async ({
+    page,
+  }) => {
+    await stubAdminCategories(page, {
+      categories: QA_CATEGORIES,
+      tagGroups: QA_TAG_GROUPS,
+      overCategorized: QA_OVER_CATEGORIZED,
+    });
+    await page.goto("/admin/categories");
+    await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
+    await waitForReady(page);
+
+    const panel = page.getByTestId("curation-qa-panel");
+    await expect(panel).toBeVisible();
+    // Six findings: one empty category, one tiny category, one label collision,
+    // one over-categorized model, and the two aggregate rows.
+    await expect(panel.getByRole("heading", { name: "Kontrola kuratorska (6)" })).toBeVisible();
+    await expect(panel.getByText("Kategoria „Części zamienne” jest pusta")).toBeVisible();
+    await expect(panel.getByText("Kategoria „Wazony” ma 1 model")).toBeVisible();
+    await expect(
+      panel.getByText("Kolizja etykiet: kategoria „Wazony” / tag „Wazony” (Typ)"),
+    ).toBeVisible();
+    await expect(panel.getByText("Model „Wazon spiralny” ma 4 kategorie")).toBeVisible();
+    await expect(panel.getByText("2 modele bez kategorii")).toBeVisible();
+    await expect(panel.getByText("3 tagi użytkowe bez grupy")).toBeVisible();
+    // Nothing here is an error, and nothing offers a bulk fix.
+    await expect(panel.getByText("Sugerowana norma to 1–3. To ostrzeżenie, nie błąd.")).toBeVisible();
+    // baseline-reviewed:
+    await expect(page).toHaveScreenshot("admin-categories-qa-populated.png", { fullPage: true });
+  });
+
+  test("empty — the panel stays mounted and says nothing needs attention", async ({ page }) => {
+    await stubAdminCategories(page, {
+      // Every starter category carries models, the queue is clear, and both
+      // extra reads come back empty: the ONLY state in which the green line is
+      // honest (AC-21).
+      categories: CATEGORIES.map((c) => ({ ...c, model_count: 12 })),
+      queue: { items: [], total: 0, offset: 0, limit: 48 },
+    });
+    await page.goto("/admin/categories");
+    await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
+    await waitForReady(page);
+
+    const panel = page.getByTestId("curation-qa-panel");
+    await expect(panel).toBeVisible();
+    await expect(panel.getByRole("heading", { name: "Kontrola kuratorska (0)" })).toBeVisible();
+    await expect(panel.getByTestId("curation-qa-empty")).toHaveText("Nic nie wymaga uwagi.");
+    // baseline-reviewed:
+    await expect(page).toHaveScreenshot("admin-categories-qa-empty.png", { fullPage: true });
+  });
+
+  test("partial failure — names the checks that could not run, never a fabricated green state", async ({
+    page,
+  }) => {
+    await stubAdminCategories(page, {
+      categories: CATEGORIES.map((c) => ({ ...c, model_count: 12 })),
+      queue: { items: [], total: 0, offset: 0, limit: 48 },
+      overCategorizedError: true,
+    });
+    await page.goto("/admin/categories");
+    await page.getByRole("heading", { level: 1 }).waitFor({ state: "visible" });
+    await waitForReady(page);
+
+    const partial = page.getByTestId("curation-qa-partial");
+    await expect(partial).toBeVisible();
+    // No total is asserted while a source is missing.
+    await expect(
+      page
+        .getByTestId("curation-qa-panel")
+        // Exact: `Kontrola kuratorska (0)` is the fabricated-green heading C-5
+        // forbids, and substring matching would let it pass.
+        .getByRole("heading", { name: "Kontrola kuratorska", exact: true }),
+    ).toBeVisible();
+    await expect(
+      partial.getByText("Części kontroli nie dało się wykonać — jeden z odczytów się nie powiódł."),
+    ).toBeVisible();
+    await expect(partial.getByRole("button", { name: "Spróbuj ponownie" })).toBeVisible();
+    // D-6: the other sources produced zero findings and the panel STILL must
+    // not claim the surface is clean.
+    await expect(page.getByTestId("curation-qa-empty")).toHaveCount(0);
+    // baseline-reviewed:
+    await expect(page).toHaveScreenshot("admin-categories-qa-partial-failure.png", {
+      fullPage: true,
+    });
   });
 });
 

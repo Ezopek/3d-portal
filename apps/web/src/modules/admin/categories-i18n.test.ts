@@ -93,3 +93,93 @@ describe("admin categories i18n parity (Story 52.2)", () => {
     expect(plKeys["modules.admin.categories.queue.description"]).toContain("poprawny stan");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Story 52.3 — the curation-QA panel's copy contract
+// ---------------------------------------------------------------------------
+
+const QA_PREFIX = "modules.admin.categories.qa.";
+
+function qaKeys(obj: Record<string, string>): string[] {
+  return Object.keys(obj)
+    .filter((k) => k.startsWith(QA_PREFIX))
+    .sort();
+}
+
+describe("admin curation QA i18n parity (Story 52.3)", () => {
+  it("carries the IDENTICAL raw key set in both locales, CLDR suffixes included", () => {
+    // The repo-wide guard (tests/i18n.test.ts) compares RAW keys, so a Polish
+    // `_few`/`_many` without an English counterpart fails it. That is exactly
+    // what broke Story 52.2's first full gate; this story-level check makes the
+    // failure local and legible instead of repo-wide and cryptic.
+    expect(qaKeys(plKeys)).toEqual(qaKeys(enKeys));
+    expect(qaKeys(enKeys).length).toBeGreaterThan(0);
+  });
+
+  it("ships the complete CLDR set for every counted key in both locales", () => {
+    const COUNTED_BASES = [
+      `${QA_PREFIX}title`,
+      `${QA_PREFIX}overflow`,
+      `${QA_PREFIX}tiny_category.finding`,
+      `${QA_PREFIX}over_categorized.finding`,
+      `${QA_PREFIX}uncategorized_models.finding`,
+      `${QA_PREFIX}ungrouped_tags.finding`,
+    ];
+    for (const base of COUNTED_BASES) {
+      for (const suffix of ["_one", "_few", "_many", "_other"]) {
+        expect(enKeys[`${base}${suffix}`], `en missing ${base}${suffix}`).toBeTruthy();
+        expect(plKeys[`${base}${suffix}`], `pl missing ${base}${suffix}`).toBeTruthy();
+      }
+    }
+  });
+
+  it("never calls a flagged state an error, a failure or broken (AC-23)", () => {
+    // EXPERIENCE.md: nothing in curation QA is an error. The ONE permitted use
+    // of the word is the explicit negation the mockup itself carries
+    // ("To ostrzeżenie, nie błąd."), so it is stripped before the check rather
+    // than whitelisted by key.
+    // `qa.partial` is excluded: it describes a READ that did not complete, not
+    // a curation finding, and saying so is the honesty D-6 requires.
+    const FORBIDDEN_EN = ["error", "failure", "failed", "broken", "invalid", "defect"];
+    const FORBIDDEN_PL = ["błąd", "błęd", "awaria", "zepsut", "uszkodz", "nieprawidłow"];
+    for (const [locale, keys, forbidden, negations] of [
+      ["en", enKeys, FORBIDDEN_EN, ["not an error"]],
+      ["pl", plKeys, FORBIDDEN_PL, ["nie błąd"]],
+    ] as const) {
+      for (const k of qaKeys(keys)) {
+        if (k === `${QA_PREFIX}partial`) continue;
+        let value = keys[k]?.toLowerCase() ?? "";
+        for (const negation of negations) value = value.split(negation).join("");
+        for (const word of forbidden) {
+          expect(value, `${locale}.${k} calls a curation finding "${word}"`).not.toContain(word);
+        }
+      }
+    }
+  });
+
+  it("states in both locales that nothing is auto-applied and no category comes from tags (AC-23)", () => {
+    // FR26-ADMIN-2 / EXPERIENCE.md:290. The panel must say the negative out
+    // loud; a surface that merely omits an auto-apply button does not.
+    expect(enKeys[`${QA_PREFIX}description`]).toContain("never inferred from a model's tags");
+    expect(plKeys[`${QA_PREFIX}description`]).toContain("nigdy nie wynika z tagów modelu");
+  });
+
+  it("keeps the over-categorized copy a warning about a suggestion, not a limit", () => {
+    // FR26-CAT-3 is advisory. The row must not imply the write was or would be
+    // blocked — the panel performs no write at all.
+    expect(enKeys[`${QA_PREFIX}over_categorized.sub`]).toContain("suggested norm is 1–3");
+    expect(plKeys[`${QA_PREFIX}over_categorized.sub`]).toContain("Sugerowana norma to 1–3");
+  });
+
+  it("calls a zero-category model a valid state, exactly as the shipped queue does", () => {
+    expect(enKeys[`${QA_PREFIX}uncategorized_models.sub`]).toContain("valid state");
+    expect(plKeys[`${QA_PREFIX}uncategorized_models.sub`]).toContain("poprawny stan");
+  });
+
+  it("reuses the shipped empty-state copy — not an error, not a celebration", () => {
+    // EXPERIENCE.md:252. Deliberately the SAME sentence the curation queue
+    // already ships, because it is the same promise.
+    expect(enKeys[`${QA_PREFIX}empty`]).toBe(enKeys["modules.admin.categories.queue.empty"]);
+    expect(plKeys[`${QA_PREFIX}empty`]).toBe(plKeys["modules.admin.categories.queue.empty"]);
+  });
+});

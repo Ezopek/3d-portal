@@ -55,8 +55,14 @@ function maxDistanceFor(length: number): number {
   return 2;
 }
 
-/** Whether two ALREADY-NORMALIZED, non-empty strings are similar enough to cluster. */
-function fieldsSimilar(a: string, b: string): boolean {
+/**
+ * Whether two ALREADY-NORMALIZED, non-empty strings are similar enough to cluster.
+ *
+ * Exported (Story 52.3) so the Category/Tag label-collision check reuses this
+ * exact notion of "similar" rather than authoring a second one for the same
+ * product concept. The rules below are unchanged.
+ */
+export function fieldsSimilar(a: string, b: string): boolean {
   if (a === b) return true;
   const threshold = maxDistanceFor(Math.max(a.length, b.length));
   if (threshold === 0) return false; // already excluded exact-equality above
