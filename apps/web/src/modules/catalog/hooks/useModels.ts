@@ -16,6 +16,11 @@ export interface ModelsFilters {
   // never an array. AND-composed by the backend alongside the tag facets, not
   // folded into tag_match. Unset everywhere until Story 50.2 wires URL state.
   category?: string;
+  // Initiative 26 (Story 52.2) — zero-category models, the admin curation
+  // queue's source set. A PURE AND on the backend: combined with `category` it
+  // yields an empty page, and combined with `untagged` it is an intersection,
+  // never a union. Set only by the admin categories screen.
+  uncategorized?: boolean;
   q?: string;
   sort?: ModelListSort;
   page?: number; // 1-indexed
@@ -59,6 +64,7 @@ function buildParams(f: ModelsFilters): URLSearchParams {
   if (f.status !== undefined) p.set("status", f.status);
   if (f.source !== undefined) p.set("source", f.source);
   if (f.category !== undefined && f.category.length > 0) p.set("category", f.category);
+  if (f.uncategorized) p.set("uncategorized", "true");
   if (f.q !== undefined && f.q.length > 0) p.set("q", f.q);
   p.set("sort", f.sort ?? "recent");
   const page = f.page ?? 1;

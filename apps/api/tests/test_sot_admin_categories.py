@@ -1204,3 +1204,166 @@ def test_delete_category_children_checked_before_assignments_are_queried(client,
     assert queried == [], "assignments were queried even though children already conflict"
     assert _assignment_count(pid) == 1
     assert _category_exists(pid)
+
+
+# ---------------------------------------------------------------------------
+# Story 52.2 (B-1) — GET /api/admin/categories, the admin read
+# ---------------------------------------------------------------------------
+#
+# Story 49.5 shipped four WRITE routes and no admin read, which left
+# `inclusion_criterion` writable, seeded (`app/core/db/seed.py` populates it for
+# all eight starter categories) and echoed on writes — but readable by no
+# endpoint. Reading the current value therefore required issuing a mutating
+# `PATCH {}`, which also wrote an audit row. That was ledgered by the 49.5 code
+# review as a defer whose text names Story 52.2 as the owner ("Belongs to Story
+# 52.2, the direct consumer"), and this route is that discharge.
+
+
+def test_admin_list_categories_returns_inclusion_criterion(client):
+    """AC-25 — the admin read exposes `inclusion_criterion`, which the public
+    contract deliberately omits. This is the whole reason the route exists."""
+    _admin_cookie(client)
+    criterion = f"Only things that {uuid.uuid4().hex[:8]}."
+    cat_id = _seed_category_id(inclusion_criterion=criterion)
+
+    r = client.get("/api/admin/categories")
+    assert r.status_code == 200, r.text
+    row = next(c for c in r.json() if c["id"] == str(cat_id))
+    assert row["inclusion_criterion"] == criterion
+
+
+def test_admin_list_categories_returns_the_full_admin_key_set(client):
+    """AC-25 — exactly `BrowseCategoryAdminRead`: the nine public-read keys plus
+    `inclusion_criterion`. Pinned as an equality so neither a silent addition
+    nor a silent removal can pass."""
+    _admin_cookie(client)
+    cat_id = _seed_category_id(inclusion_criterion="X.")
+
+    row = next(c for c in client.get("/api/admin/categories").json() if c["id"] == str(cat_id))
+    assert set(row) == {
+        "id",
+        "slug",
+        "name_en",
+        "name_pl",
+        "description_en",
+        "description_pl",
+        "position",
+        "parent_id",
+        "model_count",
+        "inclusion_criterion",
+    }
+
+
+def test_admin_list_categories_is_ordered_by_position_then_slug(client):
+    """AC-25 — `(position ASC, slug ASC)`, the same order the public read and the
+    browse rail use. The admin screen renders server order and never re-sorts."""
+    _admin_cookie(client)
+    with Session(get_engine()) as s:
+        low = _seed_category(s, position=0)
+        high = _seed_category(s, position=99)
+        # Same position, so the slug tiebreak is what orders these two.
+        tie_a = BrowseCategory(slug=f"cat-tie-a-{uuid.uuid4().hex[:6]}", name_en="A", position=50)
+        tie_b = BrowseCategory(slug=f"cat-tie-b-{uuid.uuid4().hex[:6]}", name_en="B", position=50)
+        s.add(tie_a)
+        s.add(tie_b)
+        s.commit()
+        s.refresh(tie_a)
+        s.refresh(tie_b)
+        wanted = [str(low.id), str(tie_a.id), str(tie_b.id), str(high.id)]
+
+    listed = [c["id"] for c in client.get("/api/admin/categories").json()]
+    assert [i for i in listed if i in set(wanted)] == wanted
+
+
+def test_admin_list_categories_includes_empty_categories(client):
+    """AC-25 — a category with zero assignments IS returned, with
+    `model_count: 0`. The curation surface exists to see exactly these."""
+    _admin_cookie(client)
+    cat_id = _seed_category_id()
+
+    row = next(c for c in client.get("/api/admin/categories").json() if c["id"] == str(cat_id))
+    assert row["model_count"] == 0
+
+
+def test_admin_list_categories_model_count_agrees_with_the_public_read(client):
+    """AC-25 — the admin and public `model_count` can never disagree, including
+    the soft-delete exclusion. Sibling of the shipped 49.5 parity test."""
+    _admin_cookie(client)
+    with Session(get_engine()) as s:
+        cat = _seed_category(s)
+        live = _seed_model(s)
+        dead = Model(
+            slug=f"m-cat-{uuid.uuid4().hex[:8]}",
+            name_en="Gone",
+            deleted_at=datetime.datetime.now(datetime.UTC),
+        )
+        s.add(dead)
+        s.flush()
+        s.add(ModelBrowseCategory(model_id=live, category_id=cat.id))
+        s.add(ModelBrowseCategory(model_id=dead.id, category_id=cat.id))
+        s.commit()
+        cat_id = cat.id
+
+    admin_rows = {c["id"]: c["model_count"] for c in client.get("/api/admin/categories").json()}
+    public_rows = {c["id"]: c["model_count"] for c in client.get("/api/categories").json()}
+    assert admin_rows[str(cat_id)] == 1
+    assert admin_rows == public_rows
+
+
+def test_admin_list_categories_does_not_leak_criterion_into_the_public_read(client):
+    """AC-26 — the public contract stays byte-unchanged: adding the admin read
+    must not add `inclusion_criterion` to `GET /api/categories[/{slug}]`."""
+    _admin_cookie(client)
+    with Session(get_engine()) as s:
+        cat = _seed_category(s, inclusion_criterion="Secret to the public read.")
+        slug = cat.slug
+
+    for row in client.get("/api/categories").json():
+        assert "inclusion_criterion" not in row
+    assert "inclusion_criterion" not in client.get(f"/api/categories/{slug}").json()
+
+
+def test_admin_list_categories_is_a_pure_read_writing_no_audit_row(client):
+    """AC-25 — reading the criterion must no longer cost an audit row. This is
+    the defect the ledgered 49.5 entry describes, asserted as closed."""
+    _admin_cookie(client)
+    _seed_category_id(inclusion_criterion="Y.")
+
+    with Session(get_engine()) as s:
+        before = len(s.exec(select(AuditLog)).all())
+    assert client.get("/api/admin/categories").status_code == 200
+    with Session(get_engine()) as s:
+        after = len(s.exec(select(AuditLog)).all())
+    assert after == before
+
+
+def test_admin_list_categories_auth_matrix(client):
+    """AC-25 — admin-only. Anonymous 401; member and agent 403. Never agent-
+    readable: category curation is admin curation (Decision AY)."""
+    client.cookies.clear()
+    assert client.get("/api/admin/categories").status_code == 401
+
+    with Session(get_engine()) as s:
+        member = User(
+            email=f"member-cat-{uuid.uuid4().hex[:6]}@test.local",
+            display_name="Member",
+            role=UserRole.member,
+            password_hash="x",
+        )
+        agent = User(
+            email=f"agent-cat-{uuid.uuid4().hex[:6]}@test.local",
+            display_name="Agent",
+            role=UserRole.agent,
+            password_hash="x",
+        )
+        s.add(member)
+        s.add(agent)
+        s.commit()
+        s.refresh(member)
+        s.refresh(agent)
+        member_id, agent_id = member.id, agent.id
+
+    for token in (member_token(member_id), agent_token(agent_id)):
+        client.cookies.set(ACCESS_COOKIE, token)
+        assert client.get("/api/admin/categories").status_code == 403
+    client.cookies.clear()

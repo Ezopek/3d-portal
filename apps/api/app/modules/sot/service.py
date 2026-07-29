@@ -256,6 +256,7 @@ def list_models(
     untagged: bool = False,
     source: ModelSource | None = None,
     category: str | None = None,
+    uncategorized: bool = False,
     q: str | None = None,
     external_url: str | None = None,
     sort: ModelListSort = ModelListSort.recent,
@@ -286,6 +287,15 @@ def list_models(
       and never a SQL JOIN. Applied before the total-count subquery, so `total`
       and pagination stay filter-correct. An unknown slug yields an empty page
       with `total: 0` (200, never 404).
+    - uncategorized: Initiative 26 (Story 52.2) zero-category models
+      (`Model.id NOT IN model_browse_category`), backing the admin curation
+      queue. A PURE AND, structurally outside the tag/untagged composition —
+      deliberately NOT OR-unioned with `category` the way `untagged` unions
+      with `tag_ids`. That union exists because both address the same axis
+      through one shipped checkbox list; categories have no such control (MVP
+      allows exactly one slug-addressed scope). Combined with `category` the
+      result is therefore an empty page, which is a true statement — no model
+      is both in a category and in none — not a special case.
     - external_url: exact match against a model's `ModelExternalLink.url`
       (any source). Primary use case is agent-runbook dedup-by-source-URL
       pre-flight check (TB-004): hit returns the existing model's UUID,
@@ -374,6 +384,14 @@ def list_models(
                 .where(BrowseCategory.slug == category)
             )
         )
+    if uncategorized:
+        # Initiative 26 (Story 52.2) — the admin curation queue's source set.
+        # Byte-analogue of the `untagged` predicate above, but applied HERE,
+        # outside the tag/untagged composition, so it is a pure AND: it never
+        # enters a tag bucket, never widens `untagged`, and never unions with
+        # the `category` scope (see the docstring for why that union would be
+        # wrong rather than merely different).
+        base = base.where(Model.id.notin_(select(ModelBrowseCategory.model_id)))
     if q:
         like = f"%{q.lower()}%"
         tag_lower = unicode_lower(session)

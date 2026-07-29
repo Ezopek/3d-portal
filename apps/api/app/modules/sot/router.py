@@ -173,7 +173,14 @@ def get_category(
         "**unknown slug returns 200 with an empty page and `total: 0`**, never a 404 "
         "(same posture as an unknown `tag_ids` entry); use `GET /api/categories/{slug}` "
         "when you need a 404 on a missing category. A model assigned to several "
-        "categories is returned exactly once. Other filters: `status`, `source`, "
+        "categories is returned exactly once. **`uncategorized`** (Initiative 26, "
+        "Story 52.2; default false): `true` surfaces models carrying **zero** browse "
+        "categories — the admin curation queue's source set. It is a pure AND, so "
+        "combining it with `category` yields an empty page (no model is both in a "
+        "category and in none), and combining it with `untagged` is an intersection "
+        "(no tags AND no categories), never a union. A zero-category model is a "
+        "VALID, publicly visible state (FR26-CAT-2); this flag exists to curate it, "
+        "not to flag it as broken. Other filters: `status`, `source`, "
         "`q` (case-insensitive substring across `name_en` / `name_pl` / `slug` **and "
         "across the `name_pl` / `name_en` of any tag assigned to the model** (Initiative "
         "26, Story 49.4); `tag.slug` is **not** matched — unlike `GET /api/tags?q=` — and "
@@ -199,6 +206,7 @@ def get_models(
     untagged: bool = False,
     source: ModelSource | None = None,
     category: str | None = None,
+    uncategorized: bool = False,
     q: str | None = None,
     external_url: str | None = None,
     sort: ModelListSort = ModelListSort.recent,
@@ -215,6 +223,7 @@ def get_models(
         untagged=untagged,
         source=source,
         category=category,
+        uncategorized=uncategorized,
         q=q,
         external_url=external_url,
         sort=sort,

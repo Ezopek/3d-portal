@@ -134,15 +134,22 @@ describe("ModelCategoriesSection", () => {
     expect(router.state.location.pathname).toBe("/");
   });
 
-  it("renders exactly one static advisory line for a zero-category model viewed by an admin", async () => {
+  it("renders exactly one advisory line, linking to the curation surface, for a zero-category model viewed by an admin", async () => {
     await mountAt({ detail: makeDetail([]), isAdmin: true });
 
     const advisory = screen.getByText("No categories — needs curation");
     expect(advisory).toBeTruthy();
-    // Static text: not a control, not a link, and it opens nothing (D-5, V-8 —
-    // /admin/categories is Story 52.2 and does not exist yet).
-    expect(advisory.tagName).toBe("SPAN");
-    expect(screen.queryByRole("link")).toBeNull();
+    // Story 52.2 (AC-20) discharges 51.4's recorded §9 handoff. 51.4 shipped
+    // this as a static `<span>` ON PURPOSE (D-5, V-8): `/admin/categories` was
+    // backlog, and a link to a 404 would have been worse than an honest
+    // advisory. That destination now exists, so this becomes the "link to
+    // assign" `EXPERIENCE.md:251` always specified. The assertion is TIGHTENED,
+    // not relaxed: it still pins exactly one advisory element, still forbids a
+    // button, and now additionally pins the href.
+    expect(advisory.tagName).toBe("A");
+    expect(advisory.getAttribute("href")).toBe("/admin/categories");
+    expect(screen.getByTestId("model-categories-curation-link")).toBe(advisory);
+    expect(screen.getAllByRole("link")).toHaveLength(1);
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.queryByTestId("model-category-link")).toBeNull();
   });

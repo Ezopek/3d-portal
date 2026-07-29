@@ -60,6 +60,8 @@ from app.modules.sot.admin_schemas import (
     TagPatch,
     TagsReplace,
 )
+from app.modules.sot.schemas import BrowseCategoryAdminRead
+from app.modules.sot.service import _browse_category_model_counts
 
 _MAX_FILE_BYTES = 500 * 1024 * 1024  # 500 MB
 
@@ -1657,6 +1659,46 @@ def delete_browse_category(
         # nothing left to detach). Re-raise instead, so the cause surfaces
         # exactly as it already does on the sibling routes.
         raise
+
+
+def list_browse_categories_admin(session: Session) -> list[BrowseCategoryAdminRead]:
+    """Story 52.2 (B-1) — every browse category in the ADMIN shape, flat,
+    ordered `(position, slug)`.
+
+    The admin shape is `BrowseCategoryRead`'s nine public keys PLUS
+    `inclusion_criterion`, which the public contract deliberately omits
+    (Decision AY keyset). Before this route the field was writable, seeded and
+    echoed on writes but exposed by no read — so reading it meant issuing a
+    mutating `PATCH {}` that also wrote an audit row. That is the defect the
+    49.5 code review ledgered as belonging to this story.
+
+    Counts come from the READ-side `_browse_category_model_counts` whole-table
+    GROUP BY, NOT from `browse_category_model_count` per row. Two reasons, both
+    load-bearing: the per-row helper would make this endpoint O(categories) in
+    statements, and sharing the read-side helper makes agreement with
+    `GET /api/categories` true by construction rather than by coincidence —
+    the property `test_browse_category_model_count_agrees_with_read_side_for_
+    every_category` already pins for the write path.
+    """
+    rows = session.exec(
+        select(BrowseCategory).order_by(BrowseCategory.position, BrowseCategory.slug)
+    ).all()
+    counts = _browse_category_model_counts(session)
+    return [
+        BrowseCategoryAdminRead(
+            id=c.id,
+            slug=c.slug,
+            name_en=c.name_en,
+            name_pl=c.name_pl,
+            description_en=c.description_en,
+            description_pl=c.description_pl,
+            position=c.position,
+            parent_id=c.parent_id,
+            model_count=counts.get(c.id, 0),
+            inclusion_criterion=c.inclusion_criterion,
+        )
+        for c in rows
+    ]
 
 
 def replace_model_categories(

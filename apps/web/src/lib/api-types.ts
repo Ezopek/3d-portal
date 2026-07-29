@@ -119,6 +119,13 @@ export interface BrowseCategoryRead extends BrowseCategorySummary {
   model_count: number;
 }
 
+// GET /api/admin/categories item (Story 52.2). BrowseCategoryRead PLUS
+// `inclusion_criterion` — the admin-only admission test, deliberately absent
+// from the public read contract. Admin-only: never fetched on a member path.
+export interface BrowseCategoryAdminRead extends BrowseCategoryRead {
+  inclusion_criterion: string | null;
+}
+
 // --- Files ---
 
 export type ModelFileKind =

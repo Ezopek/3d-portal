@@ -49,15 +49,23 @@ export function ModelCategoriesSection({ detail, isAdmin }: Props) {
   const labelOf = (item: { name_en: string; name_pl: string | null }) =>
     preferPl && item.name_pl ? item.name_pl : item.name_en;
 
-  // Static text, NOT a link or a button: the assignment surface does not exist
-  // yet (`/admin/categories` is Story 52.2, still backlog), and a link to a
-  // 404 would be worse than an honest advisory (D-5, V-8).
+  // Story 52.2 discharges 51.4's recorded handoff: `/admin/categories` now
+  // exists, so the advisory becomes the "link to assign" EXPERIENCE.md:251
+  // always specified. 51.4 shipped this as static text on purpose (D-5, V-8) —
+  // the destination was backlog and a link to a 404 would have been worse than
+  // an honest advisory. Member behaviour is unchanged: the early return above
+  // still renders NOTHING for a non-admin, because a zero-category model is a
+  // normal state, not a defect (FR26-CAT-2).
   if (categories.length === 0) {
     return (
       <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="text-xs text-muted-foreground">
+        <Link
+          to="/admin/categories"
+          data-testid="model-categories-curation-link"
+          className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+        >
           {t("catalog.browse.noCategoriesAdmin")}
-        </span>
+        </Link>
       </div>
     );
   }

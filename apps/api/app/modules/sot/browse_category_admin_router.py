@@ -12,6 +12,7 @@ agent-ingestion split `tag_group_admin_router.py` already applies (FR25-ADMIN-1
 alongside tag-group governance and never advertises an agent capability.
 
 Owns:
+  GET    /api/admin/categories                    — list (admin shape, Story 52.2)
   POST   /api/admin/categories                    — create
   PATCH  /api/admin/categories/{category_id}      — rename/reorder/reparent
   DELETE /api/admin/categories/{category_id}      — delete (409 unless clean or detach=true)
@@ -36,6 +37,7 @@ from app.modules.sot.admin_service import (
     browse_category_model_count,
     create_browse_category,
     delete_browse_category,
+    list_browse_categories_admin,
     replace_model_categories,
     update_browse_category,
 )
@@ -63,6 +65,34 @@ def _admin_read(session: Session, cat: BrowseCategory) -> BrowseCategoryAdminRea
         parent_id=cat.parent_id,
         model_count=browse_category_model_count(session, cat.id),
     )
+
+
+@router.get(
+    "/categories",
+    summary="List browse categories in the admin shape (with inclusion_criterion)",
+    description=(
+        "Returns every `BrowseCategory` as a **flat** array ordered `(position ASC, "
+        "slug ASC)` in the `BrowseCategoryAdminRead` shape — the nine-key public "
+        "`BrowseCategoryRead` set PLUS `inclusion_criterion`, which the public "
+        "`GET /api/categories` contract deliberately omits (Decision AY keyset).\n\n"
+        "This route exists because Story 49.5 shipped `inclusion_criterion` as "
+        "writable, seeded and echoed-on-write but readable by no endpoint, so an "
+        "admin could only recover the current value by issuing a mutating "
+        "`PATCH {}` that also wrote an audit row. It is a **pure read**: it writes "
+        "no audit row and mutates nothing.\n\n"
+        "Categories with zero assignments ARE returned, with `model_count: 0` — the "
+        "curation surface exists to see them. `model_count` is computed by the same "
+        "shared aggregate `GET /api/categories` uses, so the two can never disagree. "
+        "Admin-only (`current_admin`); never agent-readable — category curation is "
+        "admin curation."
+    ),
+    response_model=list[BrowseCategoryAdminRead],
+)
+def admin_list_categories(
+    session: Annotated[Session, Depends(get_session)],
+    _actor_user_id: uuid.UUID = current_admin,
+) -> list[BrowseCategoryAdminRead]:
+    return list_browse_categories_admin(session)
 
 
 @router.post(

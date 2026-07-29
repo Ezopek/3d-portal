@@ -92,10 +92,16 @@ test("model-detail zero-category advisory matches baseline for an admin viewer",
   await expect(advisory).toBeVisible();
   await expect(page.getByTestId("model-category-link")).toHaveCount(0);
   await expect(page.getByText(CATEGORIES_LABEL, { exact: true })).toHaveCount(0);
-  // Static text, not a control: no link and no button carries this copy.
+  // Story 52.2 (AC-20) discharges 51.4's recorded §9 handoff. 51.4 shipped this
+  // as static text ON PURPOSE, because `/admin/categories` did not exist yet and
+  // a link to a 404 would have been worse than an honest advisory. That surface
+  // now exists, so this becomes the "link to assign" the UX contract always
+  // specified. The assertion is TIGHTENED, not relaxed: the advisory is now
+  // pinned to a link with an exact href, and it is still never a button.
   await expect(
     page.getByRole("link", { name: NO_CATEGORIES_ADVISORY }),
-  ).toHaveCount(0);
+  ).toHaveAttribute("href", "/admin/categories");
+  await expect(page.getByTestId("model-categories-curation-link")).toBeVisible();
   await expect(
     page.getByRole("button", { name: NO_CATEGORIES_ADVISORY }),
   ).toHaveCount(0);

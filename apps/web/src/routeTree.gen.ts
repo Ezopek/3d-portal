@@ -34,6 +34,7 @@ import { Route as AdminQueuesRouteImport } from './routes/admin/queues'
 import { Route as AdminProfileOffersRouteImport } from './routes/admin/profile-offers'
 import { Route as AdminProfileLibraryRouteImport } from './routes/admin/profile-library'
 import { Route as AdminInvitesRouteImport } from './routes/admin/invites'
+import { Route as AdminCategoriesRouteImport } from './routes/admin/categories'
 import { Route as AdminModelsNewRouteImport } from './routes/admin/models/new'
 
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -161,6 +162,11 @@ const AdminInvitesRoute = AdminInvitesRouteImport.update({
   path: '/admin/invites',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminCategoriesRoute = AdminCategoriesRouteImport.update({
+  id: '/admin/categories',
+  path: '/admin/categories',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminModelsNewRoute = AdminModelsNewRouteImport.update({
   id: '/admin/models/new',
   path: '/admin/models/new',
@@ -172,6 +178,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/admin/categories': typeof AdminCategoriesRoute
   '/admin/invites': typeof AdminInvitesRoute
   '/admin/profile-library': typeof AdminProfileLibraryRoute
   '/admin/profile-offers': typeof AdminProfileOffersRoute
@@ -200,6 +207,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/admin/categories': typeof AdminCategoriesRoute
   '/admin/invites': typeof AdminInvitesRoute
   '/admin/profile-library': typeof AdminProfileLibraryRoute
   '/admin/profile-offers': typeof AdminProfileOffersRoute
@@ -229,6 +237,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/admin/categories': typeof AdminCategoriesRoute
   '/admin/invites': typeof AdminInvitesRoute
   '/admin/profile-library': typeof AdminProfileLibraryRoute
   '/admin/profile-offers': typeof AdminProfileOffersRoute
@@ -259,6 +268,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/register'
     | '/reset-password'
+    | '/admin/categories'
     | '/admin/invites'
     | '/admin/profile-library'
     | '/admin/profile-offers'
@@ -287,6 +297,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/register'
     | '/reset-password'
+    | '/admin/categories'
     | '/admin/invites'
     | '/admin/profile-library'
     | '/admin/profile-offers'
@@ -315,6 +326,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/register'
     | '/reset-password'
+    | '/admin/categories'
     | '/admin/invites'
     | '/admin/profile-library'
     | '/admin/profile-offers'
@@ -344,6 +356,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   RegisterRoute: typeof RegisterRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  AdminCategoriesRoute: typeof AdminCategoriesRoute
   AdminInvitesRoute: typeof AdminInvitesRoute
   AdminProfileLibraryRoute: typeof AdminProfileLibraryRoute
   AdminProfileOffersRoute: typeof AdminProfileOffersRoute
@@ -545,6 +558,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminInvitesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/categories': {
+      id: '/admin/categories'
+      path: '/admin/categories'
+      fullPath: '/admin/categories'
+      preLoaderRoute: typeof AdminCategoriesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/models/new': {
       id: '/admin/models/new'
       path: '/admin/models/new'
@@ -560,6 +580,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   RegisterRoute: RegisterRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  AdminCategoriesRoute: AdminCategoriesRoute,
   AdminInvitesRoute: AdminInvitesRoute,
   AdminProfileLibraryRoute: AdminProfileLibraryRoute,
   AdminProfileOffersRoute: AdminProfileOffersRoute,
