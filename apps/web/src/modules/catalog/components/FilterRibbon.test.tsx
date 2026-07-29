@@ -33,6 +33,8 @@ describe("FilterRibbon", () => {
           state={{ q: "dragon", tag_ids: [], status: undefined, source: undefined, sort: "recent" }}
           tagsById={new Map()}
           onChange={() => {}}
+        filtersSheetOpen={false}
+        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -48,6 +50,8 @@ describe("FilterRibbon", () => {
           state={{ q: "", tag_ids: [], status: undefined, source: undefined, sort: "recent" }}
           tagsById={new Map()}
           onChange={(s) => calls.push(s)}
+        filtersSheetOpen={false}
+        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -66,6 +70,8 @@ describe("FilterRibbon", () => {
           state={{ q: "", tag_ids: ["t1"], status: undefined, source: undefined, sort: "recent" }}
           tagsById={tagsById}
           onChange={(s) => calls.push(s)}
+        filtersSheetOpen={false}
+        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -81,6 +87,8 @@ describe("FilterRibbon", () => {
           state={{ q: "", tag_ids: [], status: undefined, source: undefined, sort: "recent" }}
           tagsById={new Map()}
           onChange={() => {}}
+        filtersSheetOpen={false}
+        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -95,6 +103,8 @@ describe("FilterRibbon", () => {
           state={{ q: "", tag_ids: [], status: undefined, source: undefined, sort: "recent" }}
           tagsById={new Map()}
           onChange={() => {}}
+        filtersSheetOpen={false}
+        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -114,6 +124,8 @@ describe("FilterRibbon", () => {
           state={{ q: "", tag_ids: [], status: undefined, source: undefined, sort: "name_asc" }}
           tagsById={new Map()}
           onChange={() => {}}
+        filtersSheetOpen={false}
+        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -131,6 +143,8 @@ describe("FilterRibbon", () => {
           state={{ q: "", tag_ids: [], status: undefined, source: undefined, sort: "recent" }}
           tagsById={new Map()}
           onChange={() => {}}
+        filtersSheetOpen={false}
+        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -151,6 +165,8 @@ describe("FilterRibbon", () => {
           state={{ q: "", tag_ids: [], status: undefined, source: undefined, sort: "recent" }}
           tagsById={new Map()}
           onChange={() => {}}
+        filtersSheetOpen={false}
+        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -165,6 +181,8 @@ describe("FilterRibbon", () => {
           state={{ q: "", tag_ids: ["t1"], status: undefined, source: undefined, sort: "recent" }}
           tagsById={tagsById}
           onChange={() => {}}
+        filtersSheetOpen={false}
+        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -179,6 +197,8 @@ describe("FilterRibbon", () => {
           state={{ q: "", tag_ids: ["t1", "t2"], status: undefined, source: undefined, sort: "recent" }}
           tagsById={tagsById}
           onChange={() => {}}
+        filtersSheetOpen={false}
+        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -198,6 +218,8 @@ describe("FilterRibbon", () => {
           state={{ q: "", tag_ids: ["t1", "t2"], status: undefined, source: undefined, sort: "recent" }}
           tagsById={tagsById}
           onChange={(s) => calls.push(s)}
+        filtersSheetOpen={false}
+        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -216,6 +238,8 @@ describe("FilterRibbon", () => {
           state={{ q: "", tag_ids: ["t1", "t2"], tag_match: "any", status: undefined, source: undefined, sort: "recent" }}
           tagsById={tagsById}
           onChange={(s) => calls.push(s)}
+        filtersSheetOpen={false}
+        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -233,6 +257,8 @@ describe("FilterRibbon", () => {
           state={{ q: "", tag_ids: ["t1", "t2"], tag_match: "any", status: undefined, source: undefined, sort: "recent" }}
           tagsById={tagsById}
           onChange={() => {}}
+        filtersSheetOpen={false}
+        onFiltersSheetOpenChange={() => {}}
         />,
       ),
     );
@@ -272,6 +298,8 @@ describe("FilterRibbon", () => {
             calls.push(s);
             setState(s);
           }}
+          filtersSheetOpen={false}
+          onFiltersSheetOpenChange={() => {}}
         />
       );
     }

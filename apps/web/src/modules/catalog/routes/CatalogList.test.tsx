@@ -858,3 +858,130 @@ describe("CatalogList category route + scope chip (Story 51.2)", () => {
     });
   });
 });
+
+// Story 51.3 (Initiative 26) — the mobile Browse sheet, and the three-way
+// mobile-sheet exclusivity (Browse / Tagi / Filters) D-4 requires. Dialog
+// accessible names ("Browse categories" / "Tags" / "Filters") are distinct,
+// so each sheet's open/closed state can be asserted unambiguously.
+describe("CatalogList mobile Browse sheet + sheet exclusivity (Story 51.3)", () => {
+  // `hidden: true` on the triggers only: a modal sheet's backdrop marks the
+  // REST of the page `aria-hidden` (and visually covers it) while open, so a
+  // background trigger is not reachable by a real pointer click until the
+  // open sheet is dismissed first — same as any modal dialog. D-4.3's
+  // "opening one closes the other two" is a state-level invariant (it also
+  // guards a sheet left open by a non-pointer path, e.g. a future
+  // programmatic open), so these tests drive the trigger directly rather
+  // than asserting an interaction a mouse user cannot perform through an
+  // active backdrop. Dialog queries stay strict: a closed `Sheet` unmounts
+  // its content rather than merely hiding it (confirmed by
+  // `BrowseSheet.test.tsx`'s "does not render... while closed").
+  const browseTrigger = { name: "Browse", hidden: true };
+  const tagsTrigger = { name: "Tags", hidden: true };
+  const filtersTrigger = { name: "Filters", hidden: true };
+  const browseDialog = { name: "Browse categories" };
+  const tagsDialog = { name: "Tags" };
+  const filtersDialog = { name: "Filters" };
+
+  it("renders a Browse trigger distinct from the Tags and Filters triggers", async () => {
+    installFetch();
+    await mountAt("/catalog/");
+
+    await screen.findByRole("navigation", { name: /Browse categories/ });
+    expect(screen.getByRole("button", browseTrigger)).toBeTruthy();
+    expect(screen.getByRole("button", tagsTrigger)).toBeTruthy();
+    expect(screen.getByRole("button", filtersTrigger)).toBeTruthy();
+  });
+
+  it("opens the Browse sheet listing the same categories the rail shows", async () => {
+    installFetch();
+    await mountAt("/catalog/");
+
+    fireEvent.click(await screen.findByRole("button", browseTrigger));
+
+    const dialog = await screen.findByRole("dialog", browseDialog);
+    expect(within(dialog).getByRole("link", { name: "All catalog" })).toBeTruthy();
+    expect(
+      within(dialog).getByRole("link", { name: /Organisers, 12 models/ }),
+    ).toBeTruthy();
+  });
+
+  it("closes the Browse sheet and navigates when a row inside it is activated", async () => {
+    installFetch();
+    const { router } = await mountAt("/catalog/");
+
+    fireEvent.click(await screen.findByRole("button", browseTrigger));
+    const dialog = await screen.findByRole("dialog", browseDialog);
+    fireEvent.click(within(dialog).getByRole("link", { name: /Mounts, 7 models/ }));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/categories/uchwyty");
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", browseDialog)).toBeNull();
+    });
+  });
+
+  it("closes the Tagi and Filters sheets when the Browse sheet opens", async () => {
+    installFetch();
+    await mountAt("/catalog/");
+
+    fireEvent.click(await screen.findByRole("button", tagsTrigger));
+    await screen.findByRole("dialog", tagsDialog);
+
+    fireEvent.click(screen.getByRole("button", browseTrigger));
+    await screen.findByRole("dialog", browseDialog);
+    expect(screen.queryByRole("dialog", tagsDialog)).toBeNull();
+  });
+
+  it("closes the Browse sheet when the Tagi sheet opens", async () => {
+    installFetch();
+    await mountAt("/catalog/");
+
+    fireEvent.click(await screen.findByRole("button", browseTrigger));
+    await screen.findByRole("dialog", browseDialog);
+
+    fireEvent.click(screen.getByRole("button", tagsTrigger));
+    await screen.findByRole("dialog", tagsDialog);
+    expect(screen.queryByRole("dialog", browseDialog)).toBeNull();
+  });
+
+  it("closes the Browse and Tagi sheets when the Filters sheet opens", async () => {
+    installFetch();
+    await mountAt("/catalog/");
+
+    fireEvent.click(await screen.findByRole("button", tagsTrigger));
+    await screen.findByRole("dialog", tagsDialog);
+
+    fireEvent.click(screen.getByRole("button", filtersTrigger));
+    await screen.findByRole("dialog", filtersDialog);
+    expect(screen.queryByRole("dialog", tagsDialog)).toBeNull();
+    expect(screen.queryByRole("dialog", browseDialog)).toBeNull();
+  });
+
+  it("closes the Filters sheet when the Browse sheet opens", async () => {
+    installFetch();
+    await mountAt("/catalog/");
+
+    fireEvent.click(await screen.findByRole("button", filtersTrigger));
+    await screen.findByRole("dialog", filtersDialog);
+
+    fireEvent.click(screen.getByRole("button", browseTrigger));
+    await screen.findByRole("dialog", browseDialog);
+    expect(screen.queryByRole("dialog", filtersDialog)).toBeNull();
+  });
+
+  it("never has two of the three mobile sheets open at once, across every pairwise transition", async () => {
+    installFetch();
+    await mountAt("/catalog/");
+
+    const triggers = [browseTrigger, tagsTrigger, filtersTrigger];
+    const dialogs = [browseDialog, tagsDialog, filtersDialog];
+    for (const trigger of triggers) {
+      fireEvent.click(await screen.findByRole("button", trigger));
+      await waitFor(() => {
+        const openCount = dialogs.filter((d) => screen.queryByRole("dialog", d) !== null).length;
+        expect(openCount).toBe(1);
+      });
+    }
+  });
+});

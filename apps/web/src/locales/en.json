@@ -288,6 +288,7 @@
   "catalog.filters.title": "Filters",
   "catalog.filters.ungrouped": "Ungrouped",
   "catalog.filters.untagged": "Untagged models",
+  "catalog.browse.openBrowse": "Browse",
   "catalog.browse.railLabel": "Browse categories",
   "catalog.browse.allCatalog": "All catalog",
   "catalog.browse.categoryWithCount": "{{name}}, {{count}} models",

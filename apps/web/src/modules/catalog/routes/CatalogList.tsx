@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { AddModelButton } from "@/modules/admin/AddModelButton";
 import { BrowseRail } from "@/modules/catalog/components/BrowseRail";
+import { BrowseSheet } from "@/modules/catalog/components/BrowseSheet";
 import { FacetSidebar } from "@/modules/catalog/components/FacetSidebar";
 import {
   FilterRibbon,
@@ -51,7 +52,35 @@ export function CatalogList({ scopeSlug, search, onSearchChange }: Props) {
   // explicit (not updater-derived) search object — so it stays exactly typed
   // without reintroducing the route-tree coupling D-2 removed.
   const navigate = useNavigate();
-  const [mobileTagsOpen, setMobileTagsOpen] = useState(false);
+  // Story 51.3 D-4 — three mobile-only left/bottom sheets (Browse, Tagi,
+  // Filters) must never be open simultaneously. Each setter below closes the
+  // other two when opening its own, so "opening one closes the other" holds
+  // pairwise across all three, not just for one pairing.
+  const [mobileBrowseOpen, setMobileBrowseOpenState] = useState(false);
+  const [mobileTagsOpen, setMobileTagsOpenState] = useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpenState] = useState(false);
+
+  function setMobileBrowseOpen(open: boolean) {
+    setMobileBrowseOpenState(open);
+    if (open) {
+      setMobileTagsOpenState(false);
+      setMobileFiltersOpenState(false);
+    }
+  }
+  function setMobileTagsOpen(open: boolean) {
+    setMobileTagsOpenState(open);
+    if (open) {
+      setMobileBrowseOpenState(false);
+      setMobileFiltersOpenState(false);
+    }
+  }
+  function setMobileFiltersOpen(open: boolean) {
+    setMobileFiltersOpenState(open);
+    if (open) {
+      setMobileBrowseOpenState(false);
+      setMobileTagsOpenState(false);
+    }
+  }
 
   const tagGroups = useTagGroups();
   const tags = useTags();
@@ -312,18 +341,34 @@ export function CatalogList({ scopeSlug, search, onSearchChange }: Props) {
             `Filters (n)` surface (badge, promoted groups, in-panel tag search)
             and will re-home this trigger; until then it keeps its shipped
             label and side. FacetSidebar itself is untouched. */}
-        <div className="border-b border-border bg-background/95 px-3 pt-3">
+        <div className="flex items-center gap-2 border-b border-border bg-background/95 px-3 pt-3">
+          {/* Story 51.3 D-3 — the Browse trigger sits before the Tagi trigger
+              in the same toolbar row, distinct in both icon and label
+              (EXPERIENCE.md:333). `lg:hidden` lives on the trigger itself
+              (inside `BrowseSheet`) since the desktop rail already covers
+              `lg`+. */}
+          <BrowseSheet
+            categories={categories.data ?? []}
+            activeSlug={scopeSlug}
+            search={forwardSearch}
+            isLoading={categories.data === undefined && !categories.isError}
+            isError={categories.isError}
+            onRetry={() => void categories.refetch()}
+            open={mobileBrowseOpen}
+            onOpenChange={setMobileBrowseOpen}
+          />
           <Sheet open={mobileTagsOpen} onOpenChange={setMobileTagsOpen}>
-            {/* `w-full` was correct while this control was mobile-only. Now
-                that it also renders at `lg`+, it shrinks to its label there
-                rather than stretching into a full-width bar across the results
-                column — mobile keeps the shipped geometry byte-for-byte. */}
+            {/* `flex-1` was `w-full` before Story 51.3 added the Browse
+                trigger as a row sibling — it still fills the remaining row
+                width on mobile (same full-bar geometry), now sharing the row
+                instead of owning it alone. At `lg`+, `flex-none`/`w-auto`
+                shrink it back to its label, same as before. */}
             <SheetTrigger
               render={
                 <Button
                   variant="outline"
                   size="sm"
-                  className="w-full justify-start lg:w-auto"
+                  className="flex-1 justify-start lg:w-auto lg:flex-none"
                 >
                   {t("catalog.filters.openTags")}
                 </Button>
@@ -367,6 +412,8 @@ export function CatalogList({ scopeSlug, search, onSearchChange }: Props) {
               state={filterState}
               tagsById={tagsById}
               onChange={setFilters}
+              filtersSheetOpen={mobileFiltersOpen}
+              onFiltersSheetOpenChange={setMobileFiltersOpen}
             />
           </div>
           <div className="shrink-0">

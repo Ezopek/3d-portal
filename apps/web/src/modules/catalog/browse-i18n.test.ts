@@ -18,9 +18,10 @@ describe("catalog.browse i18n parity (Story 51.1)", () => {
   it("en and pl carry the same key set", () => {
     expect(storyKeys(plKeys).sort()).toEqual(storyKeys(enKeys).sort());
     // 7 shipped by Story 51.1 + 3 added by Story 51.2 (activeScope,
-    // searchEntireCatalog, clearCategory). The literal is the point: a key
-    // added without a deliberate bump here is a key added without a pl value.
-    expect(storyKeys(enKeys)).toHaveLength(10);
+    // searchEntireCatalog, clearCategory) + 1 added by Story 51.3
+    // (openBrowse). The literal is the point: a key added without a
+    // deliberate bump here is a key added without a pl value.
+    expect(storyKeys(enKeys)).toHaveLength(11);
   });
 
   it("every browse key is non-empty in both locales", () => {

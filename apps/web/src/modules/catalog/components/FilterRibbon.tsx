@@ -48,6 +48,11 @@ interface Props {
   state: FilterRibbonState;
   tagsById: Map<string, TagRead>;
   onChange: (next: FilterRibbonState) => void;
+  /** Story 51.3 D-4 — the mobile Filters sheet's open state is lifted to
+   * `CatalogList` (mirroring the Tagi sheet's `mobileTagsOpen`) so opening it
+   * can close the Browse and Tagi sheets, and vice versa. */
+  filtersSheetOpen: boolean;
+  onFiltersSheetOpenChange: (open: boolean) => void;
 }
 
 function activeFilterCount(state: FilterRibbonState): number {
@@ -58,10 +63,15 @@ function activeFilterCount(state: FilterRibbonState): number {
   return n;
 }
 
-export function FilterRibbon({ state, tagsById, onChange }: Props) {
+export function FilterRibbon({
+  state,
+  tagsById,
+  onChange,
+  filtersSheetOpen,
+  onFiltersSheetOpenChange,
+}: Props) {
   const { t } = useTranslation();
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
-  const [filtersSheetOpen, setFiltersSheetOpen] = useState(false);
   const activeCount = activeFilterCount(state);
   const matchMode = state.tag_match ?? "all";
   return (
@@ -149,7 +159,7 @@ export function FilterRibbon({ state, tagsById, onChange }: Props) {
       )}
 
       {/* Mobile: collapse status/source/sort into a Filters sheet */}
-      <Sheet open={filtersSheetOpen} onOpenChange={setFiltersSheetOpen}>
+      <Sheet open={filtersSheetOpen} onOpenChange={onFiltersSheetOpenChange}>
         <SheetTrigger
           render={
             <Button

@@ -288,6 +288,7 @@
   "catalog.filters.title": "Filtry",
   "catalog.filters.ungrouped": "Bez grupy",
   "catalog.filters.untagged": "Modele bez tagów",
+  "catalog.browse.openBrowse": "Przeglądaj",
   "catalog.browse.railLabel": "Przeglądaj kategorie",
   "catalog.browse.allCatalog": "Cały katalog",
   "catalog.browse.categoryWithCount": "{{name}}, modeli: {{count}}",
