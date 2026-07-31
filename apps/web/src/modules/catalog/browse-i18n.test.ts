@@ -35,8 +35,16 @@ describe("catalog.browse i18n parity (Story 51.1)", () => {
   });
 
   it("every pl value is a real translation, not a copy of the en value", () => {
+    // "model" is a loanword spelled identically in en and pl singular
+    // nominative — the same coincidence `categories-i18n.test.ts` already
+    // records for `modules.admin.categories.model_count_one`. Story 54.1
+    // aligned this family onto the shared "{{count}} <noun>" counter shape,
+    // which is what surfaced the coincidence here.
+    const COINCIDENTAL_MATCHES = new Set([
+      "catalog.browse.categoryWithCount_one",
+    ]);
     for (const k of storyKeys(plKeys)) {
-      if (k in enKeys) {
+      if (k in enKeys && !COINCIDENTAL_MATCHES.has(k)) {
         expect(plKeys[k], `pl.${k} is identical to en.${k}`).not.toBe(
           enKeys[k],
         );

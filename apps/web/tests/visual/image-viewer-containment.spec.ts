@@ -350,10 +350,15 @@ test("fullscreen viewer remains reachable from a horizontally scrolled page", as
 // `openViewerWith`'s optional `landscape` parameter (AC-9).
 
 // The toolbar is scoped on every lookup: `playwright.config.ts` forces
-// `pl-PL` and `catalog.image_viewer.zoom_in` is "Powiększ" in Polish — and so
-// is the SHIPPED `catalog.image_viewer.trigger_label` on the gallery trigger
-// (53.2 D-8's recorded terminology collision, raised for Story 54.1). Scoping
-// is how these lookups stay unambiguous without renaming anything (V-17).
+// `pl-PL`, so the matchers below are the literal pl.json strings, and
+// `catalog.image_viewer.zoom_in` is "Powiększ". The gallery trigger's
+// `catalog.image_viewer.trigger_label` used to be "Powiększ" too (53.2 D-8's
+// recorded collision); Story 54.1 closed it by changing that key's Polish
+// value to "Otwórz na pełnym ekranie", so the scoping no longer separates
+// those two. It stays because these assertions are about the TOOLBAR's
+// controls, and another same-name surface already exists today
+// (`viewer3d.tooltip.expand`), so an unscoped name lookup would silently widen
+// the assertion.
 const toolbar = (page: Page) => page.getByTestId("image-viewer-toolbar");
 const zoomInControl = (page: Page) => toolbar(page).getByRole("button", { name: "Powiększ" });
 const zoomOutControl = (page: Page) => toolbar(page).getByRole("button", { name: "Pomniejsz" });

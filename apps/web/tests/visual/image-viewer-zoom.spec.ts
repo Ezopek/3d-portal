@@ -64,13 +64,16 @@ async function openViewer(page: Page) {
   await waitForReady(page);
 }
 
-// The toolbar is scoped explicitly on every lookup. `catalog.image_viewer
-// .zoom_in` is "Powiększ" in Polish and so is the SHIPPED
-// `catalog.image_viewer.trigger_label` on the gallery trigger (story D-8's
-// recorded terminology collision). 53.2 keeps the UX spine's viewer labels
-// verbatim and does NOT rename the shipped trigger — that is raised for Story
-// 54.1's cross-surface terminology audit. Scoping here is how this spec stays
-// unambiguous in the meantime.
+// The toolbar is scoped explicitly on every lookup. This started as a
+// workaround: `catalog.image_viewer.zoom_in` and the gallery trigger's
+// `catalog.image_viewer.trigger_label` were BOTH "Powiększ" in Polish (53.2's
+// recorded D-8 collision), so an unscoped accessible-name lookup matched two
+// different controls. Story 54.1 closed that collision by changing the Polish
+// VALUE of `trigger_label` to "Otwórz na pełnym ekranie", so these lookups are
+// no longer disambiguating against the trigger. The scoping stays because what
+// this spec asserts on is the TOOLBAR's controls specifically — and another
+// same-name surface already exists today (`viewer3d.tooltip.expand`), so an
+// unscoped name lookup would silently widen the assertion.
 const toolbar = (page: Page) => page.getByTestId("image-viewer-toolbar");
 const zoomIn = (page: Page) => toolbar(page).getByRole("button", { name: "Powiększ" });
 const zoomOut = (page: Page) => toolbar(page).getByRole("button", { name: "Pomniejsz" });
