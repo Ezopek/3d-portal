@@ -424,7 +424,11 @@ UI rewrite (Slices 3A-3F) is done. The portal database on `.190` now
 holds the canonical catalog: 89 models, 821 binary files (2.8 GB across
 `/mnt/raid/3d-portal-content/`), 243 deduplicated tags, 43 legacy
 categories (single-category taxonomy since retired by the Story 47.5
-cutover — facet tags are the sole classification system),
+cutover — facet tags are the sole classification system; that last
+clause describes the pre-Initiative-26 state, and Initiative 26 later
+added browse categories as a second, independent, optional
+classification layer alongside facet tags — the mandatory
+single-category taxonomy did not return),
 62 external links, 31 notes, 26 print records. The frontend at
 `https://3d.ezop.ddns.net/` consumes only `/api/*` (the SoT surface).
 

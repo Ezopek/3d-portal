@@ -51,6 +51,10 @@
 - [Source Tree Analysis](./source-tree-analysis.md) — annotated tree with critical-file pointers.
 - [Operations Runbook](./operations.md) — deploy, backup, failure modes (pre-existing).
 
+## Living Reference (hand-authored)
+
+- [Browse Category Governance](./browse-category-governance.md) — category admission criteria, Category-vs-Tag rule, curation QA routine, assignment concurrency posture.
+
 ## Spec & Plans (pre-existing)
 
 - [v1 Design Spec](./design/2026-04-29-portal-design.md) — full original design specification.

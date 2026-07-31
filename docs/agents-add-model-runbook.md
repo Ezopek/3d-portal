@@ -353,8 +353,46 @@ These are behaviors the OpenAPI surface cannot fully express — they affect how
 - **File deduplication by sha256.** Re-uploading a file with the same content sha256 returns 200 with the existing `ModelFileRead` payload, not 201. Treat 200 here as "already there, OK" — it is not an error.
 - **Soft-delete is the norm.** Deleted models keep `deleted_at` set; they vanish from public listings but remain queryable for restore. Hard-delete (`?hard=true`) is admin-only and irreversible.
 - **The portal NEVER writes to the Windows catalog.** The legacy `/mnt/c/Users/ezope/Nextcloud/3d_modelowanie/` folder is read-only from the portal's perspective. Do not attempt to write back there from the portal flow.
-- **Auth role gating.** All `/api/admin/*` and `/api/sot/admin/*` write routes require `role=admin` or `role=agent` on the principal cookie. The agent service account has `role=agent`; that is sufficient for model creation, file upload, and the per-model PATCH/DELETE/restore flows. Hard-delete (`?hard=true`) is admin-only — agent role gets a 403 there.
+- **Auth role gating.** Most `/api/admin/*` and `/api/sot/admin/*` write routes require `role=admin` or `role=agent` on the principal cookie. The agent service account has `role=agent`; that is sufficient for model creation, file upload, and the per-model PATCH/DELETE/restore flows. Several families are **admin-only** and return `403 admin_required` to `role=agent` — among them hard-delete (`?hard=true`), the whole `sot-admin-governance` router (facet tag-group governance, the global tag-create `POST /api/admin/tags`, and every browse-category route — see the subsection below), and the `/api/admin/share/*`, `/api/admin/invites/*` and user-management surfaces. That list is not exhaustive: when in doubt, filter `/api/openapi.json` on the `agent-write` tag (§ "Endpoint Discovery via OpenAPI") rather than assuming a route accepts `role=agent`.
 - **Import flow does NOT touch tags or photos.** Tag attach (`POST /api/admin/models/{id}/tags`), per-print photos (`POST /api/admin/models/{id}/prints`), gallery image uploads (`kind=image` on the file-upload endpoint) all exist in the OpenAPI surface and the agent role can call them, but the worked flow below intentionally skips them. Rationale: the auto-render produces the catalog thumbnail, so a freshly imported model is visually complete without a hand-curated gallery; tagging is operator-driven so far (no source-side metadata mapped automatically). Add tags/photos on operator request, not by default.
+
+### Browse categories — what the agent may and may not do
+
+Browse categories (Initiative 26) are the broad, optional, many-to-many classification layer that
+sits alongside facet tags. They are **admin curation**, not agent ingestion.
+
+**The agent MAY read them**, with the ordinary session cookie:
+
+```bash
+curl -s -b /tmp/portal-cookies.txt https://3d.ezop.ddns.net/api/categories
+curl -s -b /tmp/portal-cookies.txt https://3d.ezop.ddns.net/api/categories/storage-organization
+```
+
+Both are authenticated SoT reads (`apps/api/app/modules/sot/router.py:107,136`, `current_user`,
+any role) — not anonymous, and not on the `_PUBLIC_ROUTES` allowlist. `GET /api/categories/{slug}`
+404s on an unknown slug.
+
+**The agent MAY NOT create, rename, reorder, delete or assign categories.** Every governance
+route is mounted on the `sot-admin-governance` router under `current_admin`
+(`apps/api/app/modules/sot/browse_category_admin_router.py:62,168,207,248,285`), and
+`current_admin` raises **`403 admin_required`** for any principal whose role is not `admin`
+(`apps/api/app/core/auth/dependencies.py:29-30`). The agent service account is `role=agent`, so
+it is refused. This is asserted mechanically: `apps/api/tests/test_openapi_agent_surface.py:257-294`
+lists all four category write routes in `_GOVERNANCE_ROUTES` and requires that none of them ever
+carries the `agent-write` tag. The router's own docstring states the rule — *"Admin-only
+(`current_admin`); never agent-writable"*.
+
+Assignment specifically is `PUT /api/admin/models/{model_id}/categories` — **admin-only** and
+**replace-set** (the payload is the complete new set for that model, not a delta).
+
+**Consequence for the import flow: as with tags and photos, the import flow leaves a model
+uncategorized by default.** That is a valid state — a zero-category model is publicly visible and
+renders normally; the admin curation queue exists to pick it up later. Do not attempt to assign a
+category as part of an import, and do not treat the resulting `Uncategorized` state as a failure
+to escalate.
+
+The admission criteria that decide which category a model belongs to are in
+`docs/browse-category-governance.md` — operator-facing, not part of the agent flow.
 
 ## Putting It Together — Worked Flow
 
@@ -395,10 +433,10 @@ For a Printables URL `https://www.printables.com/model/1000-prusa-mk3-led-lamp`:
       "https://3d.ezop.ddns.net/api/admin/models/$MODEL_ID/files"
     ```
     Curl auto-sets the `multipart/form-data` content type from `-F`; do NOT add `-H 'Content-Type: ...'` manually or it will clobber the boundary. Other valid `kind` values: `image`, `print`, `source`, `archive_3mf` (see `ModelFileKind` in OpenAPI).
-10. **Verify.** Fetch the model via the public model-detail endpoint (`GET /api/models/{model_id}`, unauthenticated). The `thumbnail_file_id` field flips from `null` to a UUID once the render completes. Wall-clock budget scales with mesh complexity: ~60 s nominal for small meshes (≤50k triangles), ~120 s typical for medium meshes (≤200k triangles), longer for large ones. Concrete poll loop (24 attempts × 5 s = 120 s budget; safe for the medium-mesh range, generous headroom for small):
+10. **Verify.** Fetch the model via the model-detail endpoint (`GET /api/models/{model_id}`), reusing the session cookie jar — "public read" here means the read half of the API, **not** anonymous access: the route is behind `current_user` (`apps/api/app/modules/sot/router.py:248-252`) and is not on the `_PUBLIC_ROUTES` allowlist (`apps/api/app/main.py:50-61`). *(This corrects a pre-existing defect in this runbook dating from the Initiative-11 default-deny work; it is not an Initiative 26 change.)* The `thumbnail_file_id` field flips from `null` to a UUID once the render completes. Wall-clock budget scales with mesh complexity: ~60 s nominal for small meshes (≤50k triangles), ~120 s typical for medium meshes (≤200k triangles), longer for large ones. Concrete poll loop (24 attempts × 5 s = 120 s budget; safe for the medium-mesh range, generous headroom for small):
     ```bash
     for i in $(seq 1 24); do
-      tid=$(curl -s "https://3d.ezop.ddns.net/api/models/$MODEL_ID" | jq -r '.thumbnail_file_id // empty')
+      tid=$(curl -s -b /tmp/portal-cookies.txt "https://3d.ezop.ddns.net/api/models/$MODEL_ID" | jq -r '.thumbnail_file_id // empty')
       if [ -n "$tid" ]; then echo "render done after ${i}x5s: $tid"; break; fi
       sleep 5
     done
