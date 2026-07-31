@@ -79,7 +79,14 @@ export function TagGroupsSection({ detail, isAdmin, onAddTags }: Props) {
                 to="/catalog"
                 search={{ tag_ids: [tag.id] }}
                 data-testid="tag-chip"
-                className="rounded bg-muted px-1.5 py-0.5 text-xs text-chip-foreground hover:bg-accent"
+                // Story 54.2 AC-1 — measured at 20 px tall in Chromium on all
+                // four projects, under WCAG 2.2 SC 2.5.8's 24x24 floor
+                // (EXPERIENCE.md:302). These chips are NAVIGATION on the § 1
+                // journey (each one routes to `/catalog?tag_ids=…`), which is
+                // why they are remediated here while the read-only chips that
+                // share this class in `ModelCard` and `/share` are not: those
+                // are `<span>`s and are not targets at all.
+                className="inline-flex min-h-6 items-center rounded bg-muted px-1.5 py-0.5 text-xs text-chip-foreground hover:bg-accent"
               >
                 {tag.slug}
               </Link>

@@ -1456,7 +1456,26 @@ describe("ImageFullscreenViewer — Story 53.3 readiness timeout + inline error 
     expect(screen.getByTestId("image-viewer-transform").contains(error)).toBe(false);
     // ...and it never swallows a tap meant for the chrome beneath it.
     expect(error.className).toContain("pointer-events-none");
-    expect(ariaHiddenAncestor(error)).toBeNull();
+    // ⚠️ CONTRACT CHANGED BY STORY 54.2 / T14 (V-9), deliberately, and this
+    // assertion is the inverse of what Story 53.3 shipped.
+    //
+    // 53.3 asserted `ariaHiddenAncestor(error)` was NULL — the chip was
+    // deliberately left in the accessibility tree. The second 53.3 code review
+    // then found the consequence and ledgered it with `Owner: Story 54.2`: the
+    // chip's `t("catalog.image_viewer.error")` and the polite live region's
+    // announcement (`:502`) are the SAME string, so a screen-reader user
+    // browsing the open dialog meets the identical sentence twice.
+    //
+    // One sentence, one source. The always-mounted live region is the one that
+    // must stay exposed — it is what ANNOUNCES the failure, and hiding it would
+    // silence the error entirely. The visible chip is the sighted-user channel
+    // for the same fact, so it becomes `aria-hidden`. Nothing is lost: the
+    // information is still in the tree once, in the region that carries it.
+    //
+    // The rest of 53.3's D-6 contract is untouched and re-asserted below — the
+    // chip still traps nobody, still never swallows a tap, and every control
+    // beneath it stays reachable and operable.
+    expect(ariaHiddenAncestor(error)).toBe(error);
     // DN-3 — the chip backdrop is `/60`, not `/40`. Pinned as a CLASS because
     // jsdom composites nothing and the real number is a pixel measurement: the
     // four `image-viewer-error-*` baselines carry the visual proof, this

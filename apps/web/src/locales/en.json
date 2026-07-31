@@ -364,6 +364,8 @@
   "catalog.actions.rerenderPreview": "Re-render preview",
   "catalog.actions.checkedHelp": "Checked STLs feed Re-render. Click to regenerate the preview now.",
   "catalog.actions.dragHandle": "Drag to reorder",
+  "catalog.actions.movePhotoUp": "Move photo up",
+  "catalog.actions.movePhotoDown": "Move photo down",
   "catalog.panels.description": "Description",
   "catalog.panels.metadata": "Metadata",
   "catalog.panels.externalLinks": "External links",

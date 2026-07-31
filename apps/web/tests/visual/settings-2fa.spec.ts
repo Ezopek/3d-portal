@@ -25,6 +25,9 @@ const DETERMINISTIC_CODES = [
 ];
 
 async function stubAuthMe(page: Page) {
+  // ⚠️ Story 54.2 AC-8 — KEPT, LOAD-BEARING. `role: "member"` override of
+  // `_test.ts`'s admin default; the `display_name` paints in the header
+  // `UserMenu` label across all six baselines in this file. Do not consolidate.
   await page.route("**/api/auth/me", (route: Route) =>
     route.fulfill({
       status: 200,

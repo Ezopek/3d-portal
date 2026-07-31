@@ -364,6 +364,8 @@
   "catalog.actions.rerenderPreview": "Wygeneruj podgląd ponownie",
   "catalog.actions.checkedHelp": "Zaznaczone STL trafiają do Re-render. Kliknij, aby od razu wygenerować podgląd.",
   "catalog.actions.dragHandle": "Przeciągnij, aby zmienić kolejność",
+  "catalog.actions.movePhotoUp": "Przenieś zdjęcie w górę",
+  "catalog.actions.movePhotoDown": "Przenieś zdjęcie w dół",
   "catalog.panels.description": "Opis",
   "catalog.panels.metadata": "Metadane",
   "catalog.panels.externalLinks": "Linki zewnętrzne",

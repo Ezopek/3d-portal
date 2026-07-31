@@ -22,6 +22,9 @@ test("catalog detail matches baseline", async ({ page }) => {
 // empty-group dash/Add affordance). Override to a member role here to also
 // capture the non-admin view, where an empty tag group is omitted entirely
 // (no heading, no dash) instead of showing the dash + Add control.
+// ⚠️ Story 54.2 AC-8 — KEPT, LOAD-BEARING. Deleting this override converts a
+// member-view baseline into an admin-view one WITHOUT failing loudly. Do not
+// consolidate.
 test("catalog detail matches baseline for a non-admin (member) viewer", async ({ page }) => {
   await page.route("**/api/auth/me", (route: Route) =>
     route.fulfill({

@@ -2,7 +2,7 @@ import { expect, test } from "./_test";
 
 import { stubSotDetail, stubSotList, stubViewerModelDetail, stubViewerStl } from "./api-stubs";
 import { loginAsAdmin, waitForReady } from "./helpers";
-import type { Page, Route } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 // 5.12c covers four DropdownMenu / Tooltip open-state surfaces:
 //   - ViewToolbar Tooltip (hover state inside Viewer3DModal)
@@ -16,24 +16,16 @@ const DETAIL_MODEL_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const VIEWER_MODEL_ID = "33333333-3333-3333-3333-333333333333";
 const VIEWER_STL_ID = "44444444-4444-4444-4444-444444444444";
 
-async function stubAdminAuth(page: Page) {
-  await page.route("**/api/auth/me", (route: Route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        id: "u-admin",
-        email: "ezop@example.com",
-        display_name: "Ezop",
-        role: "admin",
-      }),
-    }),
-  );
-}
+// Story 54.2 AC-8 — the local admin `**/api/auth/me` re-stub is gone. It
+// duplicated `_test.ts`'s `DEFAULT_ADMIN_ME` fixture default in everything that
+// matters here: the role is `admin` either way, and every baseline in this file
+// is scoped to a dropdown/tooltip popup locator, so the payload's
+// `display_name` (which only paints in the `UserMenu` trigger in the header)
+// never reaches a screenshot. Proved the way D-3 requires — removed first, spec
+// re-run, zero PNG churn — not by pattern-match.
 
 async function setupDetail(page: Page) {
   await loginAsAdmin(page);
-  await stubAdminAuth(page);
   await stubSotDetail(page);
   await page.goto(`/catalog/${DETAIL_MODEL_ID}`);
   await waitForReady(page);
@@ -78,7 +70,6 @@ test.describe("Admin DropdownMenus + Tooltip — open-state baselines (E5.12c)",
   test("ViewToolbar Tooltip hover", async ({ page }) => {
     // Different fixture — Viewer3DModal requires the viewer stub with cube STL.
     await loginAsAdmin(page);
-    await stubAdminAuth(page);
     await stubSotList(page);
     await stubViewerModelDetail(page, {
       modelId: VIEWER_MODEL_ID,

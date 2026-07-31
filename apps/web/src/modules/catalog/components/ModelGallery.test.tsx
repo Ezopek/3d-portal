@@ -82,3 +82,41 @@ describe("ModelGallery", () => {
     );
   });
 });
+
+// Story 54.2 / AC-1 + T13 (V-8) — the duplicate accessible name.
+//
+// `ModelGallery.tsx:130` (the full-frame trigger) and `:151` (the corner icon)
+// BOTH rendered `aria-label={t("catalog.image_viewer.trigger_label")}`, and the
+// corner one is hidden with `sm:opacity-0` — opacity, not `display`,
+// `visibility` or `aria-hidden` — so both were always in the accessibility
+// tree and a screen-reader user heard the same name twice, one after the other,
+// for one function. Pre-existing since Story 22.3 (`812c7bd`); Story 54.1
+// renamed the string but did not remove the duplicate.
+//
+// `apps/web/tests/i18n.test.ts:153-167` structurally CANNOT see this: it
+// asserts that no two KEYS share a VALUE, which says nothing about one key
+// rendered onto two controls.
+//
+// Fix shape: one named control, one decorative twin. The full-frame button
+// keeps the name and the tab stop; the corner icon becomes `aria-hidden` and
+// `tabIndex={-1}`. Nothing is lost — the corner button's `onClick` is
+// byte-identical to the full-frame button's, and the full-frame button covers
+// the whole image, so the function stays keyboard-operable (SC 2.1.1) and
+// pointer-operable from either target.
+describe("ModelGallery accessible names (Story 54.2 V-8)", () => {
+  it("exposes the fullscreen trigger label exactly ONCE", () => {
+    render(<ModelGallery modelId={MODEL_ID} files={FILES} />);
+    expect(
+      screen.getAllByRole("button", { name: "Open fullscreen" }),
+    ).toHaveLength(1);
+  });
+
+  it("keeps the decorative corner icon out of the tree and out of the tab order", () => {
+    render(<ModelGallery modelId={MODEL_ID} files={FILES} />);
+    const icon = screen.getByTestId("gallery-fullscreen-icon");
+    expect(icon.getAttribute("aria-hidden")).toBe("true");
+    expect(icon.getAttribute("tabindex")).toBe("-1");
+    // ...but it still opens the viewer for a pointer user.
+    expect(icon.getAttribute("aria-label")).toBeNull();
+  });
+});

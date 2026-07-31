@@ -48,18 +48,12 @@ async function stubAdminInvitesPage(
   page: Page,
   payload?: InvitesListFixture,
 ) {
-  await page.route("**/api/auth/me", (route: Route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        id: "00000000-0000-0000-0000-000000000001",
-        email: "admin@localhost.localdomain",
-        display_name: "Admin",
-        role: "admin",
-      }),
-    }),
-  );
+  // Story 54.2 AC-8 — the local admin `**/api/auth/me` re-stub is gone. Its
+  // `email` and `display_name` were byte-identical to `_test.ts`'s
+  // `DEFAULT_ADMIN_ME`, and its `id` differed only in a value nothing on
+  // `/admin/invites` reads (unlike `/admin/users`, which keys `isSelf` off it).
+  // These baselines DO include the header, so the `display_name` match is what
+  // makes the removal churn-free. Removed first, spec re-run, zero PNG churn.
 
   const body: InvitesListFixture = payload ?? {
     total: 0,

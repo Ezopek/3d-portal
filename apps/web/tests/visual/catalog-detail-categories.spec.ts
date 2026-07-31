@@ -26,6 +26,8 @@ async function gotoDetail(
 async function asMember(page: Page) {
   // The shared `_test.ts` fixture defaults `/api/auth/me` to admin; Playwright
   // matches handlers in reverse registration order, so this override wins.
+  // ⚠️ Story 54.2 AC-8 — KEPT, LOAD-BEARING. Deleting it converts every
+  // `*-member-*` baseline in this file into an admin view. Do not consolidate.
   await page.route("**/api/auth/me", (route: Route) =>
     route.fulfill({
       status: 200,

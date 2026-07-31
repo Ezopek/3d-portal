@@ -6,6 +6,11 @@ import type { Page, Route } from "@playwright/test";
 async function stubProfilePage(page: Page) {
   // Stub /api/auth/me so AuthGate considers the user authenticated and the
   // page can seed the display_name input from the cached MeResponse.
+  // ⚠️ Story 54.2 AC-8 — KEPT, LOAD-BEARING. This is a `role: "member"`
+  // override of `_test.ts`'s admin default, and the payload PAINTS: the
+  // `display_name` seeds the profile input and the header `UserMenu` label.
+  // Deleting it would silently repaint every baseline in this file as an admin
+  // named "Admin". Do not consolidate.
   await page.route("**/api/auth/me", (route: Route) =>
     route.fulfill({
       status: 200,

@@ -38,6 +38,14 @@ function rowFixture(i: number, overrides: Partial<AdminUserFixture> = {}): Admin
 }
 
 async function stubAdminUsersPage(page: Page, payload?: UsersListFixture) {
+  // ⚠️ Story 54.2 AC-8 — KEPT, and NOT redundant as § 2 V-3 classified it. The
+  // `email` and `display_name` do match `_test.ts`'s `DEFAULT_ADMIN_ME`, but
+  // the `id` is the load-bearing field HERE and nowhere else: `UsersPage.tsx:420`
+  // computes `isSelf = user.id === auth.user?.id`, and this file's fixture rows
+  // use `id: "u1"` too (`:46`, `:58`, `:299`). Falling back to the default's
+  // UUID flips `isSelf` to false, which ENABLES the row's action controls and
+  // repaints the baselines. This is exactly the failure mode the § 2 V-3
+  // consolidation guard warned about. Do not consolidate.
   await page.route("**/api/auth/me", (route: Route) =>
     route.fulfill({
       status: 200,

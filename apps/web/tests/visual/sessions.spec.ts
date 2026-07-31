@@ -4,7 +4,12 @@ import { waitForReady } from "./helpers";
 import type { Page, Route } from "@playwright/test";
 
 async function stubSessionsPage(page: Page) {
-  // Stub /api/auth/me so AuthGate considers the user authenticated
+  // Stub /api/auth/me so AuthGate considers the user authenticated.
+  // ⚠️ Story 54.2 AC-8 — KEPT, and NOT redundant as § 2 V-3 classified it. Both
+  // baselines here are FULL-PAGE, so the header `UserMenu` trigger paints the
+  // payload's `display_name` ("Test User"); `_test.ts`'s `DEFAULT_ADMIN_ME`
+  // would repaint it as "Admin" and churn both PNGs, which AC-8 forbids.
+  // Do not consolidate.
   await page.route("**/api/auth/me", (route: Route) =>
     route.fulfill({
       status: 200,

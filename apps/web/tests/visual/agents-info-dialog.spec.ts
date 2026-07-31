@@ -4,6 +4,14 @@ import { stubSotList } from "./api-stubs";
 import { waitForReady } from "./helpers";
 import type { Page, Route } from "@playwright/test";
 
+// ⚠️ Story 54.2 AC-8 — KEPT, and NOT one of the redundant admin re-stubs the
+// story's § 2 V-3 table classified it as. The re-measurement that AC-8 requires
+// before any deletion found the payload is load-bearing here for a reason a
+// payload-shape comparison cannot see: this spec's own SELECTORS bind to it —
+// `page.waitForSelector("text=Ezop")` and `getByRole("button", { name: "Ezop" })`
+// both match `display_name`. Against `_test.ts`'s `DEFAULT_ADMIN_ME` the label
+// is "Admin" and every test in this file fails to find its trigger.
+// Do not consolidate.
 async function stubAdminAuth(page: Page) {
   await page.route("**/api/auth/me", (route: Route) =>
     route.fulfill({

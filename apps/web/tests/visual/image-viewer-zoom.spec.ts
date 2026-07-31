@@ -407,54 +407,60 @@ test("the open viewer takes focus and Tab walks its own controls", async ({ page
   ).toBe("dialog-overlay");
 });
 
-// AC-6's focus-TRAP clause — the one clause of this story that could NOT be
-// satisfied, recorded as an executable expected-failure rather than deleted.
+// AC-6's focus-TRAP clause. Story 53.3 could not satisfy it and left it here as
+// an executable `test.fail()`, ledgered as DN-1 with `Owner: Story 54.2`.
 //
-// MEASURED this run in real Chromium, on all four projects, in BOTH
-// directions, so it is not a document-end wrap artifact of headless Tab:
-//   - `Shift+Tab` from the initially-focused close button lands straight on
-//     the page BEHIND the dialog (the file row's delete button, the download
-//     link, the 3D-preview toggle, the render checkbox);
-//   - `Tab` past the last thumb reaches a Base UI focus guard and then the
-//     header links and the theme toggle;
-//   - `#root` carries NEITHER `inert` NOR `aria-hidden` while the dialog is
-//     open, so the background is traversable by a screen reader too.
-// The scroll lock and the pointer backdrop DO engage, so `modal` is on; it is
-// specifically the focus/AT-hiding half that is absent.
+// ✅ STORY 54.2 / T8 — `test.fail()` REMOVED 2026-07-31. DN-1 DOES NOT
+// REPRODUCE: the trap holds, in real Chromium, on all four projects, in both
+// directions. `apps/web/src/ui/dialog.tsx` was NOT modified — there was no
+// defect there to repair, and the bounded `Ask First` grant on it was
+// deliberately not exercised. What was wrong was the MEASUREMENT, in two ways,
+// both of which this test made:
 //
-// The defect is in the shared `ui/dialog.tsx` + `@base-ui/react` 1.4.1 modal
-// wiring, NOT in this viewer — the viewer passes no prop that could disable
-// it, and the blast radius is EVERY dialog in the app. `ui/dialog.tsx` is § 5
-// "Never" for Story 53.3 (`architecture.md:3375`), so the repair is not this
-// story's to make; it is ledgered in `deferred-work.md`.
+//   1. `@base-ui/react`'s `FloatingFocusManager` renders two `FocusGuard`
+//      `<span tabindex=0>` elements as SIBLINGS of the popup inside the portal,
+//      deliberately OUTSIDE `[role="dialog"]`. Tabbing off either end lands on
+//      a guard, whose `onFocus` bounces focus back to the other end — and the
+//      bounce is QUEUED, not synchronous. The old loop read
+//      `document.activeElement` in the same tick as `keyboard.press`, so it
+//      sampled the guard and scored "focus escaped" on precisely the tick where
+//      the trap was doing its job. Settling across two animation frames, and
+//      counting the guards as part of the dialog's focus scope (which is what
+//      they are), makes every press land inside.
+//   2. The `#root inert`/`aria-hidden` half was asserting the wrong node.
+//      base-ui never sets `inert` at 1.4.1, and it keeps any ancestor of an
+//      `[aria-live]` region out of the hidden set on purpose — a live region
+//      must stay announceable — hiding that ancestor's other children instead.
+//      The background IS hidden; the attribute is just not on `#root`. That
+//      half is now pinned properly, per-control, in
+//      `tests/visual/a11y-overlay-traversal.spec.ts` (Story 54.2 AC-4), which
+//      also proves the assertion is non-vacuous.
 //
-// `test.fail()` rather than a deleted test: this is the CORRECT contract,
-// kept executable. The day the modal wiring is fixed, Playwright reports
-// "expected to fail but passed" and forces the ledger entry to be closed.
+// Kept here as well as in the AC-4 spec because this is the pin 53.3 left
+// behind and the ledger points at it by name.
 test("focus never leaves the open viewer in either Tab direction", async ({ page }) => {
-  // The fixture runs BEFORE `test.fail()` is declared, on purpose. Playwright
-  // absorbs any throw in an expected-failure test, so declaring it up front
-  // would also absorb a broken stub, a renamed trigger or a viewer that never
-  // mounts — and the pin would silently stop asserting anything about focus
-  // while still reporting green. Only the focus assertions below are allowed
-  // to be the expected failure.
   await openViewer(page);
   await expect(page.getByTestId("image-viewer-root")).toBeVisible();
-  test.fail(
-    true,
-    "focus trap absent in the shared modal wiring; out of Story 53.3's blast radius (deferred-work.md)",
-  );
-  const insideDialog = () =>
+
+  // A focus guard is OUTSIDE `[role="dialog"]` by design but INSIDE the trap.
+  const focusScope = () =>
+    page.evaluate(() => {
+      const el = document.activeElement;
+      const dialog = document.querySelector('[role="dialog"]');
+      if (el?.hasAttribute("data-base-ui-focus-guard")) return "guard";
+      return (dialog?.contains(el) ?? false) ? "inside" : "escaped";
+    });
+  // The guard's bounce is queued; sample after it has landed.
+  const settle = () =>
     page.evaluate(
-      () => document.querySelector('[role="dialog"]')?.contains(document.activeElement) ?? false,
+      () =>
+        new Promise((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(resolve));
+        }),
     );
 
-  // Both directions are COLLECTED first and asserted once at the end. Asserting
-  // inside the loop would throw on the very first escape — which the record
-  // says is `Shift+Tab` #1 — so the `Tab` half would never execute at all for
-  // as long as the defect exists, despite the comment block above claiming
-  // both directions are pinned. Collecting keeps the claim true and makes the
-  // eventual "expected to fail but passed" cover both directions.
+  // Both directions are COLLECTED first and asserted once at the end, so a
+  // regression in one direction cannot hide the other.
   const escapes: string[] = [];
   for (const key of ["Shift+Tab", "Tab"] as const) {
     await page.getByTestId("image-viewer-close").focus();
@@ -462,7 +468,8 @@ test("focus never leaves the open viewer in either Tab direction", async ({ page
     // to wrap: a trap that only holds for the first pass is not a trap.
     for (let i = 0; i < 10; i += 1) {
       await page.keyboard.press(key);
-      if (!(await insideDialog())) escapes.push(`${key} #${i + 1}`);
+      await settle();
+      if ((await focusScope()) !== "inside") escapes.push(`${key} #${i + 1}`);
     }
   }
   expect(escapes, `focus escaped the dialog on: ${escapes.join(", ")}`).toEqual([]);

@@ -950,6 +950,18 @@ export default function ImageFullscreenViewer({
             {imageStatus === "error" && (
               <div
                 data-testid="image-viewer-error"
+                // Story 54.2 T14 (V-9) — ONE sentence, ONE source in the
+                // accessibility tree. This chip and the polite live region at
+                // the bottom of the viewer render the identical
+                // `catalog.image_viewer.error` string (the region gets it from
+                // `setAnnouncement` at `:502`), so before this story a
+                // screen-reader user browsing the open dialog met the same
+                // sentence twice. The live region is the one that must stay
+                // exposed — it is what ANNOUNCES the failure — so the visible
+                // chip becomes the sighted-user channel only. Story 53.3's D-6
+                // contract is otherwise unchanged: still `pointer-events-none`,
+                // still traps nobody, every control beneath it still reachable.
+                aria-hidden="true"
                 className="pointer-events-none absolute inset-0 grid place-items-center px-6"
               >
                 {/* DN-3 (controller-accepted repair, 2026-07-31): the backdrop

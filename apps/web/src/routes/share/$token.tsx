@@ -318,9 +318,15 @@ function ShareCarousel({
           type="button"
           data-testid="share-fullscreen-icon"
           onClick={() => setFullscreenOpen(true)}
-          aria-label={t("catalog.image_viewer.trigger_label")}
+          // Story 54.2 V-8 / T13 — DECORATIVE TWIN, the `/share` half of the
+          // same duplicate-name defect fixed in `ModelGallery.tsx`. Same shape,
+          // same reason: the full-frame `share-fullscreen-trigger` above owns
+          // the name and the tab stop, this one repeats its `onClick` for
+          // pointer users only.
+          aria-hidden="true"
+          tabIndex={-1}
           title={t("catalog.image_viewer.trigger_tooltip")}
-          className="absolute right-2 top-2 grid h-9 w-9 place-items-center rounded-full bg-gallery-control/40 text-gallery-control-foreground transition-opacity hover:bg-gallery-control/60 focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+          className="absolute right-2 top-2 grid h-9 w-9 place-items-center rounded-full bg-gallery-control/40 text-gallery-control-foreground transition-opacity hover:bg-gallery-control/60 sm:opacity-0 sm:group-hover:opacity-100"
         >
           <Maximize2 className="h-4 w-4" />
         </button>

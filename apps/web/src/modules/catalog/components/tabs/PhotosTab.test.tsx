@@ -127,6 +127,76 @@ describe("PhotosTab", () => {
     expect((uploadCall?.[1] as RequestInit).method).toBe("POST");
   });
 
+  // -- Story 54.2 / AC-2 (V-1) — SC 2.5.7 + SC 2.5.8 on the reorder affordance --
+  //
+  // Before this story the ONLY way to reorder a photo was a drag: the sensor
+  // set was `PointerSensor` + `TouchSensor` with no keyboard sensor anywhere in
+  // the repo, and the handle's `<button>` carried no sizing box at all, so its
+  // border box was the 16x16 `size-4` icon.
+  //
+  // The remediation is a single-pointer move-up / move-down pair, NOT a
+  // `KeyboardSensor`. That choice is load-bearing: SC 2.5.7 asks for a path
+  // "achieved by a SINGLE POINTER without dragging", so a keyboard-only
+  // alternative does not discharge it — and the story's own § 1 names "a touch
+  // user with limited dexterity" alongside the keyboard user. Buttons serve
+  // both; a keyboard sensor serves only one.
+
+  it("offers a single-pointer reorder path that needs no drag (AC-2 / SC 2.5.7)", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ items: PHOTOS }), { status: 200 }),
+    );
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 200 }));
+    const { findAllByTestId } = render(<PhotosTab detail={makeDetail()} />, {
+      wrapper: wrap(),
+    });
+    const rows = await findAllByTestId("photo-row");
+    expect(rows).toHaveLength(2);
+
+    // Row 1 cannot move up and row 2 cannot move down — the ends are disabled
+    // rather than absent, so the control set does not reflow as items move.
+    const up = await findAllByTestId("photo-move-up");
+    const down = await findAllByTestId("photo-move-down");
+    expect((up[0] as HTMLButtonElement).disabled).toBe(true);
+    expect((down[1] as HTMLButtonElement).disabled).toBe(true);
+
+    // A plain click — no pointer path, no drag — commits the new order.
+    fireEvent.click(down[0] as HTMLButtonElement);
+    await new Promise((r) => setTimeout(r, 0));
+
+    const reorderCall = fetchMock.mock.calls.find(
+      (c) => typeof c[0] === "string" && c[0].includes(`/api/admin/models/${ID}/photos/reorder`),
+    );
+    expect(reorderCall, "moving a photo down must POST the reorder endpoint").toBeTruthy();
+    expect(JSON.parse((reorderCall?.[1] as RequestInit).body as string)).toEqual({
+      ordered_ids: ["f2", "f1"],
+    });
+  });
+
+  it("gives every reorder control a >=24x24 sizing box and a translated name (AC-2 / SC 2.5.8)", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ items: PHOTOS }), { status: 200 }),
+    );
+    const { findAllByTestId } = render(<PhotosTab detail={makeDetail()} />, {
+      wrapper: wrap(),
+    });
+
+    // jsdom does not lay out, so the RENDERED box is measured in Chromium by
+    // `tests/visual/a11y-target-size.spec.ts` (D-1). What is pinned here is the
+    // sizing box being DECLARED at all — the defect V-1 recorded was a button
+    // with no padding, no `min-h`/`min-w` and no box, whose border box was the
+    // 16x16 icon. A class assertion catches that coming back long before a
+    // Chromium probe would need to run.
+    for (const testid of ["photo-drag-handle", "photo-move-up", "photo-move-down"]) {
+      const controls = await findAllByTestId(testid);
+      expect(controls.length, `${testid} renders`).toBeGreaterThan(0);
+      for (const control of controls) {
+        expect(control.className, `${testid} declares a >=24px box`).toContain("min-h-6");
+        expect(control.className, `${testid} declares a >=24px box`).toContain("min-w-6");
+        expect(control.getAttribute("aria-label"), `${testid} is named`).toBeTruthy();
+      }
+    }
+  });
+
   it("clicking 'Set as thumbnail' fires the mutation", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ items: PHOTOS }), { status: 200 }),

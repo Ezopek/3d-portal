@@ -148,9 +148,21 @@ export function ModelGallery({
           type="button"
           data-testid="gallery-fullscreen-icon"
           onClick={() => setFullscreenOpen(true)}
-          aria-label={t("catalog.image_viewer.trigger_label")}
+          // Story 54.2 V-8 / T13 — DECORATIVE TWIN. This button and the
+          // full-frame trigger above it both carried
+          // `catalog.image_viewer.trigger_label`, and this one is hidden with
+          // `sm:opacity-0` (opacity, not `display`/`visibility`/`aria-hidden`),
+          // so both were permanently in the accessibility tree and a
+          // screen-reader user heard one name twice for one function. The
+          // full-frame trigger owns the name and the tab stop; this one is a
+          // pointer-only affordance that repeats its `onClick` verbatim, so
+          // nothing is lost — the full-frame button covers the whole image.
+          // `focus-visible:opacity-100` is gone with the tab stop: it could
+          // never fire again and would have read as a live affordance.
+          aria-hidden="true"
+          tabIndex={-1}
           title={t("catalog.image_viewer.trigger_tooltip")}
-          className="absolute right-2 top-2 grid h-9 w-9 place-items-center rounded-full bg-gallery-control/40 text-gallery-control-foreground transition-opacity hover:bg-gallery-control/60 focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+          className="absolute right-2 top-2 grid h-9 w-9 place-items-center rounded-full bg-gallery-control/40 text-gallery-control-foreground transition-opacity hover:bg-gallery-control/60 sm:opacity-0 sm:group-hover:opacity-100"
         >
           <Maximize2 className="h-4 w-4" />
         </button>

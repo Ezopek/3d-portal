@@ -22,6 +22,9 @@ import { waitForReady } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   // Override the default-fixture admin stub to anonymous (401) for this spec.
+  // ⚠️ Story 54.2 AC-8 — KEPT, LOAD-BEARING. Without the 401, AuthGate stops
+  // redirecting and this spec silently stops testing the property it exists
+  // for. Do not consolidate.
   await page.route("**/api/auth/me", (route) =>
     route.fulfill({
       status: 401,

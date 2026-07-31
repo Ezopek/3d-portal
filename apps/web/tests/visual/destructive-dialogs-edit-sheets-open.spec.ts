@@ -12,28 +12,18 @@ import type { Page, Route } from "@playwright/test";
 //   - EditDescriptionSheet
 // All four require admin auth — loginAsAdmin seeds a JWT with role=admin so
 // useAuth().isAdmin returns true and ModelHero renders the kebab + popover
-// chips. The admin /api/auth/me stub keeps AuthGate happy.
+// chips. `_test.ts`'s `DEFAULT_ADMIN_ME` fixture keeps AuthGate happy.
 
 const MODEL_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
-async function stubAdminAuth(page: Page) {
-  await page.route("**/api/auth/me", (route: Route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        id: "u-admin",
-        email: "ezop@example.com",
-        display_name: "Ezop",
-        role: "admin",
-      }),
-    }),
-  );
-}
+// Story 54.2 AC-8 — the local admin `**/api/auth/me` re-stub is gone; it
+// duplicated `_test.ts`'s `DEFAULT_ADMIN_ME`. Every baseline in this file is
+// scoped to a dialog/sheet locator, so the payload's `display_name` (which only
+// paints in the header `UserMenu` trigger) never reaches a screenshot. Removed
+// first, spec re-run, zero PNG churn — the D-3 proof-first order.
 
 async function setup(page: Page) {
   await loginAsAdmin(page);
-  await stubAdminAuth(page);
   await stubSotDetail(page);
   await page.goto(`/catalog/${MODEL_ID}`);
   await waitForReady(page);

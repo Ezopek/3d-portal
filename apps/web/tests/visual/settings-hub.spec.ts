@@ -7,6 +7,10 @@ async function stubHubPage(page: Page) {
   // Stub /api/auth/me so AuthGate considers the user authenticated and the
   // hub landing renders the three cards (the hub itself makes no other API
   // calls — Story 12.4 is a pure-navigation landing).
+  // ⚠️ Story 54.2 AC-8 — KEPT, LOAD-BEARING. `role: "member"` override of
+  // `_test.ts`'s admin default; the `display_name` paints in the header
+  // `UserMenu` label, and the admin default would also change what the hub
+  // offers. Do not consolidate.
   await page.route("**/api/auth/me", (route: Route) =>
     route.fulfill({
       status: 200,

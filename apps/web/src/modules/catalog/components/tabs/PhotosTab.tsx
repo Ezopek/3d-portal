@@ -14,7 +14,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Star, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, Star, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -60,6 +60,18 @@ export function PhotosTab({ detail }: Props) {
     reorder.mutate(next.map((p) => p.id));
   }
 
+  // Story 54.2 AC-2 (V-1) — the SINGLE-POINTER reorder path. WCAG 2.2 SC 2.5.7
+  // asks for functionality that uses dragging to be "achieved by a single
+  // pointer without dragging", which a keyboard sensor does NOT satisfy: it
+  // serves the keyboard user and leaves the touch user with limited dexterity
+  // exactly where they were. Two buttons serve both, and they reuse the same
+  // `arrayMove` + mutation the drag path uses, so the two paths cannot drift.
+  function movePhoto(index: number, delta: -1 | 1) {
+    const target = index + delta;
+    if (target < 0 || target >= photos.length) return;
+    reorder.mutate(arrayMove(photos, index, target).map((p) => p.id));
+  }
+
   function onUpload(files: FileList | null) {
     if (files === null) return;
     for (const f of Array.from(files)) {
@@ -96,6 +108,10 @@ export function PhotosTab({ detail }: Props) {
                   isSelected={p.id === selected?.id}
                   isThumbnail={detail.thumbnail_file_id === p.id}
                   onSelect={() => setSelectedId(p.id)}
+                  canMoveUp={i > 0}
+                  canMoveDown={i < photos.length - 1}
+                  onMoveUp={() => movePhoto(i, -1)}
+                  onMoveDown={() => movePhoto(i, 1)}
                 />
               ))}
             </ul>
@@ -146,6 +162,10 @@ function SortableRow({
   isSelected,
   isThumbnail,
   onSelect,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
 }: {
   photo: ModelFileRead;
   position: number;
@@ -153,6 +173,10 @@ function SortableRow({
   isSelected: boolean;
   isThumbnail: boolean;
   onSelect: () => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: photo.id,
@@ -173,6 +197,13 @@ function SortableRow({
       )}
     >
       <DragHandle attributes={attributes} listeners={listeners} />
+      {/* Story 54.2 AC-2 — the drag-free equivalent, next to the handle it
+          replaces. Disabled at the ends rather than absent, so the row's
+          control set does not reflow as a photo travels the list. */}
+      <div className="flex shrink-0 flex-col">
+        <MoveButton direction="up" disabled={!canMoveUp} onClick={onMoveUp} />
+        <MoveButton direction="down" disabled={!canMoveDown} onClick={onMoveDown} />
+      </div>
       <button
         type="button"
         onClick={onSelect}
@@ -243,12 +274,43 @@ function DragHandle({
   return (
     <button
       type="button"
+      data-testid="photo-drag-handle"
       aria-label={t("catalog.actions.dragHandle")}
-      className="cursor-grab touch-none text-muted-foreground"
+      // Story 54.2 AC-2 (V-1) — the handle previously carried no padding, no
+      // `min-h`/`min-w` and no sizing box at all, so its border box WAS the
+      // 16x16 `size-4` icon, under WCAG 2.2 SC 2.5.8's 24x24 floor
+      // (EXPERIENCE.md:302). The box is declared here; the RENDERED box is
+      // measured in Chromium by `tests/visual/a11y-target-size.spec.ts` (D-1).
+      className="inline-flex min-h-6 min-w-6 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground"
       {...attributes}
       {...listeners}
     >
       <GripVertical className="size-4" aria-hidden />
+    </button>
+  );
+}
+
+function MoveButton({
+  direction,
+  disabled,
+  onClick,
+}: {
+  direction: "up" | "down";
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  const { t } = useTranslation();
+  const Icon = direction === "up" ? ChevronUp : ChevronDown;
+  return (
+    <button
+      type="button"
+      data-testid={`photo-move-${direction}`}
+      aria-label={t(direction === "up" ? "catalog.actions.movePhotoUp" : "catalog.actions.movePhotoDown")}
+      disabled={disabled}
+      onClick={onClick}
+      className="inline-flex min-h-6 min-w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
+    >
+      <Icon className="size-3" aria-hidden />
     </button>
   );
 }
@@ -334,7 +396,12 @@ function UploadZone({
       />
       <button
         type="button"
-        className="text-foreground underline"
+        // Story 54.2 AC-1 — found by the Chromium probe, not by reading: the
+        // upload trigger measured 258.59x16 CSS px, i.e. the `text-xs` line box
+        // was the whole target, under SC 2.5.8's 24 px floor (EXPERIENCE.md:302).
+        // Width was never the problem, so only the height is lifted; the
+        // underline treatment and the dashed dropzone around it are untouched.
+        className="inline-flex min-h-6 items-center text-foreground underline"
         onClick={() => inputRef.current?.click()}
       >
         {t("catalog.actions.dropOrBrowse")}

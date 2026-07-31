@@ -14,6 +14,16 @@ import type { Page, Route } from "@playwright/test";
 // (t("catalog.filters.<key>")), so under playwright.config.ts locale="pl-PL"
 // the resolved strings remain "Status", "Źródło", "Sortowanie".
 
+// ⚠️ Story 54.2 AC-8 — KEPT, and NOT redundant as § 2 V-3 classified it. This
+// is the one entry in that table where the proof-first order (D-3) overturned
+// the classification EMPIRICALLY rather than by reading: the stub was removed,
+// the spec re-run, and `filters-panel-{status,source,sort}-open` churned by
+// 320 px on BOTH mobile projects. Cause: `captureOpenSelect` screenshots
+// `page.locator("body")`, not the Select popup — so the header `UserMenu`
+// trigger IS in frame, and the payload's `display_name` ("Ezop" here vs
+// "Admin" in `_test.ts`'s `DEFAULT_ADMIN_ME`) repaints it. Desktop absorbed the
+// difference; mobile did not. AC-8 requires ZERO PNG churn, so the removal was
+// reverted. Do not consolidate.
 async function stubAuth(page: Page) {
   await page.route("**/api/auth/me", (route: Route) =>
     route.fulfill({
