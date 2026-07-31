@@ -394,6 +394,7 @@
   "catalog.image_viewer.counter": "{{current}} / {{total}}",
   "catalog.image_viewer.thumb_label": "Photo {{index}}",
   "catalog.image_viewer.loading": "Loading full image…",
+  "catalog.image_viewer.error": "The photo could not be loaded.",
   "catalog.image_viewer.dialog_title": "Photo gallery",
   "catalog.image_viewer.zoom_in": "Zoom in",
   "catalog.image_viewer.zoom_out": "Zoom out",

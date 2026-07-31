@@ -4,9 +4,9 @@
 // independently by `imageViewer.lazy.test.tsx` (chunk-split shape) +
 // Playwright visual baselines (real-browser open-fullscreen flow).
 
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, createEvent, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import "@/locales/i18n";
 import ImageFullscreenViewer from "./ImageFullscreenViewer";
@@ -876,5 +876,609 @@ describe("ImageFullscreenViewer — Story 53.2 zoom toolbar", () => {
     expect(document.documentElement.getAttribute("style")).toBe(htmlStyleBefore);
     expect(document.body.getAttribute("style")).toBe(bodyStyleBefore);
     expect(getComputedStyle(document.documentElement).overflowY).toBe(initialOverflowY);
+  });
+});
+
+// ── Story 53.3 (E53 / FR26-VIEW-1, NFR26-A11Y-1) ───────────────────────────
+// AC-3 (listener wiring only), AC-5, AC-6, AC-8. This block EXTENDS the two
+// above; nothing already shipped is rewritten.
+//
+// The division of labour is unchanged and deliberate. jsdom has no layout
+// engine, so every rect is all-zero: rotation GEOMETRY, clamp geometry, the
+// 44x44 floor and the real focus contract all live in Playwright
+// (`tests/visual/image-viewer-*.spec.ts`). What lives here is what only jsdom
+// can do cheaply and honestly — state transitions, ARIA, event wiring, and
+// timing driven by fake timers.
+
+// Restated, NOT imported. A boundary test that imports the constant it pins
+// would silently follow any change to it. These are the shipped values at
+// `ImageFullscreenViewer.tsx` (`DOUBLE_TAP_WINDOW_MS`, `DOUBLE_TAP_SLOP_PX`,
+// `IMAGE_READY_TIMEOUT_MS`); Story 53.3 PINS them and does not tune them.
+const DOUBLE_TAP_WINDOW_MS = 300;
+const DOUBLE_TAP_SLOP_PX = 44;
+const IMAGE_READY_TIMEOUT_MS = 15_000;
+
+/**
+ * Story 53.3 D-9 — the double-tap window and slop both compare `e.timeStamp`,
+ * and `fireEvent` cannot set it. Solved ONCE for the whole boundary matrix
+ * rather than per test, which is exactly what `deferred-work.md` asked for.
+ *
+ * D-9 sketched `new Touch({...})` + `new TouchEvent(...)`, which is the right
+ * idiom in Chromium (and is what the Playwright specs use). Probed this run:
+ * jsdom ships `TouchEvent` but NOT the `Touch` constructor, so that literal
+ * shape throws here. The DOM-testing-library event factory produces exactly
+ * the plain-object touch list every other test in this file already
+ * dispatches, and `timeStamp` — an own property shadowing
+ * `Event.prototype`'s getter — is the only thing that needs overriding.
+ */
+function touchEndAt(el: Element, at: number, x: number, y: number) {
+  const ev = createEvent.touchEnd(el, {
+    touches: [],
+    targetTouches: [],
+    changedTouches: [{ clientX: x, clientY: y }],
+  });
+  Object.defineProperty(ev, "timeStamp", { value: at, configurable: true });
+  fireEvent(el, ev);
+}
+
+/** One complete tap at a controlled timestamp. Press and release share the
+ *  point, so it is never a drag and never a swipe. */
+function tapAt(el: Element, at: number, x: number, y: number) {
+  fireEvent.touchStart(el, { touches: [{ clientX: x, clientY: y }] });
+  touchEndAt(el, at, x, y);
+}
+
+describe("ImageFullscreenViewer — Story 53.3 double-tap boundaries (AC-5, D-9)", () => {
+  // Arbitrary epoch for the synthetic timestamps; only the DIFFERENCE matters.
+  const T0 = 10_000;
+
+  it("reads two taps ON the window boundary as a double-tap", () => {
+    mountResolvedViewer();
+    const root = screen.getByTestId("image-viewer-root");
+    tapAt(root, T0, 100, 100);
+    tapAt(root, T0 + DOUBLE_TAP_WINDOW_MS, 100, 100);
+    // `doubleTapTarget` = ZOOM_STEP^2 = 2.25, i.e. two Zoom In presses.
+    expect(transform()).toContain("scale(2.25)");
+  });
+
+  it("reads two taps ONE MILLISECOND past the window as two single taps", () => {
+    mountResolvedViewer();
+    const root = screen.getByTestId("image-viewer-root");
+    tapAt(root, T0, 100, 100);
+    tapAt(root, T0 + DOUBLE_TAP_WINDOW_MS + 1, 100, 100);
+    // A regression that inverted or widened the comparison would zoom here.
+    expect(transform()).toContain("scale(1)");
+  });
+
+  it("reads two taps ON the slop boundary as a double-tap", () => {
+    mountResolvedViewer();
+    const root = screen.getByTestId("image-viewer-root");
+    tapAt(root, T0, 100, 100);
+    tapAt(root, T0 + 50, 100 + DOUBLE_TAP_SLOP_PX, 100);
+    expect(transform()).toContain("scale(2.25)");
+  });
+
+  it("reads two taps ONE PIXEL past the slop as two single taps", () => {
+    mountResolvedViewer();
+    const root = screen.getByTestId("image-viewer-root");
+    tapAt(root, T0, 100, 100);
+    tapAt(root, T0 + 50, 100 + DOUBLE_TAP_SLOP_PX + 1, 100);
+    // A regression that dropped the slop check entirely would zoom here.
+    expect(transform()).toContain("scale(1)");
+  });
+});
+
+describe("ImageFullscreenViewer — Story 53.3 gesture arbitration + rotation wiring", () => {
+  // `vitest.config.ts` sets no `restoreMocks`, and both spies below outlive
+  // the assertion that can throw: `injectStripGeometry` never restores its
+  // `getBoundingClientRect` spy at all, and the `addEventListener` spy is
+  // restored AFTER an `expect` that may throw first. A red test would then
+  // leave `window.addEventListener` wrapped for every later test in the file,
+  // turning one failure into a cascade. This bounds both to their own test.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** jsdom reports an all-zero rect for every element, so the coords-based
+   *  `stripOrigin` guard (`ImageFullscreenViewer.tsx` `onTouchStart`) is
+   *  unreachable without injecting the strip's geometry. Injected the same way
+   *  `naturalWidth` / `offsetWidth` already are — never faked past the guard
+   *  itself. */
+  function injectStripGeometry(top = 400, bottom = 480): HTMLElement {
+    const strip = screen.getByTestId("image-viewer-strip");
+    vi.spyOn(strip, "getBoundingClientRect").mockReturnValue({
+      top,
+      bottom,
+      left: 0,
+      right: 400,
+      width: 400,
+      height: bottom - top,
+      x: 0,
+      y: top,
+      toJSON: () => ({}),
+    } as DOMRect);
+    return strip;
+  }
+
+  it("keeps TB-043's four-cell strip matrix behaviourally identical at scale 1.0 (AC-5)", () => {
+    mountResolvedViewer();
+    const root = screen.getByTestId("image-viewer-root");
+    const strip = injectStripGeometry();
+    const chromeVisible = () => strip.getAttribute("aria-hidden") === "false";
+    const counter = () => screen.getByTestId("image-viewer-counter").textContent;
+    expect(chromeVisible()).toBe(true);
+    expect(counter()).toBe("1 / 3");
+
+    // Cell 1 — strip VISIBLE, TAP on a thumb. `thumbOrigin` defers the chrome
+    // flip to the thumb's own onClick, so the touch itself must change nothing.
+    const thumb = screen.getAllByTestId("image-viewer-thumb")[1] as HTMLElement;
+    fireEvent.touchStart(thumb, { touches: [{ clientX: 120, clientY: 440 }] });
+    fireEvent.touchEnd(thumb, { touches: [], changedTouches: [{ clientX: 120, clientY: 440 }] });
+    expect(chromeVisible()).toBe(true);
+    expect(counter()).toBe("1 / 3");
+
+    // Cell 2 — strip VISIBLE, long horizontal DRAG originating in the strip.
+    // That is the strip being scrolled, never a navigation.
+    fireEvent.touchStart(root, { touches: [{ clientX: 300, clientY: 440 }] });
+    fireEvent.touchEnd(root, { touches: [], changedTouches: [{ clientX: 180, clientY: 440 }] });
+    expect(counter()).toBe("1 / 3");
+    expect(chromeVisible()).toBe(true);
+
+    // Hide the chrome with a tap on the image, so the two hidden-strip cells
+    // start from the state they are about.
+    tap();
+    expect(chromeVisible()).toBe(false);
+
+    // Cell 3 — strip HIDDEN, TAP inside the strip's bounds. The strip is
+    // `pointer-events-none`, so the touch passes through to the viewer root and
+    // must RESTORE the chrome rather than hitting the dead zone TB-043 closed.
+    fireEvent.touchStart(root, { touches: [{ clientX: 120, clientY: 440 }] });
+    fireEvent.touchEnd(root, { touches: [], changedTouches: [{ clientX: 120, clientY: 440 }] });
+    expect(chromeVisible()).toBe(true);
+    expect(counter()).toBe("1 / 3");
+
+    // Cell 4 — strip HIDDEN, long horizontal DRAG inside the strip's bounds.
+    tap();
+    expect(chromeVisible()).toBe(false);
+    fireEvent.touchStart(root, { touches: [{ clientX: 300, clientY: 440 }] });
+    fireEvent.touchEnd(root, { touches: [], changedTouches: [{ clientX: 180, clientY: 440 }] });
+    expect(counter()).toBe("1 / 3");
+  });
+
+  it("refits through the orientationchange listener and keeps the zoom level (AC-3)", () => {
+    const addSpy = vi.spyOn(window, "addEventListener");
+    mountResolvedViewer();
+    // The viewer registers BOTH `resize` and `orientationchange`. Playwright's
+    // `page.setViewportSize` fires only the former (V-5), so this second
+    // registration is reachable from nowhere else in the suite.
+    expect(addSpy.mock.calls.some(([type]) => type === "orientationchange")).toBe(true);
+    addSpy.mockRestore();
+
+    fireEvent.click(screen.getByTestId("image-viewer-zoom-in"));
+    drag(300, 210);
+    expect(transform()).toContain("scale(1.5)");
+    expect(transform()).not.toContain("translate3d(0px, 0px, 0)");
+
+    // NO geometry claim is made here: jsdom has no layout, so a pan-POSITION
+    // assertion would pass against all-zero rects and prove nothing (§ 8, and
+    // `zoom.test.ts`'s own "degenerates safely when the geometry is
+    // unmeasurable"). What is honest is that the handler RAN — collapsing the
+    // clamp's travel to zero makes that observable — and that the zoom LEVEL
+    // survived the refit (`EXPERIENCE.md:262`).
+    const img = screen.getAllByTestId("rendered-img")[0] as HTMLImageElement;
+    Object.defineProperty(img, "offsetWidth", { value: 0, configurable: true });
+    act(() => {
+      fireEvent(window, new Event("orientationchange"));
+    });
+    expect(transform()).toContain("translate3d(0px, 0px, 0)");
+    expect(transform()).toContain("scale(1.5)");
+  });
+
+  it("closes on Escape (AC-6)", async () => {
+    const onClose = vi.fn();
+    const { render: renderImage } = makePlainRenderer();
+    render(
+      <ImageFullscreenViewer
+        sources={SOURCES}
+        initialIndex={0}
+        onClose={onClose}
+        renderImage={renderImage}
+      />,
+    );
+    // Base UI moves focus into the popup asynchronously and arms its dismiss
+    // handlers with it.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    // Escape is Base UI's `useDismiss({ escapeKey: isTopmost })` — real, and
+    // until this story asserted NOWHERE (V-9). The viewer's own `onKey`
+    // deliberately does not intercept it.
+    await act(async () => {
+      fireEvent.keyDown(document, { key: "Escape" });
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    // The RETURN-FOCUS half of AC-6 is asserted in Playwright, not here: 53.2
+    // measured Base UI's focus manager behaving differently in real Chromium
+    // than in jsdom, so a jsdom-only focus claim is not sufficient evidence
+    // for a focus contract.
+  });
+});
+
+describe("ImageFullscreenViewer — Story 53.3 readiness timeout + inline error (AC-8, D-5, D-6)", () => {
+  /**
+   * The `/share` failure this story closes. `AnonymousImage` renders a
+   * placeholder `<div>` while it resolves its blob and SWALLOWS a rejection,
+   * so on failure no `<img>` is ever mounted — and neither `load` nor `error`
+   * can fire on an element that does not exist.
+   *
+   * V-21: no visual spec has ever opened the viewer from `/share`, and
+   * reproducing this there would mean building a whole share harness for one
+   * assertion. The defect is a property of the component's own PROP BOUNDARY —
+   * a `renderImage` that returns something without an `<img>` in it — which is
+   * one line here.
+   */
+  const renderWithoutImg: ImageRenderer = ({ alt }) => (
+    <div data-testid="rendered-placeholder" aria-label={alt} />
+  );
+
+  function renderViewer(renderImage: ImageRenderer) {
+    return render(
+      <ImageFullscreenViewer
+        sources={SOURCES}
+        initialIndex={0}
+        onClose={() => {}}
+        renderImage={renderImage}
+      />,
+    );
+  }
+
+  /**
+   * Model the `/share` renderer swapping its placeholder `<div>` for the real
+   * `<img>` once `acquireShareBlob` resolves. It is a prop change only, so the
+   * readiness effect (keyed on `activeIdx` + the frame node) does not re-run
+   * and any armed watchdog survives the swap — which is exactly the state the
+   * late-`load` and late-`error` cases below need.
+   */
+  function swapRenderer(
+    view: ReturnType<typeof renderViewer>,
+    renderImage: ImageRenderer,
+  ) {
+    view.rerender(
+      <ImageFullscreenViewer
+        sources={SOURCES}
+        initialIndex={0}
+        onClose={() => {}}
+        renderImage={renderImage}
+      />,
+    );
+  }
+
+  it("turns a never-mounted <img> into a reported failure once the timeout elapses", () => {
+    vi.useFakeTimers();
+    try {
+      renderViewer(renderWithoutImg);
+      // The shipped defect: silently `loading` forever, all three controls
+      // disabled, nothing ever announced.
+      expect(screen.queryByTestId("rendered-img")).toBeNull();
+      expect(screen.queryByTestId("image-viewer-error")).toBeNull();
+      expect(zoomLevel()).toBe("Loading full image…");
+
+      act(() => {
+        vi.advanceTimersByTime(IMAGE_READY_TIMEOUT_MS);
+      });
+
+      expect(screen.getByTestId("image-viewer-error").textContent).toBe(
+        "The photo could not be loaded.",
+      );
+      expect(zoomLevel()).toBe("The photo could not be loaded.");
+      // A failed image never traps the user.
+      expect((screen.getByTestId("image-viewer-close") as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+      expect(ariaHiddenAncestor(screen.getByTestId("image-viewer-toolbar"))).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Story 53.3 code review DN-2 (controller-accepted repair). The watchdog
+  // used to arm on the ordinary `<img>` path as well, where `load`/`error`
+  // answer for themselves — so a slow-but-valid photo was painted over with
+  // the inline error and ANNOUNCED as failed at 15 s while it was still
+  // downloading, and the recovery was silent. This pins the narrowed arm site
+  // by its OBSERVABLE consequence (no error, still "loading") and by the
+  // absence of the timer itself, so re-widening the branch fails here.
+  it("never reports a slow-but-valid mounted <img> as failed (DN-2)", () => {
+    vi.useFakeTimers();
+    const setSpy = vi.spyOn(globalThis, "setTimeout");
+    try {
+      renderViewer(makePlainRenderer().render);
+      expect(zoomLevel()).toBe("Loading full image…");
+      // No watchdog is armed at all on this path.
+      expect(
+        setSpy.mock.calls.filter((call) => call[1] === IMAGE_READY_TIMEOUT_MS),
+      ).toHaveLength(0);
+
+      // Far past the old deadline, with the image still in flight: the viewer
+      // must still say "loading", not "failed".
+      act(() => {
+        vi.advanceTimersByTime(IMAGE_READY_TIMEOUT_MS * 3);
+      });
+      expect(screen.queryByTestId("image-viewer-error")).toBeNull();
+      expect(zoomLevel()).toBe("Loading full image…");
+    } finally {
+      setSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not fire the timeout once the image has loaded", () => {
+    vi.useFakeTimers();
+    try {
+      renderViewer(makePlainRenderer().render);
+      const img = screen.getAllByTestId("rendered-img")[0] as HTMLImageElement;
+      Object.defineProperty(img, "naturalWidth", { value: 2000, configurable: true });
+      Object.defineProperty(img, "offsetWidth", { value: 500, configurable: true });
+
+      act(() => {
+        vi.advanceTimersByTime(IMAGE_READY_TIMEOUT_MS - 1);
+      });
+      act(() => {
+        fireEvent.load(img);
+      });
+      // Far past the original deadline: a timer that was not cleared would
+      // flip a perfectly good image to `error` under the user.
+      act(() => {
+        vi.advanceTimersByTime(IMAGE_READY_TIMEOUT_MS * 2);
+      });
+      expect(screen.queryByTestId("image-viewer-error")).toBeNull();
+      expect((screen.getByTestId("image-viewer-zoom-in") as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lets a LATE load recover from a fired timeout", () => {
+    vi.useFakeTimers();
+    try {
+      const view = renderViewer(renderWithoutImg);
+
+      act(() => {
+        vi.advanceTimersByTime(IMAGE_READY_TIMEOUT_MS);
+      });
+      expect(screen.getByTestId("image-viewer-error")).toBeTruthy();
+
+      // The /share blob finally resolves and the renderer swaps its
+      // placeholder for a real `<img>`. The readiness effect does NOT re-run
+      // (its deps are unchanged), but the capture-phase listener lives on the
+      // FRAME rather than on the element, so the late `load` still reaches it.
+      swapRenderer(view, makePlainRenderer().render);
+      const img = screen.getAllByTestId("rendered-img")[0] as HTMLImageElement;
+      Object.defineProperty(img, "naturalWidth", { value: 2000, configurable: true });
+      Object.defineProperty(img, "offsetWidth", { value: 500, configurable: true });
+
+      // The watchdog REPORTS a stall; it does not permanently condemn the
+      // image (D-5). A slow fetch that eventually lands must still be usable.
+      act(() => {
+        fireEvent.load(img);
+      });
+      expect(screen.queryByTestId("image-viewer-error")).toBeNull();
+      expect((screen.getByTestId("image-viewer-zoom-in") as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not let a timer armed for one image fire onto a later one", () => {
+    vi.useFakeTimers();
+    try {
+      // Image 1 mounts NO `<img>` (so it arms the watchdog — DN-2 narrowed the
+      // arm site to exactly this branch); image 2 mounts a real one.
+      const perSource: ImageRenderer = ({ src, alt, className }) =>
+        src === SOURCES[0]?.fullUrl ? (
+          <div data-testid="rendered-placeholder" aria-label={alt} />
+        ) : (
+          <img src={src} alt={alt} className={className} data-testid="rendered-img" />
+        );
+      renderViewer(perSource);
+      // Sit most of the way through image 1's window, then navigate.
+      act(() => {
+        vi.advanceTimersByTime(IMAGE_READY_TIMEOUT_MS - 1_000);
+      });
+      act(() => {
+        fireEvent.click(screen.getByTestId("image-viewer-next"));
+      });
+      expect(screen.getByTestId("image-viewer-counter").textContent).toBe("2 / 3");
+
+      const img = screen.getAllByTestId("rendered-img")[0] as HTMLImageElement;
+      Object.defineProperty(img, "naturalWidth", { value: 2000, configurable: true });
+      Object.defineProperty(img, "offsetWidth", { value: 500, configurable: true });
+      act(() => {
+        fireEvent.load(img);
+      });
+
+      // Cross image 1's ORIGINAL deadline. A leaked timer would report image
+      // 2 as broken on image 1's schedule.
+      act(() => {
+        vi.advanceTimersByTime(2_000);
+      });
+      expect(screen.queryByTestId("image-viewer-error")).toBeNull();
+      expect((screen.getByTestId("image-viewer-zoom-in") as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // AC-8 names FOUR teardown triggers — `load`, `error`, an `activeIdx`
+  // change and unmount — and asks for each to be ASSERTED. This is the `load`
+  // one, and until the second code review it was unasserted: PROVEN BY
+  // MUTATION, deleting `clearReadyTimeout()` from `onLoad` left the suite at
+  // 71 passed / 0 failed. The three cases that looked like they covered it are
+  // all vacuous for this purpose — `does not fire the timeout once the image
+  // has loaded` uses a mounted `<img>`, the branch DN-2 removed the arm from,
+  // so there is no timer to clear; `lets a LATE load recover from a fired
+  // timeout` advances past the deadline first, so `readyTimeout` is already
+  // `undefined` and the call is a no-op; and `does not let a timer armed for
+  // one image fire onto a later one` clears through the `activeIdx` cleanup.
+  // The load has to arrive on a STILL-ARMED watchdog, i.e. before the clock is
+  // advanced — which is exactly the /share late-blob shape.
+  it("clears the readiness timeout when a late image loads", () => {
+    vi.useFakeTimers();
+    const setSpy = vi.spyOn(globalThis, "setTimeout");
+    const clearSpy = vi.spyOn(globalThis, "clearTimeout");
+    try {
+      const view = renderViewer(renderWithoutImg);
+      const watchdogIds = setSpy.mock.calls.flatMap((call, i) => {
+        if (call[1] !== IMAGE_READY_TIMEOUT_MS) return [];
+        const result = setSpy.mock.results[i];
+        return result === undefined || result.type !== "return" ? [] : [result.value];
+      });
+      expect(watchdogIds).toHaveLength(1);
+
+      // The blob resolves INSIDE the window, so the watchdog is still armed
+      // when `load` fires. Nothing is advanced first.
+      swapRenderer(view, makePlainRenderer().render);
+      const img = screen.getAllByTestId("rendered-img")[0] as HTMLImageElement;
+      Object.defineProperty(img, "naturalWidth", { value: 2000, configurable: true });
+      Object.defineProperty(img, "offsetWidth", { value: 500, configurable: true });
+      act(() => {
+        fireEvent.load(img);
+      });
+      expect(clearSpy.mock.calls.map((call) => call[0])).toContain(watchdogIds[0]);
+
+      // ...and the observable consequence: crossing the original deadline must
+      // not condemn an image that has already answered for itself.
+      act(() => {
+        vi.advanceTimersByTime(IMAGE_READY_TIMEOUT_MS * 2);
+      });
+      expect(screen.queryByTestId("image-viewer-error")).toBeNull();
+      expect((screen.getByTestId("image-viewer-zoom-in") as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+    } finally {
+      setSpy.mockRestore();
+      clearSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  // The `error` teardown trigger — the cheapest of the four to get wrong
+  // silently, because a watchdog that survives an `error` re-sets a state the
+  // component is already in, so nothing observable breaks until the teardown
+  // is refactored and the leak reaches a LATER image.
+  it("clears the readiness timeout when the image reports an error", () => {
+    vi.useFakeTimers();
+    const setSpy = vi.spyOn(globalThis, "setTimeout");
+    const clearSpy = vi.spyOn(globalThis, "clearTimeout");
+    try {
+      const view = renderViewer(renderWithoutImg);
+      const watchdogIds = setSpy.mock.calls.flatMap((call, i) => {
+        if (call[1] !== IMAGE_READY_TIMEOUT_MS) return [];
+        const result = setSpy.mock.results[i];
+        return result === undefined || result.type !== "return" ? [] : [result.value];
+      });
+      expect(watchdogIds).toHaveLength(1);
+
+      // The `<img>` mounts late and then FAILS — the only shape in which an
+      // `error` can reach a still-armed watchdog now that DN-2 has narrowed
+      // the arm site to the never-mounted branch.
+      swapRenderer(view, makePlainRenderer().render);
+      act(() => {
+        fireEvent.error(screen.getAllByTestId("rendered-img")[0] as HTMLImageElement);
+      });
+      expect(screen.getByTestId("image-viewer-error")).toBeTruthy();
+      expect(clearSpy.mock.calls.map((call) => call[0])).toContain(watchdogIds[0]);
+
+      // ...and the reported failure is stable: crossing the original deadline
+      // must not re-enter the watchdog's own branch on an image that already
+      // answered for itself.
+      act(() => {
+        vi.advanceTimersByTime(IMAGE_READY_TIMEOUT_MS * 2);
+      });
+      expect(screen.getByTestId("image-viewer-error")).toBeTruthy();
+      expect(zoomLevel()).toBe("The photo could not be loaded.");
+    } finally {
+      setSpy.mockRestore();
+      clearSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears the readiness timeout on unmount", () => {
+    vi.useFakeTimers();
+    // Identified by its DELAY rather than by a global pending-timer count:
+    // Base UI schedules timers of its own (focus manager, scroll-lock
+    // restore) and those are not this story's to assert about. Measured this
+    // run: one non-viewer timer survives unmount, so a `getTimerCount() === 0`
+    // check would have been a false failure.
+    const setSpy = vi.spyOn(globalThis, "setTimeout");
+    const clearSpy = vi.spyOn(globalThis, "clearTimeout");
+    try {
+      const view = renderViewer(renderWithoutImg);
+      const watchdogIds = setSpy.mock.calls.flatMap((call, i) => {
+        if (call[1] !== IMAGE_READY_TIMEOUT_MS) return [];
+        const result = setSpy.mock.results[i];
+        return result === undefined || result.type !== "return" ? [] : [result.value];
+      });
+      expect(watchdogIds).toHaveLength(1);
+
+      view.unmount();
+
+      // A watchdog that outlives its own tree is a setState onto a closed
+      // viewer — and, once this component is reopened, onto a LATER image.
+      expect(clearSpy.mock.calls.map((call) => call[0])).toContain(watchdogIds[0]);
+    } finally {
+      setSpy.mockRestore();
+      clearSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("renders the inline error inside the frame, outside the transform layer, and traps nobody (D-6)", () => {
+    renderViewer(makePlainRenderer().render);
+    expect(screen.queryByTestId("image-viewer-error")).toBeNull();
+
+    fireEvent.error(screen.getAllByTestId("rendered-img")[0] as HTMLImageElement);
+
+    const error = screen.getByTestId("image-viewer-error");
+    // The copy is the UX spine's, transcribed rather than translated
+    // (mockup `key-viewer-chrome.html` state E).
+    expect(error.textContent).toBe("The photo could not be loaded.");
+    // Inside the frame, but OUTSIDE the transform layer, so it neither scales
+    // nor pans with a zoom the user left applied.
+    expect(screen.getByTestId("image-viewer-frame").contains(error)).toBe(true);
+    expect(screen.getByTestId("image-viewer-transform").contains(error)).toBe(false);
+    // ...and it never swallows a tap meant for the chrome beneath it.
+    expect(error.className).toContain("pointer-events-none");
+    expect(ariaHiddenAncestor(error)).toBeNull();
+    // DN-3 — the chip backdrop is `/60`, not `/40`. Pinned as a CLASS because
+    // jsdom composites nothing and the real number is a pixel measurement: the
+    // four `image-viewer-error-*` baselines carry the visual proof, this
+    // catches a silent re-lowering long before a baseline diff would.
+    expect(error.querySelector("span")?.className).toContain("bg-gallery-control/60");
+
+    // The live region announces the failure instead of falling through to "".
+    expect(zoomLevel()).toBe("The photo could not be loaded.");
+
+    // Close / chevrons / strip / toolbar all stay reachable...
+    for (const testid of ["image-viewer-close", "image-viewer-prev", "image-viewer-next"]) {
+      expect((screen.getByTestId(testid) as HTMLButtonElement).disabled).toBe(false);
+    }
+    expect(screen.getByTestId("image-viewer-strip").getAttribute("aria-hidden")).toBe("false");
+    expect(ariaHiddenAncestor(screen.getByTestId("image-viewer-toolbar"))).toBeNull();
+    expect(screen.getAllByTestId("image-viewer-thumb")).toHaveLength(3);
+
+    // ...and OPERABLE, not merely present: navigating away leaves the error
+    // state behind with the image it belonged to.
+    fireEvent.click(screen.getByTestId("image-viewer-next"));
+    expect(screen.getByTestId("image-viewer-counter").textContent).toBe("2 / 3");
+    expect(screen.queryByTestId("image-viewer-error")).toBeNull();
+    expect(zoomLevel()).toBe("Loading full image…");
   });
 });

@@ -84,6 +84,40 @@ const EXTREME_WIDE = solidPng(6000, 1200);
 const EXTREME_TALL = solidPng(1200, 6000);
 const THUMB = solidPng(128, 128);
 
+// Story 53.3 D-4 — the source-geometry matrix `epics.md:4579` names. Each
+// size is pinned to the contract it serves rather than to a round number
+// (`project-context.md` § "Magic constants ... contract-pointing").
+/** 4:1. Wide enough that a Pixel-5-class frame downscales it hard, so
+ *  `resolveMaxScale` returns the native-pixel ratio instead of
+ *  `BASE_MAX_SCALE` — the branch `zoom.test.ts` covers algebraically, here
+ *  exercised through real layout. */
+const PANORAMA_4_1 = solidPng(4000, 1000);
+/** 8:1 — the inspectability case `FR26-VIEW-1` exists for, and the widest
+ *  thing the `max-h-[calc(95dvh-5rem)]` cap must survive in LANDSCAPE, where
+ *  the vertical budget is scarcest. */
+const PANORAMA_8_1 = solidPng(8000, 1000);
+/** 1:4 — the complementary axis: the HEIGHT cap, not the width cap, is what
+ *  must contain this one. Kept distinct from `EXTREME_TALL` (1200x6000 = 1:5)
+ *  rather than reusing it, because the epic names 1:4 literally and an
+ *  all-zero greyscale fixture deflates to a few KB. */
+const PORTRAIT_1_4 = solidPng(1000, 4000);
+/** Smaller than the rendered frame in every project. Proves `resolveMaxScale`
+ *  falls back to `BASE_MAX_SCALE` rather than to a sub-1 ratio, so the three
+ *  zoom controls are not dead — the case 53.2's `max(4, ratio)` reading was
+ *  chosen to protect. */
+const SMALL_SOURCE = solidPng(120, 90);
+
+/** `zoom.ts`'s `BASE_MAX_SCALE`. Restated rather than imported: this is a
+ *  Playwright spec asserting the SHIPPED envelope, and importing the constant
+ *  would make a test that silently follows the value it is meant to pin. */
+const BASE_MAX_SCALE = 4;
+
+// `{spacing.target-fullscreen-close}` — `DESIGN.md:180, :287`;
+// `EXPERIENCE.md:302`; WCAG 2.2 SC 2.5.8.
+const CLOSE_TARGET_MIN_PX = 44;
+// Device-scale-factor rounding on the Pixel 5 projects.
+const TARGET_EPSILON_PX = 0.5;
+
 // Mobile Chrome expands the *layout* viewport (the containing block for
 // `position: fixed`) to the document's scroll width as soon as the page
 // overflows horizontally, while `vw` units keep resolving against the
@@ -105,10 +139,50 @@ async function forceHorizontalPageOverflow(page: Page) {
     .toBe(true);
 }
 
+// ── Story 53.3 (E53 / FR26-VIEW-1, NFR26-A11Y-1, NFR26-VISUAL-1) ──────────
+// AC-2 / AC-3 / AC-4 extend this suite ADDITIVELY. Story D-3 puts the
+// source-geometry x orientation matrix HERE rather than in a new spec file
+// because every helper above (`solidPng`, `openViewerWith`, `boxOf`,
+// `assertContained`, `assertDismissible`, ...) is file-local and unexported:
+// a new file would have to duplicate ~130 lines of PNG encoder plus geometry
+// assertions, which is the exact wheel-reinvention this story exists to
+// prevent. The four tests below the helpers keep their bodies byte-identical,
+// `openViewerWith` gained one OPTIONAL parameter defaulting to today's
+// behaviour, and the suite still produces NO snapshots.
+
+/**
+ * Landscape by AXIS SWAP of the project's own viewport (D-2). Deliberately no
+ * literal dimensions: a landscape Pixel 5 is defined by Playwright's own
+ * `devices["Pixel 5"]` descriptor, which is Playwright's to change on any
+ * upgrade, so a hard-coded `851 x 393` would rot silently. The same helper
+ * therefore expresses both "opened in landscape" and "rotated while open".
+ *
+ * `setViewportSize` fires `resize`; it does NOT fire `orientationchange`
+ * (story V-5). The viewer registers BOTH listeners; the second one is covered
+ * in `ImageFullscreenViewer.test.tsx`, because synthesising an
+ * `orientationchange` here would prove the listener is wired, not that a
+ * rotation refits.
+ */
+async function rotate(page: Page) {
+  const vp = page.viewportSize();
+  if (vp === null) throw new Error("no viewport to rotate");
+  await page.setViewportSize({ width: vp.height, height: vp.width });
+  // `setViewportSize` resolves before the page has necessarily re-laid-out and
+  // run the viewer's own `resize` handler, and every geometry assertion after a
+  // rotation depends on that having happened.
+  await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(vp.height);
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve(null))),
+      ),
+  );
+}
+
 async function openViewerWith(
   page: Page,
   full: Buffer,
-  opts: { overflow?: boolean; scrollX?: number } = {},
+  opts: { overflow?: boolean; scrollX?: number; landscape?: boolean } = {},
 ) {
   // Two images are intentional: they make the h-20 thumbnail strip, counter,
   // chevrons and the `95dvh - 5rem` main-frame budget part of every assertion.
@@ -125,6 +199,9 @@ async function openViewerWith(
   });
   await page.goto(`/catalog/${MODEL_ID}`);
   await waitForReady(page);
+  // Story 53.3 D-2 — opt-in landscape. Defaults to today's behaviour, so the
+  // three call sites above are untouched (AC-9).
+  if (opts.landscape === true) await rotate(page);
   if (opts.overflow === true) await forceHorizontalPageOverflow(page);
   if ((opts.scrollX ?? 0) > 0) {
     await page.evaluate((x) => window.scrollTo({ left: x, behavior: "instant" }), opts.scrollX);
@@ -266,4 +343,393 @@ test("fullscreen viewer remains reachable from a horizontally scrolled page", as
   await page.getByTestId("image-viewer-next").click();
   await expect(secondThumb).toHaveAttribute("aria-current", "true");
   await assertDismissible(page);
+});
+
+// ══ Story 53.3 — AC-2 / AC-3 / AC-4 ═══════════════════════════════════════
+// Everything below is NEW. Nothing above this line changed except
+// `openViewerWith`'s optional `landscape` parameter (AC-9).
+
+// The toolbar is scoped on every lookup: `playwright.config.ts` forces
+// `pl-PL` and `catalog.image_viewer.zoom_in` is "Powiększ" in Polish — and so
+// is the SHIPPED `catalog.image_viewer.trigger_label` on the gallery trigger
+// (53.2 D-8's recorded terminology collision, raised for Story 54.1). Scoping
+// is how these lookups stay unambiguous without renaming anything (V-17).
+const toolbar = (page: Page) => page.getByTestId("image-viewer-toolbar");
+const zoomInControl = (page: Page) => toolbar(page).getByRole("button", { name: "Powiększ" });
+const zoomOutControl = (page: Page) => toolbar(page).getByRole("button", { name: "Pomniejsz" });
+const zoomResetControl = (page: Page) => toolbar(page).getByRole("button", { name: "Dopasuj" });
+
+/** Wait until the image has actually resolved, which is what arms the three
+ *  zoom controls. `openViewerWith` already polls `naturalWidth`, but that is
+ *  the browser's view; this is React's. */
+async function waitForZoomable(page: Page) {
+  await expect(zoomInControl(page)).toBeEnabled();
+}
+
+/** The transform layer's live matrix. `scale` is the uniform scale factor and
+ *  `x`/`y` the committed pan, read in the same coordinate space the clamp
+ *  arithmetic works in. `translate3d(...)` computes to a `matrix3d`, which
+ *  `DOMMatrixReadOnly` normalises for us. */
+async function transformOf(page: Page): Promise<{ scale: number; x: number; y: number }> {
+  return page.evaluate(() => {
+    const el = document.querySelector('[data-testid="image-viewer-transform"]');
+    if (el === null) throw new Error("no transform layer");
+    const m = new DOMMatrixReadOnly(getComputedStyle(el).transform);
+    return { scale: m.a, x: m.e, y: m.f };
+  });
+}
+
+/**
+ * A single-finger drag on the viewer root — the shipped pan gesture, driven
+ * through the same handler a phone reaches. `TouchEvent`'s touch lists accept
+ * ONLY real `Touch` instances; Chromium rejects plain object literals outright
+ * ("Failed to convert value to 'Touch'"), and `new Touch({...})` additionally
+ * requires `identifier` and `target` (53.2 D-9).
+ */
+async function panBy(page: Page, dx: number, dy: number) {
+  const frame = await boxOf(page, '[data-testid="image-viewer-frame"]');
+  await page.evaluate(
+    ({ sx, sy, ex, ey }) => {
+      const root = document.querySelector('[data-testid="image-viewer-root"]');
+      if (root === null) throw new Error("no viewer root");
+      const at = (x: number, y: number) =>
+        new Touch({ identifier: 1, target: root, clientX: x, clientY: y });
+      const fire = (type: string, touch: Touch, remaining: Touch[]) =>
+        root.dispatchEvent(
+          new TouchEvent(type, {
+            bubbles: true,
+            touches: remaining,
+            targetTouches: remaining,
+            changedTouches: [touch],
+          }),
+        );
+      const start = at(sx, sy);
+      fire("touchstart", start, [start]);
+      // Two moves, so the drag passes TAP_MOVE_TOLERANCE_PX and is committed
+      // as a pan rather than being released as a tap.
+      const mid = at((sx + ex) / 2, (sy + ey) / 2);
+      fire("touchmove", mid, [mid]);
+      const end = at(ex, ey);
+      fire("touchmove", end, [end]);
+      fire("touchend", end, []);
+    },
+    {
+      sx: frame.x + frame.width / 2,
+      sy: frame.y + frame.height / 2,
+      ex: frame.x + frame.width / 2 + dx,
+      ey: frame.y + frame.height / 2 + dy,
+    },
+  );
+}
+
+/**
+ * `clampPan`'s postcondition expressed in MEASURED pixels (AC-4). On each
+ * axis: either the scaled image is smaller than the frame, in which case the
+ * pan is pinned to 0, or it is larger, in which case it must fully COVER the
+ * frame — no image edge may ever sit inside the corresponding frame edge.
+ *
+ * This is the half `zoom.test.ts` cannot do. That suite constrains the same
+ * algebra against INJECTED geometry (V-11); what only a real browser can show
+ * is that the component feeds it real measurements.
+ */
+async function assertPanClamped(page: Page) {
+  const frame = await boxOf(page, '[data-testid="image-viewer-frame"]');
+  const image = await boxOf(page, '[data-testid="image-viewer-frame"] img');
+  const pan = await transformOf(page);
+
+  if (image.width >= frame.width - EPSILON_PX) {
+    expect(image.x, "image left edge must not detach from the frame").toBeLessThanOrEqual(
+      frame.x + EPSILON_PX,
+    );
+    expect(
+      image.x + image.width,
+      "image right edge must not detach from the frame",
+    ).toBeGreaterThanOrEqual(frame.x + frame.width - EPSILON_PX);
+  } else {
+    expect(pan.x, "pan is pinned on an axis the image does not overflow").toBeCloseTo(0, 1);
+  }
+
+  if (image.height >= frame.height - EPSILON_PX) {
+    expect(image.y, "image top edge must not detach from the frame").toBeLessThanOrEqual(
+      frame.y + EPSILON_PX,
+    );
+    expect(
+      image.y + image.height,
+      "image bottom edge must not detach from the frame",
+    ).toBeGreaterThanOrEqual(frame.y + frame.height - EPSILON_PX);
+  } else {
+    expect(pan.y, "pan is pinned on an axis the image does not overflow").toBeCloseTo(0, 1);
+  }
+}
+
+/**
+ * Containment while the image is deliberately ZOOMED.
+ *
+ * `assertContained` additionally asserts the image sits inside its frame,
+ * which is only true at fit scale: a zoomed image legitimately overflows the
+ * frame and is clipped by the frame's own `overflow-hidden`. What must hold at
+ * EVERY zoom level is the other half — the viewer's own boxes stay inside the
+ * visual viewport and the viewer adds no document overflow.
+ */
+async function assertChromeContained(page: Page) {
+  const { vw, vh, scrollWidth } = await page.evaluate(() => ({
+    vw: document.documentElement.clientWidth,
+    vh: document.documentElement.clientHeight,
+    scrollWidth: document.documentElement.scrollWidth,
+  }));
+
+  expectWithinViewport("dialog", await boxOf(page, '[data-slot="dialog-content"]'), vw, vh);
+  expectWithinViewport(
+    "viewer root",
+    await boxOf(page, '[data-testid="image-viewer-root"]'),
+    vw,
+    vh,
+  );
+  expectWithinViewport("frame", await boxOf(page, '[data-testid="image-viewer-frame"]'), vw, vh);
+  expectWithinViewport(
+    "close button",
+    await boxOf(page, '[data-testid="image-viewer-close"]'),
+    vw,
+    vh,
+  );
+  await expect(page.getByTestId("image-viewer-strip")).toBeVisible();
+  await expect(page.getByTestId("image-viewer-counter")).toBeVisible();
+  await expect(page.getByTestId("image-viewer-prev")).toBeVisible();
+  await expect(page.getByTestId("image-viewer-next")).toBeVisible();
+  await expect(page.getByTestId("image-viewer-toolbar")).toBeVisible();
+  expect(scrollWidth, "the viewer adds no horizontal document overflow").toBeLessThanOrEqual(
+    vw + EPSILON_PX,
+  );
+}
+
+/** The close control must not merely be inside the viewport (which
+ *  `assertContained` already proves) — it must be big enough to hit. */
+async function assertCloseTargetFloor(page: Page) {
+  const close = await boxOf(page, '[data-testid="image-viewer-close"]');
+  expect(close.width, "close target width").toBeGreaterThanOrEqual(
+    CLOSE_TARGET_MIN_PX - TARGET_EPSILON_PX,
+  );
+  expect(close.height, "close target height").toBeGreaterThanOrEqual(
+    CLOSE_TARGET_MIN_PX - TARGET_EPSILON_PX,
+  );
+}
+
+/** Press Zoom In until it disables itself, and report the scale it stopped at. */
+async function driveToCeiling(page: Page): Promise<number> {
+  for (let i = 0; i < 25; i += 1) {
+    if (await zoomInControl(page).isDisabled()) break;
+    await zoomInControl(page).click();
+  }
+  await expect(zoomInControl(page)).toBeDisabled();
+  return (await transformOf(page)).scale;
+}
+
+// ── AC-2: the source-geometry matrix, both orientations ───────────────────
+// Placement in `tests/visual/` is what discharges `epics.md:4579`'s "light
+// AND dark" and "Pixel 5" for free: the 4-project matrix is fixed
+// (`project-context.md:110`) and every spec here runs on all four unless it
+// self-skips. There is deliberately NO colour-scheme loop and NO fifth
+// project (V-3).
+
+const GEOMETRY_MATRIX = [
+  { label: "panorama 4:1", png: PANORAMA_4_1 },
+  { label: "panorama 8:1", png: PANORAMA_8_1 },
+  { label: "portrait 1:4", png: PORTRAIT_1_4 },
+  { label: "small source", png: SMALL_SOURCE },
+] as const;
+
+for (const { label, png } of GEOMETRY_MATRIX) {
+  test(`viewer contains a ${label} source in portrait`, async ({ page }) => {
+    await openViewerWith(page, png);
+    await assertContained(page);
+    await assertCloseTargetFloor(page);
+    await assertDismissible(page);
+  });
+
+  test(`viewer contains a ${label} source in landscape`, async ({ page }, testInfo) => {
+    // D-2: rotating a DESKTOP Chrome window is not a phone rotation and would
+    // assert nothing about `epics.md:4579`'s "Pixel 5 landscape". Same skip
+    // idiom as the horizontally-scrolled test above.
+    test.skip(
+      !testInfo.project.name.startsWith("mobile-"),
+      "landscape is a phone-only case (D-2)",
+    );
+
+    await openViewerWith(page, png, { landscape: true });
+    await assertContained(page);
+    await assertCloseTargetFloor(page);
+    await assertDismissible(page);
+  });
+}
+
+// ── AC-3: rotation refit ──────────────────────────────────────────────────
+
+test("rotation refits without clipping and preserves the user's zoom", async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith("mobile-"), "rotation is a phone-only case (D-2)");
+
+  await openViewerWith(page, PANORAMA_8_1);
+  await waitForZoomable(page);
+
+  // Zoom above 1.0 AND pan off-centre, so the refit has something to preserve
+  // and something to re-clamp. A rotation test at pan {0,0} would pass against
+  // a refit that silently drops the pan.
+  await zoomInControl(page).click();
+  await zoomInControl(page).click();
+  // Wait for the zoom to be COMMITTED before dragging. A drag at scale 1.0 is
+  // a deliberate no-op (`onTouchMove` bails on `scaleRef.current <=
+  // MIN_SCALE`), so panning against an uncommitted zoom silently yields a zero
+  // pan and makes the whole rotation assertion vacuous — measured as exactly
+  // that, intermittently, under `fullyParallel` load.
+  await expect
+    .poll(async () => (await transformOf(page)).scale, {
+      message: "zoom committed before panning",
+    })
+    .toBeGreaterThan(1);
+  // The gesture is inside the poll on purpose: each drag is relative to the
+  // pan it starts from, so a retry converges on the clamp rather than
+  // fighting it, and the precondition is OBSERVED rather than assumed.
+  await expect
+    .poll(
+      async () => {
+        await panBy(page, -200, 0);
+        return Math.abs((await transformOf(page)).x);
+      },
+      { message: "panned off-centre before rotating" },
+    )
+    .toBeGreaterThan(0);
+  const portrait = await transformOf(page);
+  expect(portrait.scale, "zoomed above 1.0 before rotating").toBeGreaterThan(1);
+
+  await rotate(page);
+
+  // `EXPERIENCE.md:262` — the zoom LEVEL survives the rotation...
+  const landscape = await transformOf(page);
+  expect(landscape.scale, "zoom level preserved across rotation").toBeCloseTo(portrait.scale, 2);
+  // ...the pan is re-clamped against the new geometry...
+  await assertPanClamped(page);
+  // ...and every control stays inside the visual viewport with no document
+  // overflow. `assertChromeContained`, not `assertContained`: the image is
+  // deliberately zoomed here, so it SHOULD overflow its frame and be clipped.
+  await assertChromeContained(page);
+  await assertCloseTargetFloor(page);
+
+  // The return trip is the failure this actually pins: a one-way refit that
+  // strands the image when the phone rotates back is still a broken refit.
+  await rotate(page);
+  const backToPortrait = await transformOf(page);
+  expect(backToPortrait.scale, "zoom level preserved on the return trip").toBeCloseTo(
+    portrait.scale,
+    2,
+  );
+  await assertPanClamped(page);
+  await assertChromeContained(page);
+  // The 44x44 floor is re-measured after the RETURN rotation too, not only
+  // after the outbound one: a refit that survives one axis swap and shrinks
+  // the close target on the way back is still a broken refit (AC-2's floor
+  // applies at every geometry this test visits).
+  await assertCloseTargetFloor(page);
+
+  // Back at fit scale the STRICTER containment applies again, which is what
+  // proves the two rotations left no residue in the layout.
+  await zoomResetControl(page).click();
+  await assertContained(page);
+  await assertDismissible(page);
+});
+
+// ── AC-4: clamp and reset, measured at real layout ────────────────────────
+
+test("pan is pinned at 1.0, clamped when zoomed, and reset returns to exactly 1.0", async ({
+  page,
+}) => {
+  await openViewerWith(page, PANORAMA_4_1);
+  await waitForZoomable(page);
+
+  // At 1.0 the image fits the frame on both axes, so no drag may move it.
+  //
+  // What this pins EXACTLY: `onTouchMove` returns before setting
+  // `gestureMovedRef` while `scale <= MIN_SCALE` (`ImageFullscreenViewer.tsx`),
+  // so the release is classified by `touchend` alone — and with |dy| = 200 well
+  // past `SWIPE_VERTICAL_TOLERANCE_PX` (60) it takes the vertical-scroll bail.
+  // So this is the "a drag at fit scale moves nothing and navigates nothing"
+  // contract, NOT a `clampPan` assertion; the clamp arithmetic is pinned by the
+  // zoomed cases below. The counter check is what keeps the second half honest:
+  // without it a regression that navigated instead of no-op'ing would still see
+  // a zeroed transform on the newly-selected image and pass.
+  const counter = page.getByTestId("image-viewer-counter");
+  const counterBefore = await counter.textContent();
+  await panBy(page, -300, -200);
+  const rest = await transformOf(page);
+  expect(rest.scale, "still at fit scale").toBe(1);
+  expect(rest.x, "pan pinned at scale 1.0").toBe(0);
+  expect(rest.y, "pan pinned at scale 1.0").toBe(0);
+  expect(await counter.textContent(), "a drag at fit scale navigated nothing").toBe(counterBefore);
+
+  await zoomInControl(page).click();
+  await zoomInControl(page).click();
+  // Same reason as the rotation test: a drag at scale 1.0 is a no-op, so the
+  // zoom has to be observed as committed or the clamp assertions below become
+  // assertions about an unzoomed image.
+  await expect
+    .poll(async () => (await transformOf(page)).scale, {
+      message: "zoom committed before panning",
+    })
+    .toBeGreaterThan(1);
+
+  // Drag far past anything the clamp can allow, in both directions.
+  for (const [dx, dy] of [
+    [-4000, -4000],
+    [4000, 4000],
+  ] as const) {
+    await panBy(page, dx, dy);
+    await assertPanClamped(page);
+  }
+
+  // A zoom-OUT must re-clamp: the envelope shrinks under a pan that was legal
+  // a moment ago, and the image may not stay detached from an edge.
+  await zoomOutControl(page).click();
+  await assertPanClamped(page);
+
+  // Reset returns to EXACTLY 1.0 with pan {0,0} — not "approximately".
+  await zoomResetControl(page).click();
+  const afterReset = await transformOf(page);
+  expect(afterReset.scale, "Reset returns to exactly 1.0").toBe(1);
+  expect(afterReset.x, "Reset drops the pan").toBe(0);
+  expect(afterReset.y, "Reset drops the pan").toBe(0);
+  await expect(zoomOutControl(page)).toBeDisabled();
+  await expect(zoomResetControl(page)).toBeDisabled();
+  await assertContained(page);
+});
+
+test("the zoom ceiling is measured from the source, not fixed at the default envelope", async ({
+  page,
+}) => {
+  // `resolveMaxScale` = `max(BASE_MAX_SCALE, naturalWidth / renderedWidth)`.
+  // `zoom.test.ts` constrains that algebra against INJECTED numbers; what only
+  // a real browser can show is that the component feeds it REAL measurements,
+  // i.e. that a panorama and a postage stamp end up with DIFFERENT ceilings.
+  await openViewerWith(page, PANORAMA_8_1);
+  await waitForZoomable(page);
+  const panoramaCeiling = await driveToCeiling(page);
+  const expectedPanorama = await page.evaluate(() => {
+    const img = document.querySelector('[data-testid="image-viewer-frame"] img');
+    if (!(img instanceof HTMLImageElement)) throw new Error("no rendered image");
+    return Math.max(4, img.naturalWidth / img.offsetWidth);
+  });
+  expect(panoramaCeiling).toBeCloseTo(expectedPanorama, 2);
+  expect(panoramaCeiling, "a panorama earns more than the default envelope").toBeGreaterThan(
+    BASE_MAX_SCALE,
+  );
+  await assertPanClamped(page);
+
+  // The small source is the complementary half: below one image-pixel per
+  // CSS-pixel the ceiling must NOT fall below the default envelope, or the
+  // three controls would be dead on a small photo.
+  await openViewerWith(page, SMALL_SOURCE);
+  await waitForZoomable(page);
+  expect(await driveToCeiling(page), "small source keeps the default envelope").toBeCloseTo(
+    BASE_MAX_SCALE,
+    5,
+  );
 });

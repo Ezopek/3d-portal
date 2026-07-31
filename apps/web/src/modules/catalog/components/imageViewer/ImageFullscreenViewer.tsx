@@ -91,6 +91,46 @@ const DOUBLE_TAP_WINDOW_MS = 300;
 // `{spacing.target-fullscreen-close}` (`DESIGN.md:287`, `EXPERIENCE.md:302`) —
 // the same floor the close control uses, reused rather than invented.
 const DOUBLE_TAP_SLOP_PX = 44;
+// Story 53.3 D-5 — readiness stall -> reported failure.
+//
+// The `/share` renderer resolves its blob into an object URL and renders a
+// placeholder `<div>` until it has one; when `acquireShareBlob` rejects
+// (404 / 429 / offline) the rejection is SWALLOWED and no `<img>` is ever
+// mounted at all. Neither `load` nor `error` can fire on an element that does
+// not exist, so no listener-based repair can reach that path — a timeout is
+// the only mechanism that can (story V-12).
+//
+// Story 53.3 code review DN-2 (controller-accepted repair, 2026-07-31) — the
+// watchdog is armed ONLY on that never-mounted-`<img>` branch. It used to arm
+// on the ordinary `<img>` path too, where `load` / `error` normally answer for
+// themselves: a slow-but-working photo was therefore painted over with the
+// inline error and ANNOUNCED as failed at 15 s, and the recovery was silent
+// (an emptied `aria-live` region announces nothing). D-5's stated contract —
+// "convert an UNREPORTED stall into a reported failure" — is what this
+// narrowing restores; D-5's literal mechanism wording ("arm whenever the
+// resolved status is `loading`") is the part that is deliberately not
+// followed.
+//
+// The narrowing is a ruled TRADEOFF, not a categorical claim: a mounted
+// `<img>` whose request is black-holed or hangs indefinitely fires neither
+// `load` nor `error` until the network stack gives up, so that stall IS
+// unreported and is no longer converted. Accepted because the alternative
+// condemned every slow-but-valid photo, and the mounted-and-hung residual is
+// ledgered OPEN in `deferred-work.md` rather than asserted out of existence.
+//
+// The contract this number serves is "convert an unreported stall into a
+// reported failure", NOT "police latency":
+//   - FLOOR: `shareBlobCache`'s `MAX_CONCURRENT_FETCHES = 4` semaphore queues
+//     overflow callers, and nothing below it has a timeout or an
+//     `AbortController` of its own — a strip burst can leave one image queued
+//     behind several batches before its fetch is even dispatched (V-13).
+//     15 s is far above that on any working connection.
+//   - CEILING: well inside the window where total silence reads as "broken",
+//     and far below the indefinite wait that is today's behaviour.
+// It is not a latency SLO: do not tune it to make a slow test faster, and do
+// not add a retry — retry policy belongs to `shareBlobCache`, which owns the
+// rate-limit and semaphore invariants and which this story must not touch.
+const IMAGE_READY_TIMEOUT_MS = 15_000;
 
 const ORIGIN: Vec2 = { x: 0, y: 0 };
 
@@ -361,14 +401,45 @@ export default function ImageFullscreenViewer({
       setMaxScale(next);
     };
 
+    // Story 53.3 D-5 — the readiness watchdog. Armed only on the branch where
+    // NO `<img>` is mounted at all (DN-2), and torn down by `load`, by
+    // `error`, by an `activeIdx` change (this effect re-runs, so cleanup
+    // fires) and by unmount. A leaked timer must never fire onto a LATER
+    // image. `load`/`error` still reach it after a late `<img>` mounts,
+    // because the capture listener lives on the frame, not on the element.
+    let readyTimeout: ReturnType<typeof setTimeout> | undefined;
+    const clearReadyTimeout = () => {
+      if (readyTimeout !== undefined) {
+        clearTimeout(readyTimeout);
+        readyTimeout = undefined;
+      }
+    };
+    const armReadyTimeout = () => {
+      clearReadyTimeout();
+      readyTimeout = setTimeout(() => {
+        readyTimeout = undefined;
+        setImageStatus("error");
+      }, IMAGE_READY_TIMEOUT_MS);
+    };
+
     // Initial probe. `complete` covers the already-cached image, whose `load`
     // fired before this listener existed. A `null` img means /share's
     // `AnonymousImage` is still resolving its blob and has rendered a
     // placeholder instead.
     const initial = frame.querySelector("img");
     if (initial === null) {
+      // No `<img>` at all — the /share placeholder case. Nothing will ever
+      // fire here, so the watchdog is the ONLY path out of `loading` (D-5).
       setImageStatus("loading");
+      armReadyTimeout();
     } else if (!initial.complete) {
+      // An `<img>` IS mounted, so `load` or `error` normally answers for it —
+      // the watchdog is deliberately NOT armed here (DN-2). Arming it made a
+      // slow-but-valid photo report as a terminal failure at 15 s while it was
+      // still downloading; staying `loading` is both true and recoverable,
+      // which is what `EXPERIENCE.md:259` asks for. The accepted cost is a
+      // request that is black-holed rather than slow: it fires neither event
+      // and stays `loading` indefinitely (ledgered OPEN, see the constant).
       setImageStatus("loading");
     } else {
       // `complete` is ALSO true for an image that already FAILED, and its
@@ -385,6 +456,10 @@ export default function ImageFullscreenViewer({
     // pin the toolbar disabled and make this whole path untestable.
     const onLoad = (ev: Event) => {
       if (ev.target instanceof HTMLImageElement) {
+        // Unconditional, and deliberately so: a `load` arriving AFTER the
+        // watchdog fired still restores `ready`. The timeout REPORTS a stall,
+        // it does not permanently condemn the image (D-5).
+        clearReadyTimeout();
         setImageStatus("ready");
         measureMaxScale(ev.target);
       }
@@ -392,11 +467,15 @@ export default function ImageFullscreenViewer({
     const onError = (ev: Event) => {
       // A failed image never traps the user: close + toolbar stay mounted and
       // reachable, the zoom controls simply have nothing to act on.
-      if (ev.target instanceof HTMLImageElement) setImageStatus("error");
+      if (ev.target instanceof HTMLImageElement) {
+        clearReadyTimeout();
+        setImageStatus("error");
+      }
     };
     frame.addEventListener("load", onLoad, true);
     frame.addEventListener("error", onError, true);
     return () => {
+      clearReadyTimeout();
       frame.removeEventListener("load", onLoad, true);
       frame.removeEventListener("error", onError, true);
     };
@@ -412,6 +491,15 @@ export default function ImageFullscreenViewer({
   useEffect(() => {
     if (imageStatus === "loading") {
       setAnnouncement(t("catalog.image_viewer.loading"));
+      return;
+    }
+    // Story 53.3 D-6 — a failure used to fall through to `""`, so a broken
+    // image gave a blank frame and total silence. It is announced from state
+    // for the same reason the loading text is: an `aria-live` region never
+    // announces the content it was INSERTED with, and Base UI portals this
+    // whole subtree in at once.
+    if (imageStatus === "error") {
+      setAnnouncement(t("catalog.image_viewer.error"));
       return;
     }
     if (imageStatus === "ready" && zoomTouchedRef.current) {
@@ -850,6 +938,32 @@ export default function ImageFullscreenViewer({
                 className: "max-h-[calc(95dvh-5rem)] max-w-full object-contain",
               })}
             </div>
+
+            {/* Story 53.3 D-6 — the inline error state (mockup
+                `key-viewer-chrome.html` state E, `EXPERIENCE.md:260`). It sits
+                INSIDE the frame but OUTSIDE the transform layer, so it neither
+                scales nor pans with a zoom the user may have left applied, and
+                it is `pointer-events-none` end to end so it can never swallow
+                a tap meant for the close button, a chevron, the strip or the
+                toolbar underneath it: a failed image never traps the user.
+                Token-only colours — no new `--color-*` is authorised here. */}
+            {imageStatus === "error" && (
+              <div
+                data-testid="image-viewer-error"
+                className="pointer-events-none absolute inset-0 grid place-items-center px-6"
+              >
+                {/* DN-3 (controller-accepted repair, 2026-07-31): the backdrop
+                    is `/60`, not `/40`. At `/40` the composite behind the white
+                    copy measured rgb(151,151,151) in the LIGHT theme — 2.92:1,
+                    under WCAG AA's 4.5:1 for 14 px text. `/60` composites to
+                    rgb(102,102,102) ≈ 5.7:1 and stays inside D-6's
+                    `gallery-control` token envelope (no new `--color-*`, no
+                    literal). Dark theme was already ~20:1 and only deepens. */}
+                <span className="rounded bg-gallery-control/60 px-3 py-2 text-center text-sm text-gallery-control-foreground">
+                  {t("catalog.image_viewer.error")}
+                </span>
+              </div>
+            )}
 
             {/* LAYER 2 — chrome layer: counter, close, chevrons. Fades when
                 `chromeVisible` is false (mobile tap-to-hide). Story 53.2 does

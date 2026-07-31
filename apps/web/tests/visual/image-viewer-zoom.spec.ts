@@ -22,7 +22,7 @@
 // test-authoring rule, every `toHaveScreenshot` is preceded by an explicit
 // `toBeVisible()` on the concrete state being captured.
 
-import type { Page } from "@playwright/test";
+import type { Page, Route } from "@playwright/test";
 
 import { expect, test } from "./_test";
 import { stubSotDetail } from "./api-stubs";
@@ -302,4 +302,333 @@ test("body scroll is locked on open and fully restored on close", async ({ page 
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
   // ...and scrolling works again.
   expect(await wheelAndReadScrollY(page)).toBeGreaterThan(0);
+});
+
+// ══ Story 53.3 — AC-6, AC-7, AC-8 ═════════════════════════════════════════
+// Everything below is NEW. The six tests above keep their bodies unchanged
+// (AC-9); AC-7 extends the shipped scroll-lock test by REUSING its helpers
+// rather than editing it, and the geometry half of this story lives in
+// `image-viewer-containment.spec.ts` (D-3).
+
+/**
+ * Open the viewer with the main frame's `variant=full` request under this
+ * test's control. `stubSotDetail` already serves a 1x1 PNG for every content
+ * request; registering AFTER it wins, because Playwright matches route
+ * handlers in reverse registration order, and `route.fallback()` hands the
+ * non-`full` variants straight back to the shared stub so the gallery page and
+ * the thumb strip behave normally.
+ */
+async function openViewerWithFullImage(
+  page: Page,
+  handleFull: (route: Route) => Promise<void> | void,
+) {
+  await stubSotDetail(page, { imageCount: 2 });
+  await page.route("**/api/models/**/files/**/content**", async (route: Route) => {
+    if (new URL(route.request().url()).searchParams.get("variant") !== "full") {
+      return route.fallback();
+    }
+    return handleFull(route);
+  });
+  await page.goto(`/catalog/${MODEL_ID}`);
+  await waitForReady(page);
+  await page.getByTestId("gallery-fullscreen-trigger").click();
+  await page.waitForSelector('[data-testid="image-viewer-root"]', { state: "visible" });
+}
+
+// ── AC-6: focus trap / Escape / return focus ──────────────────────────────
+// Escape had ZERO coverage anywhere before this story (V-9). The return-focus
+// half is asserted HERE and not only in jsdom: Story 53.2 measured Base UI's
+// focus manager behaving differently in real Chromium than in jsdom (a
+// self-disabling control blurred to `<body>` in Chromium while jsdom modelled
+// no blur at all), so a jsdom-only focus claim is not sufficient evidence for
+// a focus contract.
+
+test("Escape closes the viewer and returns focus to the gallery trigger", async ({ page }) => {
+  await openViewer(page);
+  await expect(page.getByTestId("image-viewer-root")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await page.waitForSelector('[data-testid="image-viewer-root"]', { state: "detached" });
+  await expect(page.getByTestId("gallery-fullscreen-trigger")).toBeFocused();
+
+  // The close-button path carries the SAME contract (`EXPERIENCE.md:234`
+  // states focus trap, Escape and return focus as one contract, not three).
+  await page.getByTestId("gallery-fullscreen-trigger").click();
+  await page.waitForSelector('[data-testid="image-viewer-root"]', { state: "visible" });
+  await page.getByTestId("image-viewer-close").click();
+  await page.waitForSelector('[data-testid="image-viewer-root"]', { state: "detached" });
+  await expect(page.getByTestId("gallery-fullscreen-trigger")).toBeFocused();
+});
+
+test("the open viewer takes focus and Tab walks its own controls", async ({ page }) => {
+  await openViewer(page);
+  // Base UI moves focus into the popup on open.
+  await expect(page.getByTestId("image-viewer-close")).toBeFocused();
+
+  // The dialog's OWN tab order reaches every ENABLED control. Zoom Out and
+  // Reset are `disabled` at scale 1.0 (mockup state A) and are correctly
+  // skipped rather than being focusable dead ends.
+  // The two thumbs are disambiguated by `data-thumb-idx`: collapsing both to
+  // the bare testid would let a regression that PINS focus on the first thumb
+  // — exactly the class of focus bug this story is about — produce an
+  // identical array and pass.
+  const order: string[] = [];
+  for (let i = 0; i < 5; i += 1) {
+    await page.keyboard.press("Tab");
+    order.push(
+      await page.evaluate(() => {
+        const el = document.activeElement;
+        if (el === null) return "outside the viewer";
+        const testid = el.getAttribute("data-testid");
+        if (testid === null) return "outside the viewer";
+        const idx = el.getAttribute("data-thumb-idx");
+        return idx === null ? testid : `${testid}[${idx}]`;
+      }),
+    );
+  }
+  expect(order).toEqual([
+    "image-viewer-prev",
+    "image-viewer-next",
+    "image-viewer-zoom-in",
+    "image-viewer-thumb[0]",
+    "image-viewer-thumb[1]",
+  ]);
+
+  // POINTER modality does hold, even though keyboard modality does not (see
+  // the ledgered test below): the backdrop owns every hit-test over the page
+  // behind, so nothing back there is clickable while the viewer is open.
+  expect(
+    await page.evaluate(
+      () => document.elementFromPoint(5, 5)?.getAttribute("data-slot") ?? "none",
+    ),
+  ).toBe("dialog-overlay");
+});
+
+// AC-6's focus-TRAP clause — the one clause of this story that could NOT be
+// satisfied, recorded as an executable expected-failure rather than deleted.
+//
+// MEASURED this run in real Chromium, on all four projects, in BOTH
+// directions, so it is not a document-end wrap artifact of headless Tab:
+//   - `Shift+Tab` from the initially-focused close button lands straight on
+//     the page BEHIND the dialog (the file row's delete button, the download
+//     link, the 3D-preview toggle, the render checkbox);
+//   - `Tab` past the last thumb reaches a Base UI focus guard and then the
+//     header links and the theme toggle;
+//   - `#root` carries NEITHER `inert` NOR `aria-hidden` while the dialog is
+//     open, so the background is traversable by a screen reader too.
+// The scroll lock and the pointer backdrop DO engage, so `modal` is on; it is
+// specifically the focus/AT-hiding half that is absent.
+//
+// The defect is in the shared `ui/dialog.tsx` + `@base-ui/react` 1.4.1 modal
+// wiring, NOT in this viewer — the viewer passes no prop that could disable
+// it, and the blast radius is EVERY dialog in the app. `ui/dialog.tsx` is § 5
+// "Never" for Story 53.3 (`architecture.md:3375`), so the repair is not this
+// story's to make; it is ledgered in `deferred-work.md`.
+//
+// `test.fail()` rather than a deleted test: this is the CORRECT contract,
+// kept executable. The day the modal wiring is fixed, Playwright reports
+// "expected to fail but passed" and forces the ledger entry to be closed.
+test("focus never leaves the open viewer in either Tab direction", async ({ page }) => {
+  // The fixture runs BEFORE `test.fail()` is declared, on purpose. Playwright
+  // absorbs any throw in an expected-failure test, so declaring it up front
+  // would also absorb a broken stub, a renamed trigger or a viewer that never
+  // mounts — and the pin would silently stop asserting anything about focus
+  // while still reporting green. Only the focus assertions below are allowed
+  // to be the expected failure.
+  await openViewer(page);
+  await expect(page.getByTestId("image-viewer-root")).toBeVisible();
+  test.fail(
+    true,
+    "focus trap absent in the shared modal wiring; out of Story 53.3's blast radius (deferred-work.md)",
+  );
+  const insideDialog = () =>
+    page.evaluate(
+      () => document.querySelector('[role="dialog"]')?.contains(document.activeElement) ?? false,
+    );
+
+  // Both directions are COLLECTED first and asserted once at the end. Asserting
+  // inside the loop would throw on the very first escape — which the record
+  // says is `Shift+Tab` #1 — so the `Tab` half would never execute at all for
+  // as long as the defect exists, despite the comment block above claiming
+  // both directions are pinned. Collecting keeps the claim true and makes the
+  // eventual "expected to fail but passed" cover both directions.
+  const escapes: string[] = [];
+  for (const key of ["Shift+Tab", "Tab"] as const) {
+    await page.getByTestId("image-viewer-close").focus();
+    // More presses than the dialog has focusable controls, so the cycle has
+    // to wrap: a trap that only holds for the first pass is not a trap.
+    for (let i = 0; i < 10; i += 1) {
+      await page.keyboard.press(key);
+      if (!(await insideDialog())) escapes.push(`${key} #${i + 1}`);
+    }
+  }
+  expect(escapes, `focus escaped the dialog on: ${escapes.join(", ")}`).toEqual([]);
+});
+
+// ── AC-7: body-scroll restoration across REPEATED open-close ──────────────
+
+test("body scroll is fully restored after repeated open-close cycles", async ({ page }) => {
+  await stubSotDetail(page);
+  await page.goto(`/catalog/${MODEL_ID}`);
+  await waitForReady(page);
+
+  // The same two no-op guards the single-cycle test states, for the same
+  // reasons: `ScrollLocker.lock` bails out with a NO-OP restore when the
+  // document is already overflow hidden/clip, and "scrolling was prevented"
+  // proves nothing on a page that was never scrollable.
+  const overflowBefore = await effectiveViewportOverflow(page);
+  expect(["hidden", "clip"]).not.toContain(overflowBefore);
+  const inlineBefore = await inlineOverflowState(page);
+  expect(await wheelAndReadScrollY(page)).toBeGreaterThan(0);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+
+  // Base UI's `useScrollLock` is REF-COUNTED, so an unbalanced
+  // acquire/release is invisible on a single cycle and only surfaces after
+  // several — which is exactly what `epics.md:4579`'s "repeated open-close"
+  // is asking to be pinned.
+  for (let cycle = 1; cycle <= 3; cycle += 1) {
+    await page.getByTestId("gallery-fullscreen-trigger").click();
+    await page.waitForSelector('[data-testid="image-viewer-root"]', { state: "visible" });
+
+    await expect
+      .poll(() => effectiveViewportOverflow(page), { message: `cycle ${cycle}: locked while open` })
+      .toBe("hidden");
+    expect(await wheelAndReadScrollY(page), `cycle ${cycle}: wheel really suppressed`).toBe(0);
+
+    await page.getByTestId("image-viewer-close").click();
+    await page.waitForSelector('[data-testid="image-viewer-root"]', { state: "detached" });
+
+    await expect
+      .poll(() => inlineOverflowState(page), {
+        message: `cycle ${cycle}: inline overflow overrides restored`,
+      })
+      .toEqual(inlineBefore);
+    expect(
+      await effectiveViewportOverflow(page),
+      `cycle ${cycle}: effective viewport overflow restored`,
+    ).toBe(overflowBefore);
+    expect(
+      await page.evaluate(() => window.scrollY),
+      `cycle ${cycle}: scroll position unchanged`,
+    ).toBe(0);
+    expect(
+      await wheelAndReadScrollY(page),
+      `cycle ${cycle}: a real wheel gesture scrolls the page again`,
+    ).toBeGreaterThan(0);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  }
+});
+
+// ── AC-8: slow load and image error ───────────────────────────────────────
+// Mockup states D and E. The THIRD failure path in AC-8 — a `renderImage`
+// that never mounts an `<img>` at all — is deliberately NOT here: no visual
+// spec has ever opened the viewer from `/share` (V-21), and reproducing it
+// would mean building a whole share harness for one assertion. It is a
+// property of the component's prop boundary and is asserted in
+// `ImageFullscreenViewer.test.tsx` with fake timers instead.
+
+test("slow load keeps the zoom controls mounted, disabled and ANNOUNCED", async ({ page }) => {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  // Everything that can throw runs inside `try` so the gated route handler is
+  // ALWAYS resolved — INCLUDING `openViewerWithFullImage`, because a renamed
+  // testid or stub drift breaks the OPEN sequence, not the assertions. Left
+  // unresolved, `page.route`'s handler is stranded mid-flight and the real
+  // message is buried under a teardown error, on all four projects at once.
+  //
+  // This block is NO LONGER bounded by `IMAGE_READY_TIMEOUT_MS` (15 s). It was
+  // while the readiness watchdog armed on the ordinary `<img>` path too — the
+  // gate outrunning the timer would have flipped `imageStatus` to `error`
+  // under the assertions. DN-2 narrowed the arm site to the never-mounted-
+  // `<img>` branch, so a mounted-but-slow image now stays `loading` for as
+  // long as it takes, which is precisely the semantics this test asserts.
+  try {
+    await openViewerWithFullImage(page, async (route) => {
+      await gate;
+      await route.fallback();
+    });
+
+    // Mockup state D: mounted but disabled...
+    await expect(toolbar(page)).toBeVisible();
+    for (const control of [zoomIn(page), zoomOut(page), zoomReset(page)]) {
+      await expect(control).toBeDisabled();
+    }
+    // ...and the disabled state is ANNOUNCED, not merely dimmed
+    // (`EXPERIENCE.md:259`). Read the live region's TEXT rather than its
+    // visibility: it is `sr-only` until actually zoomed BY DESIGN (V-16), so a
+    // `toBeVisible()` here would fail correctly and prove the wrong thing.
+    await expect(page.getByTestId("image-viewer-zoom-level")).toHaveText(
+      "Wczytywanie pełnego obrazu…",
+    );
+    // Close stays live throughout — a slow image never traps the user either.
+    await expect(page.getByTestId("image-viewer-close")).toBeEnabled();
+
+    // No baseline for state D (D-8): visually it is the existing rest state
+    // with the three controls disabled, which `image-viewer-toolbar-rest-*`
+    // already captures.
+  } finally {
+    release();
+  }
+  await expect(zoomIn(page)).toBeEnabled();
+  await expect(page.getByTestId("image-viewer-zoom-level")).toBeEmpty();
+});
+
+test("a failed image renders the inline error and never traps the user", async ({ page }) => {
+  await openViewerWithFullImage(page, (route) =>
+    route.fulfill({ status: 500, contentType: "text/plain", body: "boom" }),
+  );
+
+  const error = page.getByTestId("image-viewer-error");
+  await expect(error).toBeVisible();
+  // The copy is the UX spine's Polish, transcribed from mockup state E
+  // rather than translated; `playwright.config.ts` forces `pl-PL`.
+  await expect(error).toHaveText("Nie udało się wczytać zdjęcia.");
+  // The live region announces the failure instead of falling through to "".
+  await expect(page.getByTestId("image-viewer-zoom-level")).toHaveText(
+    "Nie udało się wczytać zdjęcia.",
+  );
+
+  // The error paints inside the frame but outside the transform layer.
+  expect(
+    await error.evaluate(
+      (el) => document.querySelector('[data-testid="image-viewer-transform"]')?.contains(el) ?? true,
+    ),
+  ).toBe(false);
+
+  // Close, chevrons, strip, counter and toolbar all stay reachable...
+  await expect(toolbar(page)).toBeVisible();
+  for (const control of [zoomIn(page), zoomOut(page), zoomReset(page)]) {
+    await expect(control).toBeDisabled();
+  }
+  await expect(page.getByTestId("image-viewer-strip")).toBeVisible();
+  await expect(page.getByTestId("image-viewer-counter")).toBeVisible();
+  await expect(page.getByTestId("image-viewer-close")).toBeEnabled();
+
+  // ...and OPERABLE, not merely present: the error overlay is
+  // `pointer-events-none`, so a chevron underneath it still takes the click.
+  await page.getByTestId("image-viewer-next").click();
+  await expect(page.getByTestId("image-viewer-counter")).toHaveText("2 / 2");
+  await page.getByTestId("image-viewer-close").click();
+  await expect(page.getByTestId("image-viewer-root")).toHaveCount(0);
+});
+
+test("image viewer inline error state matches baseline", async ({ page }) => {
+  // D-8 — the ONE new visual state this story captures, because it is new
+  // pixels no baseline covers. Four PNGs, one per fixed project.
+  await openViewerWithFullImage(page, (route) =>
+    route.fulfill({ status: 500, contentType: "text/plain", body: "boom" }),
+  );
+  // Epic 45/46 rule: an explicit `toBeVisible()` on the concrete state before
+  // every `toHaveScreenshot`.
+  await expect(page.getByTestId("image-viewer-error")).toBeVisible();
+  await expect(page.getByTestId("image-viewer-error")).toHaveText(
+    "Nie udało się wczytać zdjęcia.",
+  );
+  await expect(toolbar(page)).toBeVisible();
+  await expect(zoomIn(page)).toBeDisabled();
+  await expect(page).toHaveScreenshot("image-viewer-error.png");
 });
