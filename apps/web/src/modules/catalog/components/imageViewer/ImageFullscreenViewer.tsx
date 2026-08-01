@@ -132,6 +132,16 @@ const DOUBLE_TAP_SLOP_PX = 44;
 // rate-limit and semaphore invariants and which this story must not touch.
 const IMAGE_READY_TIMEOUT_MS = 15_000;
 
+// Story 53.4 — the SHIPPED dialog geometry ratios, named rather than changed.
+// They are the `w-[98vw]` / `left-[1vw]` / `h-[95dvh]` / `top-[2.5dvh]` values
+// Story 48.1 settled; 53.4 only rebases them onto the visual viewport. The
+// class names below keep the original expressions as the `var()` fallback, so
+// these constants and those literals must stay in step.
+const VIEWER_WIDTH_RATIO = 0.98;
+const VIEWER_INSET_X_RATIO = 0.01;
+const VIEWER_HEIGHT_RATIO = 0.95;
+const VIEWER_INSET_Y_RATIO = 0.025;
+
 const ORIGIN: Vec2 = { x: 0, y: 0 };
 
 type ImageStatus = "loading" | "ready" | "error";
@@ -229,6 +239,82 @@ export default function ImageFullscreenViewer({
     setFrameEl(node);
   }, []);
   const layerRef = useRef<HTMLDivElement | null>(null);
+
+  // ── Story 53.4 (E53 / FR26-VIEW-1) — fit the region the user can SEE ─────
+  //
+  // Measured root cause of the shipped Android/Brave defect. Every
+  // viewport-relative unit the viewer used — `vw`, `dvh`, and the `100%` of a
+  // `position: fixed` box — resolves against the LAYOUT viewport, and
+  // `position: fixed` is laid out in that same box. The VISUAL viewport is
+  // what the user can actually see, and the two diverge whenever the page is
+  // pinch-zoomed — which must stay available, because `user-scalable=no` is
+  // banned (`EXPERIENCE.md:291`, `architecture.md:3374`). Measured on the
+  // `mobile-light` project at page scale 2, before this repair:
+  //
+  //   visualViewport.width 196.5   <- the region the user can see
+  //   clientWidth 393 | innerWidth 393 | used `100vw` 393 | fixed `100%` 393
+  //   dialog  3.92 -> 389.05    (192.55px of it outside the visible region)
+  //   toolbar 124.48 -> 268.48  (centre 196.48 — the cut lands INSIDE the
+  //                              zoom-out button, which is what the operator's
+  //                              device screenshot shows)
+  //
+  // This is why the defect explains the clipped TOOLBAR and not only the
+  // photo (story V-9): the toolbar is centred with `inset-x-0` on the dialog,
+  // so it is centred on a box that is itself mostly off-screen.
+  //
+  // CSS has no unit for the visual viewport, so NO choice of unit can express
+  // the fit — `window.visualViewport` is the only API that reports it, and
+  // story V-4 measured that nothing in this repo consulted it. The geometry is
+  // therefore MEASURED here and published as custom properties, while the
+  // class names keep today's `vw`/`dvh` expressions — INCLUDING the E48.1
+  // `calc(100%-2vw)` cap — as the `var()` FALLBACK: where `visualViewport` is
+  // unavailable (jsdom, older engines) the rendered geometry is
+  // byte-identical to what shipped, and where the two viewports agree the
+  // computed values are numerically identical.
+  //
+  // The ratios are the shipped ones — `98vw` / `1vw` / `95dvh` / `2.5dvh` —
+  // named rather than re-derived, so this repair changes WHICH BOX the
+  // geometry resolves against and nothing else.
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const syncVisibleRegion = useCallback(() => {
+    const el = dialogRef.current;
+    if (el === null) return;
+    const vv = window.visualViewport;
+    // No `visualViewport`: the class-name `vw`/`dvh` fallback stands, and on
+    // such an engine the two viewports cannot diverge anyway.
+    if (vv === null || vv === undefined) return;
+    const width = vv.width * VIEWER_WIDTH_RATIO;
+    const height = vv.height * VIEWER_HEIGHT_RATIO;
+    el.style.setProperty("--viewer-w", `${width}px`);
+    el.style.setProperty("--viewer-h", `${height}px`);
+    // `offsetLeft`/`offsetTop` place the box inside the CURRENTLY visible
+    // slice: a pinched page can be panned, which moves the visible region
+    // without resizing it.
+    el.style.setProperty("--viewer-left", `${vv.offsetLeft + vv.width * VIEWER_INSET_X_RATIO}px`);
+    el.style.setProperty("--viewer-top", `${vv.offsetTop + vv.height * VIEWER_INSET_Y_RATIO}px`);
+    // The main frame's budget is the dialog height minus the `h-20` strip —
+    // exactly what `max-h-[calc(95dvh-5rem)]` expressed (Story 26.1 / TB-044),
+    // rebased onto the same measured box so the image cannot outgrow it.
+    el.style.setProperty("--viewer-img-max-h", `calc(${height}px - 5rem)`);
+  }, []);
+  // Base UI PORTALS the popup, so the node is not present on the first effect
+  // pass — the same reason `attachFrame` above is a callback ref. Syncing from
+  // the ref callback is what gets the measured geometry applied on the very
+  // first paint instead of one frame late.
+  const attachDialog = useCallback(
+    (node: HTMLDivElement | null) => {
+      dialogRef.current = node;
+      syncVisibleRegion();
+    },
+    [syncVisibleRegion],
+  );
+  // Published before the first paint. The `visualViewport` SUBSCRIPTION lives
+  // in the refit effect below, not here — see BLOCKING-5 there for why the two
+  // cannot be two independent listeners.
+  useLayoutEffect(() => {
+    syncVisibleRegion();
+  }, [syncVisibleRegion]);
+
   // A pinch in progress: the finger separation, scale and pan at the moment
   // the second finger landed, plus the midpoint to scale about.
   const pinchRef = useRef<{ distance: number; scale: number; pan: Vec2; focus: Vec2 } | null>(
@@ -293,12 +379,22 @@ export default function ImageFullscreenViewer({
       const frame = frameRef.current;
       const img = currentImage();
       const s = clampScale(nextScale, maxScaleRef.current);
-      const p = clampPan(
+      const clamped = clampPan(
         nextPan,
         s,
         { width: img?.offsetWidth ?? 0, height: img?.offsetHeight ?? 0 },
         { width: frame?.clientWidth ?? 0, height: frame?.clientHeight ?? 0 },
       );
+      // Reuse the PREVIOUS object when the clamp lands on the same pair.
+      // `clampPan` always returns a fresh `Vec2`, so `setPan` would otherwise
+      // fail `Object.is` and re-render on every commit. Story 53.4 BLOCKING-5
+      // made `visualViewport.scroll` a commit source, i.e. one commit per
+      // compositor frame while the user pans a pinched page — on the low-end
+      // Android class this defect was reported from, that is exactly where a
+      // re-render per frame of a `backdrop-blur` fullscreen layer is worst.
+      // Identity reuse makes the no-op case bail inside React instead.
+      const prev = panRef.current;
+      const p = clamped.x === prev.x && clamped.y === prev.y ? prev : clamped;
       if (s !== scaleRef.current) zoomTouchedRef.current = true;
       scaleRef.current = s;
       panRef.current = p;
@@ -511,11 +607,30 @@ export default function ImageFullscreenViewer({
     setAnnouncement("");
   }, [imageStatus, scale, t]);
 
-  // Rotation / resize: re-fit to the new viewport PRESERVING the zoom level and
-  // re-clamping pan (`EXPERIENCE.md:262`) — never leave the image outside the
-  // visible area.
+  // Rotation / resize / PAGE PINCH: re-fit to the new viewport PRESERVING the
+  // zoom level and re-clamping pan (`EXPERIENCE.md:262`) — never leave the image
+  // outside the visible area.
+  //
+  // ── Story 53.4 code review, BLOCKING-5 (re-run #2) ──────────────────────
+  // This effect used to listen on `window` `resize`/`orientationchange` only,
+  // and the `visualViewport` `resize`/`scroll` listeners lived in the geometry
+  // effect above. That split was wrong AS OF THIS STORY: `--viewer-w`/`-h` are
+  // now what size the dialog, so `frame.clientWidth/Height` — the box `commit`
+  // clamps pan against, and `img.offsetWidth` — the box the zoom ceiling is
+  // derived from — both became functions of `visualViewport`. A page pinch
+  // fires `visualViewport.resize` and NOT `window.resize`, so it halved the
+  // frame while nothing re-clamped: an image zoomed to 3x and panned to the
+  // edge kept ~2x the legal travel (dead background inside the frame) and a
+  // stale ceiling.
+  //
+  // ONE handler, not two listeners: `commit()` reads `clientWidth` and would
+  // otherwise clamp against the PRE-pinch box whenever it happened to be
+  // registered first. Publishing the geometry at the top of this handler makes
+  // the order explicit instead of a function of effect-declaration order, and
+  // keeps the write count per event at one.
   useEffect(() => {
     const onViewportChange = () => {
+      syncVisibleRegion();
       const img = currentImage();
       // Only re-derive the ceiling from geometry that actually MEASURES. On
       // /share the renderer swaps in a placeholder while it re-resolves its
@@ -533,11 +648,20 @@ export default function ImageFullscreenViewer({
     };
     window.addEventListener("resize", onViewportChange);
     window.addEventListener("orientationchange", onViewportChange);
+    const vv = window.visualViewport;
+    // `resize` covers pinch and rotation; `scroll` covers panning a pinched
+    // page, which moves the visible region without changing its size — the
+    // origin terms in `syncVisibleRegion` need it even though the clamp does
+    // not, and `commit` is a no-op re-render when nothing moved (see there).
+    vv?.addEventListener("resize", onViewportChange);
+    vv?.addEventListener("scroll", onViewportChange);
     return () => {
       window.removeEventListener("resize", onViewportChange);
       window.removeEventListener("orientationchange", onViewportChange);
+      vv?.removeEventListener("resize", onViewportChange);
+      vv?.removeEventListener("scroll", onViewportChange);
     };
-  }, [commit, currentImage]);
+  }, [commit, currentImage, syncVisibleRegion]);
 
   function step(delta: number) {
     if (total === 0) return;
@@ -835,48 +959,59 @@ export default function ImageFullscreenViewer({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         showCloseButton={false}
+        ref={attachDialog}
         // E48.1 — geometry is anchored to the viewport origin instead of
-        // inheriting `dialog.tsx`'s `left-1/2 top-1/2 -translate-*` centering.
-        // That centering mixes two different reference boxes: `left: 50%`
-        // resolves against the fixed-position containing block (mobile Chrome's
-        // LAYOUT viewport, which it widens to the document's scroll width the
-        // moment the page overflows horizontally) while `w-[98vw]` resolves
-        // against the VISUAL viewport. Once the two diverge the dialog is
-        // displaced sideways and the top-right close button leaves the visible
-        // area — the reported "only the left half is visible and I can't get
-        // out" trap. Expressing offset and size in the same unit makes the
-        // geometry drift-proof; on a non-overflowing viewport `1vw`/`2.5dvh`
-        // are the same insets the centered layout produced, so the change is
-        // sub-pixel (it did re-rasterise the close glyph in the two mobile
-        // baselines — 32 px / 19 px — but moved no box edge).
+        // inheriting `dialog.tsx`'s `left-1/2 top-1/2 -translate-*` centering,
+        // which mixed two reference boxes and displaced the dialog sideways
+        // (the "only the left half is visible and I can't get out" trap). That
+        // decision stands and the ban on re-centering is unchanged.
         //
-        // `max-w-[calc(100%-2vw)]` is the counterweight to that anchoring.
-        // `vw` counts the classic-scrollbar gutter, `100%` (the containing
-        // block) does not, so on a platform with non-overlay scrollbars a
-        // plain `left:1vw + width:98vw` would push the right edge — and the
-        // close button on it — past the visible area by the gutter width.
-        // The old centered form absorbed that deficit by splitting it across
-        // both edges; anchoring to the left does not, hence the explicit cap.
-        // It is inert wherever the gutter is 0 (`100% == 100vw`, so the cap
-        // equals `98vw`), which is why headless CI cannot exercise it —
-        // Chromium here uses overlay scrollbars (measured: clientWidth ==
-        // innerWidth == 100vw == 1280).
+        // ⚠️ Story 53.4 CORRECTED the PREMISE this comment used to state. It
+        // claimed `w-[98vw]` resolved against the VISUAL viewport while
+        // `left:50%` resolved against the layout viewport. Measured: `vw`
+        // resolves against the LAYOUT viewport, always — used `100vw` was 393
+        // on `mobile-light` while the visual viewport was 196.5 at page scale
+        // 2. Expressing offset and size in the same unit made them consistent
+        // with EACH OTHER but both consistent with the WRONG BOX, which is the
+        // shipped defect Story 53.4 repairs. See the geometry-sync block above.
         //
-        // `dvh` (not `vh`) for the height budget: on a phone `vh` is the LARGE
-        // viewport — measured with the browser toolbar hidden — so `95vh`
-        // overshoots the area the user can actually see whenever the toolbar
-        // is showing. `dvh` tracks the visible area. (Headless Chromium has no
-        // dynamic toolbar, so this is reasoned, not test-covered.)
-        className="h-[95dvh] w-[98vw] max-w-[calc(100%-2vw)] left-[1vw] top-[2.5dvh] translate-x-0 translate-y-0 p-0 outline-none bg-background/95 backdrop-blur-sm sm:max-w-[calc(100%-2vw)]"
+        // The `max-w-` / `sm:max-w-` cap is deliberately SUPERSEDED rather than
+        // dropped (AC-6): it existed to subtract a classic-scrollbar gutter
+        // that `vw` counted and `100%` did not, and `visualViewport.width`
+        // excludes that gutter by definition, so on the MEASURED path the cap
+        // tracks the same measured width it caps. On the FALLBACK path the
+        // shipped `calc(100%-2vw)` cap is carried through unchanged, so E48.1's
+        // counterweight survives byte-identically wherever the classic-
+        // scrollbar gutter is non-zero (story 53.4 code review, BLOCKING-1).
+        // It is kept explicit so this element can never silently fall back to
+        // `ui/dialog.tsx`'s `sm:max-w-sm` (story V-10).
+        //
+        // `dvh` (not `vh`) survives as the fallback height unit: on a phone
+        // `vh` is the LARGE viewport — measured with the browser toolbar
+        // hidden — so `95vh` overshoots the visible area whenever the toolbar
+        // is showing, while `dvh` tracks it.
+        className="h-[var(--viewer-h,95dvh)] w-[var(--viewer-w,98vw)] max-w-[var(--viewer-w,calc(100%-2vw))] left-[var(--viewer-left,1vw)] top-[var(--viewer-top,2.5dvh)] translate-x-0 translate-y-0 p-0 outline-none bg-background/95 backdrop-blur-sm sm:max-w-[var(--viewer-w,calc(100%-2vw))]"
         onKeyDown={onKey}
       >
         <DialogTitle className="sr-only">
           {t("catalog.image_viewer.dialog_title")}
         </DialogTitle>
 
+        {/* ── Story 53.4 code review, BLOCKING-6 (re-run #2) ─────────────────
+            `min-w-0`. `DialogContent` is a GRID, so this element is a grid item
+            and its `min-width` resolves to `auto` = its own min-content — which
+            the `h-20` thumb strip pins at 158px (2 x `size-16` + `gap-1.5` +
+            `px-3`). MEASURED on `mobile-light` before the fix: at page scale 3
+            the dialog is 128.4px wide but the root stayed 158px, so the close
+            button — anchored to the ROOT's right edge — sat at x 103.3..147.3
+            against a 131px visible region. The whole viewer escaped the box it
+            was just taught to fit, 17px outside it, above page scale ~2.45.
+            The strip already carries `overflow-x-auto`, so shrinking below its
+            content scrolls it rather than clipping anything.
+            `w-full` is kept: it is the SIZE; `min-w-0` only removes the floor. */}
         <div
           data-testid="image-viewer-root"
-          className="relative flex h-full w-full flex-col"
+          className="relative flex h-full w-full min-w-0 flex-col"
           onTouchStart={onTouchStart}
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
@@ -935,7 +1070,14 @@ export default function ImageFullscreenViewer({
                 // takes part in no flex layout and consumes none of the
                 // vertical budget; the only in-flow siblings are still the
                 // frame and the h-20 strip. Nothing to re-derive (T2/AC-8).
-                className: "max-h-[calc(95dvh-5rem)] max-w-full object-contain",
+                //
+                // Story 53.4: the SAME arithmetic, rebased onto the measured
+                // visible region. It has to move with the dialog height or the
+                // image outgrows the frame on exactly the axis the dialog just
+                // shrank; `calc(95dvh-5rem)` remains the fallback and is what
+                // renders wherever `visualViewport` is unavailable.
+                className:
+                  "max-h-[var(--viewer-img-max-h,calc(95dvh-5rem))] max-w-full object-contain",
               })}
             </div>
 
@@ -1088,10 +1230,27 @@ export default function ImageFullscreenViewer({
                 {announcement}
               </div>
 
+              {/* ── Story 53.4 code review, BLOCKING-6 (re-run #2) ───────────
+                  `flex-wrap` + `justify-center` here, `shrink-0` on the three
+                  buttons. MEASURED max-content is 144px (3 x `h-10 w-10` +
+                  2 x `gap-2` + `p-1`) and the dialog is now
+                  `0.98 x visualViewport.width`, so on a 393px layout viewport
+                  the toolbar no longer fits above page scale ~2.6 — and
+                  `index.html:5` sets no `maximum-scale`, so Chromium allows up
+                  to 5x. Without these two classes the outcome was the WORSE of
+                  the two: the flex row overflowed the visible region (measured
+                  right edge 152.3 against a 131px region at scale 3) — the same
+                  sliced-toolbar symptom this story exists to repair — or, once
+                  `min-w-0` above let the row shrink, the buttons would have
+                  squeezed under their target-size floor.
+                  Wrapping keeps BOTH: every control stays 40x40 and the bar
+                  re-flows into 2 rows, then 3, as the visible region narrows.
+                  No-op at page scale 1 (144px against a 385px dialog), so the
+                  visual baselines are untouched. */}
               <div
                 ref={toolbarRef}
                 data-testid="image-viewer-toolbar"
-                className="pointer-events-auto flex items-center gap-2 rounded-full bg-gallery-control/40 p-1"
+                className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-full bg-gallery-control/40 p-1"
               >
                 <button
                   type="button"
@@ -1099,7 +1258,7 @@ export default function ImageFullscreenViewer({
                   onClick={handleZoomIn}
                   disabled={!canZoom || atMaxScale}
                   aria-label={t("catalog.image_viewer.zoom_in")}
-                  className="grid h-10 w-10 place-items-center rounded-full bg-gallery-control/40 text-gallery-control-foreground transition-colors hover:bg-gallery-control/60 disabled:opacity-45"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gallery-control/40 text-gallery-control-foreground transition-colors hover:bg-gallery-control/60 disabled:opacity-45"
                 >
                   <Plus className="h-5 w-5" />
                 </button>
@@ -1109,7 +1268,7 @@ export default function ImageFullscreenViewer({
                   onClick={handleZoomOut}
                   disabled={!canZoom || atMinScale}
                   aria-label={t("catalog.image_viewer.zoom_out")}
-                  className="grid h-10 w-10 place-items-center rounded-full bg-gallery-control/40 text-gallery-control-foreground transition-colors hover:bg-gallery-control/60 disabled:opacity-45"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gallery-control/40 text-gallery-control-foreground transition-colors hover:bg-gallery-control/60 disabled:opacity-45"
                 >
                   <Minus className="h-5 w-5" />
                 </button>
@@ -1119,7 +1278,7 @@ export default function ImageFullscreenViewer({
                   onClick={handleZoomReset}
                   disabled={!canZoom || atMinScale}
                   aria-label={t("catalog.image_viewer.zoom_reset")}
-                  className="grid h-10 w-10 place-items-center rounded-full bg-gallery-control/40 text-gallery-control-foreground transition-colors hover:bg-gallery-control/60 disabled:opacity-45"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gallery-control/40 text-gallery-control-foreground transition-colors hover:bg-gallery-control/60 disabled:opacity-45"
                 >
                   <Maximize2 className="h-5 w-5" />
                 </button>
