@@ -4,6 +4,10 @@ import { useTranslation } from "react-i18next";
 
 import type { ModelFileRead } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
+// Bugfix 2026-08-02 — the fullscreen frames are the long-lived surface where
+// the 10-minute `portal_access` cookie expires under the user; this renderer
+// is what lets a failed load refresh and retry instead of dying.
+import { AuthenticatedImage } from "@/modules/catalog/components/AuthenticatedImage";
 // Story 22.3 (TB-037 viewer) — symmetric fullscreen image viewer mount.
 // Imported via the lazy barrel so the viewer body is code-split out of the
 // catalog detail route's initial chunk per [[feedback_lazy_import_discipline]].
@@ -222,8 +226,16 @@ export function ModelGallery({
             sources={viewerSources}
             initialIndex={activeIdx}
             onClose={() => setFullscreenOpen(false)}
+            // `AuthenticatedImage` is rendered as an ELEMENT, never passed by
+            // reference: `renderImage` is CALLED, not mounted (`types.ts`), so
+            // `renderImage={AuthenticatedImage}` would register its hooks in
+            // the viewer's own fiber — once for the main frame and again per
+            // strip thumb, i.e. a hook count that varies with `sources.length`.
+            // That coupling is the mechanism behind the open `/share` DN-4
+            // residual in `deferred-work.md`; this shape gives every image its
+            // own fiber and its own effect ordering.
             renderImage={({ src, alt, className }) => (
-              <img src={src} alt={alt} className={className} />
+              <AuthenticatedImage src={src} alt={alt} className={className} />
             )}
           />
         </Suspense>

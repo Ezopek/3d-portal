@@ -1,5 +1,5 @@
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import "@/locales/i18n";
 import { ModelGallery } from "./ModelGallery";
@@ -118,5 +118,89 @@ describe("ModelGallery accessible names (Story 54.2 V-8)", () => {
     expect(icon.getAttribute("tabindex")).toBe("-1");
     // ...but it still opens the viewer for a pointer user.
     expect(icon.getAttribute("aria-label")).toBeNull();
+  });
+});
+
+// The production defect, at the surface it was reported on: `portal_access`
+// expires (10 min max-age) while the lightbox stays open, and the next
+// `?variant=full` load 401s with nothing able to refresh it. Ten such 401s
+// were logged 2026-08-02 19:36:41-19:36:55 while the operator navigated the
+// viewer on a physical Pixel 9 Pro, against a refresh session that was still
+// valid. The fix is the renderer the viewer is handed — the viewer itself,
+// its `renderImage`/`renderThumb` boundary and the `/share` credentialless
+// path are all untouched.
+describe("ModelGallery lightbox — access-session expiry recovery", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let fetchMock: any;
+  let revokeSpy: ReturnType<typeof vi.fn>;
+
+  function imageResponse(): Response {
+    return new Response(new Blob(["jpeg"], { type: "image/jpeg" }), {
+      status: 200,
+      headers: { "Content-Type": "image/jpeg" },
+    });
+  }
+
+  beforeEach(() => {
+    fetchMock = vi.spyOn(globalThis, "fetch");
+    revokeSpy = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", {
+      value: vi.fn(() => "blob:recovered/1"),
+      configurable: true,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", { value: revokeSpy, configurable: true });
+  });
+  afterEach(() => fetchMock.mockRestore());
+
+  async function openViewer(): Promise<HTMLImageElement> {
+    render(<ModelGallery modelId={MODEL_ID} files={FILES} />);
+    fireEvent.click(screen.getByTestId("gallery-fullscreen-trigger"));
+    // The viewer is code-split behind the lazy barrel + <Suspense>.
+    const images = await screen.findAllByTestId("authed-image");
+    return images[0] as HTMLImageElement; // main frame renders before the strip
+  }
+
+  it("recovers the expired full-resolution frame without a reload", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({ detail: "access_expired" }), { status: 401 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 200 })) // /api/auth/refresh
+      .mockResolvedValueOnce(imageResponse());
+
+    const main = await openViewer();
+    const fullUrl = `/api/models/${MODEL_ID}/files/f2/content?variant=full`;
+    expect(main.getAttribute("src")).toBe(fullUrl);
+    expect(fetchMock).not.toHaveBeenCalled(); // healthy session issues nothing
+
+    fireEvent.error(main);
+
+    await waitFor(() =>
+      expect(screen.getAllByTestId("authed-image")[0]?.getAttribute("src")).toBe(
+        "blob:recovered/1",
+      ),
+    );
+    const urls = fetchMock.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(urls.filter((u: string) => u === fullUrl)).toHaveLength(2);
+    expect(urls.filter((u: string) => u.includes("/api/auth/refresh"))).toHaveLength(1);
+    expect(urls.some((u: string) => u.includes("/api/share"))).toBe(false);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.credentials).toBe("include");
+  });
+
+  it("closing the viewer mid-session revokes the recovered object URL", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({ detail: "access_expired" }), { status: 401 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }))
+      .mockResolvedValueOnce(imageResponse());
+
+    const main = await openViewer();
+    fireEvent.error(main);
+    await waitFor(() =>
+      expect(screen.getAllByTestId("authed-image")[0]?.getAttribute("src")).toBe(
+        "blob:recovered/1",
+      ),
+    );
+
+    fireEvent.click(screen.getByTestId("image-viewer-close"));
+    await waitFor(() => expect(revokeSpy).toHaveBeenCalledWith("blob:recovered/1"));
   });
 });
