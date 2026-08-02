@@ -350,6 +350,27 @@ The vendor demo pages **do not run this repo's image pipeline or auth**. **Gestu
 
 Because § 7.3 is uncollected, **this recommendation is PROVISIONAL — pending physical Android Chrome evidence**, and **G26-LIB is not closed by this story**. The artifact is written to accept the results as a later amendment to § 7.3 and § 9.2 **without a rewrite**.
 
+#### 7.4a Amendment 2026-08-02 — partial/coarse physical evidence now exists; **the verdict does not move**
+
+> Added by the E53 / `G26-LIB` status reconciliation (native `bmad-correct-course` route). **Repo-local Claude Opus 5, NOT an Ezop signature, NOT human review.** § 7.3's cells stay blank — this amendment fills none of them.
+
+Physical evidence on a **Pixel 9 Pro / Android 17**, against the deployed Story 53.4 repair (commit `e76e94f`, release `0.1.0+e76e94f`), now exists in two pieces — and **both are partial**:
+
+- **Chrome for Android 150.0.7871.186 — COARSE only.** The operator reports the surface *"works broadly"* with **no per-row verdict**. Recorded as a dated free-text note in `53-3-lightbox-test-contract.md` § 11.2a; `G0`–`G14` there remain **uncollected**.
+- **Brave — detailed, but the WRONG BROWSER for this section.** Zoomed drag pans rather than navigates; Reset restores swipe navigation; thumb-strip scroll does not navigate; portrait → landscape → portrait survives; close/reopen restores page state; fit/scaling/gestures acceptable, portrait works, and the operator explicitly does not want polish time spent now. Recorded in `53-4-android-chromium-lightbox-fit-repair.md` § 9 (R-8 `NOT PERFORMED`). **§ 7 asks a Chrome question; Brave answers do not migrate into it.**
+
+**No § 9.2 reversal trigger fired, checked one by one and stated rather than asserted:**
+
+| | Status against the 2026-08-02 evidence |
+|---|---|
+| **R1** — the shipped swipe/tap/close layer is *poor* on device (`G2`, `G9`, `G10`, `G12`, `G14`) | **NOT fired.** Nothing reported is negative. What *was* reported on those subjects (thumb-strip scroll does not navigate; close/reopen restores page state) is **favourable and on Brave**, and no `G2`/`G9`/`G12` observation exists at all. |
+| **R2** — YARL zoom decisively better on device **AND** per-image pixel dimensions cheaply available to both DTOs | **NOT fired.** Neither conjunct is touched: no comparative option run was performed (§ 7.3 needs all three options on one device), and no DTO work happened. |
+| **R3** — the in-house transform/clamp layer exceeds ≈450 added LOC or needs a gesture-math dependency | **NOT fired.** Settled inside Story 53.2 and unaffected by field evidence; Story 53.4 added **zero** dependencies. |
+| **R4** — the operator rules that hoisting blob resolution out of the viewer is acceptable | **NOT fired.** No such ruling was given. |
+| **R5** — a11y review rules that shipping without visible zoom controls is unacceptable | **NOT fired**, and the evidence points the other way: the shipped viewer's zoom/reset controls are visible and were used on device (Brave `R-5`/`R-6`). The operator's one a11y-adjacent remark — that tapping the image intentionally leaves those controls visible — is **treated as non-blocking** and ledgered, not raised as a defect. |
+
+**Therefore: the § 0 / § 9.1 call is UNCHANGED (option 3 — extend the in-house viewer), the verdict stays 🟡 PROVISIONAL, and `G26-LIB` stays 🔓 OPEN.** What would move any of this is a **collected** § 7.3 / § 11.2 run on Chrome for Android, or an explicit **controller** ruling that the coarse evidence is sufficient. Neither has happened.
+
 ---
 
 ## 8. Zero product code — the proof (AC-6)

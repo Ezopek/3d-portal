@@ -639,9 +639,27 @@ Files deliberately NOT touched, verified zero-diff: `apps/web/src/ui/dialog.tsx`
 
 **Recording fields:** device model · Android version · Chrome version · date · per-row verdict · free-text notes for anything surprising.
 
+### 11.2a Free-text note — 2026-08-02: coarse physical Chrome evidence EXISTS; **§ 11.2's row verdicts remain UNCOLLECTED**
+
+> **This note fills no cell above and closes no gate.** It is added by the 2026-08-02 E53 / `G26-LIB` status reconciliation (native `bmad-correct-course` route) so that the existence of physical evidence is on the record without the record pretending the protocol was run. **Author of record: repo-local Claude Opus 5. NOT an Ezop signature, NOT human review.** The operator's contribution is **evidence collection**.
+
+**What exists.** The operator exercised the deployed portal on a **physical Pixel 9 Pro / Android 17** in **Chrome for Android 150.0.7871.186**, against the Story 53.4 repair (commit `e76e94f92d1f53fa676930e07c8905879b73981b`, release identity `0.1.0+e76e94f`, deployed 2026-08-01). **The report is coarse and is recorded verbatim in kind: the surface "works broadly" ("z grubsza").** That is the whole of the Chrome-for-Android verdict on record.
+
+**What does NOT exist, and is not manufactured here.**
+
+- **No `G0`–`G14` per-row verdict was collected on Chrome for Android, and none is inferred from the aggregate.** Every cell in § 11.2 stays `␣` / *not collected*. "Works broadly" is not a `good`/`acceptable`/`poor` verdict on pinch smoothness (`G3`), pan clamping (`G4`), double-tap (`G5`), thumb reachability (`G7`), bottom/right clipping under the Chrome toolbar (`G12`) or page-pinch availability (`G13`) — those questions were not asked and were not answered.
+- **The detailed gesture observations from the same reconciliation are BRAVE, not Chrome, and are deliberately NOT transcribed into this table.** On **Brave** the operator reported: a zoomed drag pans rather than navigates; Reset restores swipe navigation; the thumb strip scrolls without navigating; portrait → landscape → portrait survives; close/reopen restores page state. Those live in **Story 53.4 § 9**, which is a **different browser and a different question** (§ 0's evidence-class split). Copying any of them into a row here would be exactly the browser conflation § 0 forbids.
+- **No date-of-run, no session log, no screenshots** accompany the Chrome pass. The date stamped on this note (**2026-08-02**) is the date the evidence was **reported to the controller**, not a recorded run timestamp.
+
+**`G15` — the failure-announcement observation, with its provenance stamped honestly.** During the same physical session a **separate authenticated-image / session-expiry defect** was reproduced, and the viewer **visibly announced the failed image rather than failing silently** — i.e. the inline error element and the live-region announcement Story 53.3 shipped both did their job on a real device. **Provenance: this was observed during the BRAVE portion of the session. Whether the same announcement was seen on Chrome for Android is NOT established.** `G15`'s cell therefore stays **blank**: a formal verdict here would be a Chrome verdict, and this observation is not one. Recorded as free text for exactly that reason. **The underlying session-expiry defect is routed INDEPENDENTLY and is not absorbed into E53, Story 53.3 or Story 53.4.**
+
+**Consequence, unchanged.** **`G26-LIB` stays 🔓 OPEN** and § 11.2 stays uncollected. Ruling that this coarse evidence is *sufficient* to close `G26-LIB` is a **controller decision**, taken explicitly and on the record — it is not something this note, this story, or Story 53.4 may take by implication.
+
 ### 11.3 Consequence
 
 Because § 11.2 is uncollected, **`G26-LIB` remains OPEN** and the physical-gesture half of `FR26-VIEW-1`'s verification (`prd.md:2256`) is **outstanding**. This section is written to accept results as a later amendment **without a rewrite** of anything above it.
+
+**Still true after the 2026-08-02 reconciliation (§ 11.2a).** Coarse physical Chrome-for-Android evidence now exists and is noted above, but **no row verdict was collected**, so this paragraph stands verbatim: `G26-LIB` remains **OPEN** unless and until the controller either accepts a `G0`–`G14` collection or explicitly rules the coarse evidence sufficient.
 
 ---
 
